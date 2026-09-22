@@ -24,8 +24,10 @@ export interface ToolApprovalHookContext {
  * A programmatic tool-approval hook: a `PreToolUse` callback that decides `allow` / `ask` /
  * `deny` (and may rewrite the tool args via `updatedInput` or restrict the offered decisions
  * via `allowedDecisions`) from the FULL live call — tool name, args, executing agent, thread,
- * turn — not just the static name lists in `endpoints.agents.toolApproval`. Return an empty
- * object (`{}`) to abstain and fall through to the configured policy / other hooks.
+ * turn — not just the static name lists in `endpoints.agents.toolApproval`. A decision is
+ * required: errors, timeouts and missing/invalid decisions fail closed in the SDK.
+ * Return `allow` when this hook imposes no additional restriction; it cannot override
+ * the configured policy / other hooks' `ask` or `deny`.
  *
  * Hooks COMPOSE with the static policy through the SDK's `PreToolUse` fold, which resolves
  * decisions `deny` > `ask` > `allow`. A hook can therefore only ever TIGHTEN a configured
@@ -38,7 +40,7 @@ export type ToolApprovalHook = HookCallback<'PreToolUse'>;
  * Builds a {@link ToolApprovalHook} for one run from its {@link ToolApprovalHookContext}.
  * Return `undefined` to opt out of this run entirely (e.g. the policy doesn't apply to this
  * user, or the app config disables the hook) — cheaper and clearer than a hook that always
- * abstains. Registered process-wide via {@link registerToolApprovalHook}.
+ * returns `allow`. Registered process-wide via {@link registerToolApprovalHook}.
  */
 export type ToolApprovalHookFactory = (
   context: ToolApprovalHookContext,

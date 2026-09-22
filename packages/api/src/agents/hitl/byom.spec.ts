@@ -27,7 +27,7 @@ describe('createAttachedCodeEnvironmentPolicyHook', () => {
 
     await expect(
       hook({ toolName: 'read_file', executingAgentId: 'attached-agent' } as never, signal),
-    ).resolves.toEqual({});
+    ).resolves.toEqual({ decision: 'allow' });
   });
 
   test('does not apply the BYOM baseline to a managed-environment sibling agent', async () => {
@@ -35,7 +35,7 @@ describe('createAttachedCodeEnvironmentPolicyHook', () => {
 
     await expect(
       hook({ toolName: 'bash_tool', executingAgentId: 'managed-agent' } as never, signal),
-    ).resolves.toEqual({});
+    ).resolves.toEqual({ decision: 'allow' });
   });
 
   test('fails closed when a risky call cannot be attributed to an agent', async () => {

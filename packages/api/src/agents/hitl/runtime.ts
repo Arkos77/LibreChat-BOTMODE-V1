@@ -54,6 +54,7 @@ export function buildHITLRunWiring(
   );
   // Static config-driven policy (mode/allow/deny/ask) — the baseline.
   registry.register('PreToolUse', {
+    authorizationDecisionRequired: true,
     hooks: [
       async (input, signal) =>
         createToolPolicyHook(mapToolApprovalPolicy(activePolicy) ?? {})(input, signal),
@@ -64,10 +65,11 @@ export function buildHITLRunWiring(
   const programmaticHooks = resolvedProgrammaticHooks ?? buildToolApprovalHooks(context);
   for (const { hook, matcher } of programmaticHooks) {
     if (matcher == null) {
-      registry.register('PreToolUse', { hooks: [hook] });
+      registry.register('PreToolUse', { authorizationDecisionRequired: true, hooks: [hook] });
       continue;
     }
     registry.register('PreToolUse', {
+      authorizationDecisionRequired: true,
       hooks: [
         async (input, signal) => {
           let regex: RegExp;
@@ -89,7 +91,8 @@ export function buildHITLRunWiring(
               return hook(input, signal);
             }
           }
-          return {};
+          // Outside this hook's scope: do not tighten the baseline or other hooks.
+          return { decision: 'allow' };
         },
       ],
     });

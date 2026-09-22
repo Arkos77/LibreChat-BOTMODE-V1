@@ -195,7 +195,8 @@ export function createAttachedCodeEnvironmentPolicyHook(
       category == null ||
       (input.executingAgentId != null && !attachedAgentIds.has(input.executingAgentId))
     ) {
-      return {};
+      // No additional restriction outside BYOM scope; deny/ask still win the SDK fold.
+      return { decision: 'allow' };
     }
     if (
       category === 'fileWrite' &&
