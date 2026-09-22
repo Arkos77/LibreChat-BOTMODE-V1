@@ -1,13 +1,14 @@
-# P4 SDK dependency
+# P8 SDK dependency
 
-This npm archive contains `@librechat/agents` 3.7.17 built from the published
-source at https://github.com/Arkos77/agents/commit/a4f35b0747a3dc28e20d1b6dfeb289dbf1fa0417.
+This npm archive contains `@librechat/agents` 3.7.17 built from local SDK commit
+`dc4a4bf95a95a628cfd17421a8c2dab9eab5eba6`.
 
-- Source tree: `ce121e55a94dc299249427884e03c127b607af7b`.
-- Archive SHA-256: `d641858fe95e14b39e629831d042961f0eb0e10ae456c35c6796781d3417bd97`.
+- Archive: `librechat-agents-3.7.17-dc4a4bf95a95a628cfd17421a8c2dab9eab5eba6.tgz`.
+- Archive SHA-256: `684b0d77931dab91299b5c988362441dd8bf63e1d400f219cfc593a6cd90077c`.
 - The npm lockfile additionally pins the archive's SHA-512 integrity.
-- The archive was built from the clean local commit `c034a773e03a1d6be7ebb118d62641c551a59370`,
-  whose complete Git tree is identical to the published commit above.
+- P8 adds the opt-in `authorizationDecisionRequired` fail-closed contract.
+- This dependency integration does not enable host authorization hooks.
+- The previous P4 archive is retained.
 
 The upstream package does not commit `dist`, and its `prepare` script only sets
 up Husky. A Git dependency alone therefore does not produce the executable
@@ -15,7 +16,7 @@ files required by its exports. A local npm tarball supplies those files without
 a host postinstall script, a second runtime, or a manual `node_modules` overlay.
 The existing `@librechat/api` peer range remains compatible with version 3.7.17.
 
-To regenerate, check out the exact published commit in an isolated SDK checkout,
+To regenerate, check out the exact SDK commit in an isolated SDK checkout,
 install its locked build dependencies, run the two P4 regression tests, run
 `npm run build`, then run `npm pack --ignore-scripts`. Rename the generated
 archive to include the full source commit and refresh the host lockfile with
