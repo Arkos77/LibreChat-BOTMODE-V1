@@ -31,3 +31,18 @@ P4 guarantees that this tested reconstruction does not replay completed
 predecessors. It does not guarantee universal exactly-once execution: an
 interrupted node may replay code before its interrupt. External side effects
 still require appropriate idempotency keys, durable claims or fencing.
+
+## Remote PTC authorization SDK — current artifact
+
+- Package: `@librechat/agents` 3.7.17.
+- SDK source commit: `5b3aa707be85390c4e0c4e3cf36b7e8971373edf`.
+- Commit message: `fix(security): authorize remote PTC internal tool calls`.
+- Artifact: `librechat-agents-3.7.17-5b3aa707be85390c4e0c4e3cf36b7e8971373edf.tgz`.
+- SHA-256: `21986977c36225d41027f0586f6f0dce0d1d8018a9599a54ca35a6f7079ff1b3`.
+- npm integrity: `sha512-4FFaQa/SDGT4Wrz8toDJgJ6YJjWCKk+3zPs170GOz3dqFa5XDJ+QgxtVvCXEqV6wRQKf9MOHUJJgUvgoftS4WA==`.
+- Distributed files: 1278.
+- Reproducibility: two independent npm packs were byte-identical.
+
+This integration preserves the existing host wiring. Remote PTC host authorization
+behavior still requires the separate micro-lot 29 runtime proof. Historical
+artifacts and provenance above are retained.
