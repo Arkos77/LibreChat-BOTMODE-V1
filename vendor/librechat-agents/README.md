@@ -46,3 +46,18 @@ still require appropriate idempotency keys, durable claims or fencing.
 This integration preserves the existing host wiring. Remote PTC host authorization
 behavior still requires the separate micro-lot 29 runtime proof. Historical
 artifacts and provenance above are retained.
+
+## Event authorization context SDK — current artifact
+
+- Package: `@librechat/agents` 3.7.17.
+- Source commit: `c8493e8a65260790e3dbf2dce4583780b0067935`.
+- Commit message: `fix(security): propagate hook context through tool execute events`.
+- Artifact: `librechat-agents-3.7.17-c8493e8a65260790e3dbf2dce4583780b0067935.tgz`.
+- SHA-256: `2e241c038856923c931f7f0993e7a445844103b4eeb5ee0a2ef87f27fed74ebc`.
+- npm integrity: `sha512-ZENxQMEUePclkzIYGSm4h7ZZ0M0fWb8DsWBRVR6EkAKg/pygRN+GXezBlh+LugNJ8ouELGdRCC5SsTqoSXAMSA==`.
+- Distributed files: 1278.
+- Reproducibility: two independent npm packs were byte-identical.
+
+The SDK event batch carries the existing native hook context. Host forwarding
+and behavior require a separate host patch and runtime proof. Historical
+artifacts are retained.
