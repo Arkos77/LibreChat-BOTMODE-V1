@@ -1,4 +1,11 @@
 const { createHash } = require('node:crypto');
+// This suite uses synthetic tools: any unmocked HTTP request must fail locally.
+jest.mock('node-fetch', () => {
+  const fetch = jest.fn(() => {
+    throw new Error('Network is forbidden in ToolService tests');
+  });
+  return Object.assign(fetch, jest.requireActual('node-fetch'), { default: fetch });
+});
 const { Constants: AgentConstants } = require('@librechat/agents');
 const {
   Tools,
@@ -2622,6 +2629,282 @@ describe('ToolService - Action Capability Gating', () => {
       ]);
       expect(result.configurable.toolRegistry).toBe(toolRegistry);
       expect(result.configurable.ptcToolMap.size).toBe(0);
+    });
+
+    describe('remote PTC internal authorization coverage', () => {
+      it.each([
+        ['allow', 'deny', 0],
+        ['allow', 'allow', 1],
+        ['deny', 'allow', 0],
+        ['allow', 'ask', 0],
+        ['allow', 'updatedInput', 1],
+        ['allow', 'exception', 0],
+        ['allow', 'invalid', 0],
+        ['allow', 'timeout', 0],
+        ['allow', 'mixed', 1],
+        ['allow', 'string', 1],
+        ['allow', 'stringUpdatedInput', 1],
+      ])(
+        'outer %s / inner %s enforces internal authorization',
+        async (outerPolicy, innerPolicy, effects) => {
+          const path = require('node:path');
+          const { z } = require('zod');
+          const { Run, Providers, FakeChatModel } = require('@librechat/agents');
+          const { tool } = require('@librechat/agents/langchain/tools');
+          const { DynamicTool } = require('@langchain/core/tools');
+          const { HumanMessage } = require('@librechat/agents/langchain/messages');
+          const { buildHITLRunWiring, registerToolApprovalHook, createToolExecuteHandler } =
+            jest.requireActual('@librechat/api');
+          // Mock only the remote protocol boundary, retaining the real Bash PTC loop,
+          // executeTools, host loader, authorization wiring and event executor.
+          const protocol = require(
+            path.join(
+              path.dirname(require.resolve('@librechat/agents')),
+              'tools/ProgrammaticToolCalling.cjs',
+            ),
+          );
+          const stringInput = innerPolicy.startsWith('string');
+          const internalCalls =
+            innerPolicy === 'mixed'
+              ? [
+                  { id: 'inner-A', name: 'p8_counter', input: { amount: 100 } },
+                  { id: 'inner-B', name: 'p8_counter', input: { amount: 200 } },
+                ]
+              : [
+                  {
+                    id: 'inner-call',
+                    name: 'p8_counter',
+                    input: stringInput ? '100' : { amount: 100 },
+                  },
+                ];
+          const transport = jest.spyOn(protocol, 'makeRequest').mockImplementation(async () => {
+            throw new Error('Unexpected remote protocol request');
+          });
+          transport
+            .mockResolvedValueOnce({
+              status: 'tool_call_required',
+              continuation_token: 'synthetic-continuation',
+              tool_calls: internalCalls,
+            })
+            .mockResolvedValueOnce({ status: 'completed', stdout: 'counted', files: [] });
+          const observed = [];
+          const identities = [];
+          const effectsReceived = [];
+          const innerSignals = [];
+          let innerEffectCount = 0;
+          const effect = async (input) => {
+            innerEffectCount++;
+            effectsReceived.push(stringInput ? input : input.amount);
+            return 'counted';
+          };
+          const inner = stringInput
+            ? new DynamicTool({
+                name: 'p8_counter',
+                description: 'Memory counter only',
+                func: effect,
+              })
+            : tool(effect, {
+                name: 'p8_counter',
+                description: 'Memory counter only',
+                schema: z.object({ amount: z.number() }),
+              });
+          const outerName = Constants.BASH_PROGRAMMATIC_TOOL_CALLING;
+          let releaseMixed;
+          const mixedBarrier = new Promise((resolve) => {
+            releaseMixed = resolve;
+          });
+          const factory = jest.fn(() => async (input, signal) => {
+            observed.push({ name: input.toolName, id: input.toolUseId });
+            identities.push(input);
+            if (input.toolName === outerName) return { decision: outerPolicy };
+            innerSignals.push(signal);
+            if (innerPolicy === 'exception') throw new Error('Synthetic authorization failure');
+            if (innerPolicy === 'invalid') return { decision: 'malformed' };
+            if (innerPolicy === 'timeout') return new Promise(() => {});
+            if (innerPolicy === 'mixed') {
+              if (observed.filter((entry) => entry.name === inner.name).length === 2)
+                releaseMixed();
+              await mixedBarrier;
+              return { decision: input.toolUseId === 'inner-A' ? 'allow' : 'deny' };
+            }
+            if (innerPolicy === 'updatedInput')
+              return { decision: 'allow', updatedInput: { amount: 10 } };
+            if (innerPolicy === 'stringUpdatedInput')
+              return { decision: 'allow', updatedInput: { input: '10' } };
+            return { decision: innerPolicy === 'string' ? 'allow' : innerPolicy };
+          });
+          const unregister = registerToolApprovalHook(factory);
+          let outerInvoke;
+          let eventHandle;
+          try {
+            const capabilities = [
+              AgentCapabilities.tools,
+              AgentCapabilities.programmatic_tools,
+              AgentCapabilities.execute_code,
+            ];
+            const req = createMockReq(capabilities);
+            mockGetEndpointsConfig.mockResolvedValue(createEndpointsConfig(capabilities));
+            mockLoadToolsUtil.mockResolvedValue({ loadedTools: [inner], toolContextMap: {} });
+            const toolRegistry = new Map([
+              [
+                inner.name,
+                {
+                  name: inner.name,
+                  allowed_callers: ['code_execution'],
+                  parameters: { type: 'object', properties: { amount: { type: 'number' } } },
+                },
+              ],
+            ]);
+            const loaded = await loadToolsForExecution({
+              req,
+              res: {},
+              agent: { id: 'agent_ptc', tools: [Tools.execute_code] },
+              toolNames: [outerName],
+              toolRegistry,
+              actionsEnabled: false,
+            });
+            const outer = loaded.loadedTools.find((candidate) => candidate.name === outerName);
+            expect(outer).toBeDefined();
+            outerInvoke = jest.spyOn(outer, 'invoke');
+            expect([...loaded.configurable.ptcToolMap.keys()]).toEqual([inner.name]);
+            const wiring = buildHITLRunWiring(
+              { enabled: true, mode: 'bypass' },
+              {
+                userId: req.user.id,
+                conversationId: 'p8-ptc-thread',
+                tenantId: 'synthetic-tenant',
+              },
+            );
+            expect(factory).toHaveBeenCalledWith({
+              userId: req.user.id,
+              conversationId: 'p8-ptc-thread',
+              tenantId: 'synthetic-tenant',
+            });
+            if (innerPolicy === 'timeout') wiring.hooks.getMatchers('PreToolUse')[1].timeout = 10;
+            const loadTools = jest.fn(async () => loaded);
+            const handler = createToolExecuteHandler({ loadTools });
+            eventHandle = jest.spyOn(handler, 'handle');
+            const run = await Run.create({
+              runId: 'p8-ptc-run',
+              ...wiring,
+              customHandlers: { on_tool_execute: handler },
+              graphConfig: {
+                type: 'standard',
+                agents: [
+                  {
+                    agentId: 'agent_ptc',
+                    provider: Providers.OPENAI,
+                    instructions: 'Synthetic counter test',
+                    toolDefinitions: [
+                      {
+                        name: outerName,
+                        description: outer.description,
+                        parameters: { type: 'object', properties: { code: { type: 'string' } } },
+                      },
+                      toolRegistry.get(inner.name),
+                    ],
+                  },
+                ],
+              },
+            });
+            run.Graph.overrideModel = new FakeChatModel({
+              responses: ['done'],
+              toolCalls: [
+                {
+                  id: 'outer-call',
+                  name: outerName,
+                  args: {
+                    code: '# No shell runs: protocol responses are simulated.',
+                    tool_manifest: [inner.name],
+                  },
+                },
+              ],
+            });
+            await run.processStream(
+              { messages: [new HumanMessage('Count in memory')] },
+              {
+                version: 'v2',
+                configurable: { thread_id: 'p8-ptc-thread', user_id: req.user.id },
+                recursionLimit: 8,
+              },
+            );
+            const resultMessage = run
+              .getRunMessages()
+              .find((message) => message._getType() === 'tool');
+            if (outerPolicy === 'allow' && resultMessage?.status !== 'success') {
+              throw new Error(`PTC harness failed before counter: ${resultMessage?.content}`);
+            }
+            // Lot 23 observed outer=1, inner=0, effect=1 for inner DENY.
+            // This regression requires the real host path to close that gap.
+            expect({
+              outerPreToolUseCount: observed.filter((entry) => entry.name === outerName).length,
+              innerPreToolUseCount: observed.filter((entry) => entry.name === inner.name).length,
+              innerEffectCount,
+            }).toEqual({
+              outerPreToolUseCount: 1,
+              innerPreToolUseCount: outerPolicy === 'allow' ? internalCalls.length : 0,
+              innerEffectCount: effects,
+            });
+            expect(observed).toEqual([
+              { name: outerName, id: 'outer-call' },
+              ...(outerPolicy === 'allow'
+                ? internalCalls.map((call) => ({ name: inner.name, id: call.id }))
+                : []),
+            ]);
+            expect(innerEffectCount).toBe(effects);
+            const updated = innerPolicy === 'updatedInput' || innerPolicy === 'stringUpdatedInput';
+            const expectedValue = updated ? 10 : 100;
+            const expectedInput = stringInput ? String(expectedValue) : expectedValue;
+            expect(effectsReceived).toEqual(effects ? [expectedInput] : []);
+            if (innerPolicy === 'timeout') expect(innerSignals[0].aborted).toBe(true);
+            expect(loadTools).toHaveBeenCalledTimes(outerPolicy === 'allow' ? 1 : 0);
+            expect(transport).toHaveBeenCalledTimes(outerPolicy === 'allow' ? 2 : 0);
+            expect(require('node-fetch')).not.toHaveBeenCalled();
+            if (outerPolicy === 'allow') {
+              expect(transport.mock.calls[0][0]).toMatch(/\/exec\/programmatic$/);
+              expect(transport.mock.calls[0][1].tools.map((definition) => definition.name)).toEqual(
+                [inner.name],
+              );
+              const results = transport.mock.calls[1][1].tool_results;
+              expect(results.map((result) => result.call_id)).toEqual(
+                internalCalls.map((call) => call.id),
+              );
+              expect(results.map((result) => result.is_error)).toEqual(
+                innerPolicy === 'mixed' ? [false, true] : [effects === 0],
+              );
+              if (innerPolicy === 'ask')
+                expect(results[0].error_message).toMatch(/requires human approval|denied/i);
+              const nativeContext = eventHandle.mock.calls[0][1].hookContext;
+              expect(nativeContext.registry).toBe(wiring.hooks);
+              expect(outerInvoke.mock.calls[0][1].toolCall.hookContext).toBe(nativeContext);
+              for (const identity of identities.filter((input) => input.toolName === inner.name)) {
+                expect(identity).toMatchObject({
+                  runId: nativeContext.runId,
+                  threadId: nativeContext.threadId,
+                  executingAgentId: nativeContext.executingAgentId,
+                  stepId: '',
+                  turn: 0,
+                });
+                const parent = identities.find((input) => input.toolName === outerName);
+                expect(identity.runId).toBe(parent.runId);
+                expect(identity.threadId).toBe(parent.threadId);
+                expect(identity.executingAgentId).toBe(parent.executingAgentId);
+              }
+            }
+            expect(
+              run.getRunMessages().find((message) => message._getType() === 'tool'),
+            ).toMatchObject({
+              tool_call_id: 'outer-call',
+              status: outerPolicy === 'allow' ? 'success' : 'error',
+            });
+          } finally {
+            unregister();
+            transport.mockRestore();
+            outerInvoke?.mockRestore();
+            eventHandle?.mockRestore();
+          }
+        },
+      );
     });
 
     it('passes run-scoped MCP tool definitions into PTC execution loading', async () => {

@@ -5769,6 +5769,9 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                       tc.name === Constants.BASH_PROGRAMMATIC_TOOL_CALLING ||
                       tc.name === Constants.PROGRAMMATIC_TOOL_CALLING
                     ) {
+                      if (data.hookContext != null) {
+                        toolCallConfig.hookContext = data.hookContext;
+                      }
                       const toolRegistry = mergedConfigurable?.toolRegistry as
                         | LCToolRegistry
                         | undefined;
