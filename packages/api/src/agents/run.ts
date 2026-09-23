@@ -1430,6 +1430,7 @@ export async function createRun({
   activityPhase,
   eventActorCheckpointing = false,
   hitlCapable = false,
+  autonomyMandateId,
   resolvedToolApprovalHooks,
   toolInputValidationErrors,
   sessionStartSource,
@@ -1552,6 +1553,8 @@ export async function createRun({
    * final response / `[DONE]` with the tool call left unresolved).
    */
   hitlCapable?: boolean;
+  /** Trusted server opt-in; callers must retain this selector across run reconstruction. */
+  autonomyMandateId?: string;
   /**
    * Request-scoped approval hooks already resolved by the scheduled-run admission guard.
    * Reuse them here so a context-aware factory is evaluated exactly once for the run.
@@ -1945,6 +1948,9 @@ export async function createRun({
       healToolApprovalPolicy(toolApprovalPolicy, mcpToolAliases),
       ASK_USER_QUESTION_TOOL_NAME,
     );
+  if (autonomyMandateId != null && !hitlCapable) {
+    throw new Error('Autonomy mandates require an authorization-capable caller');
+  }
   const hitl = hitlCapable
     ? buildHITLRunWiring(
         // The ask tool is exempt from the approval prompt (unless explicitly
@@ -1956,6 +1962,7 @@ export async function createRun({
         // current catalog names reach legacy-named instances.
         effectiveToolApprovalPolicy(),
         {
+          autonomyMandateId,
           userId: user?.id,
           conversationId: requestBody?.conversationId,
           tenantId: tenantId ?? user?.tenantId,

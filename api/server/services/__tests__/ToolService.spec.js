@@ -2632,6 +2632,15 @@ describe('ToolService - Action Capability Gating', () => {
     });
 
     describe('remote PTC internal authorization coverage', () => {
+      let mandateServer;
+      let mandateMethods;
+      afterAll(async () => {
+        if (mandateServer) {
+          await require('mongoose').disconnect();
+          await mandateServer.stop();
+        }
+      });
+
       it.each([
         ['allow', 'deny', 0],
         ['allow', 'allow', 1],
@@ -2644,6 +2653,10 @@ describe('ToolService - Action Capability Gating', () => {
         ['allow', 'mixed', 1],
         ['allow', 'string', 1],
         ['allow', 'stringUpdatedInput', 1],
+        ['allow', 'mandateAllow', 1],
+        ['allow', 'mandateDeny', 0],
+        ['allow', 'mandateRevoke', 0],
+        ['allow', 'mandateExpire', 0],
       ])(
         'outer %s / inner %s enforces internal authorization',
         async (outerPolicy, innerPolicy, effects) => {
@@ -2677,14 +2690,18 @@ describe('ToolService - Action Capability Gating', () => {
                     input: stringInput ? '100' : { amount: 100 },
                   },
                 ];
+          let beforeInternalDispatch;
           const transport = jest.spyOn(protocol, 'makeRequest').mockImplementation(async () => {
             throw new Error('Unexpected remote protocol request');
           });
           transport
-            .mockResolvedValueOnce({
-              status: 'tool_call_required',
-              continuation_token: 'synthetic-continuation',
-              tool_calls: internalCalls,
+            .mockImplementationOnce(async () => {
+              await beforeInternalDispatch?.();
+              return {
+                status: 'tool_call_required',
+                continuation_token: 'synthetic-continuation',
+                tool_calls: internalCalls,
+              };
             })
             .mockResolvedValueOnce({ status: 'completed', stdout: 'counted', files: [] });
           const observed = [];
@@ -2731,6 +2748,7 @@ describe('ToolService - Action Capability Gating', () => {
               return { decision: 'allow', updatedInput: { amount: 10 } };
             if (innerPolicy === 'stringUpdatedInput')
               return { decision: 'allow', updatedInput: { input: '10' } };
+            if (innerPolicy.startsWith('mandate')) return { decision: 'allow' };
             return { decision: innerPolicy === 'string' ? 'allow' : innerPolicy };
           });
           const unregister = registerToolApprovalHook(factory);
@@ -2767,18 +2785,59 @@ describe('ToolService - Action Capability Gating', () => {
             expect(outer).toBeDefined();
             outerInvoke = jest.spyOn(outer, 'invoke');
             expect([...loaded.configurable.ptcToolMap.keys()]).toEqual([inner.name]);
+            let autonomyMandateId;
+            if (innerPolicy.startsWith('mandate')) {
+              if (!mandateServer) {
+                const { MongoMemoryServer } = require('mongodb-memory-server');
+                const mongoose = require('mongoose');
+                mandateServer = await MongoMemoryServer.create();
+                await mongoose.connect(mandateServer.getUri(), { dbName: 'p8_mandate_ptc_tests' });
+                mandateMethods =
+                  require('@librechat/data-schemas').createAutonomyMandateMethods(mongoose);
+              }
+              const owner = { userId: req.user.id, tenantId: 'synthetic-tenant' };
+              const rules = {
+                allowedCapabilities: [outerName, inner.name],
+                deniedCapabilities: innerPolicy === 'mandateDeny' ? [inner.name] : [],
+                validFrom: new Date(0),
+                expiresAt: new Date('2100-01-01'),
+                reason: 'synthetic PTC mandate',
+              };
+              const mandate = await mandateMethods.createAutonomyMandate(
+                owner,
+                { actorId: 'agent_ptc', conversationId: 'p8-ptc-thread' },
+                rules,
+              );
+              autonomyMandateId = mandate._id;
+              if (innerPolicy === 'mandateRevoke')
+                beforeInternalDispatch = () =>
+                  mandateMethods.revokeAutonomyMandate(
+                    owner,
+                    mandate._id,
+                    1,
+                    'revoked between outer and inner',
+                  );
+              if (innerPolicy === 'mandateExpire')
+                beforeInternalDispatch = () =>
+                  mandateMethods.reviseAutonomyMandate(owner, mandate._id, 1, {
+                    ...rules,
+                    expiresAt: new Date(1),
+                  });
+            }
             const wiring = buildHITLRunWiring(
               { enabled: true, mode: 'bypass' },
               {
                 userId: req.user.id,
                 conversationId: 'p8-ptc-thread',
                 tenantId: 'synthetic-tenant',
+                ...(autonomyMandateId && { autonomyMandateId }),
               },
             );
             expect(factory).toHaveBeenCalledWith({
               userId: req.user.id,
               conversationId: 'p8-ptc-thread',
               tenantId: 'synthetic-tenant',
+              ...(autonomyMandateId && { autonomyMandateId }),
             });
             if (innerPolicy === 'timeout') wiring.hooks.getMatchers('PreToolUse')[1].timeout = 10;
             const loadTools = jest.fn(async () => loaded);
@@ -2872,6 +2931,12 @@ describe('ToolService - Action Capability Gating', () => {
               expect(results.map((result) => result.is_error)).toEqual(
                 innerPolicy === 'mixed' ? [false, true] : [effects === 0],
               );
+              if (innerPolicy === 'mandateRevoke')
+                expect(results[0].error_message).toContain('revoked');
+              if (innerPolicy === 'mandateExpire')
+                expect(results[0].error_message).toContain('expired');
+              if (innerPolicy === 'mandateDeny')
+                expect(results[0].error_message).toContain('explicit_deny');
               if (innerPolicy === 'ask')
                 expect(results[0].error_message).toMatch(/requires human approval|denied/i);
               const nativeContext = eventHandle.mock.calls[0][1].hookContext;

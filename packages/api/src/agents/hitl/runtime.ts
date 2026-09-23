@@ -3,6 +3,7 @@ import type { TToolApprovalPolicy } from 'librechat-data-provider';
 import type { ResolvedToolApprovalHook, ToolApprovalHookContext } from './hooks';
 import type { MCPToolAlias } from '~/tools/classification';
 import { isHITLEnabled, mapToolApprovalPolicy } from './policy';
+import { createMandateApprovalHook } from './mandate';
 import { buildToolApprovalHooks } from './hooks';
 
 /**
@@ -43,6 +44,9 @@ export function buildHITLRunWiring(
   resolvedProgrammaticHooks?: readonly ResolvedToolApprovalHook[],
 ): HITLRunWiring | undefined {
   if (!isHITLEnabled(policy)) {
+    if (context.autonomyMandateId != null) {
+      throw new Error('Autonomy mandates require enabled native tool authorization');
+    }
     return undefined;
   }
 
@@ -94,6 +98,15 @@ export function buildHITLRunWiring(
           // Outside this hook's scope: do not tighten the baseline or other hooks.
           return { decision: 'allow' };
         },
+      ],
+    });
+  }
+
+  if (context.autonomyMandateId != null) {
+    registry.register('PreToolUse', {
+      authorizationDecisionRequired: true,
+      hooks: [
+        createMandateApprovalHook({ ...context, autonomyMandateId: context.autonomyMandateId }),
       ],
     });
   }

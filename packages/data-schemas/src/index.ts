@@ -102,3 +102,12 @@ export {
   dropSupersededPromptGroupIndexes,
   backfillMCPServerNormalizedNames,
 } from './migrations';
+
+export { createAutonomyMandateMethods } from './methods/mandate';
+export type { AutonomyMandateMethods } from './methods/mandate';
+export type {
+  AutonomyMandate,
+  MandateScope,
+  MandateRules,
+  MandateRevision,
+} from './schema/mandate';

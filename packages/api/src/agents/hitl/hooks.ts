@@ -10,6 +10,8 @@ import type { HookCallback } from '@librechat/agents';
  * turn); this fills the request-identity gap.
  */
 export interface ToolApprovalHookContext {
+  /** Trusted server-selected mandate; never sourced from model/tool input. */
+  autonomyMandateId?: string;
   /** The requesting user's id, when authenticated. */
   userId?: string;
   /** The conversation (== LangGraph `thread_id`) the run belongs to. */
