@@ -1,6 +1,7 @@
 import { Schema } from 'mongoose';
 import { REFILL_INTERVAL_UNITS } from 'librechat-data-provider';
 import type * as t from '~/types';
+import { budgetReservationSchema } from './reservation';
 
 const balanceSchema: Schema<t.IBalance> = new Schema<t.IBalance>({
   user: {
@@ -14,6 +15,7 @@ const balanceSchema: Schema<t.IBalance> = new Schema<t.IBalance>({
     type: Number,
     default: 0,
   },
+  budgetReservations: { type: [budgetReservationSchema], default: undefined },
   // Automatic refill settings
   autoRefillEnabled: {
     type: Boolean,

@@ -111,3 +111,11 @@ export type {
   MandateRules,
   MandateRevision,
 } from './schema/mandate';
+
+export { createBudgetReservationMethods } from './methods/reservation';
+export type {
+  BudgetOwner,
+  BudgetReservationKey,
+  BudgetReservationRequest,
+  BudgetReservation,
+} from './schema/reservation';

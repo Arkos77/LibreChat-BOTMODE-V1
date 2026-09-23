@@ -1,9 +1,11 @@
 import type { RefillIntervalUnit } from 'librechat-data-provider';
 import type { Document, Types } from 'mongoose';
+import type { BudgetReservation } from '~/schema/reservation';
 
 export interface IBalance extends Document {
   user: Types.ObjectId;
   tokenCredits: number;
+  budgetReservations?: BudgetReservation[];
   // Automatic refill settings
   autoRefillEnabled: boolean;
   refillIntervalValue: number;
