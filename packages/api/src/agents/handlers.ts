@@ -4491,6 +4491,9 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
               sourceConfigurable,
               loadedConfigurable,
             );
+            const effectAuthorityRequired =
+              data.effectAuthorityRequired === true ||
+              mergedConfigurable?.effectAuthorityRequired === true;
             const codeExecutionContext = getCodeExecutionContext(mergedConfigurable);
             const runtimeSessionHint = codeExecutionContext?.runtimeSessionHint;
             const executionRouteKey =
@@ -4982,8 +4985,31 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                 let invokePromise: Promise<{ content?: unknown; artifact?: unknown }>;
                 const backgroundAbortController = new AbortController();
                 try {
+                  let backgroundInvokeArgs = normalizedArgs;
+                  if (effectAuthorityRequired && (tool as { mcp?: boolean }).mcp !== true) {
+                    if (
+                      typeof backgroundInvokeArgs !== 'string' &&
+                      (backgroundInvokeArgs == null ||
+                        typeof backgroundInvokeArgs !== 'object' ||
+                        Array.isArray(backgroundInvokeArgs))
+                    ) {
+                      throw new Error('EFFECT_TIME_AUTHORITY_INPUT_INVALID');
+                    }
+                    const authorityInput =
+                      typeof backgroundInvokeArgs === 'string'
+                        ? { input: backgroundInvokeArgs }
+                        : (backgroundInvokeArgs as Record<string, unknown>);
+                    const approvedInput = await revalidateToolEffect(true, data.hookContext, {
+                      toolName: tc.name,
+                      toolUseId: tc.id,
+                      toolInput: authorityInput,
+                      stepId: tc.stepId,
+                      turn: tc.turn,
+                    });
+                    backgroundInvokeArgs = normalizeToolInvokeArgs(approvedInput, tool);
+                  }
                   invokePromise = Promise.resolve(
-                    tool.invoke(normalizedArgs, {
+                    tool.invoke(backgroundInvokeArgs, {
                       /** Full invoke config (not just identity): a detached
                        *  code call still needs `session_id`/`_injected_files`/
                        *  `_runtime_session_hint` or it runs fileless on the
@@ -5764,9 +5790,6 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
 
                   try {
                     const toolCallConfig = buildToolCallConfig(tc, mergedConfigurable);
-                    const effectAuthorityRequired =
-                      data.effectAuthorityRequired === true ||
-                      mergedConfigurable?.effectAuthorityRequired === true;
                     toolCallConfig.effectAuthorityRequired = effectAuthorityRequired;
                     if (effectAuthorityRequired) toolCallConfig.hookContext = data.hookContext;
 

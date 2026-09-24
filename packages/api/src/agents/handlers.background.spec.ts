@@ -8,6 +8,7 @@ import { ContentFilterError } from '../middleware/contentFilter';
 import { createToolExecuteHandler } from './handlers';
 
 interface BatchInput {
+  effectAuthorityRequired?: boolean;
   toolCalls: Array<{
     id: string;
     name: string;
@@ -85,6 +86,49 @@ const runBatch = async (
 };
 
 describe('createToolExecuteHandler — background tool calls', () => {
+  it('fails closed before detached invoke when REQUIRED effect-time context is missing', async () => {
+    const invoke = jest.fn(async () => ({ content: 'should not run' }));
+    const tool = {
+      name: 'search_mcp_docs',
+      description: 'search docs',
+      schema: z.object({ q: z.string() }),
+      invoke,
+    } as unknown as StructuredToolInterface;
+
+    const handler = createToolExecuteHandler({
+      loadTools: async () => ({ loadedTools: [tool] }),
+    });
+
+    await runBatch(handler, {
+      toolCalls: [
+        {
+          id: 'call-required-background',
+          name: tool.name,
+          args: { q: 'blocked', run_in_background: true },
+          stepId: 'step-required-background',
+        },
+      ],
+      agentId: 'agent_parent_1',
+      configurable: buildConfig([tool.name]),
+      metadata: { thread_id: 'exec_convo', run_id: 'response-required-background' },
+      effectAuthorityRequired: true,
+    });
+
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(invoke).not.toHaveBeenCalled();
+    const tasks = backgroundTaskRegistry.list('exec_user', 'exec_convo');
+    expect(
+      tasks.some(
+        (task) =>
+          task.toolCallId === 'call-required-background' &&
+          task.status === 'error' &&
+          task.error?.includes('EFFECT_TIME_AUTHORITY_REQUIRED'),
+      ),
+    ).toBe(true);
+  });
+
   it('pre-registers an ordinary completion before invoke and persists its terminal receipt', async () => {
     const events: string[] = [];
     const retire = jest.fn(async () => true);
