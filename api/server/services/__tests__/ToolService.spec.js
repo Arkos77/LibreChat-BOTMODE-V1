@@ -2657,6 +2657,11 @@ describe('ToolService - Action Capability Gating', () => {
         ['allow', 'mandateDeny', 0],
         ['allow', 'mandateRevoke', 0],
         ['allow', 'mandateExpire', 0],
+        ['allow', 'effectAllow', 1],
+        ['allow', 'effectDeny', 0],
+        ['allow', 'effectAsk', 0],
+        ['allow', 'effectUpdatedInput', 1],
+        ['allow', 'effectMissingContext', 0],
       ])(
         'outer %s / inner %s enforces internal authorization',
         async (outerPolicy, innerPolicy, effects) => {
@@ -2748,6 +2753,7 @@ describe('ToolService - Action Capability Gating', () => {
               return { decision: 'allow', updatedInput: { amount: 10 } };
             if (innerPolicy === 'stringUpdatedInput')
               return { decision: 'allow', updatedInput: { input: '10' } };
+            if (innerPolicy.startsWith('effect')) return { decision: 'allow' };
             if (innerPolicy.startsWith('mandate')) return { decision: 'allow' };
             return { decision: innerPolicy === 'string' ? 'allow' : innerPolicy };
           });
@@ -2783,7 +2789,14 @@ describe('ToolService - Action Capability Gating', () => {
             });
             const outer = loaded.loadedTools.find((candidate) => candidate.name === outerName);
             expect(outer).toBeDefined();
+            const invokeOuter = outer.invoke.bind(outer);
             outerInvoke = jest.spyOn(outer, 'invoke');
+            if (innerPolicy === 'effectMissingContext')
+              outerInvoke.mockImplementation((input, config) => {
+                expect(config.toolCall.effectAuthorityRequired).toBe(true);
+                Reflect.deleteProperty(config.toolCall, 'hookContext');
+                return invokeOuter(input, config);
+              });
             expect([...loaded.configurable.ptcToolMap.keys()]).toEqual([inner.name]);
             let autonomyMandateId;
             if (innerPolicy.startsWith('mandate')) {
@@ -2839,6 +2852,27 @@ describe('ToolService - Action Capability Gating', () => {
               tenantId: 'synthetic-tenant',
               ...(autonomyMandateId && { autonomyMandateId }),
             });
+            const durableCalls = [];
+            if (innerPolicy.startsWith('effect'))
+              wiring.hooks.register('PreToolUse', {
+                authorizationDecisionRequired: true,
+                revalidateBeforeEffect: true,
+                hooks: [
+                  async (input) => {
+                    durableCalls.push({ name: input.toolName, id: input.toolUseId });
+                    const count = durableCalls.filter(
+                      (entry) => entry.id === input.toolUseId,
+                    ).length;
+                    if (input.toolName === inner.name && count === 2) {
+                      if (innerPolicy === 'effectDeny') return { decision: 'deny' };
+                      if (innerPolicy === 'effectAsk') return { decision: 'ask' };
+                      if (innerPolicy === 'effectUpdatedInput')
+                        return { decision: 'allow', updatedInput: { amount: 10 } };
+                    }
+                    return { decision: 'allow' };
+                  },
+                ],
+              });
             if (innerPolicy === 'timeout') wiring.hooks.getMatchers('PreToolUse')[1].timeout = 10;
             const loadTools = jest.fn(async () => loaded);
             const handler = createToolExecuteHandler({ loadTools });
@@ -2901,17 +2935,35 @@ describe('ToolService - Action Capability Gating', () => {
               innerEffectCount,
             }).toEqual({
               outerPreToolUseCount: 1,
-              innerPreToolUseCount: outerPolicy === 'allow' ? internalCalls.length : 0,
+              innerPreToolUseCount:
+                outerPolicy === 'allow' && innerPolicy !== 'effectMissingContext'
+                  ? internalCalls.length
+                  : 0,
               innerEffectCount: effects,
             });
             expect(observed).toEqual([
               { name: outerName, id: 'outer-call' },
-              ...(outerPolicy === 'allow'
+              ...(outerPolicy === 'allow' && innerPolicy !== 'effectMissingContext'
                 ? internalCalls.map((call) => ({ name: inner.name, id: call.id }))
                 : []),
             ]);
             expect(innerEffectCount).toBe(effects);
-            const updated = innerPolicy === 'updatedInput' || innerPolicy === 'stringUpdatedInput';
+            if (innerPolicy.startsWith('effect')) {
+              expect(durableCalls).toEqual([
+                { name: outerName, id: 'outer-call' },
+                { name: outerName, id: 'outer-call' },
+                ...(innerPolicy === 'effectMissingContext'
+                  ? []
+                  : [
+                      { name: inner.name, id: 'inner-call' },
+                      { name: inner.name, id: 'inner-call' },
+                    ]),
+              ]);
+            }
+            const updated =
+              innerPolicy === 'updatedInput' ||
+              innerPolicy === 'stringUpdatedInput' ||
+              innerPolicy === 'effectUpdatedInput';
             const expectedValue = updated ? 10 : 100;
             const expectedInput = stringInput ? String(expectedValue) : expectedValue;
             expect(effectsReceived).toEqual(effects ? [expectedInput] : []);
@@ -2941,7 +2993,13 @@ describe('ToolService - Action Capability Gating', () => {
                 expect(results[0].error_message).toMatch(/requires human approval|denied/i);
               const nativeContext = eventHandle.mock.calls[0][1].hookContext;
               expect(nativeContext.registry).toBe(wiring.hooks);
-              expect(outerInvoke.mock.calls[0][1].toolCall.hookContext).toBe(nativeContext);
+              expect(outerInvoke.mock.calls[0][1].toolCall.effectAuthorityRequired).toBe(
+                innerPolicy.startsWith('effect') || innerPolicy.startsWith('mandate'),
+              );
+              if (innerPolicy === 'effectMissingContext') {
+                expect(outerInvoke.mock.calls[0][1].toolCall.hookContext).toBeUndefined();
+                expect(results[0].error_message).toContain('EFFECT_TIME_AUTHORITY_REQUIRED');
+              } else expect(outerInvoke.mock.calls[0][1].toolCall.hookContext).toBe(nativeContext);
               for (const identity of identities.filter((input) => input.toolName === inner.name)) {
                 expect(identity).toMatchObject({
                   runId: nativeContext.runId,

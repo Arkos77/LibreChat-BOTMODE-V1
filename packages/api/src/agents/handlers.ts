@@ -1,7 +1,7 @@
 import yaml from 'js-yaml';
 import { Types } from 'mongoose';
-import { GraphEvents, Constants } from '@librechat/agents';
 import { logger, normalizeSkillFrontmatterKeys } from '@librechat/data-schemas';
+import { GraphEvents, Constants, revalidateToolEffect } from '@librechat/agents';
 import { hasActivePiiFields, hasActivePiiPatterns } from 'librechat-data-provider';
 import type {
   LCTool,
@@ -5764,6 +5764,11 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
 
                   try {
                     const toolCallConfig = buildToolCallConfig(tc, mergedConfigurable);
+                    const effectAuthorityRequired =
+                      data.effectAuthorityRequired === true ||
+                      mergedConfigurable?.effectAuthorityRequired === true;
+                    toolCallConfig.effectAuthorityRequired = effectAuthorityRequired;
+                    if (effectAuthorityRequired) toolCallConfig.hookContext = data.hookContext;
 
                     if (
                       tc.name === Constants.BASH_PROGRAMMATIC_TOOL_CALLING ||
@@ -5885,7 +5890,7 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                       (hasRunInBackgroundArg(tc.args) && !toolDeclaresRunInBackgroundParam(tool))
                         ? stripRunInBackgroundArg(tc.args)
                         : tc.args;
-                    const normalizedArgs = normalizeToolInvokeArgs(
+                    let normalizedArgs = normalizeToolInvokeArgs(
                       stripIntentForInvoke(foregroundArgs, tool),
                       tool,
                     );
@@ -5896,6 +5901,29 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                     );
                     if (filtered != null) {
                       return filtered;
+                    }
+                    // MCP revalidates later, after its connection/OAuth wait.
+                    if (effectAuthorityRequired && (tool as { mcp?: boolean }).mcp !== true) {
+                      if (
+                        typeof normalizedArgs !== 'string' &&
+                        (normalizedArgs == null ||
+                          typeof normalizedArgs !== 'object' ||
+                          Array.isArray(normalizedArgs))
+                      ) {
+                        throw new Error('EFFECT_TIME_AUTHORITY_INPUT_INVALID');
+                      }
+                      const authorityInput =
+                        typeof normalizedArgs === 'string'
+                          ? { input: normalizedArgs }
+                          : (normalizedArgs as Record<string, unknown>);
+                      const approvedInput = await revalidateToolEffect(true, data.hookContext, {
+                        toolName: tc.name,
+                        toolUseId: tc.id,
+                        toolInput: authorityInput,
+                        stepId: tc.stepId,
+                        turn: tc.turn,
+                      });
+                      normalizedArgs = normalizeToolInvokeArgs(approvedInput, tool);
                     }
                     const result = await tool.invoke(normalizedArgs, {
                       toolCall: toolCallConfig,

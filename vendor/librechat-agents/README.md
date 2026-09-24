@@ -61,3 +61,22 @@ artifacts and provenance above are retained.
 The SDK event batch carries the existing native hook context. Host forwarding
 and behavior require a separate host patch and runtime proof. Historical
 artifacts are retained.
+
+## Native effect-time authority SDK — current artifact
+
+- Package: `@librechat/agents` 3.7.17.
+- Source commit: `ccf67f50febbc99112d7ba5bdf132a55ba09c175`.
+- Commit message: `feat(security): propagate effect-time tool authority`.
+- Artifact: `librechat-agents-3.7.17-ccf67f50febbc99112d7ba5bdf132a55ba09c175.tgz`.
+- SHA-256: `08abe0b2ce881847b05d1cd7c7b0d4a3427ca48008bc0dfda5fac756503503e7`.
+- npm integrity: `sha512-tmmrrLJGeKiDaElCJgWPXjO6RZSv/H+nfcS32IqcGK8c6O2VqRCKTKwdJB6GZYq1xZLcycO9r9UsTggAUf2nLQ==`.
+- Distributed files: 1284.
+- Reproducibility: two independent npm packs were byte-identical.
+
+The SDK transports an explicit effect-time authority requirement and reuses the
+native durable hook phase. Host mandate semantics remain in LibreChat. The installed
+payload matches this archive exactly. Targeted host runtime proofs cover direct,
+event, remote PTC and host-side MCP dispatch. Local PTC and background authority
+remain outside this coverage. Historical artifacts are retained.
+
+Durable validation record: `P8-EFFECT-INTEGRATION-REAL`.

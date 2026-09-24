@@ -1,6 +1,6 @@
 const { tool } = require('@librechat/agents/langchain/tools');
 const { logger, getTenantId } = require('@librechat/data-schemas');
-const { Providers, Constants: AgentConstants } = require('@librechat/agents');
+const { Providers, Constants: AgentConstants, revalidateToolEffect } = require('@librechat/agents');
 const {
   sendEvent,
   PENDING_STALE_MS,
@@ -1272,7 +1272,21 @@ function createToolInstance({
        * is required for OBO since the grant sends the access token to the IdP
        * as the jwt-bearer assertion.
        */
+      const effectAuthorityRequired =
+        config?.toolCall?.effectAuthorityRequired === true ||
+        config?.configurable?.effectAuthorityRequired === true;
       const result = await mcpManager.callTool({
+        effectAuthorityRequired,
+        revalidateBeforeDispatch: effectAuthorityRequired
+          ? (input) =>
+              revalidateToolEffect(true, config?.toolCall?.hookContext, {
+                toolName: normalizedToolKey,
+                toolUseId: config?.toolCall?.id,
+                toolInput: input ?? {},
+                stepId: config?.toolCall?.stepId,
+                turn: config?.toolCall?.turn,
+              })
+          : undefined,
         serverName,
         serverConfig: capturedServerConfig,
         /** The upstream server never sees stripped names — a key that dropped

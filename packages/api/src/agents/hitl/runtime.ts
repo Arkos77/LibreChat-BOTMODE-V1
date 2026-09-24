@@ -105,6 +105,7 @@ export function buildHITLRunWiring(
   if (context.autonomyMandateId != null) {
     registry.register('PreToolUse', {
       authorizationDecisionRequired: true,
+      revalidateBeforeEffect: true,
       hooks: [
         createMandateApprovalHook({ ...context, autonomyMandateId: context.autonomyMandateId }),
       ],

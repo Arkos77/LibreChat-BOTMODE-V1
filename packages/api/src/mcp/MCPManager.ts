@@ -810,6 +810,8 @@ Please follow these instructions when using tools from the respective MCP server
    *   they will be resolved to actual Graph API tokens before the tool call.
    */
   async callTool({
+    effectAuthorityRequired = false,
+    revalidateBeforeDispatch,
     user,
     serverName,
     serverConfig: providedConfig,
@@ -830,6 +832,10 @@ Please follow these instructions when using tools from the respective MCP server
     upstreamTokenProvider,
     oboIdentityContext,
   }: {
+    effectAuthorityRequired?: boolean;
+    revalidateBeforeDispatch?: (
+      input: Record<string, unknown> | undefined,
+    ) => Promise<Record<string, unknown>>;
     user?: IUser;
     serverName: string;
     /** Pre-resolved config from tool creation context — avoids readThrough TTL and cross-tenant issues */
@@ -1129,13 +1135,20 @@ Please follow these instructions when using tools from the respective MCP server
           }
         }
 
-        const requestTool = () =>
-          connection!.client.request(
+        const requestTool = async () => {
+          let dispatchArguments = toolArguments;
+          if (effectAuthorityRequired) {
+            if (typeof revalidateBeforeDispatch !== 'function') {
+              throw new Error('EFFECT_TIME_AUTHORITY_REQUIRED');
+            }
+            dispatchArguments = await revalidateBeforeDispatch(toolArguments);
+          }
+          return connection!.client.request(
             {
               method: 'tools/call',
               params: {
                 name: toolName,
-                arguments: toolArguments,
+                arguments: dispatchArguments,
               },
             },
             CallToolResultSchema,
@@ -1145,6 +1158,7 @@ Please follow these instructions when using tools from the respective MCP server
               ...options,
             },
           );
+        };
 
         let result: Awaited<ReturnType<typeof requestTool>>;
         try {
