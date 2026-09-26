@@ -134,6 +134,12 @@ The contract does not inspect or interpret raw tool output, tool arguments, arti
 
 The adapter does not interpret raw tool output, infer a criterion, infer an evidence value, execute a tool, persist evidence, invoke Oracle, authorize work, publish an improvement, create a task or mutate runtime state. Same-producer tool provenance remains explicitly non-independent. The adapter is exported but intentionally has no production caller yet; wiring remains dormant until the host seam can supply criterion/value semantics and native producer/checker identity without inference.
 
+## P10 — Host tool-end evidence seam
+
+The server helper `api/server/services/Endpoints/agents/improvementToolEvidence.js` is the first host-owned bridge from an already-observed native LibreChat tool-end event into the pure P10 evidence chain. It reads only the native tool name and `tool_call_id`, plus optional `run_id` and `executingAgentId` metadata, and combines them with explicitly supplied Task Engine, producer, candidate and declaration context.
+
+The helper deliberately drops raw tool content, artifacts, arguments, thread metadata and unrelated callback metadata. Missing native tool identity fails closed; missing checker/run identity is not invented. The helper does not execute tools, invoke Oracle, authorize, persist, publish, settle tasks or mutate runtime state. It currently has no production caller and therefore remains dormant pending a separately tested opt-in callback wiring boundary.
+
 ## P10 — Tool evidence to Distill composition
 
 `toolEvidenceDistill.ts` composes three already-proven pure contracts: explicit host tool semantics, native tool provenance, and the bounded Distill request. Undeclared tools return `NO_DECLARATION`; unsupported Distill criteria fail closed. Same-producer evidence is preserved as non-independent rather than promoted.
