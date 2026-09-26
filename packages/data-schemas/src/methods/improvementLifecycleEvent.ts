@@ -184,7 +184,12 @@ export function createImprovementLifecycleEventMethods(
     const tenantKey = tenantId ?? '';
     const event = normalizeEvent(input.event);
     const eventDigest = digestEvent(event);
-    const scope = { user, tenantKey, eventId: event.eventId };
+    const scope = {
+      user,
+      tenantKey,
+      candidateId: event.candidateId,
+      eventId: event.eventId,
+    };
 
     const ImprovementCandidate = mongoose.models.ImprovementCandidate as Model<{
       traceId: string;

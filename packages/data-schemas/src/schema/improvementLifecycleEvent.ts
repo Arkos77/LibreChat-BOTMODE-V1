@@ -83,8 +83,8 @@ improvementLifecycleEventSchema.pre('insertMany', function (next) {
 });
 
 improvementLifecycleEventSchema.index(
-  { user: 1, tenantKey: 1, eventId: 1 },
-  { unique: true, name: 'improvement_lifecycle_owner_event_idempotency' },
+  { user: 1, tenantKey: 1, candidateId: 1, eventId: 1 },
+  { unique: true, name: 'improvement_lifecycle_owner_candidate_event_idempotency' },
 );
 improvementLifecycleEventSchema.index(
   { user: 1, tenantKey: 1, candidateId: 1, occurredAt: 1, eventId: 1 },

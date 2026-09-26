@@ -93,6 +93,36 @@ describe('ImprovementLifecycleEvent durable append-only store', () => {
     expect(replay.record.eventDigest).toBe(first.record.eventDigest);
   });
 
+  it('allows the same event id on a different durable candidate', async () => {
+    await candidateMethods.recordImprovementCandidate({
+      user: USER_A,
+      tenantId: TENANT,
+      conversationId: 'conversation-2',
+      candidate: {
+        ...candidate(),
+        candidateId: 'candidate-2',
+        traceId: 'trace-2',
+        traceEventIds: ['trace-event-2'],
+      },
+    });
+
+    const first = await methods.recordImprovementLifecycleEvent({
+      user: USER_A,
+      tenantId: TENANT,
+      event: event(),
+    });
+    const second = await methods.recordImprovementLifecycleEvent({
+      user: USER_A,
+      tenantId: TENANT,
+      event: event({ candidateId: 'candidate-2', traceId: 'trace-2' }),
+    });
+
+    expect(first.replayed).toBe(false);
+    expect(second.replayed).toBe(false);
+    expect(second.record.eventId).toBe('event-1');
+    expect(second.record.candidateId).toBe('candidate-2');
+  });
+
   it('rejects reuse of one event id with different content', async () => {
     await methods.recordImprovementLifecycleEvent({
       user: USER_A,
