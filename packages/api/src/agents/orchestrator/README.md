@@ -101,3 +101,11 @@ Oracle remains downstream and independent: historical Oracle/benchmark signals
 may inform routing, but the router cannot create an Oracle verdict. Budget
 reservation, durable task ownership, retries/recovery, Policy/Auth and final QA
 remain owned by their existing BOT MODE layers.
+
+## P10 — MTO observation contract
+
+P10 starts with an opt-in, pure MTO normalization contract in `mto.ts`. It does not add a runtime, scheduler, task store, event bus, persistence layer, permission system, or production hook. The existing Task Engine, SDK hooks/custom handlers, `SubagentActivity`, `subagentUsageSink`, and Oracle remain authoritative for their own concerns.
+
+MTO identities are intentionally distinct. `traceId`/`traceEventId` are host-supplied trace identities and are never inferred by aliasing `taskId`, `runId`, `rootRunId`, `parentRunId`, `subagentRunId`, `threadId`, or tool-call identities. Adapters only correlate native identities already emitted by the SDK/host.
+
+The initial adapters normalize bounded `SubagentUpdateEvent`, `SubagentUsageEvent`, and Oracle events. They are observation-only: they cannot authorize work, settle a task, publish a skill, mutate memory, or convert Oracle `ACCEPT` into execution authority. Payloads are cloned and no chain-of-thought is required or stored. Production wiring and durable trace persistence remain explicitly out of scope for this MVP until their host-owned seams are proven separately.
