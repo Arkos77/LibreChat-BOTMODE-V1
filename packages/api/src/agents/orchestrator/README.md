@@ -118,6 +118,8 @@ The candidate is always born in `CANDIDATE` state. Oracle verification and autho
 
 ## P10 — Step-limit evidence context
 
+The existing `observeStepLimitImprovementCandidate` host path now consumes this bounded context before constructing its OBSERVED event, workflow candidate identity and CANDIDATE correlation event. This adds no new runtime collection: request/resume call sites remain unchanged, so only identities already supplied by the host are normalized.
+
 `stepLimitEvidenceContext.ts` normalizes the host-owned `tool_call_limit` signal into a bounded `native_step_limit` context. Trace and response-message identity are required because they identify the host observation; task, producer, native tool-call, tool name, checker agent, run and thread identities remain optional and are preserved only when explicitly supplied.
 
 The context never derives one identity from another and contains no raw output, tool arguments, artifacts, reasoning, confidence, Oracle verdict, authorization or publication state. It is a correlation boundary only and remains dormant until explicitly consumed by the existing step-limit candidate host path.

@@ -214,4 +214,54 @@ describe('step-limit improvement candidate observation', () => {
     ).resolves.toBeNull();
     expect(mtoEventSink).not.toHaveBeenCalled();
   });
+
+  it('normalizes native task and producer identity before the MTO candidate event', async () => {
+    const mtoEventSink = jest.fn();
+
+    const candidate = await observeStepLimitImprovementCandidate({
+      ...durableInput,
+      traceId: ' trace-context ',
+      responseMessageId: ' response-context ',
+      taskId: ' task-context ',
+      producerAgentId: ' agent-context ',
+      createdAt: '2026-09-26T13:00:00.000Z',
+      mtoEventSink,
+    });
+
+    expect(candidate).toEqual(
+      expect.objectContaining({
+        candidateId: 'workflow-step-limit:trace-context',
+        traceId: 'trace-context',
+        traceEventIds: ['step-limit:response-context'],
+      }),
+    );
+    expect(mtoEventSink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identity: expect.objectContaining({
+          traceId: 'trace-context',
+          taskId: 'task-context',
+          agentId: 'agent-context',
+        }),
+      }),
+    );
+  });
+
+  it('does not invent optional task or producer identity when unavailable', async () => {
+    const mtoEventSink = jest.fn();
+
+    const candidate = await observeStepLimitImprovementCandidate({
+      ...durableInput,
+      traceId: 'trace-context-minimal',
+      responseMessageId: 'response-context-minimal',
+      taskId: ' ',
+      producerAgentId: '',
+      createdAt: '2026-09-26T13:01:00.000Z',
+      mtoEventSink,
+    });
+
+    expect(candidate).not.toBeNull();
+    const event = mtoEventSink.mock.calls[0][0];
+    expect(event.identity).not.toHaveProperty('taskId');
+    expect(event.identity).not.toHaveProperty('agentId');
+  });
 });

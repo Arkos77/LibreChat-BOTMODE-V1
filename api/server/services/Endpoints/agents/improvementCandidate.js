@@ -1,4 +1,8 @@
-const { createMtoEvent, createImprovementCandidate } = require('@librechat/api');
+const {
+  createMtoEvent,
+  createImprovementCandidate,
+  createStepLimitEvidenceContext,
+} = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 
 /**
@@ -41,23 +45,32 @@ async function observeStepLimitImprovementCandidate({
     const normalizedResponseMessageId = responseMessageId.trim();
     const normalizedConversationId = conversationId.trim();
     const timestamp = createdAt ?? new Date().toISOString();
+    const stepLimitContext = createStepLimitEvidenceContext({
+      traceId: normalizedTraceId,
+      responseMessageId: normalizedResponseMessageId,
+      ...(typeof taskId === 'string' && taskId.trim() !== '' ? { taskId: taskId.trim() } : {}),
+      ...(typeof producerAgentId === 'string' && producerAgentId.trim() !== ''
+        ? { producerAgentId: producerAgentId.trim() }
+        : {}),
+    });
+
     const observation = createMtoEvent(
       'OBSERVED',
       {
-        traceId: normalizedTraceId,
-        traceEventId: `step-limit:${normalizedResponseMessageId}`,
+        traceId: stepLimitContext.traceId,
+        traceEventId: `step-limit:${stepLimitContext.responseMessageId}`,
         timestamp,
       },
       'host',
-      { signal: 'tool_call_limit' },
+      { signal: stepLimitContext.signal },
     );
     const candidate = createImprovementCandidate({
-      candidateId: `workflow-step-limit:${normalizedTraceId}`,
+      candidateId: `workflow-step-limit:${stepLimitContext.traceId}`,
       target: 'workflow',
       title: 'Review workflow after tool call limit',
       summary:
         'The generation exhausted its native per-turn tool-call budget before completion; review workflow structure or bounded execution policy before changing limits.',
-      traceId: normalizedTraceId,
+      traceId: stepLimitContext.traceId,
       observations: [observation],
       createdAt: timestamp,
     });
@@ -78,13 +91,13 @@ async function observeStepLimitImprovementCandidate({
           createMtoEvent(
             'CANDIDATE',
             {
-              traceId: normalizedTraceId,
+              traceId: stepLimitContext.traceId,
               traceEventId: `candidate:${candidate.candidateId}`,
               causedByTraceEventId: observation.identity.traceEventId,
-              ...(typeof taskId === 'string' && taskId !== '' ? { taskId } : {}),
-              ...(typeof producerAgentId === 'string' && producerAgentId !== ''
-                ? { agentId: producerAgentId }
-                : {}),
+              ...(stepLimitContext.taskId == null ? {} : { taskId: stepLimitContext.taskId }),
+              ...(stepLimitContext.producerAgentId == null
+                ? {}
+                : { agentId: stepLimitContext.producerAgentId }),
               timestamp,
             },
             'host',
