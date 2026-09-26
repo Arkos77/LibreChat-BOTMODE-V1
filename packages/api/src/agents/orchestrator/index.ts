@@ -15,3 +15,5 @@ export * from './improvementAuthorizationChain';
 export * from './improvementPayload';
 
 export * from './evidence';
+
+export * from './toolEvidence';
