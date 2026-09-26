@@ -116,6 +116,12 @@ The initial adapters normalize metadata from bounded `SubagentUpdateEvent`, `Sub
 
 The candidate is always born in `CANDIDATE` state. Oracle verification and authorization remain mandatory before any later publication step, and Oracle acceptance is not authorization. `skill` is currently the only target with a proven native publication path, so its disposition is `native-skill-authoring-required`; actual create/update must still go through LibreChat's existing skill-authoring authorization, ownership and optimistic-version contract. `agent`, `workflow` and `specialist` remain `proposal-only` until equivalent native fail-closed publication contracts are proven.
 
+## P10 — Step-limit evidence context
+
+`stepLimitEvidenceContext.ts` normalizes the host-owned `tool_call_limit` signal into a bounded `native_step_limit` context. Trace and response-message identity are required because they identify the host observation; task, producer, native tool-call, tool name, checker agent, run and thread identities remain optional and are preserved only when explicitly supplied.
+
+The context never derives one identity from another and contains no raw output, tool arguments, artifacts, reasoning, confidence, Oracle verdict, authorization or publication state. It is a correlation boundary only and remains dormant until explicitly consumed by the existing step-limit candidate host path.
+
 ## P10 — Improvement evidence context
 
 `improvementEvidenceContext.ts` builds a bounded `native_tool_end` observation context from explicit host-owned identities only. Tool call, tool name and producer identity are mandatory; task, trace, run, thread and checker identities remain separate optional dimensions and are omitted when unavailable rather than inferred from another identifier.
