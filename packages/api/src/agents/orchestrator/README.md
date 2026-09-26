@@ -42,3 +42,62 @@ This is an opt-in planning/configuration API, not an HTTP controller or automati
 mission submission path. A direct plan adds no specialist or delegation layer.
 It does not revoke delegation tools already present in an authorized binding.
 Budgets, deadlines, retry/recovery and enforcing constraints remain host concerns.
+
+## P9 — Capability, resource and model/provider routing
+
+P9 adds an opt-in routing layer without creating a second runtime, scheduler,
+permission system or source of truth.
+
+The target chain is:
+
+`need -> required capability -> execution mode -> authorized resource -> decision provider -> model/provider adapter -> native SDK execution -> evidence/Oracle`
+
+Authorization remains upstream of routing. A route is never permission. The host
+must resolve credentials, ACLs, model validity, tools, skills, budget authority
+and other policy gates before constructing routing candidates. The routing layer
+cannot discover or grant capabilities by itself.
+
+`rankAuthorizedResources(...)` is the generic capability/resource router. It
+operates only on non-secret metadata and may compare resources declared as
+`model`, `agent`, `tool`, `workflow`, `external-provider` or `local-runtime`.
+It applies hard host constraints first, then deterministic ordering, with an
+optional Decision Provider allowed to reorder only the surviving candidates.
+
+Decision Providers are interchangeable policy-neutral decision engines. Known
+provider identities include Jev, GIVE, NanoJev, `RuleDecisionProvider` and
+`LLMDecisionProvider`; future providers
+may be added without changing the router contract. They receive sanitized
+candidate views only — never `AgentInputs`, credentials, headers, tool registries
+or secret-bearing client options — and they cannot authorize a denied resource.
+The selected provider identity may be retained in the routing decision for
+structured provenance/MTO correlation. No chain-of-thought is required or
+stored by this API.
+
+`routeAuthorizedModelBindings(...)` is deliberately narrower. It adapts an
+ordered set of already-authorized model/provider bindings for one logical agent
+into the SDK's native provider fallback mechanism. All candidates must share the
+same logical `agentId`; existing nested `clientOptions.fallbacks` are rejected so
+an undeclared provider/model cannot bypass host authorization or router filters.
+The adapter selects the primary binding and maps the remaining authorized order
+to SDK `FallbackConfig` entries. Retry/fallback execution remains owned by
+`@librechat/agents`; P9 does not duplicate it.
+
+A generic tool, workflow or local runtime is therefore not disguised as an
+`AgentInputs` fallback. Those resources remain in the capability/resource layer
+and require the appropriate host/executor adapter after selection. This preserves
+the rule that one technology may dynamically serve as a model, agent, tool,
+workflow, external provider or local runtime without forcing every mode through
+one execution primitive.
+
+The current API is intentionally not auto-wired into `createRun`. LibreChat's
+existing `agentInputs` array is the native graph topology, not a pool of competing
+model candidates, and lazy subagents resolve their bindings later. Wiring P9 by
+selecting among those graph members would corrupt orchestration semantics. A
+production caller should opt in only when it can supply a real set of separately
+resolved and authorized alternatives for the same logical binding, including on
+resume/lazy-resolution paths. Until then, existing run behavior is unchanged.
+
+Oracle remains downstream and independent: historical Oracle/benchmark signals
+may inform routing, but the router cannot create an Oracle verdict. Budget
+reservation, durable task ownership, retries/recovery, Policy/Auth and final QA
+remain owned by their existing BOT MODE layers.
