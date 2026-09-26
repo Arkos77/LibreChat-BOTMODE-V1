@@ -115,3 +115,9 @@ The initial adapters normalize metadata from bounded `SubagentUpdateEvent`, `Sub
 `improvement.ts` adds the next pure P10 boundary: deterministic pattern summaries over sanitized MTO metadata and a host-owned `ImprovementCandidate`. It adds no persistence, scheduler, task engine, memory write, runtime mutation or publication side effect. Candidates retain trace-event references and aggregate signals rather than copying source events, raw Oracle candidates, evidence values or reasoning.
 
 The candidate is always born in `CANDIDATE` state. Oracle verification and authorization remain mandatory before any later publication step, and Oracle acceptance is not authorization. `skill` is currently the only target with a proven native publication path, so its disposition is `native-skill-authoring-required`; actual create/update must still go through LibreChat's existing skill-authoring authorization, ownership and optimistic-version contract. `agent`, `workflow` and `specialist` remain `proposal-only` until equivalent native fail-closed publication contracts are proven.
+
+## P10 — Distill validation boundary
+
+`distill.ts` prepares a bounded, host-owned `OracleInput` for an `ImprovementCandidate`. It copies only candidate identity, target, `CANDIDATE` status, trace identity and explicitly supplied source-addressed evidence; improvement prose, aggregate signals, source observations and reasoning are not copied into the validation request. Evidence referring to an unsupported Distill criterion fails closed.
+
+Distill does not invoke Oracle, interpret a verdict, authorize or publish an improvement, persist state, schedule work, mutate the candidate, or grant execution authority. Oracle remains an independent downstream QA boundary, and any later publication still requires the existing Policy/Auth and native publication contract.
