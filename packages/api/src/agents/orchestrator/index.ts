@@ -13,3 +13,5 @@ export * from './nativeSkillUpdatePolicy';
 export * from './improvementAuthorizationChain';
 
 export * from './improvementPayload';
+
+export * from './evidence';

@@ -116,6 +116,12 @@ The initial adapters normalize metadata from bounded `SubagentUpdateEvent`, `Sub
 
 The candidate is always born in `CANDIDATE` state. Oracle verification and authorization remain mandatory before any later publication step, and Oracle acceptance is not authorization. `skill` is currently the only target with a proven native publication path, so its disposition is `native-skill-authoring-required`; actual create/update must still go through LibreChat's existing skill-authoring authorization, ownership and optimistic-version contract. `agent`, `workflow` and `specialist` remain `proposal-only` until equivalent native fail-closed publication contracts are proven.
 
+## P10 — Independent evidence contract
+
+`evidence.ts` adds a pure normalization boundary for source-addressed Oracle evidence. It accepts only explicit host-supplied provenance and classifies evidence as independent when it is neither producer-declared nor attributed to the producing agent. Callers may require independence, in which case producer evidence and same-producer model/tool evidence fail closed.
+
+This contract does not discover evidence, execute tools, call models, invoke Oracle, authorize work, publish improvements, persist lifecycle state, create tasks, or mutate runtime state. It only normalizes already-existing provenance into the native `OracleEvidence` shape. Production evidence collection and Distill activation remain dormant until a real native tool/source/artifact provenance seam is proven.
+
 ## P10 — Distill validation boundary
 
 `distill.ts` prepares a bounded, host-owned `OracleInput` for an `ImprovementCandidate`. It copies only candidate identity, target, `CANDIDATE` status, trace identity and explicitly supplied source-addressed evidence; improvement prose, aggregate signals, source observations and reasoning are not copied into the validation request. Evidence referring to an unsupported Distill criterion fails closed.
@@ -181,18 +187,18 @@ Execution authority remains outside P10. The native Task Engine owns execution i
 
 P10 participates in the operational trace without owning it:
 
-| MTO stage | P10 responsibility |
-| --- | --- |
-| OBSERVATION | bounded improvement signals and provenance references |
-| EVIDENCE | referenced observations and independent Oracle evidence |
-| DECISION | candidate formation and disposition only |
-| POLICY | host/native policy evaluation outside persistence |
-| AUTHORIZATION | native authorization result, distinct from Oracle verification |
-| TASK | native Task Engine identity; never synthesized from trace/candidate IDs |
-| ACTION | native LibreChat mutation primitive only after authorization |
-| VERIFICATION | independent Oracle result |
-| DURABLE | immutable candidate snapshot plus append-only lifecycle events |
-| RESULT | native effect result such as updated/conflict/not_found |
+| MTO stage     | P10 responsibility                                                      |
+| ------------- | ----------------------------------------------------------------------- |
+| OBSERVATION   | bounded improvement signals and provenance references                   |
+| EVIDENCE      | referenced observations and independent Oracle evidence                 |
+| DECISION      | candidate formation and disposition only                                |
+| POLICY        | host/native policy evaluation outside persistence                       |
+| AUTHORIZATION | native authorization result, distinct from Oracle verification          |
+| TASK          | native Task Engine identity; never synthesized from trace/candidate IDs |
+| ACTION        | native LibreChat mutation primitive only after authorization            |
+| VERIFICATION  | independent Oracle result                                               |
+| DURABLE       | immutable candidate snapshot plus append-only lifecycle events          |
+| RESULT        | native effect result such as updated/conflict/not_found                 |
 
 MTO event identity remains observational. P10 may correlate events such as `CANDIDATE`, `VALIDATING`, `VERIFIED`, `REJECTED`, `HUMAN_APPROVAL_REQUIRED`, `AUTHORIZED`, `DENIED`, `COMMITTED`, and `PUBLISHED`, but emitting or persisting such an event does not itself cause the next stage.
 
