@@ -5693,6 +5693,27 @@ describe('ResumableAgentController resume metadata', () => {
       );
     });
 
+    it('contains candidate-store failure after the terminal response is durable', async () => {
+      mockRecordImprovementCandidate.mockRejectedValueOnce(
+        new Error('candidate store unavailable'),
+      );
+
+      await runFirstTurn({ clientOverrides: stepLimitClient });
+
+      expect(savedResponseRow()).toEqual(
+        expect.objectContaining({
+          unfinished: true,
+          finish_reason: Constants.TOOL_CALL_LIMIT_FINISH_REASON,
+        }),
+      );
+      expect(mockRecordImprovementCandidate).toHaveBeenCalledTimes(1);
+      expect(mockGenerationJobManager.publishTerminalClaim).toHaveBeenCalled();
+      expect(mockGenerationJobManager.finishTerminalJob).toHaveBeenCalled();
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        '[BOT MODE P10] Failed to persist workflow improvement candidate',
+        expect.any(Error),
+      );
+    });
     it('keeps the partial content on a step-limited turn instead of replacing it with an error', async () => {
       await runFirstTurn({ clientOverrides: stepLimitClient });
 

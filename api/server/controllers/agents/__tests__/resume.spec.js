@@ -1413,6 +1413,32 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
       );
     });
 
+    it('contains candidate-store failure after resumed response persistence', async () => {
+      mockGenerationJobManager.getJob.mockResolvedValue(
+        makeToolApprovalJob({ metadata: { mtoTraceId: 'mto-trace-store-failure-resume' } }),
+      );
+      mockInitializeClient.mockResolvedValue({
+        client: makeClient({ stepLimitReached: true }),
+        userMCPAuthMap: {},
+      });
+      mockRecordImprovementCandidate.mockRejectedValueOnce(
+        new Error('candidate store unavailable'),
+      );
+
+      const res = await post(approveBody());
+      expect(res.status).toBe(200);
+      await settled;
+      await flush();
+
+      expect(mockSaveMessage).toHaveBeenCalled();
+      expect(mockRecordImprovementCandidate).toHaveBeenCalledTimes(1);
+      expect(mockGenerationJobManager.publishTerminalClaim).toHaveBeenCalled();
+      expect(mockGenerationJobManager.finishTerminalJob).toHaveBeenCalled();
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        '[BOT MODE P10] Failed to persist workflow improvement candidate',
+        expect.any(Error),
+      );
+    });
     it('restores the paused turn start from the durable job before initializeClient', async () => {
       mockGenerationJobManager.getJob.mockResolvedValue(makeToolApprovalJob({ createdAt: 1234 }));
       const res = await post(approveBody());
