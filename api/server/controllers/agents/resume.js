@@ -549,6 +549,7 @@ async function finalizeResumedTurn({
       observeStepLimitImprovementCandidate({
         traceId: job.metadata.mtoTraceId,
         responseMessageId: savedResponseMessage.messageId ?? responseMessageId,
+        mtoEventSink: observeMtoEvent,
       });
     }
     if (appliedEventActor != null) {

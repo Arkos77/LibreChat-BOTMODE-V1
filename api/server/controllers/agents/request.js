@@ -2769,6 +2769,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
           observeStepLimitImprovementCandidate({
             traceId: mtoTraceId,
             responseMessageId: savedResponseMessage.messageId ?? response?.messageId,
+            mtoEventSink: observeMtoEvent,
           });
         }
         if (appliedEventActor != null) {

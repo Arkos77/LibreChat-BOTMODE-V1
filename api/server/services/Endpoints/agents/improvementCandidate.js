@@ -7,7 +7,12 @@ const { logger } = require('@librechat/data-schemas');
  * not invoke Oracle, authorize anything, mutate runtime limits, publish an
  * improvement, persist a candidate, or settle task state.
  */
-function observeStepLimitImprovementCandidate({ traceId, responseMessageId, createdAt }) {
+function observeStepLimitImprovementCandidate({
+  traceId,
+  responseMessageId,
+  createdAt,
+  mtoEventSink,
+}) {
   if (typeof traceId !== 'string' || traceId.trim() === '') {
     return null;
   }
@@ -41,6 +46,31 @@ function observeStepLimitImprovementCandidate({ traceId, responseMessageId, crea
     });
 
     logger.debug('[BOT MODE P10] workflow improvement candidate', candidate);
+    if (typeof mtoEventSink === 'function') {
+      try {
+        mtoEventSink(
+          createMtoEvent(
+            'CANDIDATE',
+            {
+              traceId: normalizedTraceId,
+              traceEventId: `candidate:${candidate.candidateId}`,
+              causedByTraceEventId: observation.identity.traceEventId,
+              timestamp,
+            },
+            'host',
+          ),
+        );
+      } catch (error) {
+        try {
+          logger.warn(
+            '[BOT MODE P10] Failed to emit workflow improvement candidate observation',
+            error,
+          );
+        } catch (_) {
+          // MTO observation must never affect candidate creation or terminal execution.
+        }
+      }
+    }
     return candidate;
   } catch (error) {
     try {
