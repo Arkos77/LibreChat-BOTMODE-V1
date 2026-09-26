@@ -134,6 +134,12 @@ The contract does not inspect or interpret raw tool output, tool arguments, arti
 
 The adapter does not interpret raw tool output, infer a criterion, infer an evidence value, execute a tool, persist evidence, invoke Oracle, authorize work, publish an improvement, create a task or mutate runtime state. Same-producer tool provenance remains explicitly non-independent. The adapter is exported but intentionally has no production caller yet; wiring remains dormant until the host seam can supply criterion/value semantics and native producer/checker identity without inference.
 
+## P10 — Optional tool-end observation hook
+
+`createToolEndCallback` now exposes an optional `improvementEvidenceCallback` observation boundary before its artifact-only early return. The hook receives the already-produced native tool-end `data` and `metadata`; existing callers do not provide the hook, so normal LibreChat behavior is unchanged.
+
+The boundary is observation-only. It does not interpret output, invoke Oracle, persist evidence, authorize actions, publish improvements, create or settle tasks, or mutate tool execution. Hook failure propagates rather than manufacturing evidence. No production caller configures the hook yet.
+
 ## P10 — Host tool-end evidence seam
 
 The server helper `api/server/services/Endpoints/agents/improvementToolEvidence.js` is the first host-owned bridge from an already-observed native LibreChat tool-end event into the pure P10 evidence chain. It reads only the native tool name and `tool_call_id`, plus optional `run_id` and `executingAgentId` metadata, and combines them with explicitly supplied Task Engine, producer, candidate and declaration context.

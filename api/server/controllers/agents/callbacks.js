@@ -951,9 +951,17 @@ function writeAttachmentUpdate(res, streamId, attachment, expectedCreatedAt) {
  * @param {Promise<MongoFile | { filename: string; filepath: string; expires: number;} | null>[]} params.artifactPromises
  * @param {string | null} [params.streamId] - The stream ID for resumable mode, or null for standard mode.
  * @param {number} [params.jobCreatedAt] - The generation epoch that owns emitted attachments.
+ * @param {(data: unknown, metadata: unknown) => void | Promise<void>} [params.improvementEvidenceCallback] - Optional P10 observation hook.
  * @returns {ToolEndCallback} The tool end callback.
  */
-function createToolEndCallback({ req, res, artifactPromises, streamId = null, jobCreatedAt }) {
+function createToolEndCallback({
+  req,
+  res,
+  artifactPromises,
+  streamId = null,
+  jobCreatedAt,
+  improvementEvidenceCallback,
+}) {
   /**
    * @type {ToolEndCallback}
    */
@@ -961,6 +969,10 @@ function createToolEndCallback({ req, res, artifactPromises, streamId = null, jo
     const output = data?.output;
     if (!output) {
       return;
+    }
+
+    if (typeof improvementEvidenceCallback === 'function') {
+      await improvementEvidenceCallback(data, metadata);
     }
 
     if (!output.artifact) {
