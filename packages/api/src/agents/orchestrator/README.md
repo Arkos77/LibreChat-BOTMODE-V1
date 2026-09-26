@@ -121,3 +121,11 @@ The candidate is always born in `CANDIDATE` state. Oracle verification and autho
 `distill.ts` prepares a bounded, host-owned `OracleInput` for an `ImprovementCandidate`. It copies only candidate identity, target, `CANDIDATE` status, trace identity and explicitly supplied source-addressed evidence; improvement prose, aggregate signals, source observations and reasoning are not copied into the validation request. Evidence referring to an unsupported Distill criterion fails closed.
 
 Distill does not invoke Oracle, interpret a verdict, authorize or publish an improvement, persist state, schedule work, mutate the candidate, or grant execution authority. Oracle remains an independent downstream QA boundary, and any later publication still requires the existing Policy/Auth and native publication contract.
+
+## P10 — Improvement disposition boundary
+
+`disposition.ts` converts a completed Oracle result into a bounded, host-owned improvement disposition. It validates that the terminal Oracle phase, verdict status and decision agree before interpreting the result. The disposition copies only candidate/trace identity, target, publication-path metadata and the Oracle decision; it does not copy candidate prose, Oracle evidence, reasons or reasoning.
+
+Oracle `ACCEPT` remains QA conformance rather than execution authority. An accepted `skill` candidate becomes `AUTHORIZATION_REQUIRED` and must still pass the existing Policy/Auth and native skill-authoring contract before any create/update action. Accepted `agent`, `workflow` and `specialist` candidates remain `PROPOSAL_ONLY`. Oracle `REJECT`, `DEFER` and `REQUEST_HUMAN_REVIEW` map to fail-closed dispositions and never become publishable.
+
+This boundary always returns `authorized: false` and `publishable: false`. It does not authorize, publish, persist, schedule, mutate runtime state, settle tasks or turn an Oracle verdict into permission.
