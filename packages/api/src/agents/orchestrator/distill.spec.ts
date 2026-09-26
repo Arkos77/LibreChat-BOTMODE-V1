@@ -14,6 +14,7 @@ const observation: MtoEvent = {
 const candidate = createImprovementCandidate({
   candidateId: 'candidate-1',
   target: 'skill',
+  payloadDigest: 'digest-abc',
   title: 'Improve research verification',
   summary: 'Repeated sanitized observations justify independent validation.',
   traceId: 'trace-1',
@@ -48,12 +49,14 @@ describe('Distill validation boundary', () => {
       target: 'skill',
       status: 'CANDIDATE',
       traceId: 'trace-1',
+      payloadDigest: 'digest-abc',
     });
     expect(request.oracleInput.criteria).toEqual([
       { id: 'candidateId', field: 'candidateId', expected: 'candidate-1' },
       { id: 'target', field: 'target', expected: 'skill', requireEvidence: true },
       { id: 'status', field: 'status', expected: 'CANDIDATE' },
       { id: 'traceId', field: 'traceId', expected: 'trace-1' },
+      { id: 'payloadDigest', field: 'payloadDigest', expected: 'digest-abc' },
     ]);
     expect(request.oracleInput.evidence).toEqual(evidence);
     expect(request).not.toHaveProperty('verdict');

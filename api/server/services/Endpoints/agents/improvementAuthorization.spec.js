@@ -14,6 +14,7 @@ function acceptedDisposition() {
     candidateId: 'candidate-skill',
     traceId: 'trace-1',
     target: 'skill',
+    payloadDigest: 'digest-abc',
     oracleDecision: 'ACCEPT',
     disposition: 'AUTHORIZATION_REQUIRED',
     publicationPath: 'native-skill-authoring-required',

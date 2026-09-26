@@ -52,6 +52,9 @@ export function createImprovementAuthorizationRequest(
         'Skill update authorization requires skillId, expectedVersion and payloadDigest',
       );
     }
+    if (disposition.payloadDigest !== payloadDigest) {
+      throw new Error('Skill update payload digest must match the Oracle-verified disposition');
+    }
 
     return {
       candidateId: disposition.candidateId,

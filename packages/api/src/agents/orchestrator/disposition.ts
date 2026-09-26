@@ -16,6 +16,7 @@ export interface ImprovementDisposition {
   candidateId: string;
   traceId: string;
   target: ImprovementTarget;
+  payloadDigest?: string;
   oracleDecision: OracleDecision;
   disposition: ImprovementDispositionStatus;
   publicationPath: ImprovementPublicationPath;
@@ -48,10 +49,48 @@ function dispositionFor(
   return candidate.target === 'skill' ? 'AUTHORIZATION_REQUIRED' : 'PROPOSAL_ONLY';
 }
 
-/**
- * Converts a completed Oracle result into a bounded improvement disposition.
- * Oracle ACCEPT establishes QA conformance only and grants no authority.
- */
+function readOracleCandidateSnapshot(candidate: string | undefined): Record<string, unknown> {
+  if (!candidate) {
+    throw new Error('Oracle verdict is missing the validated candidate snapshot');
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(candidate);
+  } catch {
+    throw new Error('Oracle verdict candidate snapshot is invalid JSON');
+  }
+
+  if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Oracle verdict candidate snapshot is invalid');
+  }
+
+  return parsed as Record<string, unknown>;
+}
+
+function assertAcceptedOracleBinding(
+  candidate: ImprovementCandidate,
+  oracle: TerminalOracleResult,
+): void {
+  if (oracle.decision !== 'ACCEPT') return;
+
+  const snapshot = readOracleCandidateSnapshot(oracle.verdict.input.candidate);
+  if (
+    snapshot.candidateId !== candidate.candidateId ||
+    snapshot.target !== candidate.target ||
+    snapshot.status !== candidate.status ||
+    snapshot.traceId !== candidate.traceId
+  ) {
+    throw new Error('Oracle verdict candidate snapshot does not match improvement candidate');
+  }
+
+  if (candidate.target === 'skill') {
+    if (!candidate.payloadDigest || snapshot.payloadDigest !== candidate.payloadDigest) {
+      throw new Error('Oracle verdict payload digest does not match improvement candidate');
+    }
+  }
+}
+
 export function createImprovementDisposition(
   input: ImprovementDispositionInput,
 ): ImprovementDisposition {
@@ -65,10 +104,13 @@ export function createImprovementDisposition(
     throw new Error('Oracle phase, verdict status and decision must agree');
   }
 
+  assertAcceptedOracleBinding(candidate, oracle);
+
   return {
     candidateId: candidate.candidateId,
     traceId: candidate.traceId,
     target: candidate.target,
+    ...(candidate.payloadDigest ? { payloadDigest: candidate.payloadDigest } : {}),
     oracleDecision: oracle.decision,
     disposition: dispositionFor(candidate, oracle.decision),
     publicationPath: candidate.publication.path,

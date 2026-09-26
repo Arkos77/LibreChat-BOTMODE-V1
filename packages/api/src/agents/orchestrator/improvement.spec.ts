@@ -66,6 +66,7 @@ describe('controlled improvement contracts', () => {
     const candidate = createImprovementCandidate({
       candidateId: 'candidate-1',
       target: 'skill',
+      payloadDigest: 'digest-abc',
       title: 'Improve research verification',
       summary: 'Repeated observations justify a candidate skill refinement.',
       traceId: 'trace-1',
@@ -107,6 +108,7 @@ describe('controlled improvement contracts', () => {
     const candidate = createImprovementCandidate({
       candidateId: 'candidate-dedup',
       target: 'skill',
+      payloadDigest: 'digest-abc',
       title: 'Deduplicated evidence',
       summary: 'Trace references are stable and bounded to supplied observations.',
       traceId: 'trace-1',
@@ -127,6 +129,7 @@ describe('controlled improvement contracts', () => {
       createImprovementCandidate({
         candidateId: 'candidate-empty',
         target: 'skill',
+        payloadDigest: 'digest-abc',
         title: 'Empty',
         summary: 'No observation exists.',
         traceId: 'trace-1',
@@ -138,6 +141,7 @@ describe('controlled improvement contracts', () => {
       createImprovementCandidate({
         candidateId: 'candidate-cross',
         target: 'skill',
+        payloadDigest: 'digest-abc',
         title: 'Cross trace',
         summary: 'Mixed trace data must not be merged implicitly.',
         traceId: 'trace-1',
@@ -160,6 +164,7 @@ describe('controlled improvement contracts', () => {
     const candidate = createImprovementCandidate({
       candidateId: 'candidate-safe',
       target: 'skill',
+      payloadDigest: 'digest-abc',
       title: 'Safe metadata candidate',
       summary: 'The candidate stores aggregates and references, not source event payloads.',
       traceId: 'trace-1',

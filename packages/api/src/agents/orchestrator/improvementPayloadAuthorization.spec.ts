@@ -5,6 +5,7 @@ function acceptedDisposition() {
     candidateId: 'candidate-skill',
     traceId: 'trace-1',
     target: 'skill' as const,
+    payloadDigest: 'digest-abc',
     oracleDecision: 'ACCEPT' as const,
     disposition: 'AUTHORIZATION_REQUIRED' as const,
     publicationPath: 'native-skill-authoring-required' as const,

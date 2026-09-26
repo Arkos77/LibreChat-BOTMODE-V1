@@ -1,9 +1,7 @@
 import type { MtoEvent, MtoOracleObservation } from './mto';
 
 export const improvementTargets = ['skill', 'agent', 'workflow', 'specialist'] as const;
-
 export type ImprovementTarget = (typeof improvementTargets)[number];
-
 export type ImprovementPublicationPath = 'native-skill-authoring-required' | 'proposal-only';
 
 export interface ImprovementSignalAggregate {
@@ -27,10 +25,10 @@ export interface ImprovementCandidate {
   summary: string;
   traceId: string;
   traceEventIds: string[];
+  payloadDigest?: string;
   signals: ImprovementSignalAggregate;
   publication: {
     path: ImprovementPublicationPath;
-    /** A publication path is not authorization to publish. */
     requiresOracle: true;
     requiresAuthorization: true;
     requiresHumanReview: boolean;
@@ -45,6 +43,7 @@ export interface ImprovementCandidateInput {
   summary: string;
   traceId: string;
   observations: readonly MtoEvent[];
+  payloadDigest?: string;
   requiresHumanReview?: boolean;
   createdAt?: string;
 }
@@ -80,10 +79,6 @@ function requiredTarget(value: unknown): ImprovementTarget {
   return value as ImprovementTarget;
 }
 
-/**
- * Deterministic pattern summary over already-sanitized MTO metadata.
- * It does not inspect activity data, raw candidates, evidence values or reasoning.
- */
 export function summarizeImprovementSignals(
   observations: readonly MtoEvent[],
 ): ImprovementSignalAggregate {
@@ -100,9 +95,7 @@ export function summarizeImprovementSignals(
   for (const observation of observations) {
     increment(sourceCounts, observation.source);
     increment(typeCounts, observation.type);
-    if (observation.source !== 'oracle' || !isOraclePayload(observation.payload)) {
-      continue;
-    }
+    if (observation.source !== 'oracle' || !isOraclePayload(observation.payload)) continue;
     if (observation.payload.phase === 'VERIFIED') oracle.verified += 1;
     else if (observation.payload.phase === 'REJECTED') oracle.rejected += 1;
     else if (observation.payload.phase === 'HUMAN_REVIEW') oracle.humanReview += 1;
@@ -112,28 +105,21 @@ export function summarizeImprovementSignals(
     }
   }
 
-  return {
-    observationCount: observations.length,
-    sourceCounts,
-    typeCounts,
-    oracle,
-  };
+  return { observationCount: observations.length, sourceCounts, typeCounts, oracle };
 }
 
 function publicationPath(target: ImprovementTarget): ImprovementPublicationPath {
   return target === 'skill' ? 'native-skill-authoring-required' : 'proposal-only';
 }
 
-/**
- * Dream boundary: creates a proposal from sanitized observations only.
- * This function does not persist, authorize, validate, publish, schedule or mutate runtime state.
- */
 export function createImprovementCandidate(input: ImprovementCandidateInput): ImprovementCandidate {
   const candidateId = requiredText('candidateId', input.candidateId);
   const target = requiredTarget(input.target);
   const traceId = requiredText('traceId', input.traceId);
   const title = requiredText('title', input.title);
   const summary = requiredText('summary', input.summary);
+  const payloadDigest =
+    target === 'skill' ? requiredText('payloadDigest', input.payloadDigest ?? '') : undefined;
 
   if (input.observations.length === 0) {
     throw new Error('ImprovementCandidate requires at least one observation');
@@ -156,6 +142,7 @@ export function createImprovementCandidate(input: ImprovementCandidateInput): Im
     summary,
     traceId,
     traceEventIds,
+    ...(payloadDigest ? { payloadDigest } : {}),
     signals: summarizeImprovementSignals(input.observations),
     publication: {
       path: publicationPath(target),

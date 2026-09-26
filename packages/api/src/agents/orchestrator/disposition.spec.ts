@@ -15,6 +15,7 @@ function candidate(target: 'skill' | 'agent' | 'workflow' | 'specialist' = 'skil
   return createImprovementCandidate({
     candidateId: `candidate-${target}`,
     target,
+    ...(target === 'skill' ? { payloadDigest: 'digest-abc' } : {}),
     title: 'Bounded improvement',
     summary: 'Sanitized candidate for disposition testing.',
     traceId: 'trace-1',
@@ -24,6 +25,7 @@ function candidate(target: 'skill' | 'agent' | 'workflow' | 'specialist' = 'skil
 }
 
 function oracleResult(
+  source: ReturnType<typeof candidate>,
   decision: 'ACCEPT' | 'REJECT' | 'DEFER' | 'REQUEST_HUMAN_REVIEW',
 ): Extract<OracleEvent, { verdict: unknown }> {
   let status: OracleVerdict['status'];
@@ -50,7 +52,13 @@ function oracleResult(
     input: {
       taskId: 'task-oracle-1',
       agentId: 'bot-mode-distill',
-      candidate: '{}',
+      candidate: JSON.stringify({
+        candidateId: source.candidateId,
+        target: source.target,
+        status: source.status,
+        traceId: source.traceId,
+        ...(source.payloadDigest ? { payloadDigest: source.payloadDigest } : {}),
+      }),
       criteria: [],
       evidence: [],
     },
@@ -65,15 +73,17 @@ function oracleResult(
 
 describe('Improvement disposition boundary', () => {
   it('maps Oracle ACCEPT for skill to authorization-required without authorizing publication', () => {
+    const source = candidate('skill');
     const result = createImprovementDisposition({
-      candidate: candidate('skill'),
-      oracle: oracleResult('ACCEPT'),
+      candidate: source,
+      oracle: oracleResult(source, 'ACCEPT'),
     });
 
     expect(result).toEqual({
       candidateId: 'candidate-skill',
       traceId: 'trace-1',
       target: 'skill',
+      payloadDigest: 'digest-abc',
       oracleDecision: 'ACCEPT',
       disposition: 'AUTHORIZATION_REQUIRED',
       publicationPath: 'native-skill-authoring-required',
@@ -86,13 +96,15 @@ describe('Improvement disposition boundary', () => {
   it.each(['agent', 'workflow', 'specialist'] as const)(
     'keeps accepted %s improvements proposal-only',
     (target) => {
+      const source = candidate(target);
       const result = createImprovementDisposition({
-        candidate: candidate(target),
-        oracle: oracleResult('ACCEPT'),
+        candidate: source,
+        oracle: oracleResult(source, 'ACCEPT'),
       });
       expect(result.disposition).toBe('PROPOSAL_ONLY');
       expect(result.authorized).toBe(false);
       expect(result.publishable).toBe(false);
+      expect(result).not.toHaveProperty('payloadDigest');
     },
   );
 
@@ -101,9 +113,10 @@ describe('Improvement disposition boundary', () => {
     ['DEFER', 'DEFERRED'],
     ['REQUEST_HUMAN_REVIEW', 'HUMAN_REVIEW_REQUIRED'],
   ] as const)('fails closed for Oracle %s', (decision, disposition) => {
+    const source = candidate('skill');
     const result = createImprovementDisposition({
-      candidate: candidate('skill'),
-      oracle: oracleResult(decision),
+      candidate: source,
+      oracle: oracleResult(source, decision),
     });
     expect(result.disposition).toBe(disposition);
     expect(result.authorized).toBe(false);
@@ -111,14 +124,15 @@ describe('Improvement disposition boundary', () => {
   });
 
   it('fails closed when Oracle phase and decision disagree', () => {
-    const oracle = oracleResult('ACCEPT');
+    const source = candidate('skill');
+    const oracle = oracleResult(source, 'ACCEPT');
     if (oracle.phase === 'CANDIDATE' || oracle.phase === 'VALIDATING') {
       throw new Error('unexpected test fixture');
     }
 
     expect(() =>
       createImprovementDisposition({
-        candidate: candidate('skill'),
+        candidate: source,
         oracle: { ...oracle, decision: 'REJECT' },
       }),
     ).toThrow('Oracle');
@@ -126,7 +140,7 @@ describe('Improvement disposition boundary', () => {
 
   it('does not copy verdict evidence, reasoning, candidate prose or grant authority', () => {
     const source = candidate('skill');
-    const oracle = oracleResult('ACCEPT');
+    const oracle = oracleResult(source, 'ACCEPT');
     if (oracle.phase === 'CANDIDATE' || oracle.phase === 'VALIDATING') {
       throw new Error('unexpected test fixture');
     }

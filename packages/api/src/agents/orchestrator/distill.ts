@@ -14,7 +14,13 @@ export interface DistillValidationRequestInput {
   evidence: readonly OracleEvidence[];
 }
 
-const DISTILL_CRITERION_IDS = new Set(['candidateId', 'target', 'status', 'traceId']);
+const DISTILL_CRITERION_IDS = new Set([
+  'candidateId',
+  'target',
+  'status',
+  'traceId',
+  'payloadDigest',
+]);
 
 function requiredText(name: string, value: string): string {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -23,12 +29,6 @@ function requiredText(name: string, value: string): string {
   return value.trim();
 }
 
-/**
- * Prepares the bounded host-owned validation input for an improvement candidate.
- *
- * This boundary does not invoke Oracle, interpret a verdict, authorize an action,
- * publish a skill, persist state, schedule work, or mutate the source candidate.
- */
 export function createDistillValidationRequest(
   input: DistillValidationRequestInput,
 ): DistillValidationRequest {
@@ -36,6 +36,10 @@ export function createDistillValidationRequest(
   const producerAgentId = requiredText('producerAgentId', input.producerAgentId);
   const candidateId = requiredText('candidateId', input.candidate.candidateId);
   const traceId = requiredText('traceId', input.candidate.traceId);
+  const payloadDigest =
+    input.candidate.target === 'skill'
+      ? requiredText('payloadDigest', input.candidate.payloadDigest ?? '')
+      : undefined;
 
   const evidence = structuredClone(input.evidence);
   for (const item of evidence) {
@@ -51,6 +55,7 @@ export function createDistillValidationRequest(
     target: input.candidate.target,
     status: input.candidate.status,
     traceId,
+    ...(payloadDigest ? { payloadDigest } : {}),
   });
 
   return {
@@ -70,6 +75,9 @@ export function createDistillValidationRequest(
         },
         { id: 'status', field: 'status', expected: 'CANDIDATE' },
         { id: 'traceId', field: 'traceId', expected: traceId },
+        ...(payloadDigest
+          ? [{ id: 'payloadDigest', field: 'payloadDigest', expected: payloadDigest }]
+          : []),
       ],
       evidence,
     },
