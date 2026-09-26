@@ -129,3 +129,17 @@ Distill does not invoke Oracle, interpret a verdict, authorize or publish an imp
 Oracle `ACCEPT` remains QA conformance rather than execution authority. An accepted `skill` candidate becomes `AUTHORIZATION_REQUIRED` and must still pass the existing Policy/Auth and native skill-authoring contract before any create/update action. Accepted `agent`, `workflow` and `specialist` candidates remain `PROPOSAL_ONLY`. Oracle `REJECT`, `DEFER` and `REQUEST_HUMAN_REVIEW` map to fail-closed dispositions and never become publishable.
 
 This boundary always returns `authorized: false` and `publishable: false`. It does not authorize, publish, persist, schedule, mutate runtime state, settle tasks or turn an Oracle verdict into permission.
+
+## P10 improvement authorization boundary
+
+The self-improvement path remains proposal-first and fail-closed.
+
+For accepted skill-update candidates, authorization is composed through bounded host-owned contracts:
+
+1. `createImprovementAuthorizationRequest` creates an authorization request and grants no authority by itself.
+2. `evaluateNativeSkillUpdatePolicy` requires the native `SKILLS` capability gate (`USE` + `CREATE`) before resource authorization.
+3. `evaluateNativeSkillAuthorization` delegates the resource-level `skill` `EDIT` decision through an injected native permission checker.
+4. `resolveImprovementAuthorization` maps the native authorization evidence to the bounded result.
+5. `authorizeImprovementPublication` only composes these stages; it does not own ACL policy or mutate skills.
+
+Skill creation remains closed until its native create-policy seam is explicitly proven. The authorization slice does not call skill mutation methods, persist improvement content, schedule work, or convert Oracle acceptance into execution authority.

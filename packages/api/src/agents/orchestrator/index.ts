@@ -6,3 +6,8 @@ export * from './mto';
 export * from './improvement';
 export * from './distill';
 export * from './disposition';
+export * from './improvementAuthorization';
+export * from './improvementAuthorizationResult';
+export * from './nativeSkillAuthorization';
+export * from './nativeSkillUpdatePolicy';
+export * from './improvementAuthorizationChain';
