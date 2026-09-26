@@ -122,6 +122,12 @@ The candidate is always born in `CANDIDATE` state. Oracle verification and autho
 
 This contract does not discover evidence, execute tools, call models, invoke Oracle, authorize work, publish improvements, persist lifecycle state, create tasks, or mutate runtime state. It only normalizes already-existing provenance into the native `OracleEvidence` shape. Production evidence collection and Distill activation remain dormant until a real native tool/source/artifact provenance seam is proven.
 
+## P10 — Tool evidence intent contract
+
+`toolEvidenceIntent.ts` resolves only explicit host-owned declarations that bind an exact tool name to an Oracle criterion and expected scalar value. It returns no evidence semantics for undeclared tools and fails closed when multiple declarations make the mapping ambiguous.
+
+The contract does not inspect or interpret raw tool output, tool arguments, artifacts, model text, confidence or producer instructions. It therefore cannot promote arbitrary tool output into trusted evidence. It only supplies the host-declared semantic binding later consumed by the native tool evidence adapter. The contract is exported but intentionally has no production caller yet.
+
 ## P10 — Native tool evidence adapter
 
 `toolEvidence.ts` maps already-observed native tool provenance into the P10 evidence contract. It preserves the native `tool_call_id`, optional native run identity and the tool/checker agent identity when the host already has them. It never derives those identities from trace, candidate, message or response identifiers.

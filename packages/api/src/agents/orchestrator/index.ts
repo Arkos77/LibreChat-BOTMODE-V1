@@ -17,3 +17,5 @@ export * from './improvementPayload';
 export * from './evidence';
 
 export * from './toolEvidence';
+
+export * from './toolEvidenceIntent';
