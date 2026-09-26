@@ -21,3 +21,5 @@ export * from './toolEvidence';
 export * from './toolEvidenceIntent';
 
 export * from './toolEvidenceDistill';
+
+export * from './improvementEvidenceContext';

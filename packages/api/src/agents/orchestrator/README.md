@@ -116,6 +116,12 @@ The initial adapters normalize metadata from bounded `SubagentUpdateEvent`, `Sub
 
 The candidate is always born in `CANDIDATE` state. Oracle verification and authorization remain mandatory before any later publication step, and Oracle acceptance is not authorization. `skill` is currently the only target with a proven native publication path, so its disposition is `native-skill-authoring-required`; actual create/update must still go through LibreChat's existing skill-authoring authorization, ownership and optimistic-version contract. `agent`, `workflow` and `specialist` remain `proposal-only` until equivalent native fail-closed publication contracts are proven.
 
+## P10 — Improvement evidence context
+
+`improvementEvidenceContext.ts` builds a bounded `native_tool_end` observation context from explicit host-owned identities only. Tool call, tool name and producer identity are mandatory; task, trace, run, thread and checker identities remain separate optional dimensions and are omitted when unavailable rather than inferred from another identifier.
+
+The context contains no raw tool output, arguments, artifacts, confidence, verdict, authorization, publication status or reasoning. It does not invoke Oracle, persistence, Policy/Auth, the Task Engine or runtime mutation, and is intentionally dormant until consumed through the already-tested host evidence seam.
+
 ## P10 — Independent evidence contract
 
 `evidence.ts` adds a pure normalization boundary for source-addressed Oracle evidence. It accepts only explicit host-supplied provenance and classifies evidence as independent when it is neither producer-declared nor attributed to the producing agent. Callers may require independence, in which case producer evidence and same-producer model/tool evidence fail closed.
