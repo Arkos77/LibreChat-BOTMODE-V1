@@ -6,7 +6,7 @@ const improvementCandidateSchema: Schema<IImprovementCandidateRecord> =
     {
       user: { type: Schema.Types.ObjectId, required: true, index: true },
       tenantId: { type: String },
-      tenantKey: { type: String, required: true },
+      tenantKey: { type: String, default: '' },
       conversationId: { type: String, required: true },
       candidateId: { type: String, required: true },
       target: {

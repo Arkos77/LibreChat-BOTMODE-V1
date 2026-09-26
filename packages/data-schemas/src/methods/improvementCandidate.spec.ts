@@ -58,6 +58,34 @@ describe('ImprovementCandidate durable store', () => {
     await mongod.stop();
   });
 
+  it('persists an untenanted candidate in the legacy owner scope', async () => {
+    const first = await methods.recordImprovementCandidate({
+      user: userId,
+      conversationId: 'conversation-legacy',
+      candidate: candidate(),
+    });
+    const replay = await methods.recordImprovementCandidate({
+      user: userId,
+      conversationId: 'conversation-legacy',
+      candidate: candidate(),
+    });
+
+    expect(first.replayed).toBe(false);
+    expect(replay.replayed).toBe(true);
+    expect(first.record.tenantId).toBeUndefined();
+    expect(first.record.tenantKey).toBe('');
+
+    await expect(
+      methods.getImprovementCandidate({
+        user: userId,
+        candidateId: candidate().candidateId,
+      }),
+    ).resolves.toMatchObject({
+      tenantKey: '',
+      conversationId: 'conversation-legacy',
+    });
+  });
+
   it('persists an immutable owner-scoped candidate and replays the exact same snapshot idempotently', async () => {
     const input = {
       user: userId,
