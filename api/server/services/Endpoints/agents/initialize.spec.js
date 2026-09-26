@@ -176,6 +176,37 @@ describe('initializeClient — processAgent ACL gate', () => {
     },
   });
 
+  it('returns an isolated dormant transient evidence buffer for the request', async () => {
+    mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+
+    const first = await initializeClient({
+      req: makeReq(),
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption: makeEndpointOption(),
+    });
+    const second = await initializeClient({
+      req: makeReq(),
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption: makeEndpointOption(),
+    });
+
+    expect(first.transientEvidenceBuffer).toEqual(
+      expect.objectContaining({
+        capacity: expect.any(Number),
+        append: expect.any(Function),
+        snapshot: expect.any(Function),
+        consume: expect.any(Function),
+        clear: expect.any(Function),
+        size: 0,
+      }),
+    );
+    expect(first.transientEvidenceBuffer.snapshot()).toEqual([]);
+    expect(second.transientEvidenceBuffer.snapshot()).toEqual([]);
+    expect(first.transientEvidenceBuffer).not.toBe(second.transientEvidenceBuffer);
+  });
+
   it('replaces untrusted artifact route metadata with the executing agent context', async () => {
     mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
 

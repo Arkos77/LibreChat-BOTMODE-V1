@@ -118,6 +118,8 @@ The candidate is always born in `CANDIDATE` state. Oracle verification and autho
 
 ## P10 — Transient tool evidence buffer
 
+The agents `initializeClient` path now creates one isolated transient evidence buffer per initialization and returns it alongside the native client context. The buffer remains dormant: this seam does not pass it to tool-end callbacks, request settlement, MTO, Oracle, persistence, authorization or publication.
+
 `transientEvidenceBuffer.ts` defines a request/run-local, in-memory and bounded observation buffer for native tool-end evidence. It preserves explicit native identity plus optional declared criterion/value only, deduplicates by native `toolCallId`, evicts the oldest entry when capacity is reached, and supports defensive snapshot, atomic consume and clear operations.
 
 The buffer is not durable state and has no authority: it contains no raw tool output, arguments, artifacts, reasoning, confidence, Oracle verdict, authorization or publication state. It is intentionally dormant until a dedicated host integration proves the lifecycle and declaration source.

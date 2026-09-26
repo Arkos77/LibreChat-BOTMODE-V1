@@ -1,3 +1,4 @@
+const { createTransientEvidenceBuffer } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 const { createContentAggregator, GraphNodeKeys } = require('@librechat/agents');
 const {
@@ -169,6 +170,7 @@ const initializeClient = async ({
   mtoEventSink,
   requestBody,
 }) => {
+  const transientEvidenceBuffer = createTransientEvidenceBuffer();
   if (!endpointOption) {
     throw new Error('Endpoint option not provided');
   }
@@ -1642,7 +1644,7 @@ const initializeClient = async ({
     GenerationJobManager.setCollectedUsage(streamId, collectedUsage, jobCreatedAt);
   }
 
-  return { client, userMCPAuthMap };
+  return { client, userMCPAuthMap, transientEvidenceBuffer };
 };
 
 module.exports = { initializeClient };
