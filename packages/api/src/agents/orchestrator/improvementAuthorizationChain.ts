@@ -19,6 +19,7 @@ export interface AuthorizeImprovementPublicationInput {
   actorId: string;
   skillId?: string;
   expectedVersion?: number;
+  payloadDigest?: string;
   checkSkillCapability: NativeSkillCapabilityCheck;
   checkPermission: NativeSkillPermissionCheck;
 }
@@ -36,6 +37,7 @@ export async function authorizeImprovementPublication(
     actorId: input.actorId,
     skillId: input.skillId,
     expectedVersion: input.expectedVersion,
+    payloadDigest: input.payloadDigest,
   });
 
   const nativeAuthorization = await evaluateNativeSkillUpdatePolicy({

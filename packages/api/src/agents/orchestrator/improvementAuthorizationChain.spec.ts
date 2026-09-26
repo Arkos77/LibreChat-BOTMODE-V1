@@ -29,6 +29,7 @@ describe('Improvement authorization chain', () => {
       actorId: 'user-1',
       skillId: 'skill-1',
       expectedVersion: 7,
+      payloadDigest: 'digest-abc',
       checkSkillCapability,
       checkPermission,
     });
@@ -55,6 +56,7 @@ describe('Improvement authorization chain', () => {
       actorId: 'user-1',
       skillId: 'skill-1',
       expectedVersion: 7,
+      payloadDigest: 'digest-abc',
       publicationPath: 'native-skill-authoring-required',
       authorized: true,
       publishable: true,
@@ -68,6 +70,7 @@ describe('Improvement authorization chain', () => {
       actorId: 'user-1',
       skillId: 'skill-1',
       expectedVersion: 7,
+      payloadDigest: 'digest-abc',
       checkSkillCapability: async () => true,
       checkPermission: async () => false,
     });
@@ -90,6 +93,7 @@ describe('Improvement authorization chain', () => {
         actorId: 'user-1',
         skillId: 'skill-1',
         expectedVersion: 7,
+        payloadDigest: 'digest-abc',
         checkSkillCapability,
         checkPermission,
       }),
@@ -125,6 +129,7 @@ describe('Improvement authorization chain', () => {
       actorId: 'user-1',
       skillId: 'skill-1',
       expectedVersion: 7,
+      payloadDigest: 'digest-abc',
     });
     const nativeAuthorization = await evaluateNativeSkillUpdatePolicy({
       request,
@@ -142,6 +147,7 @@ describe('Improvement authorization chain', () => {
       actorId: 'user-1',
       skillId: 'skill-1',
       expectedVersion: 7,
+      payloadDigest: 'digest-abc',
       checkSkillCapability: async () => true,
       checkPermission: async () => true,
     });
@@ -162,6 +168,7 @@ describe('Improvement authorization chain', () => {
       actorId: 'user-1',
       skillId: 'skill-1',
       expectedVersion: 7,
+      payloadDigest: 'digest-abc',
       checkSkillCapability,
       checkPermission,
     });

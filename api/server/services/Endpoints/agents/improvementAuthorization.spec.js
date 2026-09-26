@@ -43,6 +43,7 @@ describe('request-backed improvement authorization binding', () => {
       actorId: 'user-1',
       skillId: 'skill-1',
       expectedVersion: 7,
+      payloadDigest: 'digest-abc',
     });
 
     expect(canCreateSkill).toHaveBeenCalledTimes(1);
@@ -66,6 +67,7 @@ describe('request-backed improvement authorization binding', () => {
       actorId: 'user-1',
       skillId: 'skill-1',
       expectedVersion: 7,
+      payloadDigest: 'digest-abc',
     });
 
     expect(canCreateSkill).toHaveBeenCalledTimes(1);
@@ -88,6 +90,7 @@ describe('request-backed improvement authorization binding', () => {
         actorId: 'user-2',
         skillId: 'skill-1',
         expectedVersion: 7,
+        payloadDigest: 'digest-abc',
       }),
     ).rejects.toThrow();
 

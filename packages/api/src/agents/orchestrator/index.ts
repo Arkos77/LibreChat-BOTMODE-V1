@@ -11,3 +11,5 @@ export * from './improvementAuthorizationResult';
 export * from './nativeSkillAuthorization';
 export * from './nativeSkillUpdatePolicy';
 export * from './improvementAuthorizationChain';
+
+export * from './improvementPayload';

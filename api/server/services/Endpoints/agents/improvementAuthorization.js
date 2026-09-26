@@ -25,6 +25,7 @@ async function authorizeImprovementPublicationForRequest({
   actorId,
   skillId,
   expectedVersion,
+  payloadDigest,
 }) {
   const requestActorId = resolveRequestActorId(req);
   if (!actorId || String(actorId) !== requestActorId) {
@@ -45,6 +46,7 @@ async function authorizeImprovementPublicationForRequest({
     actorId: requestActorId,
     skillId,
     expectedVersion,
+    payloadDigest,
     checkSkillCapability: async () => canCreateSkill({ req }),
     checkPermission: async ({ resourceId }) => canEditSkill({ req, skillId: resourceId }),
   });

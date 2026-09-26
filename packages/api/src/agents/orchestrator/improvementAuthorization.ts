@@ -10,6 +10,7 @@ export interface ImprovementAuthorizationRequest {
   actorId: string;
   skillId?: string;
   expectedVersion?: number;
+  payloadDigest?: string;
   publicationPath: 'native-skill-authoring-required';
   requiresNativeAuthorization: true;
   authorized: false;
@@ -22,12 +23,13 @@ export interface CreateImprovementAuthorizationRequestInput {
   actorId: string;
   skillId?: string;
   expectedVersion?: number;
+  payloadDigest?: string;
 }
 
 export function createImprovementAuthorizationRequest(
   input: CreateImprovementAuthorizationRequestInput,
 ): ImprovementAuthorizationRequest {
-  const { disposition, operation, actorId, skillId, expectedVersion } = input;
+  const { disposition, operation, actorId, skillId, expectedVersion, payloadDigest } = input;
 
   if (
     disposition.target !== 'skill' ||
@@ -45,8 +47,10 @@ export function createImprovementAuthorizationRequest(
   }
 
   if (operation === 'update') {
-    if (!skillId || expectedVersion === undefined) {
-      throw new Error('Skill update authorization requires skillId and expectedVersion');
+    if (!skillId || expectedVersion === undefined || !payloadDigest) {
+      throw new Error(
+        'Skill update authorization requires skillId, expectedVersion and payloadDigest',
+      );
     }
 
     return {
@@ -57,6 +61,7 @@ export function createImprovementAuthorizationRequest(
       actorId,
       skillId,
       expectedVersion,
+      payloadDigest,
       publicationPath: 'native-skill-authoring-required',
       requiresNativeAuthorization: true,
       authorized: false,
@@ -64,8 +69,10 @@ export function createImprovementAuthorizationRequest(
     };
   }
 
-  if (skillId !== undefined || expectedVersion !== undefined) {
-    throw new Error('Skill create authorization cannot carry skill identity or expectedVersion');
+  if (skillId !== undefined || expectedVersion !== undefined || payloadDigest !== undefined) {
+    throw new Error(
+      'Skill create authorization cannot carry skill identity, expectedVersion or payloadDigest',
+    );
   }
 
   return {

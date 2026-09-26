@@ -16,6 +16,7 @@ export interface ImprovementAuthorizationResult {
   actorId: string;
   skillId?: string;
   expectedVersion?: number;
+  payloadDigest?: string;
   publicationPath: 'native-skill-authoring-required';
   authorized: boolean;
   publishable: boolean;
@@ -46,7 +47,7 @@ export function resolveImprovementAuthorization(input: {
   }
 
   if (request.operation === 'update') {
-    if (!request.skillId || request.expectedVersion === undefined) {
+    if (!request.skillId || request.expectedVersion === undefined || !request.payloadDigest) {
       throw new Error('Skill update authorization request is incomplete');
     }
     if (nativeAuthorization.resourceId !== request.skillId) {
@@ -67,6 +68,7 @@ export function resolveImprovementAuthorization(input: {
     actorId: request.actorId,
     skillId: request.skillId,
     expectedVersion: request.expectedVersion,
+    payloadDigest: request.payloadDigest,
     publicationPath: 'native-skill-authoring-required',
     authorized: nativeAuthorization.allowed === true,
     publishable: nativeAuthorization.allowed === true,

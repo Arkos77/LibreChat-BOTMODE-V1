@@ -1,10 +1,14 @@
+const {
+  createImprovementPayloadDigest,
+  verifyImprovementPayloadDigest,
+} = require('@librechat/api');
 const { authorizeImprovementPublicationForRequest } = require('./improvementAuthorization');
 const { getSkillToolDeps } = require('./skillDeps');
 
 /**
  * Applies an already-bounded P10 skill improvement through LibreChat's native
  * updateSkill primitive only after the request-backed native authorization
- * chain declares the update publishable.
+ * chain declares the exact update payload publishable.
  *
  * This function intentionally preserves native updateSkill results
  * (`updated`, `conflict`, `not_found`) and owns no persistence semantics.
@@ -22,6 +26,7 @@ async function publishImprovementSkillUpdateForRequest({
     throw new Error('Controlled improvement publication only supports skill updates');
   }
 
+  const payloadDigest = createImprovementPayloadDigest(update);
   const authorization = await authorizeImprovementPublicationForRequest({
     req,
     disposition,
@@ -29,10 +34,17 @@ async function publishImprovementSkillUpdateForRequest({
     actorId,
     skillId,
     expectedVersion,
+    payloadDigest,
   });
 
   if (authorization.authorized !== true || authorization.publishable !== true) {
     throw new Error('Improvement publication is not authorized');
+  }
+  if (
+    authorization.payloadDigest !== payloadDigest ||
+    !verifyImprovementPayloadDigest(update, authorization.payloadDigest)
+  ) {
+    throw new Error('Improvement publication payload does not match authorization');
   }
 
   const { updateSkill } = getSkillToolDeps();
