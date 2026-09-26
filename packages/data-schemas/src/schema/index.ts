@@ -34,6 +34,7 @@ export { default as toolFavoriteSchema } from './favorite';
 export { default as groupSchema } from './group';
 export { default as systemGrantSchema } from './systemGrant';
 export { default as auditLogSchema } from './auditLog';
+export { default as improvementCandidateSchema } from './improvementCandidate';
 export { default as configSchema } from './config';
 export { default as triggerDeliverySchema } from './triggerDelivery';
 export { default as triggerLaneSequenceSchema } from './triggerLaneSequence';

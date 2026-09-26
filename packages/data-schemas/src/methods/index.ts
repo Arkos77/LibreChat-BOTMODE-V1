@@ -1,5 +1,9 @@
 import type { RoleMethods, RoleDeps } from './role';
 import {
+  createImprovementCandidateMethods,
+  type ImprovementCandidateMethods,
+} from './improvementCandidate';
+import {
   createOpenIDRefreshFlightMethods,
   type OpenIDRefreshFlightMethods,
 } from './openidRefreshFlight';
@@ -222,6 +226,7 @@ export type AllMethods = UserMethods &
   AclEntryMethods &
   SystemGrantMethods &
   AuditLogMethods &
+  ImprovementCandidateMethods &
   ShareMethods &
   AccessRoleMethods &
   PluginAuthMethods &
@@ -443,6 +448,7 @@ export function createMethods(
     ...aclEntryMethods,
     ...systemGrantMethods,
     ...createAuditLogMethods(mongoose),
+    ...createImprovementCandidateMethods(mongoose),
     ...createShareMethods(mongoose),
     ...createPluginAuthMethods(mongoose),
     /* Tier 1 */
