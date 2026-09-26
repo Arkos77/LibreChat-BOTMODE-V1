@@ -977,6 +977,9 @@ describe('ResumableAgentController resume metadata', () => {
     expect(mtoTraceId).not.toBe(conversationId);
     expect(mtoTraceId).not.toBe(jobOptions.initialMetadata.responseMessageId);
     expect(initializeClient).toHaveBeenCalledWith(expect.objectContaining({ mtoTraceId }));
+    expect(initializeClient).toHaveBeenCalledWith(
+      expect.objectContaining({ mtoEventSink: expect.any(Function) }),
+    );
   });
 
   it('persists and exactly echoes protocol v2 on a newly created generation', async () => {

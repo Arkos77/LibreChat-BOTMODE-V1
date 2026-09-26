@@ -427,7 +427,7 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
 
     mockAddTitle = jest.fn().mockResolvedValue(undefined);
     mockInitializeClient = jest.fn(
-      async ({ req, checkpointNamespace, mtoTraceId, requestBody }) => {
+      async ({ req, checkpointNamespace, mtoTraceId, mtoEventSink, requestBody }) => {
         // Capture the request state the controller seeds BEFORE reconstruction.
         capturedInit = {
           parentMessageId: req.body.parentMessageId,
@@ -438,6 +438,7 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
           timezone: req.body.timezone,
           checkpointNamespace,
           mtoTraceId,
+          mtoEventSink,
           requestBody,
         };
         return { client: makeClient(), userMCPAuthMap: { server1: { token: 't' } } };
@@ -1368,6 +1369,7 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
       expect(res.status).toBe(200);
       await settled;
       expect(capturedInit.mtoTraceId).toBe('mto-trace-durable-123');
+      expect(capturedInit.mtoEventSink).toEqual(expect.any(Function));
     });
 
     it('restores the paused turn start from the durable job before initializeClient', async () => {

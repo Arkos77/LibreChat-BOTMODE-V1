@@ -42,6 +42,7 @@ const {
   resolveAgentTurnExecutionPlan,
 } = require('@librechat/api');
 const { disposeClient } = require('~/server/cleanup');
+const { observeMtoEvent } = require('~/server/services/Endpoints/agents/mtoObservation');
 const {
   getMCPRequestContext,
   cleanupMCPRequestContextForReq,
@@ -1762,6 +1763,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       jobCreatedAt,
       checkpointNamespace: job.metadata?.checkpointNamespace,
       mtoTraceId,
+      mtoEventSink: observeMtoEvent,
       requestBody: mcpRequestBody,
     });
     startupTelemetry?.mark('client_initialized');

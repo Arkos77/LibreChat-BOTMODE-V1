@@ -47,6 +47,7 @@ const {
   findAgentEventAppliedAction,
 } = require('@librechat/api');
 const { disposeClient } = require('~/server/cleanup');
+const { observeMtoEvent } = require('~/server/services/Endpoints/agents/mtoObservation');
 const { decryptMetadata } = require('~/server/services/ActionService');
 const { checkPermission } = require('~/server/services/PermissionService');
 const {
@@ -1780,6 +1781,7 @@ const ResumeAgentController = async (req, res, next, initializeClient, addTitle)
       jobCreatedAt: job.createdAt,
       checkpointNamespace,
       mtoTraceId: job.metadata.mtoTraceId,
+      mtoEventSink: observeMtoEvent,
       requestBody:
         job.metadata.mcpRequestBody ??
         createMCPRuntimeRequestBody({
