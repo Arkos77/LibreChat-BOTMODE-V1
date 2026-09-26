@@ -116,6 +116,12 @@ The initial adapters normalize metadata from bounded `SubagentUpdateEvent`, `Sub
 
 The candidate is always born in `CANDIDATE` state. Oracle verification and authorization remain mandatory before any later publication step, and Oracle acceptance is not authorization. `skill` is currently the only target with a proven native publication path, so its disposition is `native-skill-authoring-required`; actual create/update must still go through LibreChat's existing skill-authoring authorization, ownership and optimistic-version contract. `agent`, `workflow` and `specialist` remain `proposal-only` until equivalent native fail-closed publication contracts are proven.
 
+## P10 — Transient tool evidence buffer
+
+`transientEvidenceBuffer.ts` defines a request/run-local, in-memory and bounded observation buffer for native tool-end evidence. It preserves explicit native identity plus optional declared criterion/value only, deduplicates by native `toolCallId`, evicts the oldest entry when capacity is reached, and supports defensive snapshot, atomic consume and clear operations.
+
+The buffer is not durable state and has no authority: it contains no raw tool output, arguments, artifacts, reasoning, confidence, Oracle verdict, authorization or publication state. It is intentionally dormant until a dedicated host integration proves the lifecycle and declaration source.
+
 ## P10 — Step-limit evidence context
 
 The existing `observeStepLimitImprovementCandidate` host path now consumes this bounded context before constructing its OBSERVED event, workflow candidate identity and CANDIDATE correlation event. This adds no new runtime collection: request/resume call sites remain unchanged, so only identities already supplied by the host are normalized.

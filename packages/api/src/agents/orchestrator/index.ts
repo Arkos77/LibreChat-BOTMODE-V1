@@ -25,3 +25,5 @@ export * from './toolEvidenceDistill';
 export * from './improvementEvidenceContext';
 
 export * from './stepLimitEvidenceContext';
+
+export * from './transientEvidenceBuffer';
