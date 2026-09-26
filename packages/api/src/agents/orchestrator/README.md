@@ -143,3 +143,99 @@ For accepted skill-update candidates, authorization is composed through bounded 
 5. `authorizeImprovementPublication` only composes these stages; it does not own ACL policy or mutate skills.
 
 Skill creation remains closed until its native create-policy seam is explicitly proven. The authorization slice does not call skill mutation methods, persist improvement content, schedule work, or convert Oracle acceptance into execution authority.
+
+## P10 — Governed Self-Improvement Capability
+
+P10 is a governed BOT MODE capability for proposing, validating, authorizing, and applying bounded improvements. It is not a runtime, scheduler, task engine, authority source, or autonomous self-modification loop.
+
+### Architectural placement
+
+P10 belongs to the Decision Layer and governance path:
+
+```text
+OBSERVATION
+ -> ImprovementCandidate
+ -> DistillValidationRequest
+ -> Oracle verification
+ -> ImprovementDisposition
+ -> Policy / native authorization
+ -> controlled publication boundary
+ -> native LibreChat mutation primitive
+```
+
+Execution authority remains outside P10. The native Task Engine owns execution identity, ownership, leases, retry/recovery, cancellation, settlement, dependencies, concurrency, and idempotence. Native LibreChat authorization remains the authority for resource mutation. Oracle verifies evidence and never grants execution authority. MTO observes and correlates the chain and never becomes an authority.
+
+### Authority invariants
+
+- An ImprovementCandidate is a proposal, never an authorization or executable task.
+- Oracle `ACCEPT` may only produce a bounded disposition such as `AUTHORIZATION_REQUIRED`; it cannot authorize or publish an improvement.
+- Improvement authorization requests start with `authorized: false` and `publishable: false`.
+- Skill publication requires the native capability and resource authorization seams.
+- Publication revalidates the exact authorized payload digest before the native mutation call.
+- Native optimistic concurrency remains authoritative through `expectedVersion`; `conflict` and `not_found` are preserved as native results.
+- Durable ImprovementCandidate and ImprovementLifecycleEvent stores are persistence-only and cannot validate, authorize, schedule, execute, publish, or settle work.
+- P10 must not create a second runtime, orchestrator, task engine, scheduler, permission system, durable authority, or source of truth.
+- Skill creation remains closed until a distinct native create-policy seam is proven.
+
+### MTO mapping
+
+P10 participates in the operational trace without owning it:
+
+| MTO stage | P10 responsibility |
+| --- | --- |
+| OBSERVATION | bounded improvement signals and provenance references |
+| EVIDENCE | referenced observations and independent Oracle evidence |
+| DECISION | candidate formation and disposition only |
+| POLICY | host/native policy evaluation outside persistence |
+| AUTHORIZATION | native authorization result, distinct from Oracle verification |
+| TASK | native Task Engine identity; never synthesized from trace/candidate IDs |
+| ACTION | native LibreChat mutation primitive only after authorization |
+| VERIFICATION | independent Oracle result |
+| DURABLE | immutable candidate snapshot plus append-only lifecycle events |
+| RESULT | native effect result such as updated/conflict/not_found |
+
+MTO event identity remains observational. P10 may correlate events such as `CANDIDATE`, `VALIDATING`, `VERIFIED`, `REJECTED`, `HUMAN_APPROVAL_REQUIRED`, `AUTHORIZED`, `DENIED`, `COMMITTED`, and `PUBLISHED`, but emitting or persisting such an event does not itself cause the next stage.
+
+### Identity separation
+
+The following identities are intentionally distinct and must not be substituted for one another:
+
+- `traceId`: MTO trace correlation.
+- `traceEventId`: one MTO event identity.
+- `candidateId`: immutable improvement proposal identity.
+- `taskId`: real native Task Engine execution identity.
+- `decisionId`: decision record identity when/where the Decision Layer produces one.
+- `authorizationId`: authorization record identity when/where the authorization layer produces one.
+- `actorId`: principal requesting or performing the authorized native operation.
+- `skillId` plus `expectedVersion`: native resource identity and optimistic concurrency boundary.
+- `payloadDigest`: exact content binding for a skill improvement payload.
+
+In particular, P10 must never manufacture a Task Engine identity from `traceId`, `candidateId`, response/message IDs, run IDs, or event IDs.
+
+### Lifecycle states
+
+The durable/trace vocabulary may represent:
+
+`CANDIDATE -> VALIDATING -> VERIFIED | REJECTED | UNKNOWN | HUMAN_REVIEW -> AUTHORIZATION_REQUIRED -> AUTHORIZED | DENIED -> COMMITTED / PUBLISHED`
+
+These states are descriptive records of progression. They do not imply that each transition is currently wired in production and they do not grant authority by themselves.
+
+### Current activation boundary
+
+The currently proven production activation is intentionally limited to durable candidate creation from the bounded top-level `tool_call_limit` seam after the terminal response has already been persisted. Distill, lifecycle-event progression, authorization-to-publication orchestration, and controlled publication are not exposed through a production route or runtime caller.
+
+This is deliberate. The top-level candidate seam does not currently expose a proven native Task Engine `taskId`. Therefore P10 must remain fail-closed and must not invoke Distill or synthesize an execution identity. A future activation may cross from the Task Engine into P10 only when it can provide the real native `taskId`, the producer identity, and independently valid Oracle evidence while preserving the authority boundaries above.
+
+### V6.1 integration sequence
+
+1. Observe and persist bounded candidates without side effects.
+2. Correlate candidates and future lifecycle records through MTO without making MTO authoritative.
+3. Accept a real native Task Engine `taskId` and producer identity at the Distill boundary; never invent them.
+4. Validate through the independent Oracle using criterion-bound evidence.
+5. Produce a bounded disposition; Oracle acceptance is not authorization.
+6. Evaluate native policy/capability/resource authorization.
+7. Apply the exact authorized payload through the native mutation primitive with optimistic versioning.
+8. Record bounded lifecycle/MTO evidence of the effect without using those records to manufacture authority.
+9. Preserve native recovery, idempotence, checkpoint, and settlement semantics when runtime activation is introduced.
+
+Until steps 3 through 9 have production call sites with proofs, P10 remains a governed dormant capability rather than an autonomous improvement loop.
