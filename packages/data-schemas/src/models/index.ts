@@ -1,4 +1,5 @@
 import { createAgentQueuedTurnModel, createAgentQueuedTurnSequenceModel } from './queuedTurn';
+import { createImprovementLifecycleEventModel } from './improvementLifecycleEvent';
 import { createAgentTriggerLaneSequenceModel } from './triggerLaneSequence';
 import { createImprovementCandidateModel } from './improvementCandidate';
 import { createScheduleModel, createScheduleRunModel } from './schedule';
@@ -89,6 +90,7 @@ export function createModels(mongoose: typeof import('mongoose')): {
   AutonomyMandate: ReturnType<typeof createAutonomyMandateModel>;
   AuditLog: ReturnType<typeof createAuditLogModel>;
   ImprovementCandidate: ReturnType<typeof createImprovementCandidateModel>;
+  ImprovementLifecycleEvent: ReturnType<typeof createImprovementLifecycleEventModel>;
   Group: ReturnType<typeof createGroupModel>;
   Config: ReturnType<typeof createConfigModel>;
   AgentTriggerDelivery: ReturnType<typeof createAgentTriggerDeliveryModel>;
@@ -140,6 +142,7 @@ export function createModels(mongoose: typeof import('mongoose')): {
     AutonomyMandate: createAutonomyMandateModel(mongoose),
     AuditLog: createAuditLogModel(mongoose),
     ImprovementCandidate: createImprovementCandidateModel(mongoose),
+    ImprovementLifecycleEvent: createImprovementLifecycleEventModel(mongoose),
     Group: createGroupModel(mongoose),
     Config: createConfigModel(mongoose),
     AgentTriggerDelivery: createAgentTriggerDeliveryModel(mongoose),

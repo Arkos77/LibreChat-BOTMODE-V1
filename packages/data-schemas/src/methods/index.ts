@@ -1,5 +1,9 @@
 import type { RoleMethods, RoleDeps } from './role';
 import {
+  createImprovementLifecycleEventMethods,
+  type ImprovementLifecycleEventMethods,
+} from './improvementLifecycleEvent';
+import {
   createImprovementCandidateMethods,
   type ImprovementCandidateMethods,
 } from './improvementCandidate';
@@ -227,6 +231,7 @@ export type AllMethods = UserMethods &
   SystemGrantMethods &
   AuditLogMethods &
   ImprovementCandidateMethods &
+  ImprovementLifecycleEventMethods &
   ShareMethods &
   AccessRoleMethods &
   PluginAuthMethods &
@@ -449,6 +454,7 @@ export function createMethods(
     ...systemGrantMethods,
     ...createAuditLogMethods(mongoose),
     ...createImprovementCandidateMethods(mongoose),
+    ...createImprovementLifecycleEventMethods(mongoose),
     ...createShareMethods(mongoose),
     ...createPluginAuthMethods(mongoose),
     /* Tier 1 */
