@@ -206,6 +206,24 @@ describe('initializeClient — processAgent ACL gate', () => {
     );
   });
 
+  it('threads the optional MTO event sink into AgentClient unchanged', async () => {
+    mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+    const req = makeReq();
+    const mtoEventSink = jest.fn();
+
+    await initializeClient({
+      req,
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption: makeEndpointOption(),
+      mtoTraceId: 'mto-trace-init-sink-123',
+      mtoEventSink,
+    });
+
+    expect(agentClientArgs.mtoTraceId).toBe('mto-trace-init-sink-123');
+    expect(agentClientArgs.mtoEventSink).toBe(mtoEventSink);
+  });
+
   it('threads the host-owned MTO trace identity into AgentClient unchanged', async () => {
     mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
     const req = makeReq();

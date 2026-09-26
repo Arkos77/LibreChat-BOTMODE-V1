@@ -1,4 +1,5 @@
 require('events').EventEmitter.defaultMaxListeners = 100;
+const { randomUUID } = require('crypto');
 const {
   logger,
   MAX_AGENT_EVENT_ACTOR_ENCODING_LENGTH,
@@ -35,6 +36,7 @@ const {
   computeSummaryUsedTokens,
   priorRunOutputTokens,
   createSubagentUsageSink,
+  fromSubagentUsage,
   anyAgentReplaysReasoningContent,
   GenerationJobManager,
   PENDING_ACTION_EXPIRED_CODE,
@@ -3311,6 +3313,43 @@ class AgentClient extends BaseClient {
    * @param {AppConfig} [appConfig]
    * @returns {((usage: UsageMetadata) => void) | undefined}
    */
+  /**
+   * Adapts native subagent usage into bounded MTO observation events. Missing
+   * configuration and sink failures are contained so billing and execution
+   * remain authoritative and unchanged.
+   */
+  buildMtoSubagentUsageObserver() {
+    const traceId = this.options?.mtoTraceId;
+    const sink = this.options?.mtoEventSink;
+    const threadId = this.options?.req?._resumableStreamId;
+    if (typeof traceId !== 'string' || traceId.trim() === '' || typeof sink !== 'function') {
+      return () => {};
+    }
+    return (event) => {
+      try {
+        const observed = fromSubagentUsage(event, {
+          traceId,
+          traceEventId: randomUUID(),
+          threadId,
+        });
+        const emitted = sink(observed);
+        if (emitted != null) {
+          void Promise.resolve(emitted).catch((err) => {
+            logger.warn(
+              '[AgentClient] Failed to emit MTO subagent usage observation',
+              getSafeErrorMetadata(err),
+            );
+          });
+        }
+      } catch (err) {
+        logger.warn(
+          '[AgentClient] Failed to emit MTO subagent usage observation',
+          getSafeErrorMetadata(err),
+        );
+      }
+    };
+  }
+
   buildSubagentUsageEmitter(appConfig) {
     /** Detached children can report usage after `disposeClient` has cleared the
      * parent client. Snapshot every value the emitter needs now; the returned
@@ -4401,11 +4440,18 @@ class AgentClient extends BaseClient {
            *  The sink also streams each as an `on_token_usage` event so the
            *  gauge's session cost/totals include billed subagent usage (the
            *  `subagent` tag keeps it out of the live context meter). */
-          subagentUsageSink: createSubagentUsageSink(
-            this.collectedUsage,
-            this.buildSubagentUsageEmitter(appConfig),
-            this.buildDetachedSubagentUsageRecorder(balanceConfig, transactionsConfig),
-          ),
+          subagentUsageSink: (() => {
+            const usageSink = createSubagentUsageSink(
+              this.collectedUsage,
+              this.buildSubagentUsageEmitter(appConfig),
+              this.buildDetachedSubagentUsageRecorder(balanceConfig, transactionsConfig),
+            );
+            const observeUsage = this.buildMtoSubagentUsageObserver();
+            return (event) => {
+              observeUsage(event);
+              return usageSink(event);
+            };
+          })(),
           subagentTasks: this.options.subagentTasks,
         }).then((createdRun) => {
           if (!createdRun) {
@@ -4929,11 +4975,18 @@ class AgentClient extends BaseClient {
         summarizationConfig: appConfig?.summarization,
         appConfig,
         tokenCounter,
-        subagentUsageSink: createSubagentUsageSink(
-          this.collectedUsage,
-          this.buildSubagentUsageEmitter(appConfig),
-          this.buildDetachedSubagentUsageRecorder(balanceConfig, transactionsConfig),
-        ),
+        subagentUsageSink: (() => {
+          const usageSink = createSubagentUsageSink(
+            this.collectedUsage,
+            this.buildSubagentUsageEmitter(appConfig),
+            this.buildDetachedSubagentUsageRecorder(balanceConfig, transactionsConfig),
+          );
+          const observeUsage = this.buildMtoSubagentUsageObserver();
+          return (event) => {
+            observeUsage(event);
+            return usageSink(event);
+          };
+        })(),
         subagentTasks: this.options.subagentTasks,
       });
 

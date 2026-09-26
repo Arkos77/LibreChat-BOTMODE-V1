@@ -166,6 +166,7 @@ const initializeClient = async ({
   jobCreatedAt,
   checkpointNamespace,
   mtoTraceId,
+  mtoEventSink,
   requestBody,
 }) => {
   if (!endpointOption) {
@@ -1630,6 +1631,7 @@ const initializeClient = async ({
     jobCreatedAt,
     checkpointNamespace,
     mtoTraceId,
+    mtoEventSink,
     mcpRequestBody: runtimeRequestBody,
   });
 

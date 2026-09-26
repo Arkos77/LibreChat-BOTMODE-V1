@@ -71,3 +71,88 @@ describe('AgentClient#buildSubagentUsageEmitter', () => {
     await expect(pendingSubagentEmits[0]).resolves.toBeUndefined();
   });
 });
+
+describe('AgentClient MTO subagent usage observation', () => {
+  it('emits a sanitized MTO observation with the durable trace and an independent event id', async () => {
+    const mtoEvents = [];
+    const self = {
+      options: {
+        mtoTraceId: 'mto-trace-usage-123',
+        mtoEventSink: (event) => mtoEvents.push(event),
+      },
+    };
+    const observe = AgentClient.prototype.buildMtoSubagentUsageObserver.call(self);
+    const usageEvent = {
+      usage: { input_tokens: 7, output_tokens: 3, total_tokens: 10 },
+      model: 'child-model',
+      provider: 'custom',
+      subagentType: 'researcher',
+      subagentKind: 'agent',
+      depth: 1,
+      runId: 'root-run',
+      parentRunId: 'parent-run',
+      subagentRunId: 'child-run',
+      subagentAgentId: 'child-agent',
+      memberAgentId: 'member-agent',
+    };
+
+    observe(usageEvent);
+    await Promise.resolve();
+
+    expect(mtoEvents).toHaveLength(1);
+    expect(mtoEvents[0]).toMatchObject({
+      type: 'OBSERVED',
+      source: 'subagent-usage',
+      identity: {
+        traceId: 'mto-trace-usage-123',
+        rootRunId: 'root-run',
+        runId: 'root-run',
+        parentRunId: 'parent-run',
+        subagentRunId: 'child-run',
+        agentId: 'child-agent',
+        memberAgentId: 'member-agent',
+      },
+      payload: {
+        model: 'child-model',
+        provider: 'custom',
+        subagentType: 'researcher',
+        subagentKind: 'agent',
+        depth: 1,
+        usage: { input_tokens: 7, output_tokens: 3, total_tokens: 10 },
+      },
+    });
+    expect(mtoEvents[0].identity.traceEventId).toEqual(expect.any(String));
+    expect(mtoEvents[0].identity.traceEventId).not.toBe('mto-trace-usage-123');
+  });
+
+  it('contains synchronous and asynchronous MTO sink failures', async () => {
+    const syncSelf = {
+      options: {
+        mtoTraceId: 'mto-trace-sync',
+        mtoEventSink: () => {
+          throw new Error('sync sink failure');
+        },
+      },
+    };
+    const asyncSelf = {
+      options: {
+        mtoTraceId: 'mto-trace-async',
+        mtoEventSink: () => Promise.reject(new Error('async sink failure')),
+      },
+    };
+
+    const syncObserve = AgentClient.prototype.buildMtoSubagentUsageObserver.call(syncSelf);
+    const asyncObserve = AgentClient.prototype.buildMtoSubagentUsageObserver.call(asyncSelf);
+    const usageEvent = {
+      usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+      subagentType: 'researcher',
+      runId: 'root-run',
+      subagentRunId: 'child-run',
+    };
+
+    expect(() => syncObserve(usageEvent)).not.toThrow();
+    expect(() => asyncObserve(usageEvent)).not.toThrow();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+});
