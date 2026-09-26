@@ -48,6 +48,9 @@ const {
 } = require('@librechat/api');
 const { disposeClient } = require('~/server/cleanup');
 const { observeMtoEvent } = require('~/server/services/Endpoints/agents/mtoObservation');
+const {
+  observeStepLimitImprovementCandidate,
+} = require('~/server/services/Endpoints/agents/improvementCandidate');
 const { decryptMetadata } = require('~/server/services/ActionService');
 const { checkPermission } = require('~/server/services/PermissionService');
 const {
@@ -541,6 +544,12 @@ async function finalizeResumedTurn({
     );
     if (!savedResponseMessage) {
       throw new Error('Resumed response could not be persisted before terminal publication');
+    }
+    if (stepLimitReached) {
+      observeStepLimitImprovementCandidate({
+        traceId: job.metadata.mtoTraceId,
+        responseMessageId: savedResponseMessage.messageId ?? responseMessageId,
+      });
     }
     if (appliedEventActor != null) {
       const recorded = await recordAgentEventActorReconciliation({

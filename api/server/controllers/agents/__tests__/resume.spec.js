@@ -1372,6 +1372,31 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
       expect(capturedInit.mtoEventSink).toEqual(expect.any(Function));
     });
 
+    it('emits a proposal-only workflow improvement candidate when a resumed turn hits the tool call limit', async () => {
+      mockGenerationJobManager.getJob.mockResolvedValue(
+        makeToolApprovalJob({ metadata: { mtoTraceId: 'mto-trace-step-limit-resume' } }),
+      );
+      mockInitializeClient.mockResolvedValue({
+        client: makeClient({ stepLimitReached: true }),
+        userMCPAuthMap: {},
+      });
+
+      const res = await post(approveBody());
+      expect(res.status).toBe(200);
+      await settled;
+      await flush();
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        '[BOT MODE P10] workflow improvement candidate',
+        expect.objectContaining({
+          target: 'workflow',
+          status: 'CANDIDATE',
+          traceId: 'mto-trace-step-limit-resume',
+          publication: expect.objectContaining({ path: 'proposal-only' }),
+        }),
+      );
+    });
+
     it('restores the paused turn start from the durable job before initializeClient', async () => {
       mockGenerationJobManager.getJob.mockResolvedValue(makeToolApprovalJob({ createdAt: 1234 }));
       const res = await post(approveBody());

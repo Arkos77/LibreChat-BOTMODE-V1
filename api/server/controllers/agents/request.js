@@ -44,6 +44,9 @@ const {
 const { disposeClient } = require('~/server/cleanup');
 const { observeMtoEvent } = require('~/server/services/Endpoints/agents/mtoObservation');
 const {
+  observeStepLimitImprovementCandidate,
+} = require('~/server/services/Endpoints/agents/improvementCandidate');
+const {
   getMCPRequestContext,
   cleanupMCPRequestContextForReq,
 } = require('~/server/services/MCPRequestContext');
@@ -2761,6 +2764,12 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
               ? 'Terminal response could not be persisted as unfinished'
               : 'Response message could not be persisted before terminal publication',
           );
+        }
+        if (stepLimitReached) {
+          observeStepLimitImprovementCandidate({
+            traceId: mtoTraceId,
+            responseMessageId: savedResponseMessage.messageId ?? response?.messageId,
+          });
         }
         if (appliedEventActor != null) {
           const recorded = await recordAgentEventActorReconciliation({

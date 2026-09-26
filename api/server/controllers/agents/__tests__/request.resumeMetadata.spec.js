@@ -250,6 +250,9 @@ jest.mock('@librechat/data-schemas', () => ({
 }));
 
 jest.mock('@librechat/api', () => ({
+  createMtoEvent: (...args) => jest.requireActual('@librechat/api').createMtoEvent(...args),
+  createImprovementCandidate: (...args) =>
+    jest.requireActual('@librechat/api').createImprovementCandidate(...args),
   sendEvent: jest.fn(),
   isScheduleFireRequest: (...args) => mockIsScheduleFireRequest(...args),
   exemptFromConcurrencyLimiter: (...args) => mockExemptFromConcurrencyLimiter(...args),
@@ -5653,6 +5656,16 @@ describe('ResumableAgentController resume metadata', () => {
 
     it('persists a step-limited turn as unfinished with the tool-call-limit finish reason', async () => {
       await runFirstTurn({ clientOverrides: stepLimitClient });
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        '[BOT MODE P10] workflow improvement candidate',
+        expect.objectContaining({
+          target: 'workflow',
+          status: 'CANDIDATE',
+          traceId: expect.any(String),
+          publication: expect.objectContaining({ path: 'proposal-only' }),
+        }),
+      );
 
       expect(savedResponseRow()).toEqual(
         expect.objectContaining({
