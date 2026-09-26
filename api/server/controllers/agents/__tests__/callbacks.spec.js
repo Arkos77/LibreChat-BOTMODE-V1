@@ -1,3 +1,27 @@
+const mockFromSubagentActivity = jest.fn((event, context) => ({
+  type: 'OBSERVED',
+  source: 'subagent-activity',
+  timestamp: event.timestamp ?? '2026-09-26T00:00:00.000Z',
+  identity: {
+    traceId: context.traceId,
+    traceEventId: context.traceEventId,
+    ...(context.threadId ? { threadId: context.threadId } : {}),
+    ...(event.runId ? { runId: event.runId, rootRunId: event.runId } : {}),
+    ...(event.parentRunId ? { parentRunId: event.parentRunId } : {}),
+    ...(event.subagentRunId ? { subagentRunId: event.subagentRunId } : {}),
+    ...(event.subagentAgentId ? { agentId: event.subagentAgentId } : {}),
+    ...(event.memberAgentId ? { memberAgentId: event.memberAgentId } : {}),
+    ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
+  },
+  payload: {
+    phase: event.phase,
+    subagentType: event.subagentType,
+    ...(event.subagentKind ? { subagentKind: event.subagentKind } : {}),
+    ...(event.depth != null ? { depth: event.depth } : {}),
+    ...(event.label ? { label: event.label } : {}),
+  },
+}));
+
 const { Tools, StepEvents } = require('librechat-data-provider');
 
 // Mock all dependencies before requiring the module
@@ -7,6 +31,7 @@ jest.mock('nanoid', () => ({
 
 jest.mock('@librechat/api', () => ({
   sendEvent: jest.fn(),
+  fromSubagentActivity: (...args) => mockFromSubagentActivity(...args),
   writeAttachmentEvent: jest.fn(),
   GenerationJobManager: {
     emitChunk: jest.fn(),
@@ -30,6 +55,7 @@ jest.mock('@librechat/data-schemas', () => ({
   logger: {
     debug: jest.fn(),
     error: jest.fn(),
+    warn: jest.fn(),
   },
 }));
 
@@ -163,6 +189,134 @@ describe('resumable event generation fencing', () => {
     expect(contentParts[0].tool_call.output).toBe(output);
     expect(contentParts[0].tool_call.args).toEqual(args);
     expect(JSON.stringify(contentParts[0])).not.toContain('[truncated:');
+  });
+
+  it('does not observe hidden sequential subagent activity in MTO', async () => {
+    const { GraphEvents } = jest.requireActual('@librechat/agents');
+    const { getDefaultHandlers } = require('~/server/controllers/agents/callbacks');
+    const mtoEventSink = jest.fn();
+    const handlers = getDefaultHandlers({
+      res: { write: jest.fn() },
+      aggregateContent: jest.fn(),
+      toolEndCallback: jest.fn(),
+      collectedUsage: [],
+      streamId: 'conversation-mto-hidden',
+      jobCreatedAt: 1234,
+      mtoTraceId: 'mto-trace-hidden',
+      mtoEventSink,
+    });
+    const data = {
+      phase: 'run_step_closed',
+      subagentType: 'researcher',
+      runId: 'root-run',
+      subagentRunId: 'child-run',
+      data: { reasoning: 'must never reach MTO' },
+    };
+
+    await handlers[GraphEvents.ON_SUBAGENT_UPDATE].handle(GraphEvents.ON_SUBAGENT_UPDATE, data, {
+      hide_sequential_outputs: true,
+      last_agent_id: 'agent-final',
+      langgraph_node: 'agent-intermediate',
+    });
+
+    expect(mockFromSubagentActivity).not.toHaveBeenCalled();
+    expect(mtoEventSink).not.toHaveBeenCalled();
+  });
+
+  it('observes visible subagent activity with the durable trace and independent event id', async () => {
+    const { GraphEvents } = jest.requireActual('@librechat/agents');
+    const { getDefaultHandlers } = require('~/server/controllers/agents/callbacks');
+    const mtoEvents = [];
+    const handlers = getDefaultHandlers({
+      res: { write: jest.fn() },
+      aggregateContent: jest.fn(),
+      toolEndCallback: jest.fn(),
+      collectedUsage: [],
+      streamId: 'conversation-mto-visible',
+      jobCreatedAt: 1234,
+      mtoTraceId: 'mto-trace-visible',
+      mtoEventSink: (event) => mtoEvents.push(event),
+    });
+    const data = {
+      phase: 'run_step_closed',
+      subagentType: 'researcher',
+      subagentKind: 'agent',
+      depth: 1,
+      runId: 'root-run',
+      parentRunId: 'parent-run',
+      subagentRunId: 'child-run',
+      subagentAgentId: 'child-agent',
+      memberAgentId: 'member-agent',
+      parentToolCallId: 'parent-tool',
+      data: { reasoning: 'raw field stays outside bounded adapter payload' },
+    };
+
+    await handlers[GraphEvents.ON_SUBAGENT_UPDATE].handle(GraphEvents.ON_SUBAGENT_UPDATE, data, {
+      hide_sequential_outputs: false,
+    });
+    await Promise.resolve();
+
+    expect(mtoEvents).toHaveLength(1);
+    expect(mtoEvents[0]).toMatchObject({
+      type: 'OBSERVED',
+      source: 'subagent-activity',
+      identity: {
+        traceId: 'mto-trace-visible',
+        threadId: 'conversation-mto-visible',
+        runId: 'root-run',
+        rootRunId: 'root-run',
+        parentRunId: 'parent-run',
+        subagentRunId: 'child-run',
+        agentId: 'child-agent',
+        memberAgentId: 'member-agent',
+        parentToolCallId: 'parent-tool',
+      },
+      payload: {
+        phase: 'run_step_closed',
+        subagentType: 'researcher',
+        subagentKind: 'agent',
+        depth: 1,
+      },
+    });
+    expect(mtoEvents[0].identity.traceEventId).toEqual(expect.any(String));
+    expect(mtoEvents[0].identity.traceEventId).not.toBe('mto-trace-visible');
+    expect(mtoEvents[0].payload).not.toHaveProperty('data');
+  });
+
+  it('contains MTO activity sink failures without blocking native forwarding', async () => {
+    const { GenerationJobManager } = require('@librechat/api');
+    const { GraphEvents } = jest.requireActual('@librechat/agents');
+    const { getDefaultHandlers } = require('~/server/controllers/agents/callbacks');
+    const handlers = getDefaultHandlers({
+      res: { write: jest.fn() },
+      aggregateContent: jest.fn(),
+      toolEndCallback: jest.fn(),
+      collectedUsage: [],
+      streamId: 'conversation-mto-failure',
+      jobCreatedAt: 1234,
+      mtoTraceId: 'mto-trace-failure',
+      mtoEventSink: () => Promise.reject(new Error('sink failed')),
+    });
+    const data = {
+      phase: 'run_step_closed',
+      subagentType: 'researcher',
+      runId: 'root-run',
+      subagentRunId: 'child-run',
+    };
+
+    await expect(
+      handlers[GraphEvents.ON_SUBAGENT_UPDATE].handle(GraphEvents.ON_SUBAGENT_UPDATE, data, {
+        hide_sequential_outputs: false,
+      }),
+    ).resolves.toBeUndefined();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(GenerationJobManager.emitChunk).toHaveBeenCalledWith(
+      'conversation-mto-failure',
+      { event: GraphEvents.ON_SUBAGENT_UPDATE, data },
+      { expectedCreatedAt: 1234 },
+    );
   });
 
   it('publishes a hidden sequential agent snapshot without recording or forwarding it', async () => {
