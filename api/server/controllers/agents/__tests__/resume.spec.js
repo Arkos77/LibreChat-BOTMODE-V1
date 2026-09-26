@@ -83,6 +83,10 @@ const mockGetAgentCheckpointer = jest.fn();
 const mockCheckpointGetTuple = jest.fn();
 
 const mockSaveMessage = jest.fn();
+const mockRecordImprovementCandidate = jest.fn(async ({ candidate }) => ({
+  record: candidate,
+  replayed: false,
+}));
 const mockGetConvo = jest.fn();
 const mockGetMessages = jest.fn();
 const mockGetFiles = jest.fn();
@@ -148,6 +152,7 @@ jest.mock('@librechat/api', () => ({
 
 jest.mock('~/models', () => ({
   saveMessage: (...args) => mockSaveMessage(...args),
+  recordImprovementCandidate: (...args) => mockRecordImprovementCandidate(...args),
   getConvo: (...args) => mockGetConvo(...args),
   getMessages: (...args) => mockGetMessages(...args),
   getFiles: (...args) => mockGetFiles(...args),
@@ -1387,12 +1392,23 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
       await flush();
 
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        '[BOT MODE P10] workflow improvement candidate',
+        '[BOT MODE P10] durable workflow improvement candidate',
         expect.objectContaining({
           target: 'workflow',
           status: 'CANDIDATE',
           traceId: 'mto-trace-step-limit-resume',
           publication: expect.objectContaining({ path: 'proposal-only' }),
+        }),
+      );
+      expect(mockRecordImprovementCandidate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user: 'user-1',
+          conversationId: 'convo-123',
+          tenantId: 'tenant-1',
+          candidate: expect.objectContaining({
+            target: 'workflow',
+            status: 'CANDIDATE',
+          }),
         }),
       );
     });

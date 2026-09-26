@@ -3,14 +3,19 @@ const { logger } = require('@librechat/data-schemas');
 
 /**
  * Convert the native, explicit tool-call-limit terminal signal into a bounded
- * workflow improvement proposal. This is observation/proposal only: it does
- * not invoke Oracle, authorize anything, mutate runtime limits, publish an
- * improvement, persist a candidate, or settle task state.
+ * workflow improvement proposal and persist its immutable snapshot before
+ * exposing the CANDIDATE observation. Persistence remains auxiliary to the
+ * already-durable terminal response: a store failure is contained and returns
+ * null rather than changing terminal execution.
  */
-function observeStepLimitImprovementCandidate({
+async function observeStepLimitImprovementCandidate({
   traceId,
   responseMessageId,
+  user,
+  tenantId,
+  conversationId,
   createdAt,
+  persistCandidate,
   mtoEventSink,
 }) {
   if (typeof traceId !== 'string' || traceId.trim() === '') {
@@ -19,10 +24,20 @@ function observeStepLimitImprovementCandidate({
   if (typeof responseMessageId !== 'string' || responseMessageId.trim() === '') {
     return null;
   }
+  if (user == null || (typeof user === 'string' && user.trim() === '')) {
+    return null;
+  }
+  if (typeof conversationId !== 'string' || conversationId.trim() === '') {
+    return null;
+  }
+  if (typeof persistCandidate !== 'function') {
+    return null;
+  }
 
   try {
     const normalizedTraceId = traceId.trim();
     const normalizedResponseMessageId = responseMessageId.trim();
+    const normalizedConversationId = conversationId.trim();
     const timestamp = createdAt ?? new Date().toISOString();
     const observation = createMtoEvent(
       'OBSERVED',
@@ -45,7 +60,16 @@ function observeStepLimitImprovementCandidate({
       createdAt: timestamp,
     });
 
-    logger.debug('[BOT MODE P10] workflow improvement candidate', candidate);
+    await persistCandidate({
+      user,
+      ...(typeof tenantId === 'string' && tenantId.trim() !== ''
+        ? { tenantId: tenantId.trim() }
+        : {}),
+      conversationId: normalizedConversationId,
+      candidate,
+    });
+
+    logger.debug('[BOT MODE P10] durable workflow improvement candidate', candidate);
     if (typeof mtoEventSink === 'function') {
       try {
         mtoEventSink(
@@ -63,20 +87,20 @@ function observeStepLimitImprovementCandidate({
       } catch (error) {
         try {
           logger.warn(
-            '[BOT MODE P10] Failed to emit workflow improvement candidate observation',
+            '[BOT MODE P10] Failed to emit durable workflow improvement candidate observation',
             error,
           );
         } catch (_) {
-          // MTO observation must never affect candidate creation or terminal execution.
+          // MTO observation must never affect the durable candidate or terminal execution.
         }
       }
     }
     return candidate;
   } catch (error) {
     try {
-      logger.warn('[BOT MODE P10] Failed to create workflow improvement candidate', error);
+      logger.warn('[BOT MODE P10] Failed to persist workflow improvement candidate', error);
     } catch (_) {
-      // Candidate observation must never affect terminal response persistence.
+      // Candidate persistence must never affect the already-durable terminal response.
     }
     return null;
   }

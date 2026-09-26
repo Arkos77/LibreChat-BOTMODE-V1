@@ -68,6 +68,10 @@ const mockFilterPersistableAbortContent = jest.fn((content) =>
 const mockGetConvo = jest.fn();
 const mockGetMessages = jest.fn();
 const mockSaveMessage = jest.fn();
+const mockRecordImprovementCandidate = jest.fn(async ({ candidate }) => ({
+  record: candidate,
+  replayed: false,
+}));
 const mockSaveConvo = jest.fn();
 const mockIsAgentTriggerPrincipalActive = jest.fn();
 const mockIsSubagentOwnerAdmissible = jest.fn();
@@ -353,6 +357,7 @@ jest.mock('~/cache', () => ({
 
 jest.mock('~/models', () => ({
   saveMessage: (...args) => mockSaveMessage(...args),
+  recordImprovementCandidate: (...args) => mockRecordImprovementCandidate(...args),
   saveConvo: (...args) => mockSaveConvo(...args),
   getMessages: (...args) => mockGetMessages(...args),
   getConvo: (...args) => mockGetConvo(...args),
@@ -5658,7 +5663,7 @@ describe('ResumableAgentController resume metadata', () => {
       await runFirstTurn({ clientOverrides: stepLimitClient });
 
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        '[BOT MODE P10] workflow improvement candidate',
+        '[BOT MODE P10] durable workflow improvement candidate',
         expect.objectContaining({
           target: 'workflow',
           status: 'CANDIDATE',
@@ -5666,7 +5671,20 @@ describe('ResumableAgentController resume metadata', () => {
           publication: expect.objectContaining({ path: 'proposal-only' }),
         }),
       );
+      expect(mockRecordImprovementCandidate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user: 'user-123',
+          conversationId: expect.any(String),
+          candidate: expect.objectContaining({
+            target: 'workflow',
+            status: 'CANDIDATE',
+          }),
+        }),
+      );
 
+      expect(mockRecordImprovementCandidate.mock.calls[0][0].conversationId).toBe(
+        savedResponseRow().conversationId,
+      );
       expect(savedResponseRow()).toEqual(
         expect.objectContaining({
           unfinished: true,

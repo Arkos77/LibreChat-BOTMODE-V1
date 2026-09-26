@@ -77,6 +77,7 @@ const {
   settleAgentEventActorSuspension,
   isAgentTriggerPrincipalActive,
   isSubagentOwnerAdmissible,
+  recordImprovementCandidate,
 } = require('~/models');
 const {
   acquireEventChildGenerationLease,
@@ -2766,9 +2767,13 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
           );
         }
         if (stepLimitReached) {
-          observeStepLimitImprovementCandidate({
+          await observeStepLimitImprovementCandidate({
             traceId: mtoTraceId,
             responseMessageId: savedResponseMessage.messageId ?? response?.messageId,
+            user: userId,
+            ...(req.user.tenantId == null ? {} : { tenantId: req.user.tenantId }),
+            conversationId,
+            persistCandidate: recordImprovementCandidate,
             mtoEventSink: observeMtoEvent,
           });
         }

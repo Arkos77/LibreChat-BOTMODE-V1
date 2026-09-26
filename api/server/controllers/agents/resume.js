@@ -78,6 +78,7 @@ const {
   reserveAgentEventActorDetachedAction,
   markAgentEventActorDetachedActionRunning,
   settleAgentEventActorDetachedAction,
+  recordImprovementCandidate,
 } = require('~/models');
 const {
   acquireEventChildGenerationLease,
@@ -546,9 +547,13 @@ async function finalizeResumedTurn({
       throw new Error('Resumed response could not be persisted before terminal publication');
     }
     if (stepLimitReached) {
-      observeStepLimitImprovementCandidate({
+      await observeStepLimitImprovementCandidate({
         traceId: job.metadata.mtoTraceId,
         responseMessageId: savedResponseMessage.messageId ?? responseMessageId,
+        user: userId,
+        ...(job.metadata?.tenantId == null ? {} : { tenantId: job.metadata.tenantId }),
+        conversationId,
+        persistCandidate: recordImprovementCandidate,
         mtoEventSink: observeMtoEvent,
       });
     }
