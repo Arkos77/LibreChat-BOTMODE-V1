@@ -328,6 +328,7 @@ describe('RedisJobStore', () => {
         parentMessageId: 'parent-1',
       },
       responseMessageId: 'response-1',
+      mtoTraceId: 'mto-trace-redis-123',
       mcpRequestBody: {
         messageId: 'response-1',
         conversationId: 'overridden-conversation',
@@ -420,6 +421,7 @@ describe('RedisJobStore', () => {
         parentMessageId: 'parent-1',
       },
       responseMessageId: 'response-1',
+      mtoTraceId: 'mto-trace-redis-123',
       agentEventDeliveryKey: 'completion-delivery-1',
       agentEventInvocationKey: 'original-delivery-1',
       agentEventInvocationGenerationCreatedAt: 987654,
@@ -478,6 +480,7 @@ describe('RedisJobStore', () => {
     expect(storedFields).toMatchObject({
       conversationId: 'conversation-1',
       responseMessageId: 'response-1',
+      mtoTraceId: 'mto-trace-redis-123',
       mcpRequestBody: JSON.stringify({
         messageId: 'response-1',
         conversationId: 'overridden-conversation',

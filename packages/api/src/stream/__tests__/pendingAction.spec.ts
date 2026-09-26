@@ -1656,6 +1656,16 @@ describe('GenerationJobManager HITL resume metadata (round 19)', () => {
     expect(job?.metadata.discoveredTools).toEqual(['deep_tool', 'other_tool']);
   });
 
+  test('updateMetadata persists an independent MTO trace id and exposes it through the job facade', async () => {
+    const streamId = 'stream-mto-trace';
+    await manager.createJob(streamId, 'user-1');
+    await manager.updateMetadata(streamId, { mtoTraceId: 'mto-trace-123' });
+
+    const job = await manager.getJob(streamId);
+
+    expect(job?.metadata.mtoTraceId).toBe('mto-trace-123');
+  });
+
   test('updateMetadata exposes a paused legacy-event fence through the job facade', async () => {
     const streamId = 'stream-legacy-event';
     await manager.createJob(streamId, 'user-1');

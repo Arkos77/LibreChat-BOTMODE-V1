@@ -2757,6 +2757,7 @@ class GenerationJobManagerClass {
         generationProtocolVersion: jobData.generationProtocolVersion,
         userMessage: jobData.userMessage,
         responseMessageId: jobData.responseMessageId,
+        mtoTraceId: jobData.mtoTraceId,
         isRegenerate: jobData.isRegenerate,
         mcpRequestBody: jobData.mcpRequestBody,
         userSubmittedPaths: jobData.userSubmittedPaths,

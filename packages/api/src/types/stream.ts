@@ -27,6 +27,8 @@ export interface GenerationJobMetadata {
   userMessage?: Agents.UserMessageMeta;
   /** Response message ID for tracking */
   responseMessageId?: string;
+  /** Host-minted MTO correlation identity. Observational only; never aliases a run/message/task id. */
+  mtoTraceId?: string;
   /** Whether this generation replaces an existing assistant branch. */
   isRegenerate?: boolean;
   /** Exact normalized MCP placeholder identity for this turn. Persisted so HITL

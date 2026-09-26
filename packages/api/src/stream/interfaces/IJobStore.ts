@@ -150,6 +150,8 @@ export interface SerializableJobData {
 
   /** Response message ID for reconnection */
   responseMessageId?: string;
+  /** Host-minted MTO correlation identity carried across HITL resume. */
+  mtoTraceId?: string;
 
   /** Whether this generation replaces an existing assistant branch. */
   isRegenerate?: boolean;
@@ -429,6 +431,7 @@ export type JobMetadataPatch = Partial<
   Pick<
     SerializableJobData,
     | 'responseMessageId'
+    | 'mtoTraceId'
     | 'isRegenerate'
     | 'mcpRequestBody'
     | 'userSubmittedPaths'
