@@ -186,6 +186,26 @@ export function createImprovementLifecycleEventMethods(
     const eventDigest = digestEvent(event);
     const scope = { user, tenantKey, eventId: event.eventId };
 
+    const ImprovementCandidate = mongoose.models.ImprovementCandidate as Model<{
+      traceId: string;
+    }>;
+    if (!ImprovementCandidate) {
+      throw new Error('Improvement lifecycle durable candidate model is unavailable');
+    }
+    const candidate = await ImprovementCandidate.findOne({
+      user,
+      tenantKey,
+      candidateId: event.candidateId,
+    })
+      .select({ traceId: 1 })
+      .lean<{ traceId: string }>();
+    if (!candidate) {
+      throw new Error('Improvement lifecycle durable candidate not found in owner scope');
+    }
+    if (candidate.traceId !== event.traceId) {
+      throw new Error('Improvement lifecycle durable candidate trace mismatch');
+    }
+
     await ensureIndexes();
     const existing =
       await ImprovementLifecycleEvent.findOne(scope).lean<IImprovementLifecycleEventRecord>();
