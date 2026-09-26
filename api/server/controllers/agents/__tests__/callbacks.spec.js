@@ -6,6 +6,7 @@ const mockFromSubagentActivity = jest.fn((event, context) => ({
     traceId: context.traceId,
     traceEventId: context.traceEventId,
     ...(context.threadId ? { threadId: context.threadId } : {}),
+    ...(context.taskId ? { taskId: context.taskId } : {}),
     ...(event.runId ? { runId: event.runId, rootRunId: event.runId } : {}),
     ...(event.parentRunId ? { parentRunId: event.parentRunId } : {}),
     ...(event.subagentRunId ? { subagentRunId: event.subagentRunId } : {}),
@@ -281,6 +282,42 @@ describe('resumable event generation fencing', () => {
     expect(mtoEvents[0].identity.traceEventId).toEqual(expect.any(String));
     expect(mtoEvents[0].identity.traceEventId).not.toBe('mto-trace-visible');
     expect(mtoEvents[0].payload).not.toHaveProperty('data');
+  });
+
+  it('binds native taskId separately from threadId in MTO subagent activity', async () => {
+    const { GraphEvents } = jest.requireActual('@librechat/agents');
+    const { getDefaultHandlers } = require('~/server/controllers/agents/callbacks');
+    const mtoEvents = [];
+    const handlers = getDefaultHandlers({
+      res: { write: jest.fn() },
+      aggregateContent: jest.fn(),
+      toolEndCallback: jest.fn(),
+      collectedUsage: [],
+      streamId: 'thread-native-1',
+      taskId: 'task-native-1',
+      jobCreatedAt: 1234,
+      mtoTraceId: 'mto-trace-native-task',
+      mtoEventSink: (event) => mtoEvents.push(event),
+    });
+    const data = {
+      phase: 'run_step_closed',
+      subagentType: 'researcher',
+      runId: 'root-run-native',
+      subagentRunId: 'child-run-native',
+    };
+
+    await handlers[GraphEvents.ON_SUBAGENT_UPDATE].handle(GraphEvents.ON_SUBAGENT_UPDATE, data, {
+      hide_sequential_outputs: false,
+    });
+    await Promise.resolve();
+
+    expect(mtoEvents).toHaveLength(1);
+    expect(mtoEvents[0].identity).toMatchObject({
+      traceId: 'mto-trace-native-task',
+      threadId: 'thread-native-1',
+      taskId: 'task-native-1',
+    });
+    expect(mtoEvents[0].identity.taskId).not.toBe(mtoEvents[0].identity.threadId);
   });
 
   it('contains MTO activity sink failures without blocking native forwarding', async () => {

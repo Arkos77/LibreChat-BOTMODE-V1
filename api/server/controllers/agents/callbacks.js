@@ -382,6 +382,7 @@ function feedSubagentAggregator(aggregator, event) {
  * @param {Array<TTokenUsageEvent>} [options.usageEmitSink] - Array collecting each emitted
  *   `on_token_usage` payload (incl. cost) so the response's usage rollup can be persisted.
  * @param {(toolName: string, agentId?: string) => string | undefined} [options.resolveMcpServerName]
+ * @param {string} [options.taskId] Native Task Engine task identity when available.
  * @param {string} [options.mtoTraceId] Host-owned MTO trace identity.
  * @param {(event: import('@librechat/api').MtoEvent) => void | Promise<void>} [options.mtoEventSink] Optional observational MTO event sink.
  * @returns {Record<string, t.EventHandler>} The default handlers.
@@ -406,6 +407,7 @@ function getDefaultHandlers({
   usageEmitSink = null,
   eventChildActivity = null,
   resolveMcpServerName = null,
+  taskId = null,
   mtoTraceId = null,
   mtoEventSink = null,
 }) {
@@ -747,6 +749,7 @@ function getDefaultHandlers({
             traceId: mtoTraceId,
             traceEventId: randomUUID(),
             threadId: streamId ?? undefined,
+            taskId: taskId ?? undefined,
           });
           const emitted = mtoEventSink(observed);
           if (emitted != null) {

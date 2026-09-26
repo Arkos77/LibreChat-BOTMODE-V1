@@ -1580,6 +1580,7 @@ const initializeClient = async ({
     collectedThoughtSignatures,
     streamId,
     jobCreatedAt,
+    taskId: eventTaskId,
     mtoTraceId,
     mtoEventSink,
     subagentAggregatorsByToolCallId,

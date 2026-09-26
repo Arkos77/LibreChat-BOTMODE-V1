@@ -312,6 +312,7 @@ describe('initializeClient — processAgent ACL gate', () => {
       endpointOption: makeEndpointOption(),
     });
 
+    expect(capturedDefaultHandlerOptions.taskId).toBe('event-task');
     expect(capturedDefaultHandlerOptions.eventChildActivity).toEqual(
       expect.objectContaining({
         runId: 'child-conversation',
