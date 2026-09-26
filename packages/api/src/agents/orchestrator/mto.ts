@@ -61,6 +61,38 @@ export interface MtoIdentity {
 
 export type MtoSource = 'host' | 'subagent-activity' | 'subagent-usage' | 'oracle';
 
+export interface MtoSubagentActivityObservation {
+  phase: SubagentUpdateEvent['phase'];
+  subagentType: string;
+  subagentKind?: SubagentUpdateEvent['subagentKind'];
+  depth?: number;
+  label?: string;
+}
+
+export interface MtoSubagentUsageObservation {
+  usage: SubagentUsageEvent['usage'];
+  model?: string;
+  provider?: string;
+  subagentType: string;
+  subagentKind?: SubagentUsageEvent['subagentKind'];
+  depth?: number;
+}
+
+export interface MtoOracleObservation {
+  phase: OracleEvent['phase'];
+  decision?: 'ACCEPT' | 'REJECT' | 'DEFER' | 'REQUEST_HUMAN_REVIEW';
+  validator?: {
+    id: string;
+    type: 'deterministic' | 'tool' | 'source' | 'model' | 'human';
+    agentId?: string;
+  };
+  reasonCodes?: string[];
+  uncertainty?: string[];
+  checkCount?: number;
+  contradictionCount?: number;
+  evidenceCount?: number;
+}
+
 export interface MtoEvent<TPayload = unknown> {
   type: MtoEventType;
   identity: MtoIdentity;
@@ -130,7 +162,14 @@ export function createMtoEvent<TPayload>(
 export function fromSubagentActivity(
   event: SubagentUpdateEvent,
   context: Pick<MtoEventContext, 'traceId' | 'traceEventId' | 'taskId' | 'threadId'>,
-): MtoEvent<SubagentUpdateEvent> {
+): MtoEvent<MtoSubagentActivityObservation> {
+  const payload: MtoSubagentActivityObservation = {
+    phase: event.phase,
+    subagentType: event.subagentType,
+    ...(event.subagentKind == null ? {} : { subagentKind: event.subagentKind }),
+    ...(event.depth == null ? {} : { depth: event.depth }),
+    ...(event.label == null ? {} : { label: event.label }),
+  };
   return createMtoEvent(
     'OBSERVED',
     {
@@ -146,7 +185,7 @@ export function fromSubagentActivity(
       parentToolCallId: event.parentToolCallId,
     },
     'subagent-activity',
-    event,
+    payload,
   );
 }
 
@@ -154,7 +193,15 @@ export function fromSubagentActivity(
 export function fromSubagentUsage(
   event: SubagentUsageEvent,
   context: Pick<MtoEventContext, 'traceId' | 'traceEventId' | 'taskId' | 'threadId'>,
-): MtoEvent<SubagentUsageEvent> {
+): MtoEvent<MtoSubagentUsageObservation> {
+  const payload: MtoSubagentUsageObservation = {
+    usage: structuredClone(event.usage),
+    subagentType: event.subagentType,
+    ...(event.model == null ? {} : { model: event.model }),
+    ...(event.provider == null ? {} : { provider: event.provider }),
+    ...(event.subagentKind == null ? {} : { subagentKind: event.subagentKind }),
+    ...(event.depth == null ? {} : { depth: event.depth }),
+  };
   return createMtoEvent(
     'OBSERVED',
     {
@@ -167,7 +214,7 @@ export function fromSubagentUsage(
       memberAgentId: event.memberAgentId,
     },
     'subagent-usage',
-    event,
+    payload,
   );
 }
 
@@ -184,9 +231,22 @@ function oracleType(event: OracleEvent): MtoEventType {
 export function fromOracleEvent(
   event: OracleEvent,
   context: Pick<MtoEventContext, 'traceId' | 'traceEventId' | 'taskId' | 'threadId'>,
-): MtoEvent<OracleEvent> {
+): MtoEvent<MtoOracleObservation> {
   const input =
     event.phase === 'CANDIDATE' || event.phase === 'VALIDATING' ? event.input : event.verdict.input;
+  const payload: MtoOracleObservation =
+    event.phase === 'CANDIDATE' || event.phase === 'VALIDATING'
+      ? { phase: event.phase, evidenceCount: event.input.evidence.length }
+      : {
+          phase: event.phase,
+          decision: event.decision,
+          validator: { ...event.verdict.validator },
+          reasonCodes: event.verdict.reasons.map((reason) => reason.code),
+          uncertainty: [...event.verdict.uncertainty],
+          checkCount: event.verdict.checks.length,
+          contradictionCount: event.verdict.contradictions.length,
+          evidenceCount: event.verdict.input.evidence.length,
+        };
   return createMtoEvent(
     oracleType(event),
     {
@@ -196,6 +256,6 @@ export function fromOracleEvent(
       agentId: input.agentId,
     },
     'oracle',
-    event,
+    payload,
   );
 }
