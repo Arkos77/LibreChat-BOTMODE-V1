@@ -1435,6 +1435,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       conversationId,
       req._agentEventTriggerProjection,
     );
+    const mtoTraceId = crypto.randomUUID();
     const job = await GenerationJobManager.createJob(streamId, userId, conversationId, {
       startupTelemetry,
       ...(recoveredSteerId && { recoveredSteerId }),
@@ -1447,6 +1448,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       }),
       initialMetadata: {
         conversationId,
+        mtoTraceId,
         generationProtocolVersion,
         endpoint: endpointOption.endpoint,
         iconURL: endpointIconURL,
@@ -1759,6 +1761,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       signal: job.abortController.signal,
       jobCreatedAt,
       checkpointNamespace: job.metadata?.checkpointNamespace,
+      mtoTraceId,
       requestBody: mcpRequestBody,
     });
     startupTelemetry?.mark('client_initialized');

@@ -1779,6 +1779,7 @@ const ResumeAgentController = async (req, res, next, initializeClient, addTitle)
       signal: job.abortController.signal,
       jobCreatedAt: job.createdAt,
       checkpointNamespace,
+      mtoTraceId: job.metadata.mtoTraceId,
       requestBody:
         job.metadata.mcpRequestBody ??
         createMCPRuntimeRequestBody({

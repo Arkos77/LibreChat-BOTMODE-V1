@@ -155,6 +155,7 @@ function createToolLoader(
  * @param {Object} params.endpointOption
  * @param {number} [params.jobCreatedAt]
  * @param {string} [params.checkpointNamespace] Immutable saver-level generation scope
+ * @param {string} [params.mtoTraceId] Host-owned MTO correlation identity
  * @param {import('@librechat/api').MCPRuntimeRequestBody} [params.requestBody]
  */
 const initializeClient = async ({
@@ -164,6 +165,7 @@ const initializeClient = async ({
   endpointOption,
   jobCreatedAt,
   checkpointNamespace,
+  mtoTraceId,
   requestBody,
 }) => {
   if (!endpointOption) {
@@ -1627,6 +1629,7 @@ const initializeClient = async ({
     toolInputValidationErrors,
     jobCreatedAt,
     checkpointNamespace,
+    mtoTraceId,
     mcpRequestBody: runtimeRequestBody,
   });
 

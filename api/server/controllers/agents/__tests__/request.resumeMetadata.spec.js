@@ -915,6 +915,7 @@ describe('ResumableAgentController resume metadata', () => {
           endpoint: 'agents',
           iconURL: 'https://example.com/spec-icon.png',
           model: 'gpt-3.5-turbo',
+          mtoTraceId: expect.any(String),
           /** The OWNING replica's seal capability, read by the steer route. */
           preemptCapable: true,
           steerQuotesCapable: true,
@@ -950,6 +951,32 @@ describe('ResumableAgentController resume metadata', () => {
     );
     expect(mockAcceptAgentStartupTelemetry).toHaveBeenCalledWith(req, conversationId);
     expect(mockStartupTelemetry.end).toHaveBeenCalledWith('error', expect.any(Error));
+  });
+
+  it('mints one independent MTO trace identity for a fresh job and threads it into initialization', async () => {
+    const conversationId = 'conversation-mto-trace';
+    const initializeClient = jest.fn().mockRejectedValue(new Error('stop after trace capture'));
+    const req = {
+      user: { id: 'user-123' },
+      body: {
+        text: 'Trace this generation.',
+        messageId: 'user-message',
+        conversationId,
+        endpointOption: { endpoint: 'agents', modelOptions: { model: 'gpt-4.1' } },
+      },
+      config: {},
+    };
+    const res = createResumableResponse();
+
+    await AgentController(req, res, jest.fn(), initializeClient, null);
+
+    const jobOptions = mockGenerationJobManager.createJob.mock.calls[0][3];
+    const mtoTraceId = jobOptions.initialMetadata.mtoTraceId;
+    expect(mtoTraceId).toEqual(expect.any(String));
+    expect(mtoTraceId).not.toBe('');
+    expect(mtoTraceId).not.toBe(conversationId);
+    expect(mtoTraceId).not.toBe(jobOptions.initialMetadata.responseMessageId);
+    expect(initializeClient).toHaveBeenCalledWith(expect.objectContaining({ mtoTraceId }));
   });
 
   it('persists and exactly echoes protocol v2 on a newly created generation', async () => {

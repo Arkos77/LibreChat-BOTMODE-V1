@@ -206,6 +206,21 @@ describe('initializeClient — processAgent ACL gate', () => {
     );
   });
 
+  it('threads the host-owned MTO trace identity into AgentClient unchanged', async () => {
+    mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+    const req = makeReq();
+
+    await initializeClient({
+      req,
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption: makeEndpointOption(),
+      mtoTraceId: 'mto-trace-init-123',
+    });
+
+    expect(agentClientArgs.mtoTraceId).toBe('mto-trace-init-123');
+  });
+
   it('threads the owning job epoch into resumable event handlers', async () => {
     const {
       createAttachmentEmitter,

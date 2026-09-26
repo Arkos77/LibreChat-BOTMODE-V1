@@ -426,20 +426,23 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
     });
 
     mockAddTitle = jest.fn().mockResolvedValue(undefined);
-    mockInitializeClient = jest.fn(async ({ req, checkpointNamespace, requestBody }) => {
-      // Capture the request state the controller seeds BEFORE reconstruction.
-      capturedInit = {
-        parentMessageId: req.body.parentMessageId,
-        files: req.body.files,
-        isTemporary: req.body.isTemporary,
-        turnStartedAt: req.turnStartedAt,
-        isScheduledFire: req._isScheduledFire,
-        timezone: req.body.timezone,
-        checkpointNamespace,
-        requestBody,
-      };
-      return { client: makeClient(), userMCPAuthMap: { server1: { token: 't' } } };
-    });
+    mockInitializeClient = jest.fn(
+      async ({ req, checkpointNamespace, mtoTraceId, requestBody }) => {
+        // Capture the request state the controller seeds BEFORE reconstruction.
+        capturedInit = {
+          parentMessageId: req.body.parentMessageId,
+          files: req.body.files,
+          isTemporary: req.body.isTemporary,
+          turnStartedAt: req.turnStartedAt,
+          isScheduledFire: req._isScheduledFire,
+          timezone: req.body.timezone,
+          checkpointNamespace,
+          mtoTraceId,
+          requestBody,
+        };
+        return { client: makeClient(), userMCPAuthMap: { server1: { token: 't' } } };
+      },
+    );
 
     app = express();
     app.use(express.json());
@@ -1357,6 +1360,16 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
   });
 
   describe('temporal context restore', () => {
+    it('restores the exact durable MTO trace identity before initializeClient', async () => {
+      mockGenerationJobManager.getJob.mockResolvedValue(
+        makeToolApprovalJob({ metadata: { mtoTraceId: 'mto-trace-durable-123' } }),
+      );
+      const res = await post(approveBody());
+      expect(res.status).toBe(200);
+      await settled;
+      expect(capturedInit.mtoTraceId).toBe('mto-trace-durable-123');
+    });
+
     it('restores the paused turn start from the durable job before initializeClient', async () => {
       mockGenerationJobManager.getJob.mockResolvedValue(makeToolApprovalJob({ createdAt: 1234 }));
       const res = await post(approveBody());
