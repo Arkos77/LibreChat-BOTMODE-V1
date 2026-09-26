@@ -19,3 +19,5 @@ export * from './evidence';
 export * from './toolEvidence';
 
 export * from './toolEvidenceIntent';
+
+export * from './toolEvidenceDistill';

@@ -134,6 +134,12 @@ The contract does not inspect or interpret raw tool output, tool arguments, arti
 
 The adapter does not interpret raw tool output, infer a criterion, infer an evidence value, execute a tool, persist evidence, invoke Oracle, authorize work, publish an improvement, create a task or mutate runtime state. Same-producer tool provenance remains explicitly non-independent. The adapter is exported but intentionally has no production caller yet; wiring remains dormant until the host seam can supply criterion/value semantics and native producer/checker identity without inference.
 
+## P10 — Tool evidence to Distill composition
+
+`toolEvidenceDistill.ts` composes three already-proven pure contracts: explicit host tool semantics, native tool provenance, and the bounded Distill request. Undeclared tools return `NO_DECLARATION`; unsupported Distill criteria fail closed. Same-producer evidence is preserved as non-independent rather than promoted.
+
+This composition does not execute a tool, inspect raw tool output, call Oracle, authorize work, persist lifecycle state, publish an improvement, create or settle a task, or mutate runtime state. It is exported but intentionally unwired in production until a host-owned runtime seam can supply the native task, producer/checker and declaration context explicitly.
+
 ## P10 — Distill validation boundary
 
 `distill.ts` prepares a bounded, host-owned `OracleInput` for an `ImprovementCandidate`. It copies only candidate identity, target, `CANDIDATE` status, trace identity and explicitly supplied source-addressed evidence; improvement prose, aggregate signals, source observations and reasoning are not copied into the validation request. Evidence referring to an unsupported Distill criterion fails closed.
