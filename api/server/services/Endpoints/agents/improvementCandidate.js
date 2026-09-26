@@ -11,6 +11,8 @@ const { logger } = require('@librechat/data-schemas');
 async function observeStepLimitImprovementCandidate({
   traceId,
   responseMessageId,
+  taskId,
+  producerAgentId,
   user,
   tenantId,
   conversationId,
@@ -79,6 +81,10 @@ async function observeStepLimitImprovementCandidate({
               traceId: normalizedTraceId,
               traceEventId: `candidate:${candidate.candidateId}`,
               causedByTraceEventId: observation.identity.traceEventId,
+              ...(typeof taskId === 'string' && taskId !== '' ? { taskId } : {}),
+              ...(typeof producerAgentId === 'string' && producerAgentId !== ''
+                ? { agentId: producerAgentId }
+                : {}),
               timestamp,
             },
             'host',

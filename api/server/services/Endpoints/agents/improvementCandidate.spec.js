@@ -80,6 +80,32 @@ describe('step-limit improvement candidate observation', () => {
     expect(mtoEventSink.mock.calls[0][0]).not.toHaveProperty('payload');
   });
 
+  it('preserves native task and producer agent identity only in the MTO observation', async () => {
+    const mtoEventSink = jest.fn();
+
+    const candidate = await observeStepLimitImprovementCandidate({
+      ...durableInput,
+      traceId: 'trace-native-identity',
+      responseMessageId: 'response-native-identity',
+      taskId: 'task-native-identity',
+      producerAgentId: 'agent-native-identity',
+      mtoEventSink,
+    });
+
+    expect(candidate).not.toHaveProperty('taskId');
+    expect(candidate).not.toHaveProperty('agentId');
+    expect(candidate).not.toHaveProperty('producerAgentId');
+    expect(mtoEventSink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identity: expect.objectContaining({
+          traceId: 'trace-native-identity',
+          taskId: 'task-native-identity',
+          agentId: 'agent-native-identity',
+        }),
+      }),
+    );
+  });
+
   it('contains an MTO sink failure without affecting candidate creation', async () => {
     const mtoEventSink = jest.fn(() => {
       throw new Error('sink unavailable');

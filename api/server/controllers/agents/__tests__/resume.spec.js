@@ -122,6 +122,7 @@ const mockGetAgentTriggerDelivery = jest.fn();
 const mockReserveAgentEventActorDetachedAction = jest.fn();
 const mockMarkAgentEventActorDetachedActionRunning = jest.fn();
 const mockSettleAgentEventActorDetachedAction = jest.fn();
+const mockObserveMtoEvent = jest.fn();
 
 jest.mock('@librechat/data-schemas', () => ({
   ...jest.requireActual('@librechat/data-schemas'),
@@ -176,6 +177,11 @@ jest.mock('~/models', () => ({
     mockMarkAgentEventActorDetachedActionRunning(...args),
   settleAgentEventActorDetachedAction: (...args) =>
     mockSettleAgentEventActorDetachedAction(...args),
+}));
+
+jest.mock('~/server/services/Endpoints/agents/mtoObservation', () => ({
+  ...jest.requireActual('~/server/services/Endpoints/agents/mtoObservation'),
+  observeMtoEvent: (...args) => mockObserveMtoEvent(...args),
 }));
 
 jest.mock('~/server/services/Endpoints/agents/eventChildLease', () => ({
@@ -1381,10 +1387,29 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
       mockGenerationJobManager.getJob.mockResolvedValue(
         makeToolApprovalJob({ metadata: { mtoTraceId: 'mto-trace-step-limit-resume' } }),
       );
-      mockInitializeClient.mockResolvedValue({
-        client: makeClient({ stepLimitReached: true }),
-        userMCPAuthMap: {},
-      });
+      mockInitializeClient.mockImplementation(
+        async ({ req, checkpointNamespace, mtoTraceId, mtoEventSink, requestBody }) => {
+          capturedInit = {
+            parentMessageId: req.body.parentMessageId,
+            files: req.body.files,
+            isTemporary: req.body.isTemporary,
+            turnStartedAt: req.turnStartedAt,
+            isScheduledFire: req._isScheduledFire,
+            timezone: req.body.timezone,
+            checkpointNamespace,
+            mtoTraceId,
+            mtoEventSink,
+            requestBody,
+          };
+          return {
+            client: makeClient({
+              stepLimitReached: true,
+              options: { agent: { id: 'agent-native-resume' } },
+            }),
+            userMCPAuthMap: {},
+          };
+        },
+      );
 
       const res = await post(approveBody());
       expect(res.status).toBe(200);
@@ -1408,6 +1433,17 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
           candidate: expect.objectContaining({
             target: 'workflow',
             status: 'CANDIDATE',
+          }),
+        }),
+      );
+      const candidateEvent = mockObserveMtoEvent.mock.calls
+        .map((call) => call[0])
+        .find((event) => event?.type === 'CANDIDATE');
+      expect(candidateEvent).toEqual(
+        expect.objectContaining({
+          identity: expect.objectContaining({
+            traceId: 'mto-trace-step-limit-resume',
+            agentId: 'agent-native-resume',
           }),
         }),
       );
