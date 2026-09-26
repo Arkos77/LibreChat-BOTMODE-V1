@@ -148,6 +148,8 @@ The boundary is observation-only. It does not interpret output, invoke Oracle, p
 
 ## P10 — Host tool-end evidence seam
 
+The host seam now normalizes native identities through `createImprovementEvidenceContext` before composing Distill input. Trace and thread identity remain bounded observation context and are not promoted into Oracle, authorization or publication fields. Raw tool content, input and artifacts still do not cross the seam.
+
 The server helper `api/server/services/Endpoints/agents/improvementToolEvidence.js` is the first host-owned bridge from an already-observed native LibreChat tool-end event into the pure P10 evidence chain. It reads only the native tool name and `tool_call_id`, plus optional `run_id` and `executingAgentId` metadata, and combines them with explicitly supplied Task Engine, producer, candidate and declaration context.
 
 The helper deliberately drops raw tool content, artifacts, arguments, thread metadata and unrelated callback metadata. Missing native tool identity fails closed; missing checker/run identity is not invented. The helper does not execute tools, invoke Oracle, authorize, persist, publish, settle tasks or mutate runtime state. It currently has no production caller and therefore remains dormant pending a separately tested opt-in callback wiring boundary.

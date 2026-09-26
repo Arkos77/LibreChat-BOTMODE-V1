@@ -1,4 +1,7 @@
-const { createToolEvidenceDistillRequest } = require('@librechat/api');
+const {
+  createImprovementEvidenceContext,
+  createToolEvidenceDistillRequest,
+} = require('@librechat/api');
 
 function requiredText(name, value) {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -7,38 +10,46 @@ function requiredText(name, value) {
   return value.trim();
 }
 
+function optionalText(value) {
+  if (typeof value !== 'string' || value.trim() === '') {
+    return undefined;
+  }
+  return value.trim();
+}
+
 /**
- * Host-owned normalization seam for an already-observed native tool-end event.
- * It preserves native identities and explicit declarations only; it does not
- * inspect raw tool content/artifacts or invoke Oracle.
+ * Bridges a native LibreChat tool-end event into the pure P10 evidence
+ * composition path. Only explicit host-owned identities are admitted.
+ * Raw tool output, arguments and artifacts are intentionally excluded.
  */
 function createImprovementToolEvidenceRequest({
   toolEndData,
   metadata,
   taskId,
+  traceId,
   producerAgentId,
   candidate,
   declarations,
 }) {
-  const toolName = requiredText('toolName', toolEndData?.output?.name);
-  const toolCallId = requiredText('toolCallId', toolEndData?.output?.tool_call_id);
-  const executingAgentId =
-    typeof metadata?.executingAgentId === 'string' && metadata.executingAgentId.trim() !== ''
-      ? metadata.executingAgentId.trim()
-      : undefined;
-  const runId =
-    typeof metadata?.run_id === 'string' && metadata.run_id.trim() !== ''
-      ? metadata.run_id.trim()
-      : undefined;
+  const context = createImprovementEvidenceContext({
+    toolName: requiredText('toolName', toolEndData?.output?.name),
+    toolCallId: requiredText('toolCallId', toolEndData?.output?.tool_call_id),
+    producerAgentId: requiredText('producerAgentId', producerAgentId),
+    taskId: requiredText('taskId', taskId),
+    toolAgentId: optionalText(metadata?.executingAgentId),
+    traceId: optionalText(traceId),
+    runId: optionalText(metadata?.run_id),
+    threadId: optionalText(metadata?.thread_id),
+  });
 
   return createToolEvidenceDistillRequest({
-    taskId,
-    producerAgentId,
+    taskId: context.taskId,
+    producerAgentId: context.producerAgentId,
     candidate,
-    toolName,
-    toolCallId,
-    ...(executingAgentId == null ? {} : { toolAgentId: executingAgentId }),
-    ...(runId == null ? {} : { runId }),
+    toolName: context.toolName,
+    toolCallId: context.toolCallId,
+    ...(context.toolAgentId == null ? {} : { toolAgentId: context.toolAgentId }),
+    ...(context.runId == null ? {} : { runId: context.runId }),
     declarations,
   });
 }
