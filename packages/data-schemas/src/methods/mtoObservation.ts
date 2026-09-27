@@ -132,7 +132,16 @@ function duplicate(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: number }).code === 11000;
 }
 
-export function createMtoObservationMethods(mongoose: typeof import('mongoose')) {
+export interface MtoObservationMethods {
+  recordMtoObservation: (
+    input: RecordMtoObservationInput,
+  ) => Promise<{ record: IMtoObservationRecord; replayed: boolean }>;
+  listMtoObservations: (input: ListMtoObservationsInput) => Promise<IMtoObservationRecord[]>;
+}
+
+export function createMtoObservationMethods(
+  mongoose: typeof import('mongoose'),
+): MtoObservationMethods {
   function model(): Model<IMtoObservationRecord> {
     return mongoose.models.MtoObservation as Model<IMtoObservationRecord>;
   }
@@ -152,7 +161,11 @@ export function createMtoObservationMethods(mongoose: typeof import('mongoose'))
         });
     return indexPromise;
   }
-  function assertReplay(record: IMtoObservationRecord, digest: string, id: string) {
+  function assertReplay(
+    record: IMtoObservationRecord,
+    digest: string,
+    id: string,
+  ): { record: IMtoObservationRecord; replayed: true } {
     if (record.eventDigest !== digest) throw new MtoObservationConflictError(id);
     return { record, replayed: true as const };
   }

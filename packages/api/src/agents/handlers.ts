@@ -354,6 +354,7 @@ export interface ToolExecuteOptions {
   >;
   /** Captures an exact skill update before mutation for governed child proposals. */
   onSkillUpdateProposed?: (proposal: {
+    toolCallId: string;
     skillId: string;
     expectedVersion: number;
     update: {
@@ -363,7 +364,7 @@ export interface ToolExecuteOptions {
       alwaysApply?: boolean;
     };
     diff: string;
-  }) => Promise<{ candidateId: string }>;
+  }) => Promise<{ candidateId: string } | undefined>;
   /** Checks role-level skill creation permission for the current user. */
   canCreateSkill?: (params: { req: ServerRequest }) => Promise<boolean>;
   /** Checks resource-level edit permission for an existing skill. */
@@ -3063,23 +3064,28 @@ async function writeSkillMd({
   const skillId = skill._id.toString();
   if (options.onSkillUpdateProposed) {
     const proposal = await options.onSkillUpdateProposed({
+      toolCallId: tc.id,
       skillId,
       expectedVersion: skill.version,
       update,
       diff,
     });
-    if (typeof proposal?.candidateId !== 'string' || proposal.candidateId.trim() === '') {
+    if (
+      proposal != null &&
+      (typeof proposal.candidateId !== 'string' || proposal.candidateId.trim() === '')
+    ) {
       return errorResult(tc, 'Skill proposal was not recorded.');
     }
-    return successResult(
-      tc,
-      `Proposed ${SKILL_FILE_PREFIX}${skillName}/${SKILL_MD} for independent tests and review.`,
-      {
-        path: `${SKILL_FILE_PREFIX}${skillName}/${SKILL_MD}`,
-        proposed: true,
-        candidateId: proposal.candidateId,
-      },
-    );
+    if (proposal != null)
+      return successResult(
+        tc,
+        `Proposed ${SKILL_FILE_PREFIX}${skillName}/${SKILL_MD} for independent tests and review.`,
+        {
+          path: `${SKILL_FILE_PREFIX}${skillName}/${SKILL_MD}`,
+          proposed: true,
+          candidateId: proposal.candidateId,
+        },
+      );
   }
   const result = await options.updateSkill({ id: skillId, expectedVersion: skill.version, update });
   if (result.status === 'conflict') {

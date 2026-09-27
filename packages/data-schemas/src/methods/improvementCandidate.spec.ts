@@ -174,7 +174,7 @@ describe('ImprovementCandidate durable store', () => {
     );
 
     const persisted = await model.findOne({ candidateId: 'workflow-step-limit:trace-1' }).lean();
-    expect(persisted?.summary).toBe(
+    expect((persisted as { summary?: string } | null)?.summary).toBe(
       'Review workflow structure before changing bounded execution policy.',
     );
   });

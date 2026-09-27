@@ -1,4 +1,4 @@
-const { createTransientEvidenceBuffer } = require('@librechat/api');
+const { createTransientEvidenceBuffer, getDetachedSubagentTaskId } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 const { createContentAggregator, GraphNodeKeys } = require('@librechat/agents');
 const {
@@ -79,6 +79,7 @@ const {
   createBackgroundToolResultPersistence,
   createDeadBackgroundToolClaimRecovery,
 } = require('./backgroundCompletion');
+const { recordSkillImprovementProposal } = require('./improvementSkillProposal');
 const { logViolation } = require('~/cache');
 const db = require('~/models');
 
@@ -477,6 +478,21 @@ const initializeClient = async ({
       }
     },
     ...skillToolDeps,
+    onSkillUpdateProposed: (proposal) => {
+      const taskId = getDetachedSubagentTaskId();
+      if (taskId == null) return undefined;
+      return recordSkillImprovementProposal({
+        req,
+        tenantId: resolveRequestTenantId(req),
+        conversationId,
+        traceId: mtoTraceId,
+        taskId,
+        proposal,
+        persistProposal: db.recordImprovementSkillProposal,
+        persistCandidate: db.recordImprovementCandidate,
+        mtoEventSink,
+      });
+    },
     ...(typeof skillToolDeps.canCreateSkill === 'function'
       ? {
           canCreateSkill: createObservedSkillCreateCheck({

@@ -47,6 +47,7 @@ export * from './phases';
 export * from './stepBudget';
 export * from './startup';
 export * from './subagentThreads';
+export { getDetachedSubagentTaskId } from './subagentTaskContext';
 export * from './subagentActivity';
 export * from './subagentCompletionWakeup';
 export * from './subagentTaskRouting';

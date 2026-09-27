@@ -3385,6 +3385,7 @@ describe('createToolExecuteHandler', () => {
       ]);
       expect(onSkillUpdateProposed).toHaveBeenCalledWith(
         expect.objectContaining({
+          toolCallId: 'call_propose_skill',
           skillId: SKILL_ID.toString(),
           expectedVersion: 3,
           update: expect.objectContaining({ body: expect.stringContaining('# Improved skill') }),
@@ -3397,6 +3398,38 @@ describe('createToolExecuteHandler', () => {
         proposed: true,
         candidateId: 'candidate-native-skill',
       });
+    });
+
+    it('continues native skill editing when the proposal hook opts out', async () => {
+      const updateSkill = jest.fn(async () => ({
+        status: 'updated',
+        skill: { _id: SKILL_ID, name: 'runtime-skill', body: '# Improved skill', version: 4 },
+        warnings: [],
+      }));
+      const handler = makeAuthoringHandler({
+        getSkillByName: jest.fn(async () => ({
+          _id: SKILL_ID,
+          name: 'runtime-skill',
+          body: '# Existing skill',
+          version: 3,
+          fileCount: 0,
+        })),
+        updateSkill: updateSkill as unknown as ToolExecuteOptions['updateSkill'],
+        onSkillUpdateProposed: jest.fn(async () => undefined),
+      });
+      const [result] = await invokeHandler(handler, [
+        {
+          id: 'call_regular_skill',
+          name: 'edit_file',
+          args: {
+            path: 'skills/runtime-skill/SKILL.md',
+            old_text: '# Existing skill',
+            new_text: '# Improved skill',
+          },
+        },
+      ]);
+      expect(result.status).toBe('success');
+      expect(updateSkill).toHaveBeenCalledTimes(1);
     });
 
     it('leaves the native skill untouched when proposal persistence fails', async () => {

@@ -17,6 +17,7 @@ import {
 } from './refreshTokenBridge';
 import { createSessionMethods, DEFAULT_REFRESH_TOKEN_EXPIRY, type SessionMethods } from './session';
 import { createUserMethods, DEFAULT_SESSION_EXPIRY, type UserMethods } from './user';
+import { createImprovementSkillProposalMethods } from './improvementSkillProposal';
 import { createFileMethods, type FileMethods, type FileOwnerScope } from './file';
 import { createTokenMethods, type TokenMethods } from './token';
 import { createMtoObservationMethods } from './mtoObservation';
@@ -232,6 +233,7 @@ export type AllMethods = UserMethods &
   SystemGrantMethods &
   AuditLogMethods &
   ImprovementCandidateMethods &
+  ReturnType<typeof createImprovementSkillProposalMethods> &
   ImprovementLifecycleEventMethods &
   ShareMethods &
   AccessRoleMethods &
@@ -455,6 +457,7 @@ export function createMethods(
     ...systemGrantMethods,
     ...createAuditLogMethods(mongoose),
     ...createImprovementCandidateMethods(mongoose),
+    ...createImprovementSkillProposalMethods(mongoose),
     ...createImprovementLifecycleEventMethods(mongoose),
     ...createMtoObservationMethods(mongoose),
     ...createShareMethods(mongoose),

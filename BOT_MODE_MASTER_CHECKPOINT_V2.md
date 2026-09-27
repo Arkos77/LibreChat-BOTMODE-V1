@@ -541,3 +541,9 @@ Ordre requis pour l’activation :
 5. Rejouer l’autorisation native et les contrôles de contenu, puis invoquer `updateSkill` sous version optimiste ; enregistrer l’effet réel et les conflits sans les convertir en succès.
 
 Aucune route P10 de création/approbation de ce payload n’est encore câblée et aucun jeu de tests hôte par skill n’est défini dans le checkout. Garder la publication autonome désactivée tant que ces deux sources ne sont pas réelles. Ne pas faire passer l’approbation générique de `edit_file` pour la revue du diff exact.
+
+## P10 — capture durable du contenu skill enfant
+
+`edit_file` propose désormais le payload et le diff construits avant `updateSkill`. Le collecteur hôte s’active seulement lorsqu’un vrai `taskId` d’exécution enfant est présent. Il persiste le contenu exact et le diff dans `ImprovementSkillProposal` sous propriétaire/tenant avec idempotence et limite de taille, puis un candidat distinct borné avec digest, identités et `requiresHumanReview`. Le tour principal poursuit l’édition native. Les échecs de stockage bloquent la mutation enfant. Les tests du package données, du handler et de l’initialisation sont verts ; typechecks et builds des packages données/API passent.
+
+Ce raccordement ne vérifie pas encore la qualité du contenu avec des tests indépendants et n’expose aucune revue humaine du diff exact. Le candidat reste non publiable en production ; la publication P10 demeure inactive jusqu’à la preuve et la décision humaine liées au même digest.
