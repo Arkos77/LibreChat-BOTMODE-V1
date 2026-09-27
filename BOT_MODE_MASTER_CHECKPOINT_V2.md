@@ -503,3 +503,7 @@ La validation native de l’enfant donne désormais un `traceEventId` stable dis
 ## P10 — filtre de contenu partagé avec le skill natif
 
 La publication contrôlée d’un update skill appelle désormais le même inspecteur de contenu que `PATCH /skills` avant la mutation. Une règle bloquante ou une traversée non inspectable arrête `updateSkill`. Les tests de route natifs et de publication, le build et le typecheck couvrent ce partage. Aucun contenu de skill n’est proposé automatiquement par une tâche enfant à ce stade.
+
+## P10 — champs autorisés de la mutation skill
+
+Le point de publication P10 refuse désormais un update vide et les champs absents de la liste de `PATCH /skills` avant même l’autorisation. Les champs internes comme `source`, `sourceMetadata` et `allowedTools` ne peuvent plus être transmis directement à la méthode Mongo par cette frontière. Quatre cas rouges avant patch passent après verrouillage.

@@ -110,6 +110,24 @@ describe('controlled improvement skill publication', () => {
     expect(updateSkill).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { source: 'deployment' },
+    { sourceMetadata: { origin: 'untrusted' } },
+    { allowedTools: ['unsafe'] },
+    {},
+  ])(
+    'rejects fields outside native PATCH skill payload before authorization: %p',
+    async (update) => {
+      const updateSkill = jest.fn();
+      getSkillToolDeps.mockReturnValue({ updateSkill });
+      await expect(publishImprovementSkillUpdateForRequest(input({ update }))).rejects.toThrow(
+        /skill update|payload|field/i,
+      );
+      expect(authorizeImprovementPublicationForRequest).not.toHaveBeenCalled();
+      expect(updateSkill).not.toHaveBeenCalled();
+    },
+  );
+
   it('blocks skill content rejected by native skill policy before mutation', async () => {
     const update = { description: 'Improved skill with PRIVATE-123 inside.' };
     authorizeImprovementPublicationForRequest.mockResolvedValue(

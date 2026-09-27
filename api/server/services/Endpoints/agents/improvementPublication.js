@@ -27,6 +27,26 @@ async function publishImprovementSkillUpdateForRequest({
     throw new Error('Controlled improvement publication only supports skill updates');
   }
 
+  const allowedFields = new Set([
+    'name',
+    'displayTitle',
+    'description',
+    'body',
+    'frontmatter',
+    'category',
+    'alwaysApply',
+  ]);
+  if (
+    update == null ||
+    typeof update !== 'object' ||
+    Array.isArray(update) ||
+    Object.getPrototypeOf(update) !== Object.prototype ||
+    Reflect.ownKeys(update).length === 0 ||
+    Reflect.ownKeys(update).some((key) => typeof key !== 'string' || !allowedFields.has(key))
+  ) {
+    throw new Error('Improvement publication skill update fields are invalid');
+  }
+
   const payloadDigest = createImprovementPayloadDigest(update);
   const authorization = await authorizeImprovementPublicationForRequest({
     req,
