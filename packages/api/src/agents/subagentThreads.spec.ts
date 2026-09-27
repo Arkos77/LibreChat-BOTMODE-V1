@@ -305,6 +305,66 @@ describe('SubagentThreadTaskStore', () => {
     await expect(automaticStore.listTasks(automatic.scopeId)).resolves.toEqual([]);
   });
 
+  it('projects child tool completion with its native task without exposing tool payload', async () => {
+    const userId = 'tool-completion-user';
+    const parentConversationId = randomUUID();
+    await saveParent(userId, parentConversationId);
+    const onTaskToolCompleted = jest.fn(() => {
+      throw new Error('observer unavailable');
+    });
+    const store = new SubagentThreadTaskStore(methods, { onTaskToolCompleted });
+    const config = buildSubagentThreadTaskConfig(
+      store,
+      { userId, parentConversationId },
+      { traceId: 'trace-tool-completion' },
+    );
+    const started = store.start({
+      ...taskRequest(config.scopeId, {
+        run: async (runtime) => {
+          runtime.reportProgress({
+            runId: 'root',
+            parentRunId: 'parent',
+            subagentRunId: 'child',
+            subagentType: 'researcher-agent',
+            subagentKind: 'agent',
+            subagentAgentId: 'producer-agent',
+            depth: 1,
+            ancestry: [],
+            phase: 'run_step_completed',
+            timestamp: '2026-09-27T18:00:00.000Z',
+            data: {
+              result: {
+                type: 'tool_call',
+                tool_call: {
+                  id: 'call-native',
+                  name: 'verify',
+                  args: { secret: 'raw-input' },
+                  output: 'raw-output',
+                },
+              },
+            },
+          });
+          return { content: 'Child completed.', messages: [new AIMessage('Child completed.')] };
+        },
+      }),
+      traceId: 'trace-tool-completion',
+    });
+    await waitForSettled(store, config.scopeId, started);
+    const taskId = requireAccepted(started).task.taskId;
+    expect(onTaskToolCompleted).toHaveBeenCalledTimes(1);
+    expect(onTaskToolCompleted).toHaveBeenCalledWith({
+      userId,
+      conversationId: requireThreadId(started),
+      traceId: 'trace-tool-completion',
+      taskId,
+      toolCallId: 'call-native',
+      toolName: 'verify',
+      executingAgentId: 'producer-agent',
+    });
+    expect(JSON.stringify(onTaskToolCompleted.mock.calls)).not.toContain('raw-');
+    expect(store.get(config.scopeId, taskId)?.status).toBe('completed');
+  });
+
   it('observes a typed child step limit after persistence with the native task identity', async () => {
     const userId = 'step-limit-user';
     const parentConversationId = randomUUID();

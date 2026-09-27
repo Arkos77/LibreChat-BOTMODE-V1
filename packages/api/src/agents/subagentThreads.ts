@@ -44,6 +44,10 @@ import {
   controlFingerprint,
   SubagentTaskOwnerUnavailableError,
 } from './subagentTaskRouting';
+import {
+  projectSubagentToolCompletion,
+  type SubagentToolCompletion,
+} from './subagentToolCompletion';
 import { boundSubagentActivityUpdate, SubagentActivityStream } from './subagentActivity';
 import { createSubagentAttemptKey, createSubagentThreadId } from './subagentThreadIds';
 import { runWithDetachedSubagentUsage } from './subagentTaskContext';
@@ -265,6 +269,7 @@ export interface SubagentThreadTaskStoreOptions extends InMemorySubagentTaskStor
   }) => Promise<boolean>;
   onTaskPrepared?: (registration: SubagentTaskWakeupRegistration) => Promise<void> | void;
   onTaskStepLimit?: (failure: SubagentTaskStepLimitFailure) => Promise<void> | void;
+  onTaskToolCompleted?: (completion: SubagentTaskToolCompletionObservation) => Promise<void> | void;
 }
 
 export interface SubagentTaskStepLimitFailure {
@@ -276,6 +281,13 @@ export interface SubagentTaskStepLimitFailure {
   producerAgentId?: string;
   responseMessageId: string;
   createdAt: string;
+}
+
+export interface SubagentTaskToolCompletionObservation extends SubagentToolCompletion {
+  userId: string;
+  tenantId?: string;
+  conversationId: string;
+  traceId?: string;
 }
 
 export interface SubagentTaskWakeupRegistration {
@@ -621,6 +633,7 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
   private readonly cancelUnroutedTask?: SubagentThreadTaskStoreOptions['cancelUnroutedTask'];
   private readonly onTaskPrepared?: SubagentThreadTaskStoreOptions['onTaskPrepared'];
   private readonly onTaskStepLimit?: SubagentThreadTaskStoreOptions['onTaskStepLimit'];
+  private readonly onTaskToolCompleted?: SubagentThreadTaskStoreOptions['onTaskToolCompleted'];
   private taskControlTransport?: SubagentTaskControlTransport;
   private activityStream = new SubagentActivityStream(new InMemoryEventTransport());
 
@@ -664,6 +677,7 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
     this.cancelUnroutedTask = options.cancelUnroutedTask;
     this.onTaskPrepared = options.onTaskPrepared;
     this.onTaskStepLimit = options.onTaskStepLimit;
+    this.onTaskToolCompleted = options.onTaskToolCompleted;
   }
 
   /** Receives payload-free authoritative transitions from the SDK task store. */
@@ -1373,6 +1387,32 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
                     runtime.taskId,
                     activityEvent,
                   );
+                  if (this.onTaskToolCompleted != null) {
+                    const completion = projectSubagentToolCompletion(runtime.taskId, event);
+                    if (completion != null) {
+                      try {
+                        void Promise.resolve(
+                          this.onTaskToolCompleted({
+                            ...completion,
+                            userId: scope.userId,
+                            ...(scope.tenantId == null ? {} : { tenantId: scope.tenantId }),
+                            conversationId: threadId,
+                            ...(request.traceId == null ? {} : { traceId: request.traceId }),
+                          }),
+                        ).catch((observationError) => {
+                          logger.warn(
+                            '[subagentThreads] Failed to observe child tool completion',
+                            observationError,
+                          );
+                        });
+                      } catch (observationError) {
+                        logger.warn(
+                          '[subagentThreads] Failed to observe child tool completion',
+                          observationError,
+                        );
+                      }
+                    }
+                  }
                 },
               };
               const result = await runWithDetachedSubagentUsage(detachedUsage, () =>

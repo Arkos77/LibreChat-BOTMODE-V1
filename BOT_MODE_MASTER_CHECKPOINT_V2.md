@@ -479,3 +479,7 @@ Audit du chemin natif : le candidat enfant possède `taskId` et, pour un agent s
 ## P10 — isolation des observations outil en mémoire
 
 Le buffer transitoire d’une requête peut recevoir plusieurs tâches enfants. Son rejeu est désormais dédupliqué par (`taskId`, `toolCallId`) ; deux tâches qui réutilisent le même identifiant d’appel outil conservent chacune leur observation et l’éviction retire la bonne clé. Sans `taskId`, le comportement local antérieur reste conservé. Cette correction ne fournit pas une preuve Oracle : le callback de production ne reçoit toujours ni déclaration hôte configurée ni identité `taskId` de l’appel outil enfant.
+
+## P10 — projection native des fins d’outil enfant
+
+Le SDK transmet `run_step_completed` depuis le graphe enfant ; il ne transmet pas directement `TOOL_END` au callback hôte. Le store projette facultativement l’événement vers `taskId` natif, `toolCallId`, nom d’outil et agent exécutant, sans copier arguments, sortie ni artefact. Le sujet synthétique d’un sous-graphe ne sert pas d’identité d’agent membre. L’observateur est optionnel, non configuré dans le singleton de production et ses erreurs ne modifient pas le settlement. Aucun critère/valeur de preuve indépendante n’est déduit de cette projection : Distill et publication restent fermés.
