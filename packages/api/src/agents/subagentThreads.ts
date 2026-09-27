@@ -273,6 +273,7 @@ export interface SubagentTaskStepLimitFailure {
   conversationId: string;
   traceId: string;
   taskId: string;
+  producerAgentId?: string;
   responseMessageId: string;
   createdAt: string;
 }
@@ -1296,6 +1297,7 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
             lease.running = true;
             const detachedUsage: UsageMetadata[] = [];
             let prepared: PreparedThread | undefined;
+            let producerAgentId: string | undefined;
             let activityTerminal: SubagentActivityTerminalStatus = 'failed';
             try {
               if (runtime.signal.aborted) {
@@ -1344,6 +1346,20 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
               const activityRuntime: SubagentTaskRuntime = {
                 ...runtime,
                 reportProgress: (event) => {
+                  if (
+                    producerAgentId == null &&
+                    request.subagentKind === 'agent' &&
+                    event.phase === 'start' &&
+                    event.subagentKind === 'agent' &&
+                    event.subagentType === request.subagentType &&
+                    event.parentToolCallId === request.parentToolCallId &&
+                    event.parentRunId === request.parentRunId &&
+                    event.parentAgentId === request.parentAgentId &&
+                    typeof event.subagentAgentId === 'string' &&
+                    event.subagentAgentId.trim() !== ''
+                  ) {
+                    producerAgentId = event.subagentAgentId.trim();
+                  }
                   const sequence = activitySequence++;
                   const activityEvent: SubagentActivityUpdateEvent = {
                     ...event,
@@ -1441,6 +1457,7 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
                       conversationId: threadId,
                       traceId: request.traceId.trim(),
                       taskId: runtime.taskId,
+                      ...(producerAgentId == null ? {} : { producerAgentId }),
                       responseMessageId: persistedFailure.messageId,
                       createdAt: new Date(persistedFailure.createdAt).toISOString(),
                     });

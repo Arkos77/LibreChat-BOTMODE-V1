@@ -85,6 +85,7 @@ const subagentThreadTaskStore = createSubagentThreadTaskStore(
       conversationId,
       traceId,
       taskId,
+      producerAgentId,
       responseMessageId,
       createdAt,
     }) =>
@@ -94,6 +95,7 @@ const subagentThreadTaskStore = createSubagentThreadTaskStore(
         conversationId,
         traceId,
         taskId,
+        producerAgentId,
         responseMessageId,
         createdAt,
         persistCandidate: db.recordImprovementCandidate,

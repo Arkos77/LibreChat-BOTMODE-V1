@@ -334,7 +334,23 @@ describe('SubagentThreadTaskStore', () => {
     });
     const started = store.start({
       ...taskRequest(config.scopeId, {
-        run: async () => {
+        parentRunId: 'parent-run-native',
+        parentToolCallId: 'parent-call-native',
+        run: async (runtime) => {
+          runtime.reportProgress({
+            runId: 'root-run',
+            parentRunId: 'parent-run-native',
+            subagentRunId: 'child-run-native',
+            subagentType: 'researcher-agent',
+            subagentKind: 'agent',
+            subagentAgentId: 'agent-producer-native',
+            parentAgentId: 'parent-agent',
+            parentToolCallId: 'parent-call-native',
+            depth: 1,
+            ancestry: [],
+            phase: 'start',
+            timestamp: '2026-09-27T18:00:00.000Z',
+          });
           throw error;
         },
       }),
@@ -349,10 +365,57 @@ describe('SubagentThreadTaskStore', () => {
         conversationId: requireThreadId(started),
         traceId: 'trace-child-1',
         taskId,
+        producerAgentId: 'agent-producer-native',
         responseMessageId: `${taskId}:assistant`,
         createdAt: expect.any(String),
       }),
     );
+  });
+
+  it('does not attribute a graph or unrelated start event to the child producer', async () => {
+    const userId = 'step-limit-producer-negative';
+    const parentConversationId = randomUUID();
+    await saveParent(userId, parentConversationId);
+    const onTaskStepLimit = jest.fn();
+    const store = new SubagentThreadTaskStore(methods, { onTaskStepLimit });
+    const config = buildSubagentThreadTaskConfig(
+      store,
+      { userId, parentConversationId },
+      { traceId: 'trace-producer-negative' },
+    );
+    const limit = Object.assign(new Error('Limit'), { lc_error_code: 'GRAPH_RECURSION_LIMIT' });
+    for (const subagentKind of ['agent', 'graph'] as const) {
+      const started = store.start({
+        ...taskRequest(config.scopeId, {
+          subagentKind,
+          parentRunId: 'expected-parent',
+          parentToolCallId: 'expected-call',
+          run: async (runtime) => {
+            runtime.reportProgress({
+              runId: 'root-run',
+              parentRunId: subagentKind === 'graph' ? 'expected-parent' : 'different-parent',
+              subagentRunId: 'child-run',
+              subagentType: 'researcher-agent',
+              subagentKind,
+              subagentAgentId: 'unrelated-agent',
+              parentAgentId: 'parent-agent',
+              parentToolCallId: subagentKind === 'graph' ? 'expected-call' : 'different-call',
+              depth: 1,
+              ancestry: [],
+              phase: 'start',
+              timestamp: '2026-09-27T18:00:00.000Z',
+            });
+            throw limit;
+          },
+        }),
+        traceId: config.traceId,
+      });
+      await waitForSettled(store, config.scopeId, started);
+    }
+    expect(onTaskStepLimit).toHaveBeenCalledTimes(2);
+    for (const [failure] of onTaskStepLimit.mock.calls) {
+      expect(failure).not.toHaveProperty('producerAgentId');
+    }
   });
 
   it('does not observe untyped child errors or missing trace identity', async () => {

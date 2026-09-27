@@ -467,3 +467,7 @@ L’identifiant de livraison d’un event actor (`clientRequestId`, restauré de
 ## P10 — limite native des tâches enfants détachées
 
 Le SDK `d4f3c6a6bbd38ac555d29b287d4f9e2ab5185932` transporte la trace fournie par l’hôte et conserve le code typé `GRAPH_RECURSION_LIMIT` jusqu’au store des tâches enfants. Après persistance confirmée du message d’échec, le store observe cette limite avec son vrai `runtime.taskId` et le timestamp du message. Le candidat durable reste `proposal-only` ; son `candidateId` distingue les tâches sœurs d’une même trace, et MTO porte le `taskId` natif. Les erreurs ordinaires, les traces absentes et les écritures échouées ne produisent pas de candidat. Distill, Oracle et publication ne sont pas activés par ce chemin.
+
+## P10 — identité producteur de l’enfant natif
+
+Pour une tâche enfant de type agent, le store capture `subagentAgentId` uniquement depuis l’événement natif `start` correspondant à son parent, son appel outil et son type. Il transmet le champ facultatif `producerAgentId` au candidat MTO après la persistance de l’échec typé. Un événement étranger ou absent et la racine synthétique d’un sous-graphe ne fournissent pas cette identité. Le candidat demeure `proposal-only` ; aucune preuve Oracle indépendante ni activation Distill ou publication ne résulte de cette corrélation.
