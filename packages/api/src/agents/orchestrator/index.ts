@@ -13,6 +13,7 @@ export * from './nativeSkillUpdatePolicy';
 export * from './improvementAuthorizationChain';
 
 export * from './improvementPayload';
+export * from './skillContentTests';
 
 export * from './evidence';
 

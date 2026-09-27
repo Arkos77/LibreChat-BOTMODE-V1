@@ -495,6 +495,7 @@ const initializeClient = async ({
         proposal,
         persistProposal: db.recordImprovementSkillProposal,
         persistCandidate: db.recordImprovementCandidate,
+        persistLifecycleEvent: db.recordImprovementLifecycleEvent,
         mtoEventSink,
       });
     },

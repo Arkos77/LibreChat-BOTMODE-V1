@@ -22,6 +22,8 @@ function input(overrides = {}) {
       replayed: false,
     })),
     persistCandidate: jest.fn(async () => ({ replayed: false })),
+    persistLifecycleEvent: jest.fn(async () => ({})),
+    getHostTests: jest.fn(() => undefined),
     mtoEventSink: jest.fn(async () => undefined),
     ...overrides,
   };
@@ -56,6 +58,22 @@ describe('native child skill proposal capture', () => {
     await expect(recordSkillImprovementProposal(request)).rejects.toThrow(/producer/i);
     expect(request.persistProposal).not.toHaveBeenCalled();
     expect(request.persistCandidate).not.toHaveBeenCalled();
+  });
+
+  it('runs configured host tests after durable candidate capture', async () => {
+    const request = input({
+      getHostTests: jest.fn(() => [
+        { id: 'evidence', field: 'body', operator: 'includes', expected: 'Improved' },
+      ]),
+    });
+    await recordSkillImprovementProposal(request);
+    expect(request.persistLifecycleEvent.mock.calls.map(([arg]) => arg.event.type)).toEqual([
+      'VALIDATING',
+      'VERIFIED',
+    ]);
+    expect(request.persistLifecycleEvent.mock.invocationCallOrder[0]).toBeGreaterThan(
+      request.persistCandidate.mock.invocationCallOrder[0],
+    );
   });
 
   it('requires a real child task and leaves both stores untouched otherwise', async () => {
