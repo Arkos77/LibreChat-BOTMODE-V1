@@ -27,3 +27,5 @@ export * from './improvementEvidenceContext';
 export * from './stepLimitEvidenceContext';
 
 export * from './transientEvidenceBuffer';
+
+export * from './decision';

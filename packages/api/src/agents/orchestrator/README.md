@@ -299,3 +299,21 @@ This is deliberate. The top-level candidate seam does not currently expose a pro
 9. Preserve native recovery, idempotence, checkpoint, and settlement semantics when runtime activation is introduced.
 
 Until steps 3 through 9 have production call sites with proofs, P10 remains a governed dormant capability rather than an autonomous improvement loop.
+
+## P11 — Decision record boundary
+
+`createDecisionRecord(...)` validates a host-supplied decision: required identities,
+question, provider, unique non-empty options, selected option membership, and
+confidence/threshold values between zero and one. It copies only declared fields;
+unknown properties are discarded. The host supplies the decision context and time.
+
+`fromDecisionRecord(...)` emits a host `DECIDED` MTO observation with the host's
+trace event identity and bounded metadata (decision ID, selected option, provider,
+optional confidence). It does not include the question, option descriptions,
+objective, policy context, reasoning, credentials, or executable bindings.
+
+The existing `DecisionProvider` in `routing.ts` may rank only admissible,
+authorized candidates. A caller may create a decision record after that ranking;
+this contract does not execute a provider or automatically wire routing into
+`createRun`. Policy, authorization, Task Engine settlement, and Oracle validation
+remain with their existing owners.
