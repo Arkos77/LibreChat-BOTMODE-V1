@@ -29,3 +29,5 @@ export * from './stepLimitEvidenceContext';
 export * from './transientEvidenceBuffer';
 
 export * from './decision';
+
+export * from './authorization';

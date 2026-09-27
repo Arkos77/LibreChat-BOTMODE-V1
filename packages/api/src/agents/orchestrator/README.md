@@ -317,3 +317,22 @@ authorized candidates. A caller may create a decision record after that ranking;
 this contract does not execute a provider or automatically wire routing into
 `createRun`. Policy, authorization, Task Engine settlement, and Oracle validation
 remain with their existing owners.
+
+## P12 — Authorization observation record
+
+`createAuthorizationRecord(...)` copies and validates an outcome supplied by the
+host: distinct authorization and trace identities, actor, capability, scope,
+policy version, decision, and timestamp. Optional task identity, duration,
+conditions, and human review reference are validated and copied. Unknown fields
+are discarded. This record is not an authorization token or a policy evaluator.
+
+`fromAuthorizationRecord(...)` maps `ALLOW`, `DENY`, and
+`HUMAN_APPROVAL_REQUIRED` to bounded host MTO observations. The event contains
+only authorization ID, decision, capability, and policy version; it excludes
+actor, scope, conditions, approval reference, and any executable payload. Native
+ACL/capability checks and human approval remain authoritative. Neither this
+record nor its MTO event can grant permission, execute a tool, or settle a task.
+
+The host must obtain an actual native authorization outcome before recording it.
+There is no automatic production hook until that seam is proven for a specific
+operation; skill creation remains closed under the existing native policy.
