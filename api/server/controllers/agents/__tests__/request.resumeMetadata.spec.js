@@ -5538,7 +5538,12 @@ describe('ResumableAgentController resume metadata', () => {
       getHaltReason: () => 'preempt_incomplete',
     };
 
-    const runFirstTurn = async ({ run, addTitle: suppliedAddTitle, clientOverrides } = {}) => {
+    const runFirstTurn = async ({
+      run,
+      addTitle: suppliedAddTitle,
+      clientOverrides,
+      requestTenant,
+    } = {}) => {
       let signalFinished;
       const finished = new Promise((resolve) => {
         signalFinished = resolve;
@@ -5578,7 +5583,8 @@ describe('ResumableAgentController resume metadata', () => {
         }),
       };
       const req = {
-        user: { id: 'user-123' },
+        ...(requestTenant && { tenantId: requestTenant.tenantId }),
+        user: { id: 'user-123', ...(requestTenant && { tenantId: requestTenant.userTenantId }) },
         body: {
           text: 'First message',
           messageId: 'user-msg',
@@ -5708,6 +5714,16 @@ describe('ResumableAgentController resume metadata', () => {
           unfinished: true,
           finish_reason: Constants.TOOL_CALL_LIMIT_FINISH_REASON,
         }),
+      );
+    });
+
+    it('uses the canonical request tenant for a step-limit candidate', async () => {
+      await runFirstTurn({
+        clientOverrides: stepLimitClient,
+        requestTenant: { tenantId: 'tenant-canonical', userTenantId: 'tenant-stale' },
+      });
+      expect(mockRecordImprovementCandidate).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: 'tenant-canonical' }),
       );
     });
 

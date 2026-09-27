@@ -132,6 +132,19 @@ describe('step-limit improvement candidate observation', () => {
     );
   });
 
+  it('contains an asynchronous MTO sink rejection after candidate persistence', async () => {
+    const mtoEventSink = jest.fn().mockRejectedValue(new Error('async sink unavailable'));
+    await expect(
+      observeStepLimitImprovementCandidate({
+        ...durableInput,
+        traceId: 'trace-async-sink-failure',
+        responseMessageId: 'response-async-sink-failure',
+        createdAt: '2026-09-26T12:31:00.000Z',
+        mtoEventSink,
+      }),
+    ).resolves.toEqual(expect.objectContaining({ status: 'CANDIDATE' }));
+  });
+
   it('fails closed without a durable trace or response identity', async () => {
     await expect(
       observeStepLimitImprovementCandidate({

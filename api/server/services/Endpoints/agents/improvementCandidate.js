@@ -87,7 +87,7 @@ async function observeStepLimitImprovementCandidate({
     logger.debug('[BOT MODE P10] durable workflow improvement candidate', candidate);
     if (typeof mtoEventSink === 'function') {
       try {
-        mtoEventSink(
+        await mtoEventSink(
           createMtoEvent(
             'CANDIDATE',
             {

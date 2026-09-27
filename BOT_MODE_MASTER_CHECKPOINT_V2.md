@@ -331,3 +331,40 @@ natif et de l’`authorizationId`; la portée reste propriétaire/locataire/trac
 Une question utilisateur et un échec de persistance de pause ne sont pas
 qualifiés d’autorisation humaine. Aucun de ces événements ne valide une
 publication P10 ni ne remplace le contrôle d’approbation natif.
+
+==================================================
+VALIDATION TRANSVERSALE P0–P12 — 2026-09-27
+==================================================
+
+La validation porte sur les frontières réellement présentes dans ce checkout.
+Les numéros P0–P8 n'ont pas de matrice de correspondance exhaustive dans les
+checkpoints du dépôt; leur complétude globale reste À REVALIDER et ne se déduit
+pas des tests P9–P12.
+
+- P4 / Task Engine natif : subagentThreadTaskStore est appelé par le serveur et
+ possède des tests dédiés; une campagne ciblée de reprise/settlement reste à
+ relancer avant une affirmation globale sur P4.
+- P5 / Oracle : contrats et tests dédiés dans packages/api/src/agents/oracle;
+ l'invocation automatique par membre du graphe n'est pas branchée par le
+ compilateur BOT MODE. Vérifier cette frontière séparément.
+- P9 / P11 : routage autorisé et DecisionRecord passent leurs tests de contrat,
+ mais aucune source hôte de plusieurs alternatives autorisées pour un même
+ binding n'est prouvée. Aucun appel de production du routeur/DecisionRecord.
+- P10 : le chemin de production prouvé crée seulement le candidat workflow
+ borné sur tool_call_limit après persistance de la réponse. Son locataire
+ provient désormais de resolveRequestTenantId(req), comme l'observation P12;
+ un rejet asynchrone du sink MTO reste contenu après persistance. Les autres
+ étapes Distill, Oracle, autorisation et publication restent sans appel de
+ production et requièrent une identité Task Engine native et une preuve
+ indépendante; aucun identifiant n'est fabriqué.
+- P12 : observations natives skill EDIT/CREATE et pause tool_approval sous
+ propriétaire/locataire/trace, validées sur requête et reprise. Elles ne
+ constituent ni approbation humaine obtenue ni permission de publication P10.
+
+Preuves de cette passe : 24 suites orchestrator, 156 tests; quatre suites API
+voisines, 347 tests; build packages/api réussi; node --check et diff --check.
+Le typecheck complet packages/api a échoué par épuisement mémoire à 2 Go puis
+3 Go de heap sur cette machine; aucun succès de typecheck n'est revendiqué.
+Prochaines preuves : suites Oracle et Task Engine natif, puis matrice des phases
+P0–P8 établie sur leurs vrais appels hôtes et tests. Ne pas marquer la chaîne
+P0–P12 de bout en bout VALIDÉE sur cette base partielle.

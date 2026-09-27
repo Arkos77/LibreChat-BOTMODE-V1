@@ -2793,7 +2793,9 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
               ? { producerAgentId: client.options.agent.id }
               : {}),
             user: userId,
-            ...(req.user.tenantId == null ? {} : { tenantId: req.user.tenantId }),
+            ...(resolveRequestTenantId(req) == null
+              ? {}
+              : { tenantId: resolveRequestTenantId(req) }),
             conversationId,
             persistCandidate: recordImprovementCandidate,
             mtoEventSink: observeMtoEvent,
