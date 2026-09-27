@@ -459,3 +459,7 @@ ne fournissent pas plusieurs bindings autorisés pour un même agent. P9 ferme
 l'absence d'agentId; P11 exige un timestamp hôte valide. L'activation hôte
 reste fermée jusqu'à une source de candidats autorisés à l'initialisation et
 à la reprise. Aucun DECIDED de production n'a été fabriqué.
+
+## Audit P10 des identités — 27 septembre 2026
+
+L’identifiant de livraison d’un event actor (`clientRequestId`, restauré depuis `job.metadata.idempotencyClientRequestId` à la reprise HITL) est désormais tracé sous `eventActorTaskId` dans MTO. Il ne remplit plus le champ `taskId` du Task Engine dans les observations de sous-agent et les candidats de limite d’appels d’outils. Le vrai `taskId` natif est créé par `InMemorySubagentTaskStore.start` et transmis dans `SubagentTaskRuntime.taskId` au store hôte `SubagentThreadTaskStore`. Aucun producteur de candidat de tour principal ne dispose actuellement d’un lien prouvé vers cette identité ; Distill, Oracle et publication P10 restent donc non activés dans ce chemin.

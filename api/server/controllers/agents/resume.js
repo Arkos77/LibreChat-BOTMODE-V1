@@ -556,7 +556,7 @@ async function finalizeResumedTurn({
         traceId: job.metadata.mtoTraceId,
         responseMessageId: savedResponseMessage.messageId ?? responseMessageId,
         ...(typeof req._agentEventTaskId === 'string' && req._agentEventTaskId !== ''
-          ? { taskId: req._agentEventTaskId }
+          ? { eventActorTaskId: req._agentEventTaskId }
           : {}),
         ...(typeof client?.options?.agent?.id === 'string' && client.options.agent.id !== ''
           ? { producerAgentId: client.options.agent.id }

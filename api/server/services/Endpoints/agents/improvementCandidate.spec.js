@@ -266,6 +266,7 @@ describe('step-limit improvement candidate observation', () => {
       ...durableInput,
       traceId: 'trace-context-minimal',
       responseMessageId: 'response-context-minimal',
+      eventActorTaskId: 'event-delivery-minimal',
       taskId: ' ',
       producerAgentId: '',
       createdAt: '2026-09-26T13:01:00.000Z',
@@ -275,6 +276,7 @@ describe('step-limit improvement candidate observation', () => {
     expect(candidate).not.toBeNull();
     const event = mtoEventSink.mock.calls[0][0];
     expect(event.identity).not.toHaveProperty('taskId');
+    expect(event.identity.eventActorTaskId).toBe('event-delivery-minimal');
     expect(event.identity).not.toHaveProperty('agentId');
   });
 

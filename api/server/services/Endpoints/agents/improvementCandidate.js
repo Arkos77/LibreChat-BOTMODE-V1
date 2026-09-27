@@ -16,6 +16,7 @@ async function observeStepLimitImprovementCandidate({
   traceId,
   responseMessageId,
   taskId,
+  eventActorTaskId,
   producerAgentId,
   user,
   tenantId,
@@ -95,6 +96,9 @@ async function observeStepLimitImprovementCandidate({
               traceEventId: `candidate:${candidate.candidateId}`,
               causedByTraceEventId: observation.identity.traceEventId,
               ...(stepLimitContext.taskId == null ? {} : { taskId: stepLimitContext.taskId }),
+              ...(typeof eventActorTaskId === 'string' && eventActorTaskId.trim() !== ''
+                ? { eventActorTaskId: eventActorTaskId.trim() }
+                : {}),
               ...(stepLimitContext.producerAgentId == null
                 ? {}
                 : { agentId: stepLimitContext.producerAgentId }),

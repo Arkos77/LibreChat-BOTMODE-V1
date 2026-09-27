@@ -48,6 +48,8 @@ export interface MtoIdentity {
   parentTraceEventId?: string;
   causedByTraceEventId?: string;
   taskId?: string;
+  /** Event actor delivery identity; separate from the native Task Engine taskId. */
+  eventActorTaskId?: string;
   rootRunId?: string;
   parentRunId?: string;
   runId?: string;
@@ -131,6 +133,7 @@ export function createMtoEvent<TPayload>(
     'parentTraceEventId',
     'causedByTraceEventId',
     'taskId',
+    'eventActorTaskId',
     'rootRunId',
     'parentRunId',
     'runId',
@@ -161,7 +164,10 @@ export function createMtoEvent<TPayload>(
  */
 export function fromSubagentActivity(
   event: SubagentUpdateEvent,
-  context: Pick<MtoEventContext, 'traceId' | 'traceEventId' | 'taskId' | 'threadId'>,
+  context: Pick<
+    MtoEventContext,
+    'traceId' | 'traceEventId' | 'taskId' | 'eventActorTaskId' | 'threadId'
+  >,
 ): MtoEvent<MtoSubagentActivityObservation> {
   const payload: MtoSubagentActivityObservation = {
     phase: event.phase,

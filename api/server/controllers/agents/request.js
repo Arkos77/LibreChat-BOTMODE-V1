@@ -2787,7 +2787,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
             traceId: mtoTraceId,
             responseMessageId: savedResponseMessage.messageId ?? response?.messageId,
             ...(typeof eventTaskId === 'string' && eventTaskId !== ''
-              ? { taskId: eventTaskId }
+              ? { eventActorTaskId: eventTaskId }
               : {}),
             ...(typeof client?.options?.agent?.id === 'string' && client.options.agent.id !== ''
               ? { producerAgentId: client.options.agent.id }

@@ -7,6 +7,7 @@ const mockFromSubagentActivity = jest.fn((event, context) => ({
     traceEventId: context.traceEventId,
     ...(context.threadId ? { threadId: context.threadId } : {}),
     ...(context.taskId ? { taskId: context.taskId } : {}),
+    ...(context.eventActorTaskId ? { eventActorTaskId: context.eventActorTaskId } : {}),
     ...(event.runId ? { runId: event.runId, rootRunId: event.runId } : {}),
     ...(event.parentRunId ? { parentRunId: event.parentRunId } : {}),
     ...(event.subagentRunId ? { subagentRunId: event.subagentRunId } : {}),
@@ -284,7 +285,7 @@ describe('resumable event generation fencing', () => {
     expect(mtoEvents[0].payload).not.toHaveProperty('data');
   });
 
-  it('binds native taskId separately from threadId in MTO subagent activity', async () => {
+  it('keeps event delivery identity separate from native Task Engine taskId', async () => {
     const { GraphEvents } = jest.requireActual('@librechat/agents');
     const { getDefaultHandlers } = require('~/server/controllers/agents/callbacks');
     const mtoEvents = [];
@@ -294,7 +295,7 @@ describe('resumable event generation fencing', () => {
       toolEndCallback: jest.fn(),
       collectedUsage: [],
       streamId: 'thread-native-1',
-      taskId: 'task-native-1',
+      eventActorTaskId: 'event-delivery-1',
       jobCreatedAt: 1234,
       mtoTraceId: 'mto-trace-native-task',
       mtoEventSink: (event) => mtoEvents.push(event),
@@ -315,9 +316,9 @@ describe('resumable event generation fencing', () => {
     expect(mtoEvents[0].identity).toMatchObject({
       traceId: 'mto-trace-native-task',
       threadId: 'thread-native-1',
-      taskId: 'task-native-1',
+      eventActorTaskId: 'event-delivery-1',
     });
-    expect(mtoEvents[0].identity.taskId).not.toBe(mtoEvents[0].identity.threadId);
+    expect(mtoEvents[0].identity).not.toHaveProperty('taskId');
   });
 
   it('contains MTO activity sink failures without blocking native forwarding', async () => {
