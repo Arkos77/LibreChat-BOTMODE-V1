@@ -96,7 +96,7 @@ export function createImprovementDisposition(
 ): ImprovementDisposition {
   const { candidate, oracle } = input;
 
-  if (oracle.phase === 'CANDIDATE' || oracle.phase === 'VALIDATING') {
+  if (!Object.values(EXPECTED_PHASE).includes(oracle.phase)) {
     throw new Error('Oracle result must be terminal before improvement disposition');
   }
 

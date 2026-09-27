@@ -24,7 +24,8 @@ describe('Authorization observation boundary', () => {
     expect(() => createAuthorizationRecord({ ...valid, decision: 'GRANT' as never })).toThrow(
       /decision/,
     );
-    const record = createAuthorizationRecord({ ...valid, credential: 'secret' });
+    const extra = { ...valid, credential: 'secret' };
+    const record = createAuthorizationRecord(extra);
     expect(record).not.toHaveProperty('credential');
   });
 

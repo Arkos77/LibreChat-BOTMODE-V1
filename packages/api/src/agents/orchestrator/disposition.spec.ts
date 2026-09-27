@@ -46,8 +46,7 @@ function oracleResult(
 
   const verdict: OracleVerdict = {
     status,
-    taskId: 'task-oracle-1',
-    validator: { id: 'oracle-independent', kind: 'deterministic' },
+    validator: { id: 'oracle-independent', type: 'deterministic' },
     timestamp: '2026-09-26T02:00:00.000Z',
     input: {
       taskId: 'task-oracle-1',
@@ -126,9 +125,6 @@ describe('Improvement disposition boundary', () => {
   it('fails closed when Oracle phase and decision disagree', () => {
     const source = candidate('skill');
     const oracle = oracleResult(source, 'ACCEPT');
-    if (oracle.phase === 'CANDIDATE' || oracle.phase === 'VALIDATING') {
-      throw new Error('unexpected test fixture');
-    }
 
     expect(() =>
       createImprovementDisposition({
@@ -141,11 +137,8 @@ describe('Improvement disposition boundary', () => {
   it('does not copy verdict evidence, reasoning, candidate prose or grant authority', () => {
     const source = candidate('skill');
     const oracle = oracleResult(source, 'ACCEPT');
-    if (oracle.phase === 'CANDIDATE' || oracle.phase === 'VALIDATING') {
-      throw new Error('unexpected test fixture');
-    }
 
-    oracle.verdict.reasons.push({ code: 'CRITERION_FAILED', detail: 'private-reason' });
+    oracle.verdict.reasons.push({ code: 'CRITERION_FAILED', criterionId: 'private-reason' });
     const result = createImprovementDisposition({ candidate: source, oracle });
     const serialized = JSON.stringify(result);
 

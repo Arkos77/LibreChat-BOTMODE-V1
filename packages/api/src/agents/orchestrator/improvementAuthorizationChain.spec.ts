@@ -58,7 +58,6 @@ describe('Improvement authorization chain', () => {
       actorId: 'user-1',
       skillId: 'skill-1',
       expectedVersion: 7,
-      payloadDigest: 'digest-abc',
       publicationPath: 'native-skill-authoring-required',
       authorized: true,
       publishable: true,

@@ -430,3 +430,21 @@ obtenues : P7 RAG/pgvector réel (5/5) et P4 interréplicas Redis (1/1).
 Cette validation de leurs parcours ciblés ne change pas les frontières P9/P11
 et P10 sans appel de production prouvé, ni les phases P0–P3/P6/P8 dont la
 correspondance exhaustive demeure inconnue.
+
+==================================================
+TYPECHECK API RÉTABLI — 2026-09-27
+==================================================
+
+Un typecheck complet avec NODE_OPTIONS=--max-old-space-size=4608 a révélé
+26 erreurs TypeScript dans les contrats orchestrator que tsdown et Jest ne
+signalaient pas. Les adaptateurs Distill, disposition, MTO et routing conservent
+leurs frontières : copie mutable des preuves, vérification terminale Oracle,
+discrimination explicite des événements et clonage des options SDK. Les fixtures
+ont été alignées sur les types Oracle et ImprovementCandidate courants; les
+digests d'autorisation restent présents dans les requêtes.
+
+Validation : npx tsc --noEmit dans packages/api passe sans erreur avec le heap
+indiqué; 24 suites orchestrator et 156 tests passent; build packages/api passe.
+La ligne précédente « typecheck NON OBTENU » est historique et est remplacée
+par cette preuve. Elle ne rend pas actifs les appels hôtes P9/P11 ni le chemin
+Distill → Oracle → publication P10, toujours non prouvés en production.

@@ -37,7 +37,6 @@ describe('Improvement authorization boundary', () => {
       actorId: 'user-1',
       skillId: 'skill-1',
       expectedVersion: 7,
-      payloadDigest: 'digest-abc',
       publicationPath: 'native-skill-authoring-required',
       requiresNativeAuthorization: true,
       authorized: false,

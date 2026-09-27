@@ -41,7 +41,7 @@ export function createDistillValidationRequest(
       ? requiredText('payloadDigest', input.candidate.payloadDigest ?? '')
       : undefined;
 
-  const evidence = structuredClone(input.evidence);
+  const evidence = structuredClone([...input.evidence]);
   for (const item of evidence) {
     if (!DISTILL_CRITERION_IDS.has(item.criterionId)) {
       throw new Error(

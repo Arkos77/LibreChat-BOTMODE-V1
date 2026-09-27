@@ -334,7 +334,8 @@ function cloneClientOptions(value: AgentInputs['clientOptions']): AgentInputs['c
 }
 
 function cloneCandidateBinding(binding: AgentInputs): AgentInputs {
-  return { ...binding, clientOptions: cloneClientOptions(binding.clientOptions) };
+  // The SDK union correlates provider with clientOptions; spreading preserves that pair.
+  return { ...binding, clientOptions: cloneClientOptions(binding.clientOptions) } as AgentInputs;
 }
 
 function assertModelCandidates(candidates: ReadonlyArray<AuthorizedModelCandidate>): void {
@@ -379,7 +380,7 @@ function bindingWithFallbacks(
   binding.clientOptions = {
     ...(binding.clientOptions ?? {}),
     fallbacks,
-  } as AgentInputs['clientOptions'];
+  } as unknown as AgentInputs['clientOptions'];
   return binding;
 }
 

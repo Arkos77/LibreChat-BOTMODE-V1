@@ -232,21 +232,22 @@ export function fromOracleEvent(
   event: OracleEvent,
   context: Pick<MtoEventContext, 'traceId' | 'traceEventId' | 'taskId' | 'threadId'>,
 ): MtoEvent<MtoOracleObservation> {
-  const input =
-    event.phase === 'CANDIDATE' || event.phase === 'VALIDATING' ? event.input : event.verdict.input;
-  const payload: MtoOracleObservation =
-    event.phase === 'CANDIDATE' || event.phase === 'VALIDATING'
-      ? { phase: event.phase, evidenceCount: event.input.evidence.length }
-      : {
-          phase: event.phase,
-          decision: event.decision,
-          validator: { ...event.verdict.validator },
-          reasonCodes: event.verdict.reasons.map((reason) => reason.code),
-          uncertainty: [...event.verdict.uncertainty],
-          checkCount: event.verdict.checks.length,
-          contradictionCount: event.verdict.contradictions.length,
-          evidenceCount: event.verdict.input.evidence.length,
-        };
+  const input = 'verdict' in event ? event.verdict.input : event.input;
+  let payload: MtoOracleObservation;
+  if ('verdict' in event) {
+    payload = {
+      phase: event.phase,
+      decision: event.decision,
+      validator: { ...event.verdict.validator },
+      reasonCodes: event.verdict.reasons.map((reason) => reason.code),
+      uncertainty: [...event.verdict.uncertainty],
+      checkCount: event.verdict.checks.length,
+      contradictionCount: event.verdict.contradictions.length,
+      evidenceCount: event.verdict.input.evidence.length,
+    };
+  } else {
+    payload = { phase: event.phase, evidenceCount: event.input.evidence.length };
+  }
   return createMtoEvent(
     oracleType(event),
     {

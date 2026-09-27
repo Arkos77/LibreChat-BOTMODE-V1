@@ -1,19 +1,23 @@
-import type { ImprovementCandidate } from './improvement';
 import { createToolEvidenceDistillRequest } from './toolEvidenceDistill';
+import { createImprovementCandidate } from './improvement';
 
-const candidate: ImprovementCandidate = {
+const candidate = createImprovementCandidate({
   candidateId: 'candidate-tool-evidence-1',
   target: 'skill',
   title: 'Improve skill behavior',
   summary: 'Bounded improvement candidate',
   traceId: 'trace-tool-evidence-1',
-  traceEventIds: ['trace-event-1'],
-  signals: [{ kind: 'step_limit', count: 1 }],
-  status: 'CANDIDATE',
-  publicationPath: 'native-skill-authoring-required',
+  observations: [
+    {
+      type: 'OBSERVED',
+      identity: { traceId: 'trace-tool-evidence-1', traceEventId: 'trace-event-1' },
+      source: 'host',
+      timestamp: '2026-09-26T12:00:00.000Z',
+    },
+  ],
   payloadDigest: 'digest-tool-evidence-1',
   createdAt: '2026-09-26T12:00:00.000Z',
-};
+});
 
 describe('P10 tool evidence to Distill composition', () => {
   it('composes explicit host semantics and native tool provenance into bounded Distill input', () => {

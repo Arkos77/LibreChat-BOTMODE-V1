@@ -31,7 +31,7 @@ function acceptedOracle(candidateJson: string) {
     verdict: {
       status: 'VERIFIED' as const,
       taskId: 'task-oracle-1',
-      validator: { id: 'oracle-independent', kind: 'deterministic' as const },
+      validator: { id: 'oracle-independent', type: 'deterministic' as const },
       timestamp: '2026-09-26T02:00:00.000Z',
       input: {
         taskId: 'task-oracle-1',
