@@ -548,6 +548,7 @@ async function finalizeResumedTurn({
     }
     if (stepLimitReached) {
       await observeStepLimitImprovementCandidate({
+        createdAt: new Date(job.createdAt).toISOString(),
         traceId: job.metadata.mtoTraceId,
         responseMessageId: savedResponseMessage.messageId ?? responseMessageId,
         ...(typeof req._agentEventTaskId === 'string' && req._agentEventTaskId !== ''

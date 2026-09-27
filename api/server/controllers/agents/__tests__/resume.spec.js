@@ -1436,6 +1436,9 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
           }),
         }),
       );
+      expect(mockRecordImprovementCandidate.mock.calls[0][0].candidate.createdAt).toBe(
+        new Date(1000).toISOString(),
+      );
       const candidateEvent = mockObserveMtoEvent.mock.calls
         .map((call) => call[0])
         .find((event) => event?.type === 'CANDIDATE');

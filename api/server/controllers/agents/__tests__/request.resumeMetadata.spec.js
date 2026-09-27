@@ -255,6 +255,8 @@ jest.mock('@librechat/data-schemas', () => ({
 
 jest.mock('@librechat/api', () => ({
   createMtoEvent: (...args) => jest.requireActual('@librechat/api').createMtoEvent(...args),
+  createStepLimitEvidenceContext: (...args) =>
+    jest.requireActual('@librechat/api').createStepLimitEvidenceContext(...args),
   createImprovementCandidate: (...args) =>
     jest.requireActual('@librechat/api').createImprovementCandidate(...args),
   sendEvent: jest.fn(),
@@ -5684,6 +5686,9 @@ describe('ResumableAgentController resume metadata', () => {
 
       expect(mockRecordImprovementCandidate.mock.calls[0][0].conversationId).toBe(
         savedResponseRow().conversationId,
+      );
+      expect(mockRecordImprovementCandidate.mock.calls[0][0].candidate.createdAt).toBe(
+        new Date(1000).toISOString(),
       );
       expect(savedResponseRow()).toEqual(
         expect.objectContaining({

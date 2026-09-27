@@ -2768,6 +2768,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         }
         if (stepLimitReached) {
           await observeStepLimitImprovementCandidate({
+            createdAt: new Date(jobCreatedAt).toISOString(),
             traceId: mtoTraceId,
             responseMessageId: savedResponseMessage.messageId ?? response?.messageId,
             ...(typeof eventTaskId === 'string' && eventTaskId !== ''

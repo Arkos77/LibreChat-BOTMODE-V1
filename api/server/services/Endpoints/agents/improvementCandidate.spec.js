@@ -264,4 +264,27 @@ describe('step-limit improvement candidate observation', () => {
     expect(event.identity).not.toHaveProperty('taskId');
     expect(event.identity).not.toHaveProperty('agentId');
   });
+
+  it('replays the same generation snapshot with a stable host timestamp', async () => {
+    let stored;
+    const persistCandidate = jest.fn(async ({ candidate }) => {
+      if (stored && JSON.stringify(stored) !== JSON.stringify(candidate)) {
+        throw new Error('durable candidate idempotency conflict');
+      }
+      stored = candidate;
+      return { record: stored, replayed: persistCandidate.mock.calls.length > 1 };
+    });
+    const input = {
+      traceId: 'trace-retry-stable',
+      responseMessageId: 'response-retry-stable',
+      user: '507f1f77bcf86cd799439011',
+      conversationId: 'conversation-1',
+      createdAt: '2026-09-27T14:00:00.000Z',
+      persistCandidate,
+    };
+    const first = await observeStepLimitImprovementCandidate(input);
+    const replay = await observeStepLimitImprovementCandidate(input);
+    expect(replay).toEqual(first);
+    expect(persistCandidate).toHaveBeenCalledTimes(2);
+  });
 });

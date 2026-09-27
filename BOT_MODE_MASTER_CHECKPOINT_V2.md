@@ -292,3 +292,15 @@ globale, sans liaison explicite de ce périmètre à chaque émission initiale,
 reprise ou enfant. Vérifier ce lien pour chaque chemin avant d'activer les
 écritures durables. Aucun événement MTO
 n'accorde permission, ne règle Task Engine ou ne déclenche publication.
+
+==================================================
+MISE A JOUR OPERATIONNELLE — REJEU CANDIDAT P10
+==================================================
+
+Le candidat workflow emis apres la limite native d'appels outil utilise
+maintenant la date de creation durable de la generation, sur la requete initiale
+et la reprise. Cette date stable fait partie du snapshot immuable et de son
+empreinte; un rejeu du meme candidat ne varie plus avec l'horloge du processus.
+Le mock de la requete initiale expose le vrai createStepLimitEvidenceContext,
+ce qui verifie effectivement le chemin de persistance du candidat. Aucun droit
+ni publication autonome n'est ajoute.
