@@ -204,3 +204,78 @@ describe('MTO identity projection bounds', () => {
     ).toBeNull();
   });
 });
+
+describe('MTO nested usage logging boundary', () => {
+  it('retains numeric token counters while discarding nested untrusted fields', () => {
+    const event = projectMtoObservation({
+      type: 'OBSERVED',
+      source: 'subagent-usage',
+      timestamp: '2026-09-27T00:00:00.000Z',
+      identity: { traceId: 'trace-usage', traceEventId: 'event-usage' },
+      payload: {
+        usage: {
+          input_tokens: 4,
+          output_tokens: 2,
+          total_tokens: 6,
+          rawPrompt: 'secret',
+          nested: { password: 'secret' },
+        },
+        model: 'model-1',
+        subagentType: 'writer',
+      },
+    });
+    expect(event.payload.usage).toEqual({ input_tokens: 4, output_tokens: 2, total_tokens: 6 });
+    expect(JSON.stringify(event)).not.toContain('secret');
+  });
+});
+
+describe('MTO nested Oracle logging boundary', () => {
+  it('projects only bounded verdict metadata from nested values', () => {
+    const event = projectMtoObservation({
+      type: 'VERIFIED',
+      source: 'oracle',
+      timestamp: '2026-09-27T00:00:00.000Z',
+      identity: { traceId: 'trace-oracle', traceEventId: 'event-oracle' },
+      payload: {
+        phase: 'VERIFIED',
+        decision: 'ACCEPT',
+        validator: { id: 'validator-1', type: 'deterministic', secret: 'private credential' },
+        reasonCodes: ['CRITERION_MET', { secret: 'private reason' }],
+        uncertainty: ['bounded', { secret: 'private uncertainty' }],
+        checkCount: 1,
+        contradictionCount: 0,
+        evidenceCount: 2,
+      },
+    });
+    expect(event.payload).toEqual({
+      phase: 'VERIFIED',
+      decision: 'ACCEPT',
+      validator: { id: 'validator-1', type: 'deterministic' },
+      reasonCodes: ['CRITERION_MET'],
+      uncertainty: ['bounded'],
+      checkCount: 1,
+      contradictionCount: 0,
+      evidenceCount: 2,
+    });
+    expect(JSON.stringify(event)).not.toContain('private');
+  });
+});
+
+describe('MTO activity logging boundary', () => {
+  it('drops unexpected structured values from scalar activity metadata', () => {
+    const event = projectMtoObservation({
+      type: 'OBSERVED',
+      source: 'subagent-activity',
+      timestamp: '2026-09-27T00:00:00.000Z',
+      identity: { traceId: 'trace-activity', traceEventId: 'event-activity' },
+      payload: {
+        phase: 'run_step_closed',
+        subagentType: 'writer',
+        label: { secret: 'private reasoning' },
+        depth: { secret: 'private depth' },
+      },
+    });
+    expect(event.payload).toEqual({ phase: 'run_step_closed', subagentType: 'writer' });
+    expect(JSON.stringify(event)).not.toContain('private');
+  });
+});

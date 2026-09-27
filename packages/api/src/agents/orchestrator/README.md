@@ -354,3 +354,9 @@ Exact writes replay; changed content under the same trace event identity raises
 an explicit conflict. Trace reads use a bounded `(timestamp, traceEventId)` page
 cursor. It is not connected to the production logging sink yet; request and
 resume owner context must be established before recording any live event.
+
+The host logging projection also validates native subagent and Oracle fields at
+every nested boundary: activity labels and identities are bounded strings,
+usage contains only nonnegative token counters, and Oracle validator, reason
+codes and uncertainty are reduced to bounded scalar metadata. Unexpected
+nested values are omitted before logging.

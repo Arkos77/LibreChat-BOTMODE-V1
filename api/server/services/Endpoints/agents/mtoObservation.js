@@ -68,6 +68,76 @@ function pickIdentity(source) {
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
+function projectUsagePayload(source) {
+  const selected = pickDefined(source, USAGE_PAYLOAD_KEYS);
+  if (selected == null) return undefined;
+  const result = {};
+  const usage = selected.usage;
+  if (usage != null && typeof usage === 'object' && !Array.isArray(usage)) {
+    const counters = {};
+    for (const key of ['input_tokens', 'output_tokens', 'total_tokens']) {
+      if (Number.isSafeInteger(usage[key]) && usage[key] >= 0) counters[key] = usage[key];
+    }
+    if (Object.keys(counters).length > 0) result.usage = counters;
+  }
+  for (const key of ['model', 'provider', 'subagentType', 'subagentKind']) {
+    if (
+      typeof selected[key] === 'string' &&
+      selected[key].trim() !== '' &&
+      selected[key].length <= 256
+    )
+      result[key] = selected[key];
+  }
+  if (Number.isSafeInteger(selected.depth) && selected.depth >= 0 && selected.depth <= 100)
+    result.depth = selected.depth;
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function projectOraclePayload(source) {
+  const selected = pickDefined(source, ORACLE_PAYLOAD_KEYS);
+  if (selected == null) return undefined;
+  const result = {};
+  for (const key of ['phase', 'decision']) {
+    if (
+      typeof selected[key] === 'string' &&
+      selected[key].trim() !== '' &&
+      selected[key].length <= 256
+    )
+      result[key] = selected[key];
+  }
+  const validator = selected.validator;
+  if (validator != null && typeof validator === 'object' && !Array.isArray(validator)) {
+    const id = boundedHostText(validator.id);
+    const type = boundedHostText(validator.type);
+    if (id && type) {
+      result.validator = { id, type };
+      const agentId = boundedHostText(validator.agentId);
+      if (agentId) result.validator.agentId = agentId;
+    }
+  }
+  for (const key of ['reasonCodes', 'uncertainty']) {
+    if (Array.isArray(selected[key]))
+      result[key] = selected[key].filter((value) => boundedHostText(value)).slice(0, 32);
+  }
+  for (const key of ['checkCount', 'contradictionCount', 'evidenceCount']) {
+    if (Number.isSafeInteger(selected[key]) && selected[key] >= 0) result[key] = selected[key];
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function projectActivityPayload(source) {
+  const selected = pickDefined(source, ACTIVITY_PAYLOAD_KEYS);
+  if (selected == null) return undefined;
+  const result = {};
+  for (const key of ['phase', 'subagentType', 'subagentKind', 'label']) {
+    const value = boundedHostText(selected[key]);
+    if (value) result[key] = value;
+  }
+  if (Number.isSafeInteger(selected.depth) && selected.depth >= 0 && selected.depth <= 100)
+    result.depth = selected.depth;
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 function projectMtoObservation(event) {
   if (event == null || typeof event !== 'object' || Array.isArray(event)) {
     return null;
@@ -88,11 +158,11 @@ function projectMtoObservation(event) {
 
   let payload;
   if (event.source === 'subagent-activity') {
-    payload = pickDefined(event.payload, ACTIVITY_PAYLOAD_KEYS);
+    payload = projectActivityPayload(event.payload);
   } else if (event.source === 'subagent-usage') {
-    payload = pickDefined(event.payload, USAGE_PAYLOAD_KEYS);
+    payload = projectUsagePayload(event.payload);
   } else if (event.source === 'oracle') {
-    payload = pickDefined(event.payload, ORACLE_PAYLOAD_KEYS);
+    payload = projectOraclePayload(event.payload);
   }
 
   if (event.source === 'host') payload = projectHostPayload(event);
