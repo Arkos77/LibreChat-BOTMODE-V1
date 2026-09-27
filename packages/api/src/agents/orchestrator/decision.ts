@@ -49,6 +49,10 @@ export function createDecisionRecord(input: DecisionRecord): DecisionRecord {
     throw new Error('DecisionRecord requires traceId');
   }
 
+  if (typeof input.timestamp !== 'string' || !Number.isFinite(Date.parse(input.timestamp))) {
+    throw new Error('DecisionRecord requires a valid host timestamp');
+  }
+
   const optionIds = new Set<string>();
   for (const option of input.options) {
     if (
@@ -103,7 +107,7 @@ export function createDecisionRecord(input: DecisionRecord): DecisionRecord {
         ? {}
         : { policyContext: input.context.policyContext }),
     },
-    timestamp: input.timestamp || new Date().toISOString(),
+    timestamp: input.timestamp,
   };
 }
 

@@ -339,6 +339,14 @@ function cloneCandidateBinding(binding: AgentInputs): AgentInputs {
 }
 
 function assertModelCandidates(candidates: ReadonlyArray<AuthorizedModelCandidate>): void {
+  if (
+    candidates.some(
+      (candidate) =>
+        typeof candidate.binding.agentId !== 'string' || candidate.binding.agentId.trim() === '',
+    )
+  ) {
+    throw new Error('Authorized model candidates must share one logical agent binding');
+  }
   const bindingAgentIds = new Set(
     candidates
       .map((candidate) => candidate.binding.agentId)

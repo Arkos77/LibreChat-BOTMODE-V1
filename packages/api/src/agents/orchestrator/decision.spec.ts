@@ -25,6 +25,11 @@ describe('Decision record boundary', () => {
     expect(() => createDecisionRecord({ ...valid, confidence: 2 })).toThrow(/confidence/i);
   });
 
+  it('requires a valid host timestamp for replay-stable decisions', () => {
+    expect(() => createDecisionRecord({ ...valid, timestamp: '' })).toThrow(/timestamp/i);
+    expect(() => createDecisionRecord({ ...valid, timestamp: 'not-a-date' })).toThrow(/timestamp/i);
+  });
+
   it('emits bounded DECIDED metadata with a host-supplied event identity', () => {
     const record = createDecisionRecord(valid);
     const event = fromDecisionRecord(record, 'event-1');

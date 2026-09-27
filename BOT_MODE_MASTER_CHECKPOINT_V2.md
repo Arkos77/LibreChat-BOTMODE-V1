@@ -448,3 +448,14 @@ indiqué; 24 suites orchestrator et 156 tests passent; build packages/api passe.
 La ligne précédente « typecheck NON OBTENU » est historique et est remplacée
 par cette preuve. Elle ne rend pas actifs les appels hôtes P9/P11 ni le chemin
 Distill → Oracle → publication P10, toujours non prouvés en production.
+
+==================================================
+AUDIT P9/P11 — 2026-09-27
+==================================================
+
+Rapport de reprise au nom unique : BOT_MODE_P9_P11_AUDIT_2026-09-27.md.
+Le catalogue modelsConfig, une model spec sélectionnée et les membres du graphe
+ne fournissent pas plusieurs bindings autorisés pour un même agent. P9 ferme
+l'absence d'agentId; P11 exige un timestamp hôte valide. L'activation hôte
+reste fermée jusqu'à une source de candidats autorisés à l'initialisation et
+à la reprise. Aucun DECIDED de production n'a été fabriqué.

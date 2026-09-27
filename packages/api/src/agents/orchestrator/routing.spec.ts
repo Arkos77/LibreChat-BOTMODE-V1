@@ -208,6 +208,13 @@ describe('routeAuthorizedModelBindings', () => {
     );
   });
 
+  it('rejects a model binding without a logical agent identity', async () => {
+    const missing = modelCandidate('missing', {
+      binding: { ...binding('model-missing'), agentId: undefined } as unknown as AgentInputs,
+    });
+    await expect(routeAuthorizedModelBindings([missing])).rejects.toThrow(/logical agent binding/);
+  });
+
   it('maps selected ordering to SDK-native fallbacks without mutating source bindings', async () => {
     const provider: DecisionProvider = { id: 'Jev', decide: () => ['second'] };
     const second = modelCandidate('second', { binding: binding('model-second') });
