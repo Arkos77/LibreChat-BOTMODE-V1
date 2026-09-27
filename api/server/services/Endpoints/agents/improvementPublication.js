@@ -1,5 +1,6 @@
 const {
   createImprovementPayloadDigest,
+  inspectSkillContentPolicy,
   verifyImprovementPayloadDigest,
 } = require('@librechat/api');
 const { authorizeImprovementPublicationForRequest } = require('./improvementAuthorization');
@@ -58,6 +59,11 @@ async function publishImprovementSkillUpdateForRequest({
     !verifyImprovementPayloadDigest(update, authorization.payloadDigest)
   ) {
     throw new Error('Improvement publication payload does not match authorization');
+  }
+
+  const { finding, traversalError } = inspectSkillContentPolicy(req?.config?.filters, update);
+  if (finding != null || traversalError != null) {
+    throw new Error('Improvement publication content policy blocked the skill update');
   }
 
   const { updateSkill } = getSkillToolDeps();

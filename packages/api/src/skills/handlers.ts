@@ -4,6 +4,7 @@ import {
   AccessRoleIds,
   PrincipalType,
   PermissionBits,
+  type FiltersConfig,
 } from 'librechat-data-provider';
 import type {
   TSkill,
@@ -267,17 +268,14 @@ function parseLimit(raw: unknown): number {
   return Math.min(Math.max(1, parsed), 100);
 }
 
-function blockFilteredSkillContent(
-  req: ServerRequest,
-  res: Response,
-  input: TCreateSkill | TUpdateSkillPayload,
-): boolean {
-  if (req.config?.filters == null) {
-    return false;
-  }
+/** Shared native skill content policy for HTTP PATCH and P10 publication. */
+export function inspectSkillContentPolicy(
+  filters: FiltersConfig | undefined,
+  input: TUpdateSkillPayload,
+): ReturnType<typeof inspectContentWithTraversal> {
   const inlineFrontmatter =
     typeof input.body === 'string' ? parseSkillMarkdown(input.body).frontmatter : undefined;
-  const { finding, traversalError } = inspectContentWithTraversal(
+  return inspectContentWithTraversal(
     () =>
       extractSkillContent({
         name: input.name,
@@ -290,8 +288,19 @@ function blockFilteredSkillContent(
         },
         category: input.category,
       }),
-    { filters: req.config?.filters },
+    { filters: filters },
   );
+}
+
+function blockFilteredSkillContent(
+  req: ServerRequest,
+  res: Response,
+  input: TCreateSkill | TUpdateSkillPayload,
+): boolean {
+  if (req.config?.filters == null) {
+    return false;
+  }
+  const { finding, traversalError } = inspectSkillContentPolicy(req.config?.filters, input);
   if (finding != null) {
     res.status(400).json(contentFilterBlockResponse(finding));
     return true;

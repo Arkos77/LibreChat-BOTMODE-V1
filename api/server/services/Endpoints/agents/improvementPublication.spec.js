@@ -110,6 +110,44 @@ describe('controlled improvement skill publication', () => {
     expect(updateSkill).not.toHaveBeenCalled();
   });
 
+  it('blocks skill content rejected by native skill policy before mutation', async () => {
+    const update = { description: 'Improved skill with PRIVATE-123 inside.' };
+    authorizeImprovementPublicationForRequest.mockResolvedValue(
+      authorization({
+        payloadDigest: createImprovementPayloadDigest(update),
+      }),
+    );
+    const updateSkill = jest.fn();
+    getSkillToolDeps.mockReturnValue({ updateSkill });
+    const req = {
+      user: { id: 'user-1', role: 'user' },
+      config: {
+        filters: {
+          skills: {
+            pii: {
+              customPatterns: [
+                { id: 'private_token', label: 'private token', regex: 'PRIVATE-\\d+' },
+              ],
+            },
+          },
+        },
+      },
+    };
+    await expect(
+      publishImprovementSkillUpdateForRequest(
+        input({
+          req,
+          update,
+          disposition: {
+            ...acceptedDisposition(),
+            payloadDigest: createImprovementPayloadDigest(update),
+          },
+        }),
+      ),
+    ).rejects.toThrow(/content|filter|policy/i);
+    expect(updateSkill).not.toHaveBeenCalled();
+  });
+
   it('does not mutate when authorization is not publishable', async () => {
     authorizeImprovementPublicationForRequest.mockResolvedValue(
       authorization({ authorized: false, publishable: false }),

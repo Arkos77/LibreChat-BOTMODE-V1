@@ -235,7 +235,7 @@ Execution authority remains outside P10. The native Task Engine owns execution i
 - Oracle `ACCEPT` may only produce a bounded disposition such as `AUTHORIZATION_REQUIRED`; it cannot authorize or publish an improvement.
 - Improvement authorization requests start with `authorized: false` and `publishable: false`.
 - Skill publication requires the native capability and resource authorization seams.
-- Publication revalidates the exact authorized payload digest and candidate, trace, actor, operation, skill and version identities before the native mutation call.
+- Publication revalidates the exact authorized payload digest and candidate, trace, actor, operation, skill and version identities before the native mutation call. It applies the same skill content inspection used by native `PATCH /skills`, including bounded traversal, before invoking `updateSkill`.
 - Native optimistic concurrency remains authoritative through `expectedVersion`; `conflict` and `not_found` are preserved as native results.
 - Durable ImprovementCandidate and ImprovementLifecycleEvent stores are persistence-only and cannot validate, authorize, schedule, execute, publish, or settle work.
 - P10 must not create a second runtime, orchestrator, task engine, scheduler, permission system, durable authority, or source of truth.

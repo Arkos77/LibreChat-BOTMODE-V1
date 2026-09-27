@@ -499,3 +499,7 @@ La frontière de publication refuse une autorisation dont le candidat, la trace,
 ## P10 — identités MTO distinctes pour les phases Oracle
 
 La validation native de l’enfant donne désormais un `traceEventId` stable distinct à `VALIDATING` et au verdict terminal, dérivé du candidat et de la phase. Le rejeu garde les mêmes identités par phase ; deux événements différents ne partagent plus le même identifiant MTO.
+
+## P10 — filtre de contenu partagé avec le skill natif
+
+La publication contrôlée d’un update skill appelle désormais le même inspecteur de contenu que `PATCH /skills` avant la mutation. Une règle bloquante ou une traversée non inspectable arrête `updateSkill`. Les tests de route natifs et de publication, le build et le typecheck couvrent ce partage. Aucun contenu de skill n’est proposé automatiquement par une tâche enfant à ce stade.
