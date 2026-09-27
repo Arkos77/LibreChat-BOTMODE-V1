@@ -102,3 +102,68 @@ describe('MTO host observation sink', () => {
     expect(mockLogger.warn).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('bounded host decision and authorization payloads', () => {
+  const base = {
+    source: 'host',
+    timestamp: '2026-09-27T00:00:00.000Z',
+    identity: { traceId: 'trace-1', traceEventId: 'event-1' },
+  };
+
+  it('retains only scalar decision provenance', () => {
+    expect(
+      projectMtoObservation({
+        ...base,
+        type: 'DECIDED',
+        payload: {
+          decisionId: 'decision-1',
+          selectedOption: 'model-a',
+          provider: 'Jev',
+          confidence: 0.8,
+          question: 'private question',
+          distribution: [{ optionId: 'model-a', probability: 1 }],
+        },
+      }).payload,
+    ).toEqual({
+      decisionId: 'decision-1',
+      selectedOption: 'model-a',
+      provider: 'Jev',
+      confidence: 0.8,
+    });
+  });
+
+  it('retains only scalar authorization provenance', () => {
+    expect(
+      projectMtoObservation({
+        ...base,
+        type: 'DENIED',
+        payload: {
+          authorizationId: 'auth-1',
+          decision: 'DENY',
+          capability: 'skill.update',
+          policyVersion: 'v1',
+          actorId: 'private-user',
+          conditions: ['private condition'],
+        },
+      }).payload,
+    ).toEqual({
+      authorizationId: 'auth-1',
+      decision: 'DENY',
+      capability: 'skill.update',
+      policyVersion: 'v1',
+    });
+  });
+
+  it('discards malformed host payload values and unrelated host payloads', () => {
+    expect(
+      projectMtoObservation({
+        ...base,
+        type: 'DECIDED',
+        payload: { decisionId: { secret: 'raw' }, selectedOption: 'model-a', provider: 'Jev' },
+      }),
+    ).not.toHaveProperty('payload');
+    expect(
+      projectMtoObservation({ ...base, type: 'CANDIDATE', payload: { secret: 'raw' } }),
+    ).not.toHaveProperty('payload');
+  });
+});

@@ -83,6 +83,8 @@ function projectMtoObservation(event) {
     payload = pickDefined(event.payload, ORACLE_PAYLOAD_KEYS);
   }
 
+  if (event.source === 'host') payload = projectHostPayload(event);
+
   return {
     type: event.type,
     source: event.source,
@@ -117,3 +119,44 @@ module.exports = {
   observeMtoEvent,
   projectMtoObservation,
 };
+
+function boundedHostText(value) {
+  return typeof value === 'string' && value.trim() !== '' && value.length <= 256
+    ? value
+    : undefined;
+}
+
+function projectHostPayload(event) {
+  const input = event.payload;
+  if (input == null || typeof input !== 'object' || Array.isArray(input)) return undefined;
+  if (event.type === 'DECIDED') {
+    const decisionId = boundedHostText(input.decisionId);
+    const selectedOption = boundedHostText(input.selectedOption);
+    const provider = boundedHostText(input.provider);
+    const confidence = input.confidence;
+    if (!decisionId || !selectedOption || !provider) return undefined;
+    if (
+      confidence !== undefined &&
+      (!Number.isFinite(confidence) || confidence < 0 || confidence > 1)
+    )
+      return undefined;
+    return {
+      decisionId,
+      selectedOption,
+      provider,
+      ...(confidence === undefined ? {} : { confidence }),
+    };
+  }
+  const expectedDecision = {
+    AUTHORIZED: 'ALLOW',
+    DENIED: 'DENY',
+    HUMAN_APPROVAL_REQUIRED: 'HUMAN_APPROVAL_REQUIRED',
+  }[event.type];
+  if (!expectedDecision) return undefined;
+  const authorizationId = boundedHostText(input.authorizationId);
+  const capability = boundedHostText(input.capability);
+  const policyVersion = boundedHostText(input.policyVersion);
+  if (!authorizationId || !capability || !policyVersion || input.decision !== expectedDecision)
+    return undefined;
+  return { authorizationId, decision: expectedDecision, capability, policyVersion };
+}

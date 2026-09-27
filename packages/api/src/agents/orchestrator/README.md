@@ -341,3 +341,9 @@ record nor its MTO event can grant permission, execute a tool, or settle a task.
 The host must obtain an actual native authorization outcome before recording it.
 There is no automatic production hook until that seam is proven for a specific
 operation; skill creation remains closed under the existing native policy.
+
+The host MTO logging sink projects the scalar P11/P12 payload fields only for
+`DECIDED`, `AUTHORIZED`, `DENIED`, and `HUMAN_APPROVAL_REQUIRED`. It rejects
+malformed identities, decisions, values, and oversized text fields. Other host
+observations, including `CANDIDATE`, remain payload-free in logs. The sink is
+stateless and does not provide durable provenance or execution authority.
