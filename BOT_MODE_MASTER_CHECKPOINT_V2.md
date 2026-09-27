@@ -491,3 +491,7 @@ Le singleton du store relie la projection de fin d’outil à MTO avec `traceId`
 ## P10 — validation native du candidat workflow enfant
 
 Après persistance du message d’échec typé et du candidat immuable, le callback de la tâche enfant utilise son vrai `taskId`, son producteur confirmé et le `responseMessageId` correspondant pour construire une preuve hôte bornée du signal de limite. Distill puis Oracle déterministe vérifient la conformité du candidat `workflow` ; le registre durable reçoit `VALIDATING`, le verdict, puis `PROPOSAL_ONLY` sous identifiants de rejeu stables. Les observations Oracle MTO restent descriptives. Une identité manquante, un message non correspondant ou une panne du registre ferme la progression sans modifier le résultat terminal. Cette validation porte sur les métadonnées de la proposition et n’autorise aucune mutation. Le chemin de publication d’un skill reste non activé faute de payload et de preuve de contenu indépendamment vérifiés.
+
+## P10 — liaison stricte de l’autorisation à la mutation skill
+
+La frontière de publication refuse une autorisation dont le candidat, la trace, l’acteur, l’opération, le skill, sa version ou la voie de publication diffèrent de la demande. Le digest du contenu reste revérifié avant `updateSkill`. Huit variantes décalées échouaient avant le correctif et n’atteignent plus la mutation. Aucun appel hôte de production ne crée encore une proposition skill avec contenu et vérification indépendante ; ce verrouillage ne vaut pas activation du chemin skill.

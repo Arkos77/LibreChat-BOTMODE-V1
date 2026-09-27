@@ -37,6 +37,19 @@ async function publishImprovementSkillUpdateForRequest({
     payloadDigest,
   });
 
+  if (
+    authorization.candidateId !== disposition?.candidateId ||
+    authorization.traceId !== disposition?.traceId ||
+    authorization.target !== 'skill' ||
+    authorization.operation !== operation ||
+    authorization.actorId !== String(actorId) ||
+    authorization.skillId !== skillId ||
+    authorization.expectedVersion !== expectedVersion ||
+    authorization.publicationPath !== 'native-skill-authoring-required'
+  ) {
+    throw new Error('Improvement publication authorization identity mismatch');
+  }
+
   if (authorization.authorized !== true || authorization.publishable !== true) {
     throw new Error('Improvement publication is not authorized');
   }

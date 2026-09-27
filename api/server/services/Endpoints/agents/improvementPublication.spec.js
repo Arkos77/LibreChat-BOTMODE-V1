@@ -90,6 +90,26 @@ describe('controlled improvement skill publication', () => {
     expect(result.status).toBe('updated');
   });
 
+  it.each([
+    ['candidateId', 'another-candidate'],
+    ['traceId', 'another-trace'],
+    ['actorId', 'another-actor'],
+    ['skillId', 'another-skill'],
+    ['expectedVersion', 8],
+    ['operation', 'create'],
+    ['target', 'workflow'],
+    ['publicationPath', 'proposal-only'],
+  ])('rejects mismatched authorization %s before native mutation', async (field, value) => {
+    authorizeImprovementPublicationForRequest.mockResolvedValue(authorization({ [field]: value }));
+    const updateSkill = jest.fn();
+    getSkillToolDeps.mockReturnValue({ updateSkill });
+    await expect(publishImprovementSkillUpdateForRequest(input())).rejects.toThrow(
+      /authorization/i,
+    );
+    expect(getSkillToolDeps).not.toHaveBeenCalled();
+    expect(updateSkill).not.toHaveBeenCalled();
+  });
+
   it('does not mutate when authorization is not publishable', async () => {
     authorizeImprovementPublicationForRequest.mockResolvedValue(
       authorization({ authorized: false, publishable: false }),
