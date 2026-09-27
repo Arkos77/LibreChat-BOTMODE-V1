@@ -487,3 +487,7 @@ Le SDK transmet `run_step_completed` depuis le graphe enfant ; il ne transmet pa
 ## P10 — observation MTO native de l’outil enfant
 
 Le singleton du store relie la projection de fin d’outil à MTO avec `traceId`, `taskId`, `toolCallId` et identité d’agent exécutant connue. Le sink n’accepte en payload que `toolCallId` et `toolName` bornés ; sans trace, il n’émet rien. Il ne lit pas la sortie, ne crée pas de critère de preuve, ne sollicite pas Oracle et ne modifie ni tâche ni publication. Le buffer transitoire par requête demeure séparé du singleton partagé.
+
+## P10 — validation native du candidat workflow enfant
+
+Après persistance du message d’échec typé et du candidat immuable, le callback de la tâche enfant utilise son vrai `taskId`, son producteur confirmé et le `responseMessageId` correspondant pour construire une preuve hôte bornée du signal de limite. Distill puis Oracle déterministe vérifient la conformité du candidat `workflow` ; le registre durable reçoit `VALIDATING`, le verdict, puis `PROPOSAL_ONLY` sous identifiants de rejeu stables. Les observations Oracle MTO restent descriptives. Une identité manquante, un message non correspondant ou une panne du registre ferme la progression sans modifier le résultat terminal. Cette validation porte sur les métadonnées de la proposition et n’autorise aucune mutation. Le chemin de publication d’un skill reste non activé faute de payload et de preuve de contenu indépendamment vérifiés.

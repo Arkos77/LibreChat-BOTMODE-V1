@@ -1484,7 +1484,8 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
                   );
                 });
                 if (
-                  persistedFailure != null &&
+                  persistedFailure?.createdAt != null &&
+                  !Number.isNaN(new Date(persistedFailure.createdAt).getTime()) &&
                   isStepLimitError(error) &&
                   typeof request.traceId === 'string' &&
                   request.traceId.trim() !== '' &&

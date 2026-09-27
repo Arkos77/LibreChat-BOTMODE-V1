@@ -36,6 +36,8 @@ jest.mock('~/models', () => ({
   renewSubagentThreadLease: jest.fn(),
   saveConvo: jest.fn(),
   saveMessage: jest.fn(),
+  recordImprovementCandidate: jest.fn(),
+  recordImprovementLifecycleEvent: jest.fn(),
   isSubagentOwnerAdmissible: jest.fn(),
   fenceSubagentAdmission: jest.fn(),
   renewSubagentAdmission: jest.fn(),
@@ -54,11 +56,15 @@ const {
 } = require('@librechat/api');
 const subagentThreadTaskStore = require('./subagentThreadStore');
 const { configureSubagentTaskRouting } = subagentThreadTaskStore;
+jest.mock('./improvementCandidate', () => ({ observeStepLimitImprovementCandidate: jest.fn() }));
+jest.mock('./improvementValidation', () => ({ validateStepLimitImprovementCandidate: jest.fn() }));
 jest.mock('./subagentToolObservation', () => ({ observeSubagentToolCompletion: jest.fn() }));
 const taskStoreOptions = createSubagentThreadTaskStore.mock.calls[0][1];
 const taskStoreMethods = createSubagentThreadTaskStore.mock.calls[0][0];
 const db = require('~/models');
 const { observeSubagentToolCompletion } = require('./subagentToolObservation');
+const { observeStepLimitImprovementCandidate } = require('./improvementCandidate');
+const { validateStepLimitImprovementCandidate } = require('./improvementValidation');
 const { observeMtoEvent } = require('./mtoObservation');
 const activityPrepareRegistration = registerShutdownTask.mock.calls.find(
   ([name]) => name === 'subagent activity streams prepare',
@@ -85,6 +91,40 @@ describe('subagent thread Redis lifecycle', () => {
     taskStoreOptions.onTaskToolCompleted(completion);
     expect(observeSubagentToolCompletion).toHaveBeenCalledWith(completion, observeMtoEvent);
     expect(taskStoreOptions).not.toHaveProperty('improvementEvidenceDeclarations');
+  });
+
+  it('validates only after the native child candidate persists', async () => {
+    const candidate = { candidateId: 'workflow-step-limit:trace-1:task-1' };
+    observeStepLimitImprovementCandidate
+      .mockResolvedValueOnce(candidate)
+      .mockResolvedValueOnce(null);
+    const failure = {
+      userId: 'user-1',
+      conversationId: 'thread-1',
+      traceId: 'trace-1',
+      taskId: 'task-1',
+      producerAgentId: 'agent-1',
+      responseMessageId: 'task-1:assistant',
+      createdAt: '2026-09-27T18:00:00.000Z',
+    };
+    await taskStoreOptions.onTaskStepLimit(failure);
+    expect(observeStepLimitImprovementCandidate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        persistCandidate: db.recordImprovementCandidate,
+      }),
+    );
+    expect(validateStepLimitImprovementCandidate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        candidate,
+        taskId: 'task-1',
+        producerAgentId: 'agent-1',
+        persistLifecycleEvent: db.recordImprovementLifecycleEvent,
+        mtoEventSink: observeMtoEvent,
+      }),
+    );
+    validateStepLimitImprovementCandidate.mockClear();
+    await taskStoreOptions.onTaskStepLimit(failure);
+    expect(validateStepLimitImprovementCandidate).not.toHaveBeenCalled();
   });
 
   it('pre-registers completion wakeups for every prepared task', async () => {

@@ -13,6 +13,7 @@ const {
 const db = require('~/models');
 const { observeMtoEvent } = require('./mtoObservation');
 const { observeStepLimitImprovementCandidate } = require('./improvementCandidate');
+const { validateStepLimitImprovementCandidate } = require('./improvementValidation');
 const { observeSubagentToolCompletion } = require('./subagentToolObservation');
 const { enqueueAgentTrigger } = require('../../Agents/triggers');
 
@@ -81,7 +82,7 @@ const subagentThreadTaskStore = createSubagentThreadTaskStore(
     cancelUnroutedTask: cancelUnroutedGeneration,
     onTaskPrepared: completionWakeupHandler,
     onTaskToolCompleted: (completion) => observeSubagentToolCompletion(completion, observeMtoEvent),
-    onTaskStepLimit: ({
+    onTaskStepLimit: async ({
       userId,
       tenantId,
       conversationId,
@@ -90,8 +91,8 @@ const subagentThreadTaskStore = createSubagentThreadTaskStore(
       producerAgentId,
       responseMessageId,
       createdAt,
-    }) =>
-      observeStepLimitImprovementCandidate({
+    }) => {
+      const candidate = await observeStepLimitImprovementCandidate({
         user: userId,
         tenantId,
         conversationId,
@@ -102,7 +103,20 @@ const subagentThreadTaskStore = createSubagentThreadTaskStore(
         createdAt,
         persistCandidate: db.recordImprovementCandidate,
         mtoEventSink: observeMtoEvent,
-      }),
+      });
+      if (candidate == null) return;
+      await validateStepLimitImprovementCandidate({
+        candidate,
+        traceId,
+        taskId,
+        producerAgentId,
+        responseMessageId,
+        user: userId,
+        tenantId,
+        persistLifecycleEvent: db.recordImprovementLifecycleEvent,
+        mtoEventSink: observeMtoEvent,
+      });
+    },
   },
 );
 

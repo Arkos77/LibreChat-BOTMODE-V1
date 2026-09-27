@@ -544,6 +544,40 @@ describe('SubagentThreadTaskStore', () => {
     );
   });
 
+  it('omits a typed limit observation when the saved row has no timestamp', async () => {
+    const userId = 'step-limit-no-timestamp';
+    const parentConversationId = randomUUID();
+    await saveParent(userId, parentConversationId);
+    const onTaskStepLimit = jest.fn();
+    const timestamplessMethods = {
+      ...methods,
+      saveMessage: jest.fn(async (...args: Parameters<AllMethods['saveMessage']>) => {
+        const saved = await methods.saveMessage(...args);
+        if (saved == null || args[1].subagentTask?.status !== 'error') return saved;
+        saved.createdAt = undefined;
+        return saved;
+      }),
+    };
+    const store = new SubagentThreadTaskStore(timestamplessMethods, { onTaskStepLimit });
+    const config = buildSubagentThreadTaskConfig(
+      store,
+      { userId, parentConversationId },
+      { traceId: 'trace-no-timestamp' },
+    );
+    const error = Object.assign(new Error('Limit'), { lc_error_code: 'GRAPH_RECURSION_LIMIT' });
+    const started = store.start({
+      ...taskRequest(config.scopeId, {
+        run: async () => {
+          throw error;
+        },
+      }),
+      traceId: config.traceId,
+    });
+    await waitForSettled(store, config.scopeId, started);
+    expect(onTaskStepLimit).not.toHaveBeenCalled();
+    expect(store.get(config.scopeId, requireAccepted(started).task.taskId)?.status).toBe('error');
+  });
+
   it('contains a child candidate observer failure after the durable row', async () => {
     const userId = 'step-limit-observer-failure';
     const parentConversationId = randomUUID();
