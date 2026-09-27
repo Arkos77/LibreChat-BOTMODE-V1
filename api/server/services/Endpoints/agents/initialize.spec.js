@@ -93,6 +93,7 @@ jest.mock('~/cache', () => ({
 }));
 
 const { initializeClient } = require('./initialize');
+const { observeRequiredToolApproval } = require('./approvalAuthorizationObservation');
 const { processAddedConvo } = require('./addedConvo');
 const { getSkillDbMethods, getSkillToolDeps } = require('./skillDeps');
 const { loadAgentTools } = require('~/server/services/ToolService');
@@ -302,6 +303,70 @@ describe('initializeClient — processAgent ACL gate', () => {
     } finally {
       native.mockRestore();
     }
+  });
+
+  it('records the native skill creation capability result without mutating it', async () => {
+    mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+    const req = makeReq();
+    const native = jest.spyOn(getSkillToolDeps(), 'canCreateSkill');
+    native.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    try {
+      await initializeClient({
+        req,
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption: makeEndpointOption(),
+        mtoTraceId: 'trace-skill-create',
+      });
+      expect(await capturedToolExecuteOptions.canCreateSkill({ req })).toBe(false);
+      expect(await capturedToolExecuteOptions.canCreateSkill({ req })).toBe(true);
+      const records = await db.listMtoObservations({
+        user: req.user.id,
+        traceId: 'trace-skill-create',
+      });
+      expect(records).toHaveLength(2);
+      expect(records.map((record) => record.payload.capability)).toEqual([
+        'skill.create',
+        'skill.create',
+      ]);
+      expect(records.map((record) => record.payload.decision).sort()).toEqual(['ALLOW', 'DENY']);
+    } finally {
+      native.mockRestore();
+    }
+  });
+
+  it('replays a native tool-approval requirement in the owner and tenant scoped store', async () => {
+    const owner = testUser._id.toString();
+    const action = {
+      actionId: 'native-approval-a',
+      createdAt: 1780000000000,
+      payload: { type: 'tool_approval' },
+    };
+    const input = {
+      userId: owner,
+      tenantId: 'tenant-a',
+      traceId: 'trace-tool-approval',
+      action,
+      persist: db.recordMtoObservation,
+    };
+    await observeRequiredToolApproval(input);
+    await observeRequiredToolApproval(input);
+    const records = await db.listMtoObservations({
+      user: owner,
+      tenantId: 'tenant-a',
+      traceId: input.traceId,
+    });
+    expect(records).toHaveLength(1);
+    expect(records[0].type).toBe('HUMAN_APPROVAL_REQUIRED');
+    expect(records[0].payload.decision).toBe('HUMAN_APPROVAL_REQUIRED');
+    expect(await db.listMtoObservations({ user: owner, traceId: input.traceId })).toEqual([]);
+    expect(
+      await db.listMtoObservations({
+        user: new mongoose.Types.ObjectId(),
+        tenantId: 'tenant-a',
+        traceId: input.traceId,
+      }),
+    ).toEqual([]);
   });
 
   it('threads the host-owned MTO trace identity into AgentClient unchanged', async () => {

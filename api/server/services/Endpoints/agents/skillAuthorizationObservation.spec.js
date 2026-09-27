@@ -1,4 +1,7 @@
-const { createObservedSkillEditCheck } = require('./skillAuthorizationObservation');
+const {
+  createObservedSkillEditCheck,
+  createObservedSkillCreateCheck,
+} = require('./skillAuthorizationObservation');
 
 const req = { user: { id: '507f1f77bcf86cd799439011', tenantId: 'tenant-a', role: 'USER' } };
 const traceId = 'trace-native-edit';
@@ -77,5 +80,32 @@ describe('native skill EDIT authorization observation', () => {
     });
     expect(await withoutTrace({ req, skillId })).toBe(false);
     expect(persist).not.toHaveBeenCalled();
+  });
+});
+
+describe('native skill CREATE capability observation', () => {
+  it.each([
+    [true, 'ALLOW', 'AUTHORIZED'],
+    [false, 'DENY', 'DENIED'],
+  ])('observes the native %s capability outcome', async (allowed, decision, type) => {
+    const nativeCheck = jest.fn(async () => allowed);
+    const persist = jest.fn(async () => undefined);
+    const check = createObservedSkillCreateCheck({
+      req,
+      traceId,
+      tenantId: req.user.tenantId,
+      nativeCheck,
+      persist,
+    });
+    expect(await check({ req })).toBe(allowed);
+    expect(nativeCheck).toHaveBeenCalledTimes(1);
+    expect(persist).toHaveBeenCalledWith({
+      user: req.user.id,
+      tenantId: req.user.tenantId,
+      event: expect.objectContaining({
+        type,
+        payload: expect.objectContaining({ decision, capability: 'skill.create' }),
+      }),
+    });
   });
 });

@@ -322,3 +322,12 @@ Portée: ce résultat décrit uniquement le bit EDIT d'un skill. Il ne prouve
 ni une publication P10, ni un succès de mutation, ni une validation humaine.
 Les chemins sans `mtoTraceId` et les autres types d'événement restent sans
 écriture durable P12; aucune identité Task Engine n'est inventée.
+
+Extension P12 : `canCreateSkill` est également observé sur l’opération de
+fichier skill. Une pause native `tool_approval` confirmée après la barrière
+d’historique émet HUMAN_APPROVAL_REQUIRED en requête initiale et en reprise.
+L’identité d’événement est stable pour le rejeu, distincte de l’`actionId`
+natif et de l’`authorizationId`; la portée reste propriétaire/locataire/trace.
+Une question utilisateur et un échec de persistance de pause ne sont pas
+qualifiés d’autorisation humaine. Aucun de ces événements ne valide une
+publication P10 ni ne remplace le contrôle d’approbation natif.

@@ -2,13 +2,24 @@ const { randomUUID } = require('crypto');
 const { createAuthorizationRecord, fromAuthorizationRecord } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 
-// Versions the host's observation profile, not the mutable ACL entries.
-const SKILL_EDIT_OBSERVATION_POLICY_VERSION = 'librechat-skill-edit-check-v1';
+// These version the host check profiles, not mutable ACL entries or role grants.
+const CHECK_PROFILES = Object.freeze({
+  edit: { capability: 'skill.edit', policyVersion: 'librechat-skill-edit-check-v1' },
+  create: { capability: 'skill.create', policyVersion: 'librechat-skill-create-check-v1' },
+});
 
-/** Observe exactly the outcome of the native skill EDIT check; never decide access. */
-function createObservedSkillEditCheck({ req, traceId, nativeCheck, persist, sink, tenantId }) {
+function createObservedSkillCheck({
+  req,
+  traceId,
+  nativeCheck,
+  persist,
+  sink,
+  tenantId,
+  profile,
+  scope,
+}) {
   if (typeof nativeCheck !== 'function') {
-    throw new Error('Native skill EDIT checker is required');
+    throw new Error('Native skill checker is required');
   }
   return async (input) => {
     const allowed = await nativeCheck(input);
@@ -19,20 +30,20 @@ function createObservedSkillEditCheck({ req, traceId, nativeCheck, persist, sink
       traceId.trim() === '' ||
       typeof actorId !== 'string' ||
       actorId.trim() === '' ||
-      typeof input.skillId?.toString !== 'function' ||
       typeof persist !== 'function'
     ) {
       return allowed;
     }
     try {
-      const authorizationId = randomUUID();
+      const resolvedScope = scope(input);
+      if (resolvedScope == null) return allowed;
       const record = createAuthorizationRecord({
-        authorizationId,
+        authorizationId: randomUUID(),
         traceId,
         actorId,
-        capability: 'skill.edit',
-        scope: `skill:${input.skillId.toString()}`,
-        policyVersion: SKILL_EDIT_OBSERVATION_POLICY_VERSION,
+        capability: profile.capability,
+        scope: resolvedScope,
+        policyVersion: profile.policyVersion,
         decision: allowed === true ? 'ALLOW' : 'DENY',
         timestamp: new Date().toISOString(),
       });
@@ -57,15 +68,34 @@ function createObservedSkillEditCheck({ req, traceId, nativeCheck, persist, sink
       if (typeof sink === 'function') await sink(event);
     } catch (error) {
       try {
-        logger.warn('[BOT MODE P12] Native skill EDIT observation failed', {
+        logger.warn('[BOT MODE P12] Native skill authorization observation failed', {
           name: error?.name,
         });
       } catch (_) {
-        // Observation failures cannot affect the native ACL outcome.
+        // Observation failures cannot affect the native permission outcome.
       }
     }
     return allowed;
   };
 }
 
-module.exports = { createObservedSkillEditCheck };
+/** Observes the native resource EDIT ACL result without deciding access. */
+function createObservedSkillEditCheck(input) {
+  return createObservedSkillCheck({
+    ...input,
+    profile: CHECK_PROFILES.edit,
+    scope: ({ skillId }) =>
+      typeof skillId?.toString === 'function' ? `skill:${skillId.toString()}` : null,
+  });
+}
+
+/** Observes the native SKILLS USE+CREATE role capability result. */
+function createObservedSkillCreateCheck(input) {
+  return createObservedSkillCheck({
+    ...input,
+    profile: CHECK_PROFILES.create,
+    scope: () => 'skills',
+  });
+}
+
+module.exports = { createObservedSkillEditCheck, createObservedSkillCreateCheck };

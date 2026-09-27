@@ -68,6 +68,10 @@ const mockFilterPersistableAbortContent = jest.fn((content) =>
 const mockGetConvo = jest.fn();
 const mockGetMessages = jest.fn();
 const mockSaveMessage = jest.fn();
+const mockObserveRequiredToolApproval = jest.fn(async () => undefined);
+jest.mock('~/server/services/Endpoints/agents/approvalAuthorizationObservation', () => ({
+  observeRequiredToolApproval: (...args) => mockObserveRequiredToolApproval(...args),
+}));
 const mockRecordImprovementCandidate = jest.fn(async ({ candidate }) => ({
   record: candidate,
   replayed: false,
@@ -254,6 +258,7 @@ jest.mock('@librechat/data-schemas', () => ({
 }));
 
 jest.mock('@librechat/api', () => ({
+  resolveRequestTenantId: (req) => req.tenantId ?? req.user?.tenantId,
   createMtoEvent: (...args) => jest.requireActual('@librechat/api').createMtoEvent(...args),
   createStepLimitEvidenceContext: (...args) =>
     jest.requireActual('@librechat/api').createStepLimitEvidenceContext(...args),
@@ -3350,7 +3355,11 @@ describe('ResumableAgentController resume metadata', () => {
     const client = {
       options: {},
       jobCreatedAt: 1000,
-      pendingApproval: { actionId: 'action-pause-barrier' },
+      pendingApproval: {
+        actionId: 'action-pause-barrier',
+        createdAt: 1780000000000,
+        payload: { type: 'tool_approval' },
+      },
       exposePendingApproval,
       skipSaveUserMessage: false,
       skipSaveConvo: false,
@@ -3425,6 +3434,10 @@ describe('ResumableAgentController resume metadata', () => {
       1000,
     );
     expect(mockGenerationJobManager.failPausePersistence).not.toHaveBeenCalled();
+    await nextTick();
+    expect(mockObserveRequiredToolApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-123', action: client.pendingApproval }),
+    );
     expect(client.saveMessageToDatabase.mock.invocationCallOrder[0]).toBeLessThan(
       mockSaveMessage.mock.invocationCallOrder[0],
     );

@@ -282,7 +282,7 @@ These states are descriptive records of progression. They do not imply that each
 
 ### Current activation boundary
 
-The currently proven production activation is intentionally limited to durable candidate creation from the bounded top-level `tool_call_limit` seam after the terminal response has already been persisted. Distill, lifecycle-event progression, authorization-to-publication orchestration, and controlled publication are not exposed through a production route or runtime caller.
+P10 improvement activation is currently limited to durable candidate creation from the bounded top-level `tool_call_limit` seam after the terminal response has already been persisted. P12 authorization observations described below are separate host records and do not advance a candidate. Distill, lifecycle-event progression, authorization-to-publication orchestration, and controlled publication are not exposed through a production route or runtime caller.
 
 This is deliberate. The top-level candidate seam does not currently expose a proven native Task Engine `taskId`. Therefore P10 must remain fail-closed and must not invoke Distill or synthesize an execution identity. A future activation may cross from the Task Engine into P10 only when it can provide the real native `taskId`, the producer identity, and independently valid Oracle evidence while preserving the authority boundaries above.
 
@@ -338,15 +338,13 @@ actor, scope, conditions, approval reference, and any executable payload. Native
 ACL/capability checks and human approval remain authoritative. Neither this
 record nor its MTO event can grant permission, execute a tool, or settle a task.
 
-The resumable agent host now observes the actual `canEditSkill` EDIT ACL result
-for a skill file operation. Its wrapper delegates the native check once, then
-records `ALLOW` or `DENY` using the authenticated request owner, the canonical
-request tenant and the generation's independent MTO trace. The policy-version
-field identifies this host check profile (`librechat-skill-edit-check-v1`), not
-a revision of mutable ACL entries. A failed observation cannot change the
-native verdict. This event does not prove that a subsequent skill mutation
-succeeded or that an improvement candidate was approved. Skill creation and
-human approval have no P12 production observation seam yet.
+The resumable agent host observes native `canEditSkill` EDIT ACL and
+`canCreateSkill` SKILLS USE+CREATE capability outcomes at skill file operations.
+Each wrapper delegates its native check once, then records `ALLOW` or `DENY`
+under the authenticated owner, resolved tenant and generation MTO trace. Its
+policy version identifies the host check profile, not mutable ACL entries. A
+failed observation does not change the native verdict or prove a mutation
+succeeded. P10 improvement candidate publication remains unconnected.
 
 The host MTO logging sink projects the scalar P11/P12 payload fields only for
 `DECIDED`, `AUTHORIZED`, `DENIED`, and `HUMAN_APPROVAL_REQUIRED`. It rejects
@@ -358,10 +356,14 @@ The `MtoObservation` data-schemas store now supplies an owner and tenant scoped,
 append-only contract for four bounded host decision and authorization events.
 Exact writes replay; changed content under the same trace event identity raises
 an explicit conflict. Trace reads use a bounded `(timestamp, traceEventId)` page
-cursor. The skill EDIT ACL wrapper writes its bounded authorization result
-directly to this store before sending it to the logging sink. Other MTO sources
-and decision/human-approval events remain unconnected; the global logging sink
-itself stays stateless.
+cursor. The skill EDIT and CREATE wrappers write bounded authorization results directly
+to this store before sending them to the logging sink. After the native
+`tool_approval` pause persistence barrier releases, the request and resume
+controllers record `HUMAN_APPROVAL_REQUIRED` with an action-scoped, replay-stable
+identity. An `ask_user_question` pause does not imply tool authorization. This
+record is evidence of an approval requirement, not an approval or an executable
+permission. Other MTO sources and decision events remain unconnected; the
+global logging sink itself stays stateless.
 
 The host logging projection also validates native subagent and Oracle fields at
 every nested boundary: activity labels and identities are bounded strings,

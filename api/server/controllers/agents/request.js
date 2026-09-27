@@ -40,9 +40,13 @@ const {
   isHITLEnabled,
   agentRequestsAskUserQuestion,
   resolveAgentTurnExecutionPlan,
+  resolveRequestTenantId,
 } = require('@librechat/api');
 const { disposeClient } = require('~/server/cleanup');
 const { observeMtoEvent } = require('~/server/services/Endpoints/agents/mtoObservation');
+const {
+  observeRequiredToolApproval,
+} = require('~/server/services/Endpoints/agents/approvalAuthorizationObservation');
 const {
   observeStepLimitImprovementCandidate,
 } = require('~/server/services/Endpoints/agents/improvementCandidate');
@@ -78,6 +82,7 @@ const {
   isAgentTriggerPrincipalActive,
   isSubagentOwnerAdmissible,
   recordImprovementCandidate,
+  recordMtoObservation,
 } = require('~/models');
 const {
   acquireEventChildGenerationLease,
@@ -2600,6 +2605,16 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
               pauseActionId,
               pauseCreatedAt,
             );
+            if (released) {
+              await observeRequiredToolApproval({
+                userId: req.user.id,
+                tenantId: resolveRequestTenantId(req),
+                traceId: mtoTraceId,
+                action: client.pendingApproval,
+                persist: recordMtoObservation,
+                sink: observeMtoEvent,
+              });
+            }
             if (!released) {
               logger.warn(
                 `[ResumableAgentController] Pause persistence barrier changed before release: ${streamId}`,

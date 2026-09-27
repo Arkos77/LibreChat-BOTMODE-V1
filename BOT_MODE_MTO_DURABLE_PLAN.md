@@ -1,6 +1,6 @@
 # BOT MODE — Durable MTO observation plan
 
-Status: durable store implemented; native skill EDIT authorization observations active for traced resumable agent requests.
+Status: durable store implemented; native skill EDIT/CREATE and tool-approval requirement observations active for traced resumable agent requests.
 
 ## Proven baseline
 
@@ -16,7 +16,7 @@ Status: durable store implemented; native skill EDIT authorization observations 
 3. Unique key: `(user, tenantKey, traceId, traceEventId)`. Exact replay returns the existing record. Reuse with changed content raises an explicit conflict.
 4. Store only a validated allowlist of event type, source, timestamp, native correlation identities, and bounded scalar metadata. Reject arbitrary nested payloads, reasoning, raw tool input/output, credentials and artifacts at the durable boundary.
 5. Writes are append-only. Read access is scoped to the same user and tenant and returns a bounded page ordered by timestamp and event ID.
-6. Host logging and durable writes are separate. An observational storage failure must not alter agent execution or Task Engine settlement. Do not enable production writes until the request owner and tenant are available on all emission and resume paths.
+6. Host logging and durable writes are separate. An observational storage failure must not alter agent execution or Task Engine settlement. Enable each production source only when its request owner, tenant and trace are established at that source, including its resume path.
 7. Use the existing `ImprovementLifecycleEvent` schema/methods as the structural pattern, without linking MTO events to improvement candidates or giving either store authority over the other.
 
 ## Proof sequence
@@ -33,8 +33,10 @@ validation stricte des quatre observations hôte DECIDED/AUTHORIZED/DENIED/
 HUMAN_APPROVAL_REQUIRED, identité causale distincte, clé d'idempotence dans
 le périmètre propriétaire/locataire/trace, reprise exacte ou conflit explicite,
 registre append-only et lecture paginée par `(timestamp, traceEventId)`.
-Le contrôle natif `canEditSkill` des requêtes agent traçables produit désormais
-une observation durable AUTHORIZED ou DENIED, liée au propriétaire authentifié,
-au locataire résolu et au `mtoTraceId` de la génération. Le sink global reste un
-logger; les observations de décision, de validation humaine et les autres
-sources MTO ne sont pas écrites durablement par ce raccordement.
+Les contrôles natifs `canEditSkill` et `canCreateSkill` des opérations de
+fichier skill produisent AUTHORIZED ou DENIED pour les générations traçables.
+La pause native `tool_approval`, après confirmation de sa barrière de
+persistance, produit HUMAN_APPROVAL_REQUIRED sur les chemins initial et reprise.
+Ces événements sont liés au propriétaire authentifié, au locataire et au
+`mtoTraceId`, sans conférer de droit. Le sink global reste un logger; les
+décisions P11 et les autres sources MTO ne sont pas écrites durablement ici.

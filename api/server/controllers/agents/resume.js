@@ -49,6 +49,9 @@ const {
 const { disposeClient } = require('~/server/cleanup');
 const { observeMtoEvent } = require('~/server/services/Endpoints/agents/mtoObservation');
 const {
+  observeRequiredToolApproval,
+} = require('~/server/services/Endpoints/agents/approvalAuthorizationObservation');
+const {
   observeStepLimitImprovementCandidate,
 } = require('~/server/services/Endpoints/agents/improvementCandidate');
 const { decryptMetadata } = require('~/server/services/ActionService');
@@ -79,6 +82,7 @@ const {
   markAgentEventActorDetachedActionRunning,
   settleAgentEventActorDetachedAction,
   recordImprovementCandidate,
+  recordMtoObservation,
 } = require('~/models');
 const {
   acquireEventChildGenerationLease,
@@ -1942,6 +1946,16 @@ const ResumeAgentController = async (req, res, next, initializeClient, addTitle)
           pauseActionId,
           pauseCreatedAt,
         );
+        if (released) {
+          await observeRequiredToolApproval({
+            userId: req.user.id,
+            tenantId: job.metadata?.tenantId,
+            traceId: job.metadata?.mtoTraceId,
+            action: client.pendingApproval,
+            persist: recordMtoObservation,
+            sink: observeMtoEvent,
+          });
+        }
         if (!released) {
           logger.warn(
             `[ResumeAgentController] Re-pause persistence barrier changed before release: ${streamId}`,

@@ -83,6 +83,10 @@ const mockGetAgentCheckpointer = jest.fn();
 const mockCheckpointGetTuple = jest.fn();
 
 const mockSaveMessage = jest.fn();
+const mockObserveRequiredToolApproval = jest.fn(async () => undefined);
+jest.mock('~/server/services/Endpoints/agents/approvalAuthorizationObservation', () => ({
+  observeRequiredToolApproval: (...args) => mockObserveRequiredToolApproval(...args),
+}));
 const mockRecordImprovementCandidate = jest.fn(async ({ candidate }) => ({
   record: candidate,
   replayed: false,
@@ -3794,7 +3798,11 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
       const exposePendingApproval = jest.fn().mockResolvedValue(undefined);
       mockInitializeClient.mockResolvedValue({
         client: makeClient({
-          pendingApproval: { actionId: NEXT_ACTION_ID },
+          pendingApproval: {
+            actionId: NEXT_ACTION_ID,
+            createdAt: 1780000000000,
+            payload: { type: 'tool_approval' },
+          },
           exposePendingApproval,
         }),
         userMCPAuthMap: {},
@@ -3826,6 +3834,12 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
         1000,
       );
       expect(mockGenerationJobManager.failPausePersistence).not.toHaveBeenCalled();
+      expect(mockObserveRequiredToolApproval).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: USER_ID,
+          action: expect.objectContaining({ actionId: NEXT_ACTION_ID }),
+        }),
+      );
       expect(exposePendingApproval.mock.invocationCallOrder[0]).toBeLessThan(
         mockGenerationJobManager.approvals.finishPausePersistence.mock.invocationCallOrder[0],
       );

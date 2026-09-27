@@ -65,7 +65,10 @@ const {
   resolveMemoryAvailability,
   enrichLoadedToolsWithAgentContext,
 } = require('./skillDeps');
-const { createObservedSkillEditCheck } = require('./skillAuthorizationObservation');
+const {
+  createObservedSkillEditCheck,
+  createObservedSkillCreateCheck,
+} = require('./skillAuthorizationObservation');
 const { getModelsConfig } = require('~/server/controllers/ModelController');
 const { checkPermission, findAccessibleResources } = require('~/server/services/PermissionService');
 const AgentClient = require('~/server/controllers/agents/client');
@@ -474,6 +477,18 @@ const initializeClient = async ({
       }
     },
     ...skillToolDeps,
+    ...(typeof skillToolDeps.canCreateSkill === 'function'
+      ? {
+          canCreateSkill: createObservedSkillCreateCheck({
+            req,
+            traceId: mtoTraceId,
+            nativeCheck: skillToolDeps.canCreateSkill,
+            persist: db.recordMtoObservation,
+            sink: mtoEventSink,
+            tenantId: resolveRequestTenantId(req),
+          }),
+        }
+      : {}),
     ...(typeof skillToolDeps.canEditSkill === 'function'
       ? {
           canEditSkill: createObservedSkillEditCheck({
