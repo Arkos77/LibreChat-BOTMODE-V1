@@ -368,3 +368,30 @@ Le typecheck complet packages/api a échoué par épuisement mémoire à 2 Go pu
 Prochaines preuves : suites Oracle et Task Engine natif, puis matrice des phases
 P0–P8 établie sur leurs vrais appels hôtes et tests. Ne pas marquer la chaîne
 P0–P12 de bout en bout VALIDÉE sur cette base partielle.
+
+==================================================
+MATRICE DE PREUVES ACTUALISÉE — 2026-09-27
+==================================================
+
+Cette section remplace les « prochaines preuves » de la section précédente
+pour les suites effectivement exécutées depuis. Une suite verte valide son
+contrat et son montage testé, pas automatiquement toute l'architecture cible.
+
+| Phase ou frontière | Preuve exécutée | Portée et état restant |
+| --- | --- | --- |
+| P0–P3, P6, P8 | Les checkpoints présents ne définissent pas leur correspondance exhaustive avec les fichiers du checkout. | À REVALIDER par une spécification de phase et des appels hôtes explicites; ne pas déduire leur achèvement des suites voisines. |
+| P4, reprise native | checkpointer + intégration, mémoire, HITL : 119 tests dans 5 suites; Task Engine/Oracle : 110 tests dans 3 suites; API HITL et ask_user_question : 7 tests dans 2 suites. Le scénario de reprise d'un SubagentExecutor reconstruit sans réexécuter researcher est inclus dans checkpointer.integration.spec.ts. | Les invariants couverts passent. L'intégration interréplicas subagentCrossReplica.integration.spec.ts était ignorée faute de REDIS_URI : UNKNOWN dans cette passe. |
+| P5, Oracle | oracle/runtime.spec.ts et deterministic.spec.ts dans les 110 tests ci-dessus; montage natif opt-in createRun({ oracle }) prouvé. | Pas de QA automatique de chaque enfant d'un graphe ni de verdict transformé en permission. |
+| P7, RAG | fileSearch.test.js : 13 tests. | rag.integration.spec.ts : 5 tests ignorés sans P7_RAG_E2E; le conteneur librechat_devcontainer-app-1 requis n'était pas présent. L'isolation et la lecture réelle pgvector de bout en bout ne sont pas revalidées ici. |
+| Fondations transversales sans numéro certain | Contexte, run, runtime, autorisation, mandats et réservation : 147 tests passés, 1 suite interréplicas ignorée; réservation atomique data-schemas : 28 tests. | Contrats validés dans ces montages; ne pas les attribuer à P0–P3/P6/P8 sans source de phase. |
+| P9 | Contrats orchestrator : 156 tests dans 24 suites, incluant planner, native et routing. | Le routeur n'a pas de pool hôte de bindings concurrents déjà autorisés en production. agentInputs est la topologie du graphe. |
+| P10 | Candidat durable sur tool_call_limit, contrat et registres : 347 tests dans 4 suites API voisines, 24 tests dans 3 suites data-schemas; builds API et data-schemas réussis. Correctif 1094aab. | Distill → Oracle → autorisation → publication sans appel hôte de production prouvé; le tour principal ne fournit pas de taskId Task Engine natif. Le workflow reste proposal-only. |
+| P11 | DecisionRecord et projection DECIDED parmi les 156 tests orchestrator. | Aucun appel de production du Decision Provider ou du record avec alternatives admissibles réelles. |
+| P12 | 361 tests dans 7 suites API avant le correctif P10, puis 346 tests dans 5 suites après commit 9a4d655; observations EDIT/CREATE et pause tool_approval. | L'observation n'accorde ni permission, ni approbation, ni publication P10. |
+
+Le typecheck complet packages/api est toujours NON OBTENU : Node a épuisé
+son heap à 2 puis 3 Go. Les builds tsdown ne remplacent pas ce contrôle.
+Prochaine décision technique : fournir une source hôte de plusieurs bindings
+réellement autorisés pour P9/P11, ou une identité Task Engine native liée à un
+candidat et une preuve Oracle indépendante pour P10. Sans ces entrées, conserver
+les frontières fail-closed et ne pas déclarer P0–P12 validé de bout en bout.
