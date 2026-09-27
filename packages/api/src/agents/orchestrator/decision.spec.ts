@@ -81,4 +81,49 @@ describe('Decision record boundary', () => {
       }),
     ).toThrow(/option/i);
   });
+
+  it('copies a complete probability distribution without exposing it to MTO', () => {
+    const distribution = [
+      { optionId: 'model-a', probability: 0.8 },
+      { optionId: 'model-b', probability: 0.2 },
+    ];
+    const record = createDecisionRecord({ ...valid, distribution });
+    distribution[0].probability = 0;
+    expect(record.distribution).toEqual([
+      { optionId: 'model-a', probability: 0.8 },
+      { optionId: 'model-b', probability: 0.2 },
+    ]);
+    expect(fromDecisionRecord(record, 'event-distribution').payload).not.toHaveProperty(
+      'distribution',
+    );
+  });
+
+  it('rejects incomplete, duplicated, unknown, or invalid probability distributions', () => {
+    const invalid = [
+      [{ optionId: 'model-a', probability: 1 }],
+      [
+        { optionId: 'model-a', probability: 0.5 },
+        { optionId: 'model-a', probability: 0.5 },
+      ],
+      [
+        { optionId: 'model-a', probability: 0.5 },
+        { optionId: 'unknown', probability: 0.5 },
+      ],
+      [
+        { optionId: 'model-a', probability: NaN },
+        { optionId: 'model-b', probability: 1 },
+      ],
+      [
+        { optionId: 'model-a', probability: -0.1 },
+        { optionId: 'model-b', probability: 1.1 },
+      ],
+      [
+        { optionId: 'model-a', probability: 0.3 },
+        { optionId: 'model-b', probability: 0.3 },
+      ],
+    ];
+    for (const distribution of invalid) {
+      expect(() => createDecisionRecord({ ...valid, distribution })).toThrow(/distribution/);
+    }
+  });
 });

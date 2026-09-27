@@ -13,6 +13,11 @@ export interface DecisionContext {
   policyContext?: string;
 }
 
+export interface DecisionDistributionEntry {
+  optionId: string;
+  probability: number;
+}
+
 export interface DecisionRecord {
   decisionId: string;
   question: string;
@@ -23,6 +28,7 @@ export interface DecisionRecord {
   version?: string;
   confidence?: number;
   threshold?: number;
+  distribution?: DecisionDistributionEntry[];
   context: DecisionContext;
   timestamp: string;
 }
@@ -85,6 +91,9 @@ export function createDecisionRecord(input: DecisionRecord): DecisionRecord {
     ...(input.version === undefined ? {} : { version: input.version }),
     ...(input.confidence === undefined ? {} : { confidence: input.confidence }),
     ...(input.threshold === undefined ? {} : { threshold: input.threshold }),
+    ...(input.distribution === undefined
+      ? {}
+      : { distribution: validateDecisionDistribution(input.options, input.distribution) }),
     context: {
       traceId: input.context.traceId,
       ...(input.context.taskId === undefined ? {} : { taskId: input.context.taskId }),
@@ -127,4 +136,36 @@ export function fromDecisionRecord(
       ...(record.confidence === undefined ? {} : { confidence: record.confidence }),
     },
   );
+}
+
+function validateDecisionDistribution(
+  options: DecisionOption[],
+  distribution: DecisionDistributionEntry[],
+): DecisionDistributionEntry[] {
+  if (!Array.isArray(distribution) || distribution.length !== options.length) {
+    throw new Error('DecisionRecord distribution must cover every option');
+  }
+  const optionIds = new Set(options.map((option) => option.id));
+  const seen = new Set<string>();
+  let total = 0;
+  const copy = distribution.map((entry) => {
+    if (
+      entry == null ||
+      typeof entry.optionId !== 'string' ||
+      !optionIds.has(entry.optionId) ||
+      seen.has(entry.optionId) ||
+      !Number.isFinite(entry.probability) ||
+      entry.probability < 0 ||
+      entry.probability > 1
+    ) {
+      throw new Error('DecisionRecord distribution contains an invalid option or probability');
+    }
+    seen.add(entry.optionId);
+    total += entry.probability;
+    return { optionId: entry.optionId, probability: entry.probability };
+  });
+  if (Math.abs(total - 1) > 1e-6) {
+    throw new Error('DecisionRecord distribution probabilities must sum to one');
+  }
+  return copy;
 }

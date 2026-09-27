@@ -318,6 +318,11 @@ this contract does not execute a provider or automatically wire routing into
 `createRun`. Policy, authorization, Task Engine settlement, and Oracle validation
 remain with their existing owners.
 
+A decision record may include an optional probability distribution. It must
+contain exactly one entry per declared option, each probability must be finite
+and between zero and one, and the total must equal one within numeric tolerance.
+The record copies the entries; MTO deliberately omits the distribution.
+
 ## P12 — Authorization observation record
 
 `createAuthorizationRecord(...)` copies and validates an outcome supplied by the
