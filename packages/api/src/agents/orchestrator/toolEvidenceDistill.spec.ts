@@ -1,4 +1,5 @@
 import { createToolEvidenceDistillRequest } from './toolEvidenceDistill';
+import { deterministicOracle } from '../oracle/deterministic';
 import { createImprovementCandidate } from './improvement';
 
 const candidate = createImprovementCandidate({
@@ -62,6 +63,53 @@ describe('P10 tool evidence to Distill composition', () => {
     expect(result).not.toHaveProperty('verdict');
   });
 
+  it('keeps workflow validation unknown without a checker and verifies only explicit independent tool provenance', async () => {
+    const workflow = createImprovementCandidate({
+      candidateId: 'workflow-step-limit:trace-1:task-1',
+      target: 'workflow',
+      title: 'Review limit',
+      summary: 'Review workflow',
+      traceId: 'trace-1',
+      observations: [
+        {
+          type: 'OBSERVED',
+          identity: { traceId: 'trace-1', traceEventId: 'step-limit:response-1' },
+          source: 'host',
+          timestamp: '2026-09-27T18:00:00.000Z',
+        },
+      ],
+      createdAt: '2026-09-27T18:00:00.000Z',
+    });
+    const base = {
+      taskId: 'task-1',
+      producerAgentId: 'producer-agent',
+      candidate: workflow,
+      toolName: 'host_verify_workflow_target',
+      toolCallId: 'call-1',
+      declarations: [
+        {
+          toolName: 'host_verify_workflow_target',
+          criterionId: 'target',
+          expectedValue: 'workflow' as const,
+        },
+      ],
+    };
+    const unattributed = createToolEvidenceDistillRequest(base);
+    expect(unattributed.status).toBe('READY');
+    if (unattributed.status !== 'READY') throw new Error('Expected bounded request');
+    expect(unattributed.independent).toBe(false);
+    const unknown = await deterministicOracle.validate(unattributed.oracleInput);
+    expect(unknown.status).toBe('UNKNOWN');
+    expect(unknown.uncertainty).toContain('INDEPENDENT_EVIDENCE_MISSING');
+    const attributed = createToolEvidenceDistillRequest({ ...base, toolAgentId: 'checker-agent' });
+    expect(attributed.status).toBe('READY');
+    if (attributed.status !== 'READY') throw new Error('Expected bounded request');
+    expect(attributed.independent).toBe(true);
+    const verified = await deterministicOracle.validate(attributed.oracleInput);
+    expect(verified.status).toBe('VERIFIED');
+    expect(verified).not.toHaveProperty('authorized');
+  });
+
   it('returns NO_DECLARATION instead of interpreting an undeclared tool result', () => {
     expect(
       createToolEvidenceDistillRequest({
@@ -73,6 +121,21 @@ describe('P10 tool evidence to Distill composition', () => {
         declarations: [],
       }),
     ).toEqual({ status: 'NO_DECLARATION' });
+  });
+
+  it('keeps a tool with no checker identity non-independent', () => {
+    const result = createToolEvidenceDistillRequest({
+      taskId: 'task-unattributed',
+      producerAgentId: 'producer-agent',
+      candidate,
+      toolName: 'verify_skill_target',
+      toolCallId: 'call-unattributed',
+      declarations: [
+        { toolName: 'verify_skill_target', criterionId: 'target', expectedValue: 'skill' },
+      ],
+    });
+    expect(result.status).toBe('READY');
+    if (result.status === 'READY') expect(result.independent).toBe(false);
   });
 
   it('preserves same-producer provenance as non-independent for Oracle to fail closed', () => {

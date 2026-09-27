@@ -122,7 +122,10 @@ function evaluate(input: OracleInput, verdict: OracleVerdict): void {
       criterion.requireEvidence &&
       !(byCriterion.get(criterion.id) ?? []).some(
         (item) =>
-          (item.source.type === 'tool' || item.source.type === 'source') &&
+          (item.source.type === 'source' ||
+            (item.source.type === 'tool' &&
+              typeof item.source.agentId === 'string' &&
+              item.source.agentId.trim() !== '')) &&
           item.source.id !== agentId &&
           item.source.agentId !== agentId &&
           item.value === criterion.expected,

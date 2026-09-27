@@ -471,3 +471,7 @@ Le SDK `d4f3c6a6bbd38ac555d29b287d4f9e2ab5185932` transporte la trace fournie pa
 ## P10 — identité producteur de l’enfant natif
 
 Pour une tâche enfant de type agent, le store capture `subagentAgentId` uniquement depuis l’événement natif `start` correspondant à son parent, son appel outil et son type. Il transmet le champ facultatif `producerAgentId` au candidat MTO après la persistance de l’échec typé. Un événement étranger ou absent et la racine synthétique d’un sous-graphe ne fournissent pas cette identité. Le candidat demeure `proposal-only` ; aucune preuve Oracle indépendante ni activation Distill ou publication ne résulte de cette corrélation.
+
+## P10 — preuve Oracle indépendante pour l’enfant
+
+Audit du chemin natif : le candidat enfant possède `taskId` et, pour un agent simple dont le démarrage correspond, `producerAgentId` dans MTO. Aucun appel de production ne fournit encore une déclaration hôte de critère `target` liée à un outil vérificateur distinct pour cet enfant. L’adaptateur de preuve et l’Oracle déterministe refusent désormais de qualifier un appel outil sans `source.agentId` connu de preuve indépendante. Le test de composition candidat → Distill → Oracle retourne UNKNOWN sans vérificateur et VERIFIED avec une identité de vérificateur distincte explicitement fournie ; il ne constitue pas un appel hôte de production ni une autorisation. P10 reste `proposal-only` jusqu’à une provenance de vérification réelle et une activation contrôlée séparée.

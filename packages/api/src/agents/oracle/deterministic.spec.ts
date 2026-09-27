@@ -79,6 +79,23 @@ describe('deterministic Oracle', () => {
     expect((await deterministicOracle.validate(original)).status).toBe('UNKNOWN');
   });
 
+  it('requires a known checker identity for independent tool evidence', async () => {
+    const original = input({
+      criteria: [{ id: 'total', field: 'total', expected: 42, requireEvidence: true }],
+      evidence: [
+        {
+          id: 'tool-unattributed',
+          criterionId: 'total',
+          value: 42,
+          source: { id: 'call-unattributed', type: 'tool' },
+        },
+      ],
+    });
+    const verdict = await deterministicOracle.validate(original);
+    expect(verdict.status).toBe('UNKNOWN');
+    expect(verdict.uncertainty).toContain('INDEPENDENT_EVIDENCE_MISSING');
+  });
+
   it('preserves conflicting values and sources instead of choosing a winner', async () => {
     const original = input({
       evidence: [

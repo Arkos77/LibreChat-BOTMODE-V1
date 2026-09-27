@@ -40,8 +40,9 @@ export function resolveImprovementEvidence(
       : undefined;
 
   const independent =
-    input.source.type !== 'producer' &&
-    (sourceAgentId == null || sourceAgentId !== producerAgentId);
+    sourceId !== producerAgentId &&
+    sourceAgentId !== producerAgentId &&
+    (input.source.type === 'source' || (input.source.type === 'tool' && sourceAgentId != null));
 
   if (input.requireIndependentEvidence === true && !independent) {
     throw new Error('ImprovementEvidence independent evidence is required');

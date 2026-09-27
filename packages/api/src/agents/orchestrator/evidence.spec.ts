@@ -51,6 +51,20 @@ describe('P10 improvement evidence contract', () => {
     ).toThrow('independent evidence is required');
   });
 
+  it('does not treat an unattributed tool call as independent verification', () => {
+    const input = {
+      id: 'tool-unattributed',
+      criterionId: 'target',
+      value: 'workflow',
+      source: { id: 'call-unattributed', type: 'tool' as const },
+      producerAgentId: 'producer-agent',
+    };
+    expect(resolveImprovementEvidence(input).independent).toBe(false);
+    expect(() =>
+      resolveImprovementEvidence({ ...input, requireIndependentEvidence: true }),
+    ).toThrow('independent evidence is required');
+  });
+
   it('collects only evidence that satisfies the independent boundary', () => {
     expect(
       collectIndependentImprovementEvidence([
