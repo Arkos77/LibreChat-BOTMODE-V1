@@ -72,6 +72,38 @@ describe('P10 transient evidence buffer', () => {
     expect(buffer.snapshot()).toEqual([first]);
   });
 
+  it('keeps identical native tool-call IDs distinct across child tasks', () => {
+    const buffer = createTransientEvidenceBuffer(2);
+    const first = buffer.append({
+      toolCallId: 'call-shared',
+      toolName: 'verify',
+      producerAgentId: 'agent-a',
+      taskId: 'task-a',
+    });
+    const second = buffer.append({
+      toolCallId: 'call-shared',
+      toolName: 'verify',
+      producerAgentId: 'agent-b',
+      taskId: 'task-b',
+    });
+    expect(buffer.snapshot()).toEqual([first, second]);
+    expect(
+      buffer.append({
+        toolCallId: 'call-shared',
+        toolName: 'changed',
+        producerAgentId: 'agent-a',
+        taskId: 'task-a',
+      }),
+    ).toEqual(first);
+    buffer.append({
+      toolCallId: 'call-new',
+      toolName: 'verify',
+      producerAgentId: 'agent-c',
+      taskId: 'task-c',
+    });
+    expect(buffer.snapshot()).toEqual([second, expect.objectContaining({ taskId: 'task-c' })]);
+  });
+
   it('returns defensive snapshots and consumes atomically', () => {
     const buffer = createTransientEvidenceBuffer();
     buffer.append({ toolCallId: 'call-1', toolName: 'tool-a', producerAgentId: 'producer-a' });

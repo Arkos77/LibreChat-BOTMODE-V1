@@ -63,6 +63,10 @@ function normalizeCapacity(capacity: number | undefined): number {
   return capacity;
 }
 
+function observationKey(observation: TransientToolEvidenceObservation): string {
+  return JSON.stringify([observation.taskId ?? null, observation.toolCallId]);
+}
+
 function cloneObservation(
   observation: TransientToolEvidenceObservation,
 ): TransientToolEvidenceObservation {
@@ -112,20 +116,21 @@ export function createTransientEvidenceBuffer(capacity?: number): TransientEvide
 
     append(input) {
       const observation = createObservation(input);
-      if (seenToolCalls.has(observation.toolCallId)) {
+      const key = observationKey(observation);
+      if (seenToolCalls.has(key)) {
         return cloneObservation(
           observations.find(
-            (item) => item.toolCallId === observation.toolCallId,
+            (item) => observationKey(item) === key,
           ) as TransientToolEvidenceObservation,
         );
       }
 
       observations.push(observation);
-      seenToolCalls.add(observation.toolCallId);
+      seenToolCalls.add(key);
       if (observations.length > normalizedCapacity) {
         const removed = observations.shift();
         if (removed != null) {
-          seenToolCalls.delete(removed.toolCallId);
+          seenToolCalls.delete(observationKey(removed));
         }
       }
       return cloneObservation(observation);
