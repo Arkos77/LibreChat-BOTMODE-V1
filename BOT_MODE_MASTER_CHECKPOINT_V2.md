@@ -395,3 +395,21 @@ Prochaine décision technique : fournir une source hôte de plusieurs bindings
 réellement autorisés pour P9/P11, ou une identité Task Engine native liée à un
 candidat et une preuve Oracle indépendante pour P10. Sans ces entrées, conserver
 les frontières fail-closed et ne pas déclarer P0–P12 validé de bout en bout.
+
+==================================================
+PREUVE P7 RAG RÉELLE — 2026-09-27
+==================================================
+
+Le conteneur existant librechat_devcontainer-app-1 a été redémarré sans rebuild.
+La première exécution P7_RAG_E2E=1 échouait avant l'ingestion : le test forçait
+UID 1000, alors que l'utilisateur du conteneur vscode (UID 1001) possède
+/workspaces/.env.temp et /workspaces/logs. Le test utilise désormais
+l'utilisateur déclaré du conteneur via docker exec sans --user figé.
+
+Preuve : packages/api/src/files/rag.integration.spec.ts, 5 tests passés avec
+RAG et pgvector réels. Le test hôte fileSearch.test.js avait passé 13 tests.
+L'exécution vérifie ingestion, readback pgvector, consommation dans createRun,
+provenance et isolation sous le périmètre authentifié configuré. Elle ne prouve
+pas la véracité générale des documents ni la qualité d'un fournisseur LLM réel.
+P7 passe de « non exécuté dans cette passe » à « intégration prouvée dans ce
+montage ». Les autres frontières ouvertes de la matrice demeurent inchangées.

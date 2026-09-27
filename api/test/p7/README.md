@@ -35,3 +35,7 @@ RAG supplies contextual evidence only: the Task Engine executes, the Orchestrato
 plans, and the Oracle validates. Retrieved text is not verified truth, similarity
 is not truth confidence, and retrieved context is not durable agent memory. No
 second runtime/store, reasoning trace, or verdict mechanism is added.
+
+The integration bridge runs through the devcontainer's configured user. Do not
+force a host numeric UID in `docker exec`: the mounted credentials and log
+folder can belong to the container user, which may have a different UID.

@@ -32,8 +32,6 @@ integration('P7 native RAG → context → run with durable pgvector evidence', 
       [
         'exec',
         '-i',
-        '--user',
-        '1000:1000',
         '-w',
         '/workspaces',
         'librechat_devcontainer-app-1',
