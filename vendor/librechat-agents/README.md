@@ -80,3 +80,13 @@ event, remote PTC and host-side MCP dispatch. Local PTC and background authority
 remain outside this coverage. Historical artifacts are retained.
 
 Durable validation record: `P8-EFFECT-INTEGRATION-REAL`.
+
+## Detached child step-limit identity SDK — current artifact
+
+- Package: `@librechat/agents` 3.7.17.
+- Source commit: `d4f3c6a6bbd38ac555d29b287d4f9e2ab5185932` (preceded by `cf38d76b070b3a0c5fa8abf2e327510dd0bd3625`).
+- Artifact: `librechat-agents-3.7.17-d4f3c6a6bbd38ac555d29b287d4f9e2ab5185932.tgz`.
+- SHA-256: `2e5032d49dca88efe4bd0ca946a651c108272e693d86d95409f7b409a34f339f`.
+- npm integrity: `sha512-wvXEQbnBcBvINA0+m117qT9pRUH8EPh7eeZYg2bG4Bp1gmzjwAkarBGETVVrdZxwgveWBPvXPjGdsW6QW0rdLA==`.
+
+The SDK passes the host trace identity into the detached task store and preserves LangGraph’s typed `GRAPH_RECURSION_LIMIT` signal across its internal failure envelope. The host correlates that signal only after a durable child failure row, using the store-owned `runtime.taskId`. The archived package was built and packed from the stated SDK commit; 145 targeted SDK tests and the build passed. Earlier artifacts remain for provenance.

@@ -457,7 +457,7 @@ describe('initializeClient — processAgent ACL gate', () => {
       endpointOption: makeEndpointOption(),
     });
 
-    expect(capturedDefaultHandlerOptions.taskId).toBe('event-task');
+    expect(capturedDefaultHandlerOptions.eventActorTaskId).toBe('event-task');
     expect(capturedDefaultHandlerOptions.eventChildActivity).toEqual(
       expect.objectContaining({
         runId: 'child-conversation',
@@ -997,10 +997,12 @@ describe('initializeClient — subagent loading', () => {
       res: {},
       signal: new AbortController().signal,
       endpointOption: makeEndpointOption(),
+      mtoTraceId: 'trace-native-child',
     });
 
     expect(agentClientArgs.subagentTasks).toBe(capturedToolExecuteOptions.subagentTasks);
     expect(agentClientArgs.subagentTasks.store.supportsThreadContinuation).toBe(true);
+    expect(agentClientArgs.subagentTasks.traceId).toBe('trace-native-child');
     expect(JSON.parse(agentClientArgs.subagentTasks.scopeId)).toEqual({
       version: 1,
       userId: testUser._id.toString(),

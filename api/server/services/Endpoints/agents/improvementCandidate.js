@@ -60,13 +60,14 @@ async function observeStepLimitImprovementCandidate({
       {
         traceId: stepLimitContext.traceId,
         traceEventId: `step-limit:${stepLimitContext.responseMessageId}`,
+        ...(stepLimitContext.taskId == null ? {} : { taskId: stepLimitContext.taskId }),
         timestamp,
       },
       'host',
       { signal: stepLimitContext.signal },
     );
     const candidate = createImprovementCandidate({
-      candidateId: `workflow-step-limit:${stepLimitContext.traceId}`,
+      candidateId: `workflow-step-limit:${stepLimitContext.traceId}${stepLimitContext.taskId == null ? '' : `:${stepLimitContext.taskId}`}`,
       target: 'workflow',
       title: 'Review workflow after tool call limit',
       summary:

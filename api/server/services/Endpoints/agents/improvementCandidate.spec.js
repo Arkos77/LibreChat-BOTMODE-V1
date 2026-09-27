@@ -106,6 +106,32 @@ describe('step-limit improvement candidate observation', () => {
     );
   });
 
+  it('keeps child task candidates distinct within one trace and stable on replay', async () => {
+    const input = {
+      ...durableInput,
+      traceId: 'trace-siblings',
+      createdAt: '2026-09-27T13:00:00.000Z',
+    };
+    const first = await observeStepLimitImprovementCandidate({
+      ...input,
+      taskId: 'native-a',
+      responseMessageId: 'native-a:assistant',
+    });
+    const sibling = await observeStepLimitImprovementCandidate({
+      ...input,
+      taskId: 'native-b',
+      responseMessageId: 'native-b:assistant',
+    });
+    const replay = await observeStepLimitImprovementCandidate({
+      ...input,
+      taskId: 'native-a',
+      responseMessageId: 'native-a:assistant',
+    });
+    expect(first.candidateId).toBe('workflow-step-limit:trace-siblings:native-a');
+    expect(sibling.candidateId).toBe('workflow-step-limit:trace-siblings:native-b');
+    expect(replay).toEqual(first);
+  });
+
   it('contains an MTO sink failure without affecting candidate creation', async () => {
     const mtoEventSink = jest.fn(() => {
       throw new Error('sink unavailable');
@@ -243,7 +269,7 @@ describe('step-limit improvement candidate observation', () => {
 
     expect(candidate).toEqual(
       expect.objectContaining({
-        candidateId: 'workflow-step-limit:trace-context',
+        candidateId: 'workflow-step-limit:trace-context:task-context',
         traceId: 'trace-context',
         traceEventIds: ['step-limit:response-context'],
       }),

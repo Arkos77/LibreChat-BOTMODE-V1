@@ -11,6 +11,8 @@ const {
   SubagentActivityStream,
 } = require('@librechat/api');
 const db = require('~/models');
+const { observeMtoEvent } = require('./mtoObservation');
+const { observeStepLimitImprovementCandidate } = require('./improvementCandidate');
 const { enqueueAgentTrigger } = require('../../Agents/triggers');
 
 const GENERATION_DRAIN_TIMEOUT_MS = 45_000;
@@ -77,6 +79,26 @@ const subagentThreadTaskStore = createSubagentThreadTaskStore(
     releaseOwnerAdmission: db.releaseSubagentAdmission,
     cancelUnroutedTask: cancelUnroutedGeneration,
     onTaskPrepared: completionWakeupHandler,
+    onTaskStepLimit: ({
+      userId,
+      tenantId,
+      conversationId,
+      traceId,
+      taskId,
+      responseMessageId,
+      createdAt,
+    }) =>
+      observeStepLimitImprovementCandidate({
+        user: userId,
+        tenantId,
+        conversationId,
+        traceId,
+        taskId,
+        responseMessageId,
+        createdAt,
+        persistCandidate: db.recordImprovementCandidate,
+        mtoEventSink: observeMtoEvent,
+      }),
   },
 );
 

@@ -52,6 +52,7 @@ import { createConcurrencyLimiter } from '~/utils/promise';
 import { projectSubagentActivity } from './activity';
 import { InMemoryEventTransport } from '~/stream';
 import { aggregateEmittedUsage } from './usage';
+import { isStepLimitError } from './errors';
 
 const SCOPE_VERSION = 1;
 const DEFAULT_MAX_THREAD_DEPTH = 1;
@@ -263,6 +264,17 @@ export interface SubagentThreadTaskStoreOptions extends InMemorySubagentTaskStor
     tenantId?: string;
   }) => Promise<boolean>;
   onTaskPrepared?: (registration: SubagentTaskWakeupRegistration) => Promise<void> | void;
+  onTaskStepLimit?: (failure: SubagentTaskStepLimitFailure) => Promise<void> | void;
+}
+
+export interface SubagentTaskStepLimitFailure {
+  userId: string;
+  tenantId?: string;
+  conversationId: string;
+  traceId: string;
+  taskId: string;
+  responseMessageId: string;
+  createdAt: string;
 }
 
 export interface SubagentTaskWakeupRegistration {
@@ -607,6 +619,7 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
   private readonly releaseOwnerAdmission?: (userId: string, token: string) => Promise<void>;
   private readonly cancelUnroutedTask?: SubagentThreadTaskStoreOptions['cancelUnroutedTask'];
   private readonly onTaskPrepared?: SubagentThreadTaskStoreOptions['onTaskPrepared'];
+  private readonly onTaskStepLimit?: SubagentThreadTaskStoreOptions['onTaskStepLimit'];
   private taskControlTransport?: SubagentTaskControlTransport;
   private activityStream = new SubagentActivityStream(new InMemoryEventTransport());
 
@@ -649,6 +662,7 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
     this.releaseOwnerAdmission = options.releaseOwnerAdmission;
     this.cancelUnroutedTask = options.cancelUnroutedTask;
     this.onTaskPrepared = options.onTaskPrepared;
+    this.onTaskStepLimit = options.onTaskStepLimit;
   }
 
   /** Receives payload-free authoritative transitions from the SDK task store. */
@@ -1400,7 +1414,7 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
                 ...(error instanceof Error && error.stack != null ? { stack: error.stack } : {}),
               });
               if (mayPersist) {
-                await this.persistFailure(
+                const persistedFailure = await this.persistFailure(
                   scope,
                   threadId,
                   request,
@@ -1413,6 +1427,30 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
                     persistError,
                   );
                 });
+                if (
+                  persistedFailure != null &&
+                  isStepLimitError(error) &&
+                  typeof request.traceId === 'string' &&
+                  request.traceId.trim() !== '' &&
+                  this.onTaskStepLimit != null
+                ) {
+                  try {
+                    await this.onTaskStepLimit({
+                      userId: scope.userId,
+                      ...(scope.tenantId == null ? {} : { tenantId: scope.tenantId }),
+                      conversationId: threadId,
+                      traceId: request.traceId.trim(),
+                      taskId: runtime.taskId,
+                      responseMessageId: persistedFailure.messageId,
+                      createdAt: new Date(persistedFailure.createdAt).toISOString(),
+                    });
+                  } catch (observationError) {
+                    logger.warn(
+                      '[subagentThreads] Failed to observe child step limit',
+                      observationError,
+                    );
+                  }
+                }
               }
               throw new Error(publicFailureDetail(error));
             } finally {
@@ -3133,7 +3171,7 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
     taskId: string,
     error: unknown,
     detachedUsage: UsageMetadata[],
-  ): Promise<void> {
+  ): Promise<IMessage | undefined> {
     await this.flushControlReceiptsForSettlement(request.scopeId, taskId);
     const conversation = await this.currentConversation(scope, request, threadId);
     if (conversation == null || !(await this.taskInputExists(scope, threadId, taskId))) {
@@ -3169,6 +3207,7 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
       throw new Error('Unable to persist the child-thread failure.');
     }
     await this.touchAfterMessage(scope, threadId, taskId, 'failed');
+    return savedFailure;
   }
 
   private async registerTaskWakeup(
@@ -3465,12 +3504,15 @@ function completionWakeupStore(store: SubagentThreadTaskStore): CompletionWakeup
 export function buildSubagentThreadTaskConfig(
   store: SubagentThreadTaskStore,
   scope: Omit<SubagentThreadScope, 'version'>,
-  options: { completionWakeups?: boolean } = {},
+  options: { completionWakeups?: boolean; traceId?: string } = {},
 ): HostSubagentTaskConfig {
   const taskStore = options.completionWakeups === true ? completionWakeupStore(store) : store;
   return {
     store: taskStore,
     scopeId: serializeScope(scope),
+    ...(typeof options.traceId === 'string' && options.traceId.trim() !== ''
+      ? { traceId: options.traceId.trim() }
+      : {}),
     ...(options.completionWakeups === true
       ? { completionDelivery: SUBAGENT_COMPLETION_DELIVERY }
       : {}),

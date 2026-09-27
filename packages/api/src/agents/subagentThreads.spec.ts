@@ -305,6 +305,155 @@ describe('SubagentThreadTaskStore', () => {
     await expect(automaticStore.listTasks(automatic.scopeId)).resolves.toEqual([]);
   });
 
+  it('observes a typed child step limit after persistence with the native task identity', async () => {
+    const userId = 'step-limit-user';
+    const parentConversationId = randomUUID();
+    await saveParent(userId, parentConversationId);
+    const onTaskStepLimit = jest.fn(async (failure) => {
+      const messages = await methods.getMessages({
+        user: userId,
+        conversationId: failure.conversationId,
+      });
+      expect(
+        messages.some(
+          (message) =>
+            message.messageId === failure.responseMessageId &&
+            message.subagentTask?.status === 'error',
+        ),
+      ).toBe(true);
+    });
+    const store = new SubagentThreadTaskStore(methods, { onTaskStepLimit });
+    const config = buildSubagentThreadTaskConfig(
+      store,
+      { userId, parentConversationId },
+      { traceId: 'trace-child-1' },
+    );
+    expect(config.traceId).toBe('trace-child-1');
+    const error = Object.assign(new Error('Limit reached'), {
+      lc_error_code: 'GRAPH_RECURSION_LIMIT',
+    });
+    const started = store.start({
+      ...taskRequest(config.scopeId, {
+        run: async () => {
+          throw error;
+        },
+      }),
+      traceId: config.traceId,
+    });
+    await waitForSettled(store, config.scopeId, started);
+    const taskId = requireAccepted(started).task.taskId;
+    expect(onTaskStepLimit).toHaveBeenCalledTimes(1);
+    expect(onTaskStepLimit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId,
+        conversationId: requireThreadId(started),
+        traceId: 'trace-child-1',
+        taskId,
+        responseMessageId: `${taskId}:assistant`,
+        createdAt: expect.any(String),
+      }),
+    );
+  });
+
+  it('does not observe untyped child errors or missing trace identity', async () => {
+    const userId = 'step-limit-negative';
+    const parentConversationId = randomUUID();
+    await saveParent(userId, parentConversationId);
+    const onTaskStepLimit = jest.fn();
+    const store = new SubagentThreadTaskStore(methods, { onTaskStepLimit });
+    const config = buildSubagentThreadTaskConfig(store, { userId, parentConversationId });
+    const ordinary = store.start({
+      ...taskRequest(config.scopeId, {
+        run: async () => {
+          throw new Error('Graph recursion limit reached');
+        },
+      }),
+      traceId: 'trace-negative',
+    });
+    await waitForSettled(store, config.scopeId, ordinary);
+    const typed = Object.assign(new Error('Limit'), { lc_error_code: 'GRAPH_RECURSION_LIMIT' });
+    const missingTrace = store.start(
+      taskRequest(config.scopeId, {
+        run: async () => {
+          throw typed;
+        },
+      }),
+    );
+    await waitForSettled(store, config.scopeId, missingTrace);
+    expect(onTaskStepLimit).not.toHaveBeenCalled();
+  });
+
+  it('does not observe a typed limit when child failure persistence fails', async () => {
+    const userId = 'step-limit-no-row';
+    const parentConversationId = randomUUID();
+    await saveParent(userId, parentConversationId);
+    const onTaskStepLimit = jest.fn();
+    const failingMethods = {
+      ...methods,
+      saveMessage: jest.fn(async (...args: Parameters<AllMethods['saveMessage']>) => {
+        if (args[1].subagentTask?.status === 'error') return null;
+        return methods.saveMessage(...args);
+      }),
+    };
+    const store = new SubagentThreadTaskStore(failingMethods, { onTaskStepLimit });
+    const config = buildSubagentThreadTaskConfig(
+      store,
+      { userId, parentConversationId },
+      { traceId: 'trace-no-row' },
+    );
+    const error = Object.assign(new Error('Limit'), { lc_error_code: 'GRAPH_RECURSION_LIMIT' });
+    const started = store.start({
+      ...taskRequest(config.scopeId, {
+        run: async () => {
+          throw error;
+        },
+      }),
+      traceId: config.traceId,
+    });
+    await waitForSettled(store, config.scopeId, started);
+    expect(onTaskStepLimit).not.toHaveBeenCalled();
+    const messages = await methods.getMessages({
+      user: userId,
+      conversationId: requireThreadId(started),
+    });
+    expect(messages).not.toContainEqual(
+      expect.objectContaining({ messageId: `${requireAccepted(started).task.taskId}:assistant` }),
+    );
+  });
+
+  it('contains a child candidate observer failure after the durable row', async () => {
+    const userId = 'step-limit-observer-failure';
+    const parentConversationId = randomUUID();
+    await saveParent(userId, parentConversationId);
+    const onTaskStepLimit = jest.fn(async () => {
+      throw new Error('candidate unavailable');
+    });
+    const store = new SubagentThreadTaskStore(methods, { onTaskStepLimit });
+    const config = buildSubagentThreadTaskConfig(
+      store,
+      { userId, parentConversationId },
+      { traceId: 'trace-observer-failure' },
+    );
+    const error = Object.assign(new Error('Limit'), { lc_error_code: 'GRAPH_RECURSION_LIMIT' });
+    const started = store.start({
+      ...taskRequest(config.scopeId, {
+        run: async () => {
+          throw error;
+        },
+      }),
+      traceId: config.traceId,
+    });
+    await waitForSettled(store, config.scopeId, started);
+    expect(onTaskStepLimit).toHaveBeenCalledTimes(1);
+    const taskId = requireAccepted(started).task.taskId;
+    const messages = await methods.getMessages({
+      user: userId,
+      conversationId: requireThreadId(started),
+    });
+    expect(messages).toContainEqual(expect.objectContaining({ messageId: `${taskId}:assistant` }));
+    expect(store.get(config.scopeId, taskId)?.status).toBe('error');
+  });
+
   it('maps one logical SDK thread to a durable, view-only LibreChat conversation', async () => {
     const userId = 'user-1';
     const parentConversationId = randomUUID();
