@@ -51,4 +51,25 @@ describe('Authorization observation boundary', () => {
       fromAuthorizationRecord({ ...valid, decision: 'HUMAN_APPROVAL_REQUIRED' }, 'event-3').type,
     ).toBe('HUMAN_APPROVAL_REQUIRED');
   });
+
+  it('rejects invalid duration and malformed human review metadata', () => {
+    expect(() => createAuthorizationRecord({ ...valid, durationMs: Infinity })).toThrow(
+      /durationMs/,
+    );
+    expect(() => createAuthorizationRecord({ ...valid, durationMs: -1 })).toThrow(/durationMs/);
+    expect(() => createAuthorizationRecord({ ...valid, humanApproval: null as never })).toThrow(
+      /humanApproval/,
+    );
+  });
+
+  it('copies conditions and human approval without retaining unknown nested fields', () => {
+    const conditions = ['native EDIT permission checked'];
+    const humanApproval = { required: true, approvalId: 'approval-1', token: 'secret' };
+    const record = createAuthorizationRecord({ ...valid, conditions, humanApproval });
+    conditions.push('later mutation');
+    humanApproval.approvalId = 'changed';
+    expect(record.conditions).toEqual(['native EDIT permission checked']);
+    expect(record.humanApproval).toEqual({ required: true, approvalId: 'approval-1' });
+    expect(JSON.stringify(fromAuthorizationRecord(record, 'event-4'))).not.toContain('approval-1');
+  });
 });

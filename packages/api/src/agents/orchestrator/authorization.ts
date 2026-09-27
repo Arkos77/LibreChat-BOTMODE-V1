@@ -54,7 +54,8 @@ export function createAuthorizationRecord(input: AuthorizationRecord): Authoriza
   }
   if (
     input.humanApproval !== undefined &&
-    (typeof input.humanApproval.required !== 'boolean' ||
+    (input.humanApproval === null ||
+      typeof input.humanApproval.required !== 'boolean' ||
       (input.humanApproval.approvalId !== undefined &&
         (typeof input.humanApproval.approvalId !== 'string' ||
           input.humanApproval.approvalId.trim() === '')))
