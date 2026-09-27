@@ -1415,8 +1415,10 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
                   }
                 },
               };
-              const result = await runWithDetachedSubagentUsage(detachedUsage, () =>
-                request.run(activityRuntime, preparedThread.initialMessages),
+              const result = await runWithDetachedSubagentUsage(
+                detachedUsage,
+                () => request.run(activityRuntime, preparedThread.initialMessages),
+                runtime.taskId,
               );
               if (runtime.signal.aborted) {
                 throw runtime.signal.reason ?? new Error('Subagent task was cancelled.');

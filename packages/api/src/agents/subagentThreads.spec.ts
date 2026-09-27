@@ -37,6 +37,7 @@ import {
 } from './subagentThreads';
 import { controlFingerprint, SubagentTaskOwnerUnavailableError } from './subagentTaskRouting';
 import { SUBAGENT_COMPLETION_DELIVERY } from './subagentDelivery';
+import { getDetachedSubagentTaskId } from './subagentTaskContext';
 import { createSubagentAttemptKey } from './subagentThreadIds';
 import { SubagentActivityStream } from './subagentActivity';
 import { createSubagentUsageSink } from './usage';
@@ -397,6 +398,7 @@ describe('SubagentThreadTaskStore', () => {
         parentRunId: 'parent-run-native',
         parentToolCallId: 'parent-call-native',
         run: async (runtime) => {
+          expect(getDetachedSubagentTaskId()).toBe(runtime.taskId);
           runtime.reportProgress({
             runId: 'root-run',
             parentRunId: 'parent-run-native',
@@ -418,6 +420,7 @@ describe('SubagentThreadTaskStore', () => {
     });
     await waitForSettled(store, config.scopeId, started);
     const taskId = requireAccepted(started).task.taskId;
+    expect(getDetachedSubagentTaskId()).toBeUndefined();
     expect(onTaskStepLimit).toHaveBeenCalledTimes(1);
     expect(onTaskStepLimit).toHaveBeenCalledWith(
       expect.objectContaining({
