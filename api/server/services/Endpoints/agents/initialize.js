@@ -219,6 +219,7 @@ const initializeClient = async ({
     artifactPromises,
     streamId,
     jobCreatedAt,
+    transientEvidenceBuffer,
   });
 
   /** Query accessible skill IDs once per run (shared across all agents).

@@ -30,6 +30,7 @@ const {
   isCodeSessionToolName,
   shouldSignalSandboxStart,
   getToolInputValidationDetails,
+  resolveToolEvidenceIntent,
 } = require('@librechat/api');
 const { processFileCitations } = require('~/server/services/Files/Citations');
 const { processCodeOutput, runPreviewFinalize } = require('~/server/services/Files/Code/process');
@@ -961,6 +962,11 @@ function createToolEndCallback({
   streamId = null,
   jobCreatedAt,
   improvementEvidenceCallback,
+  transientEvidenceBuffer,
+  improvementEvidenceDeclarations,
+  improvementEvidenceProducerAgentId,
+  improvementEvidenceTaskId,
+  improvementEvidenceTraceId,
 }) {
   /**
    * @type {ToolEndCallback}
@@ -973,6 +979,31 @@ function createToolEndCallback({
 
     if (typeof improvementEvidenceCallback === 'function') {
       await improvementEvidenceCallback(data, metadata);
+    }
+
+    if (
+      transientEvidenceBuffer != null &&
+      Array.isArray(improvementEvidenceDeclarations) &&
+      improvementEvidenceDeclarations.length > 0
+    ) {
+      const declaration = resolveToolEvidenceIntent({
+        toolName: output.name,
+        declarations: improvementEvidenceDeclarations,
+      });
+
+      if (declaration != null) {
+        transientEvidenceBuffer.append({
+          toolCallId: output.tool_call_id,
+          toolName: output.name,
+          producerAgentId: improvementEvidenceProducerAgentId,
+          ...(improvementEvidenceTaskId ? { taskId: improvementEvidenceTaskId } : {}),
+          ...(improvementEvidenceTraceId ? { traceId: improvementEvidenceTraceId } : {}),
+          ...(metadata?.run_id ? { runId: metadata.run_id } : {}),
+          ...(metadata?.thread_id ? { threadId: metadata.thread_id } : {}),
+          criterionId: declaration.criterionId,
+          value: declaration.value,
+        });
+      }
     }
 
     if (!output.artifact) {
