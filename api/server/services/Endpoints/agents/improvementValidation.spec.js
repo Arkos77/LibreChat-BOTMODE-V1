@@ -57,6 +57,9 @@ describe('durable native child workflow validation', () => {
     expect(request.mtoEventSink).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'oracle', type: 'VERIFIED' }),
     );
+    const oracleEvents = request.mtoEventSink.mock.calls.map(([event]) => event);
+    expect(oracleEvents.map((event) => event.type)).toEqual(['VALIDATING', 'VERIFIED']);
+    expect(new Set(oracleEvents.map((event) => event.identity.traceEventId)).size).toBe(2);
     expect(JSON.stringify(records)).not.toContain('Native step limit');
   });
 
@@ -84,6 +87,16 @@ describe('durable native child workflow validation', () => {
     expect(first.persistLifecycleEvent.mock.calls.map(([arg]) => arg.event)).toEqual(
       replay.persistLifecycleEvent.mock.calls.map(([arg]) => arg.event),
     );
+  });
+
+  it('assigns stable distinct Oracle trace identities to replayed phases', async () => {
+    const request = input();
+    await validateStepLimitImprovementCandidate(request);
+    const ids = request.mtoEventSink.mock.calls.map(([event]) => event.identity.traceEventId);
+    expect(ids).toEqual([
+      `oracle:${candidate.candidateId}:validating`,
+      `oracle:${candidate.candidateId}:verified`,
+    ]);
   });
 
   it('does not advance when lifecycle persistence fails', async () => {

@@ -495,3 +495,7 @@ Après persistance du message d’échec typé et du candidat immuable, le callb
 ## P10 — liaison stricte de l’autorisation à la mutation skill
 
 La frontière de publication refuse une autorisation dont le candidat, la trace, l’acteur, l’opération, le skill, sa version ou la voie de publication diffèrent de la demande. Le digest du contenu reste revérifié avant `updateSkill`. Huit variantes décalées échouaient avant le correctif et n’atteignent plus la mutation. Aucun appel hôte de production ne crée encore une proposition skill avec contenu et vérification indépendante ; ce verrouillage ne vaut pas activation du chemin skill.
+
+## P10 — identités MTO distinctes pour les phases Oracle
+
+La validation native de l’enfant donne désormais un `traceEventId` stable distinct à `VALIDATING` et au verdict terminal, dérivé du candidat et de la phase. Le rejeu garde les mêmes identités par phase ; deux événements différents ne partagent plus le même identifiant MTO.

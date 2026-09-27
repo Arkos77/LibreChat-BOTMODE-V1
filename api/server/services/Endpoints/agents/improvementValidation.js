@@ -58,12 +58,16 @@ async function validateStepLimitImprovementCandidate({
   const context = {
     traceId: trace,
     taskId: nativeTaskId,
-    traceEventId: `oracle:${candidate.candidateId}`,
   };
   const emit = (event) => {
     if (typeof mtoEventSink !== 'function') return;
     try {
-      const sent = mtoEventSink(fromOracleEvent(event, context));
+      const sent = mtoEventSink(
+        fromOracleEvent(event, {
+          ...context,
+          traceEventId: `oracle:${candidate.candidateId}:${event.phase.toLowerCase()}`,
+        }),
+      );
       if (sent != null) {
         void Promise.resolve(sent).catch((error) => {
           warnObservation(error);
