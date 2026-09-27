@@ -22,6 +22,7 @@ const VALID_TYPES = new Set([
   'AUTHORIZED',
   'DENIED',
   'PROPOSAL_ONLY',
+  'APPROVED',
   'COMMITTED',
 ]);
 const VALID_ACTOR_TYPES = new Set(['host', 'agent', 'oracle', 'policy', 'human']);

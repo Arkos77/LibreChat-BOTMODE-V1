@@ -1,4 +1,9 @@
-const { runSkillContentTests } = require('@librechat/api');
+const {
+  runSkillContentTests,
+  createDistillValidationRequest,
+  deterministicOracle,
+  createImprovementDisposition,
+} = require('@librechat/api');
 
 const CHECKER_ID = 'librechat:host-skill-tests';
 
@@ -50,6 +55,50 @@ async function validateSkillImprovementCandidate({
     checkerAgentId: result.checkerAgentId,
     checks: result.checks,
   });
+  if (result.status === 'VERIFIED') {
+    const request = createDistillValidationRequest({
+      taskId: proposal.taskId,
+      producerAgentId: proposal.producerAgentId,
+      candidate,
+      evidence: [
+        {
+          id: `host-tests:${candidate.candidateId}`,
+          criterionId: 'target',
+          value: 'skill',
+          source: { id: CHECKER_ID, type: 'tool', agentId: CHECKER_ID },
+        },
+      ],
+    });
+    const verdict = await deterministicOracle.validate(request.oracleInput);
+    const decision = {
+      VERIFIED: 'ACCEPT',
+      REJECTED: 'REJECT',
+      UNKNOWN: 'DEFER',
+      HUMAN_REVIEW: 'REQUEST_HUMAN_REVIEW',
+    }[verdict.status];
+    const disposition = createImprovementDisposition({
+      candidate,
+      oracle: { phase: verdict.status, verdict, decision },
+    });
+    await persistLifecycleEvent({
+      ...scope,
+      event: {
+        eventId: `skill-oracle:${candidate.candidateId}`,
+        candidateId: candidate.candidateId,
+        traceId: candidate.traceId,
+        type: verdict.status,
+        actor: { id: verdict.validator.id, type: 'oracle' },
+        data: {
+          payloadDigest: result.payloadDigest,
+          oracleDecision: decision,
+          disposition: disposition.disposition,
+          validatorId: verdict.validator.id,
+        },
+        occurredAt: candidate.createdAt,
+      },
+    });
+    return { ...result, disposition };
+  }
   return result;
 }
 module.exports = { validateSkillImprovementCandidate };

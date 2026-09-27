@@ -551,3 +551,19 @@ Ce raccordement ne vérifie pas encore la qualité du contenu avec des tests ind
 ## P10 — identité native du producteur skill
 
 Le candidat skill enfant porte aussi le producteur observé lors du démarrage natif correspondant à la tâche. Sans producteur, la capture échoue avant l’écriture. Cette identité permet de refuser un vérificateur qui serait le même agent que le producteur ; aucun test indépendant de contenu n’est encore enregistré.
+
+## P10 — tests de contenu, Oracle et revue humaine du diff exact
+
+Une proposition d'édition SKILL.md issue d'une vraie tâche enfant est enregistrée avant la mutation native. Le diff, le payload, la version attendue et les identités sont immuables dans `ImprovementSkillProposal`, sous propriétaire et tenant. Un diff vide échoue avant l'écriture. L'outil retourne le chemin `/skills/improvements/<candidateId>` pour la revue.
+
+Les assertions indépendantes sont déclarées **par l'hôte**, et jamais par l'agent producteur, dans `BOT_MODE_SKILL_TEST_PLANS`, un JSON borné à 64 Kio. Exemple pour l'identifiant réel du skill :
+
+```json
+{"<skillId>":[{"id":"evidence-section","field":"body","operator":"includes","expected":"Evidence"}]}
+```
+
+Chaque plan contient de 1 à 32 tests. Les champs autorisés sont `body` et `description`, avec `includes`, `excludes` ou `equals`. La validation recalcule le digest du payload exact, refuse un vérificateur identique au producteur et consigne les résultats bornés. Si les tests passent, Distill et l'Oracle déterministe vérifient les identités et le digest du candidat avec la preuve fournie par ce vérificateur distinct. L'Oracle ne prétend pas mesurer la qualité sémantique générale : cette propriété dépend de la pertinence des assertions configurées.
+
+La page authentifiée `/skills/improvements/<candidateId>` affiche le diff exact, le digest, la version et les tests. La lecture exige le propriétaire/tenant et l'ACL EDIT native. Sans plan, sans tests réussis ou sans verdict Oracle accepté, le bouton de publication reste désactivé et le serveur refuse aussi toute approbation. Une approbation ou un rejet humain est un événement durable unique lié au digest et au snapshot. Après approbation, la publication appelle le service natif qui revérifie capacité, ACL, filtre de contenu, payload et version optimiste ; seul un résultat `updated` produit l'événement `COMMITTED`.
+
+**État de preuve :** suites unitaires, Mongo en mémoire, types API/données/client et builds API/data-provider passés. Le parcours navigateur connecté et un cycle réel de publication avec une configuration de tests propre à un skill déployé restent à exercer sur une instance LibreChat ; sans cette configuration, aucune proposition n'est publiable. En cas d'échec de persistance du journal `COMMITTED` après la mise à jour native, la version du skill demeure la source de vérité et une réconciliation opérationnelle est nécessaire.

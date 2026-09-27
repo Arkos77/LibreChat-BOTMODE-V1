@@ -38,6 +38,9 @@ async function recordSkillImprovementProposal({
     throw new Error('Skill proposal durable stores are unavailable');
   }
   const candidateId = `skill:${nativeTaskId}:${toolCallId}`;
+  if (typeof proposal.diff !== 'string' || proposal.diff.trim() === '') {
+    throw new Error('Skill proposal requires an exact reviewable diff');
+  }
   const payloadDigest = createImprovementPayloadDigest(proposal.update);
   const saved = await persistProposal({
     user,

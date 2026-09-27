@@ -1142,6 +1142,34 @@ export function getRandomPrompts(
 
 /* Skills */
 
+export interface TSkillImprovementReview {
+  candidateId: string;
+  skillId: string;
+  expectedVersion: number;
+  diff: string;
+  payloadDigest: string;
+  snapshotDigest: string;
+  quality: 'VERIFIED' | 'PENDING';
+  reviewed: boolean;
+  checks: Array<{ id: string; passed: boolean }>;
+}
+export function getSkillImprovementReview(candidateId: string): Promise<TSkillImprovementReview> {
+  return request.get(`${endpoints.skills()}/improvements/${encodeURIComponent(candidateId)}`);
+}
+export function decideSkillImprovementReview(
+  candidateId: string,
+  decision: {
+    decision: 'approve' | 'reject';
+    payloadDigest: string;
+    snapshotDigest: string;
+  },
+): Promise<{ status: string }> {
+  return request.post(
+    `${endpoints.skills()}/improvements/${encodeURIComponent(candidateId)}/review`,
+    decision,
+  );
+}
+
 export function listSkills(params?: sk.TSkillListRequest): Promise<sk.TSkillListResponse> {
   return request.get(endpoints.listSkillsWithFilters(params ?? {}));
 }

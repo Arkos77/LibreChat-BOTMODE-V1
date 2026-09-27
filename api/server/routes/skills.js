@@ -47,6 +47,11 @@ const {
   getSkillStrategyFunctions,
 } = require('~/server/services/Endpoints/agents/skillDeps');
 
+const {
+  getSkillImprovementReview,
+  postSkillImprovementReview,
+} = require('~/server/services/Endpoints/agents/improvementSkillReviewHttp');
+
 const router = express.Router();
 
 // ---------------------------------------------------------------------------
@@ -315,6 +320,9 @@ router.post(
   restoreTenantContextFromReq,
   importHandler,
 );
+
+router.get('/improvements/:candidateId', getSkillImprovementReview);
+router.post('/improvements/:candidateId/review', checkSkillCreate, postSkillImprovementReview);
 
 router.get('/', maybeStartRequestSkillSync, handlers.list);
 router.post('/', checkSkillCreate, handlers.create);

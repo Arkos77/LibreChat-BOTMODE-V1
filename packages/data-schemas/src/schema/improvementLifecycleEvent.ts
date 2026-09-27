@@ -22,6 +22,7 @@ const improvementLifecycleEventSchema: Schema<IImprovementLifecycleEventRecord> 
           'AUTHORIZED',
           'DENIED',
           'PROPOSAL_ONLY',
+          'APPROVED',
           'COMMITTED',
         ],
         required: true,

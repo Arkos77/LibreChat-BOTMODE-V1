@@ -70,10 +70,17 @@ describe('native child skill proposal capture', () => {
     expect(request.persistLifecycleEvent.mock.calls.map(([arg]) => arg.event.type)).toEqual([
       'VALIDATING',
       'VERIFIED',
+      'VERIFIED',
     ]);
     expect(request.persistLifecycleEvent.mock.invocationCallOrder[0]).toBeGreaterThan(
       request.persistCandidate.mock.invocationCallOrder[0],
     );
+  });
+
+  it('rejects an empty diff before any durable write', async () => {
+    const request = input({ proposal: { ...input().proposal, diff: '' } });
+    await expect(recordSkillImprovementProposal(request)).rejects.toThrow(/diff/i);
+    expect(request.persistProposal).not.toHaveBeenCalled();
   });
 
   it('requires a real child task and leaves both stores untouched otherwise', async () => {

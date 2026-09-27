@@ -3079,11 +3079,12 @@ async function writeSkillMd({
     if (proposal != null)
       return successResult(
         tc,
-        `Proposed ${SKILL_FILE_PREFIX}${skillName}/${SKILL_MD} for independent tests and review.`,
+        `Proposed ${SKILL_FILE_PREFIX}${skillName}/${SKILL_MD} for independent tests and review. Open /skills/improvements/${encodeURIComponent(proposal.candidateId)} to review the exact diff.`,
         {
           path: `${SKILL_FILE_PREFIX}${skillName}/${SKILL_MD}`,
           proposed: true,
           candidateId: proposal.candidateId,
+          reviewPath: `/skills/improvements/${encodeURIComponent(proposal.candidateId)}`,
         },
       );
   }

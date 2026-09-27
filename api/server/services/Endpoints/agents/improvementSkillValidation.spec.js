@@ -7,10 +7,11 @@ function input(overrides = {}) {
     candidate: {
       candidateId: 'skill:task:call',
       target: 'skill',
+      status: 'CANDIDATE',
       traceId: 'trace',
       payloadDigest: digest,
       createdAt: '2026-09-28T00:00:00.000Z',
-      publication: { requiresHumanReview: true },
+      publication: { path: 'native-skill-authoring-required', requiresHumanReview: true },
     },
     proposal: {
       candidateId: 'skill:task:call',
@@ -35,7 +36,17 @@ describe('independent skill content validation', () => {
     expect(request.persistLifecycleEvent.mock.calls.map(([arg]) => arg.event.type)).toEqual([
       'VALIDATING',
       'VERIFIED',
+      'VERIFIED',
     ]);
+    expect(request.persistLifecycleEvent.mock.calls.map(([arg]) => arg.event.type)).toEqual([
+      'VALIDATING',
+      'VERIFIED',
+      'VERIFIED',
+    ]);
+    expect(request.persistLifecycleEvent.mock.calls[2][0].event).toMatchObject({
+      actor: { type: 'oracle' },
+      data: { payloadDigest: digest, oracleDecision: 'ACCEPT' },
+    });
     expect(JSON.stringify(request.persistLifecycleEvent.mock.calls)).not.toContain('# New');
   });
   it('rejects missing tests and mismatched producer payload before any verdict', async () => {

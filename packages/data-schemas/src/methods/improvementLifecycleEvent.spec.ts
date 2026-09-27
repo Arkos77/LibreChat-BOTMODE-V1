@@ -74,6 +74,24 @@ describe('ImprovementLifecycleEvent durable append-only store', () => {
     });
   });
 
+  it('records one human approval for an owner-bound candidate', async () => {
+    const approval = event({
+      eventId: 'skill-review:candidate-1',
+      type: 'APPROVED',
+      actor: { id: USER_A.toString(), type: 'human' },
+      data: { payloadDigest: 'digest-1', snapshotDigest: 'snapshot-1' },
+    });
+    const result = await methods.recordImprovementLifecycleEvent({
+      user: USER_A,
+      tenantId: TENANT,
+      event: approval,
+    });
+    expect(result.record.type).toBe('APPROVED');
+    await expect(
+      methods.recordImprovementLifecycleEvent({ user: USER_B, tenantId: TENANT, event: approval }),
+    ).rejects.toThrow();
+  });
+
   it('records an immutable owner-scoped lifecycle event and replays the exact write', async () => {
     const first = await methods.recordImprovementLifecycleEvent({
       user: USER_A,
