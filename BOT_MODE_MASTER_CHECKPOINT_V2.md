@@ -285,9 +285,10 @@ append-only et lecture paginée. Validation: 24 tests de persistance voisins,
 build data-schemas et API, puis hook Git.
 
 Le sink de production reste un logger stateless. `mtoTraceId` est stocké dans
-le job; le propriétaire vient de `req.user.id`. Le `tenantId` n'est pas établi
-uniformément dans `initialMetadata` de chaque chemin; les émissions enfants
-passent également par le même sink sans périmètre propriétaire explicite.
-Ne pas brancher l'écriture durable tant que l'identité et le locataire ne
-sont pas liés à chaque chemin initial/reprise/enfant. Aucun événement MTO
+le job; le propriétaire vient de `req.user.id`. `GenerationJobManager.createJob`
+prend le locataire dans le contexte de requête et la façade `job.metadata`
+restitue `userId` et `tenantId`. Cependant le sink MTO est fourni comme fonction
+globale, sans liaison explicite de ce périmètre à chaque émission initiale,
+reprise ou enfant. Vérifier ce lien pour chaque chemin avant d'activer les
+écritures durables. Aucun événement MTO
 n'accorde permission, ne règle Task Engine ou ne déclenche publication.
