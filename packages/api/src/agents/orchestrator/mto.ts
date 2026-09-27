@@ -61,7 +61,12 @@ export interface MtoIdentity {
   parentToolCallId?: string;
 }
 
-export type MtoSource = 'host' | 'subagent-activity' | 'subagent-usage' | 'oracle';
+export type MtoSource =
+  | 'host'
+  | 'subagent-activity'
+  | 'subagent-usage'
+  | 'subagent-tool-completion'
+  | 'oracle';
 
 export interface MtoSubagentActivityObservation {
   phase: SubagentUpdateEvent['phase'];

@@ -54,9 +54,12 @@ const {
 } = require('@librechat/api');
 const subagentThreadTaskStore = require('./subagentThreadStore');
 const { configureSubagentTaskRouting } = subagentThreadTaskStore;
+jest.mock('./subagentToolObservation', () => ({ observeSubagentToolCompletion: jest.fn() }));
 const taskStoreOptions = createSubagentThreadTaskStore.mock.calls[0][1];
 const taskStoreMethods = createSubagentThreadTaskStore.mock.calls[0][0];
 const db = require('~/models');
+const { observeSubagentToolCompletion } = require('./subagentToolObservation');
+const { observeMtoEvent } = require('./mtoObservation');
 const activityPrepareRegistration = registerShutdownTask.mock.calls.find(
   ([name]) => name === 'subagent activity streams prepare',
 );
@@ -70,6 +73,18 @@ describe('subagent thread Redis lifecycle', () => {
       db.recordSubagentTaskControlReceipt,
     );
     expect(taskStoreMethods.getSubagentTaskControlReplay).toBe(db.getSubagentTaskControlReplay);
+  });
+
+  it('routes child tool observations to MTO without evidence declarations', () => {
+    const completion = {
+      traceId: 'trace-1',
+      taskId: 'task-1',
+      toolCallId: 'call-1',
+      toolName: 'verify',
+    };
+    taskStoreOptions.onTaskToolCompleted(completion);
+    expect(observeSubagentToolCompletion).toHaveBeenCalledWith(completion, observeMtoEvent);
+    expect(taskStoreOptions).not.toHaveProperty('improvementEvidenceDeclarations');
   });
 
   it('pre-registers completion wakeups for every prepared task', async () => {

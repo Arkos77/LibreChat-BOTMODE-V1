@@ -482,4 +482,8 @@ Le buffer transitoire d’une requête peut recevoir plusieurs tâches enfants. 
 
 ## P10 — projection native des fins d’outil enfant
 
-Le SDK transmet `run_step_completed` depuis le graphe enfant ; il ne transmet pas directement `TOOL_END` au callback hôte. Le store projette facultativement l’événement vers `taskId` natif, `toolCallId`, nom d’outil et agent exécutant, sans copier arguments, sortie ni artefact. Le sujet synthétique d’un sous-graphe ne sert pas d’identité d’agent membre. L’observateur est optionnel, non configuré dans le singleton de production et ses erreurs ne modifient pas le settlement. Aucun critère/valeur de preuve indépendante n’est déduit de cette projection : Distill et publication restent fermés.
+Le SDK transmet `run_step_completed` depuis le graphe enfant ; il ne transmet pas directement `TOOL_END` au callback hôte. Le store projette facultativement l’événement vers `taskId` natif, `toolCallId`, nom d’outil et agent exécutant, sans copier arguments, sortie ni artefact. Le sujet synthétique d’un sous-graphe ne sert pas d’identité d’agent membre. Le singleton de production transmet désormais cette observation au sink MTO si une trace native existe ; ce sink filtre strictement `toolCallId` et `toolName`. Les erreurs d’observation ne modifient pas le settlement. Aucun critère/valeur de preuve indépendante n’est déduit de cette projection : Distill et publication restent fermés.
+
+## P10 — observation MTO native de l’outil enfant
+
+Le singleton du store relie la projection de fin d’outil à MTO avec `traceId`, `taskId`, `toolCallId` et identité d’agent exécutant connue. Le sink n’accepte en payload que `toolCallId` et `toolName` bornés ; sans trace, il n’émet rien. Il ne lit pas la sortie, ne crée pas de critère de preuve, ne sollicite pas Oracle et ne modifie ni tâche ni publication. Le buffer transitoire par requête demeure séparé du singleton partagé.

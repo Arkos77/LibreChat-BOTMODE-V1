@@ -178,7 +178,7 @@ This composition does not execute a tool, inspect raw tool output, call Oracle, 
 
 ## P10 — Bounded child tool completion observation
 
-`SubagentThreadTaskStore` can optionally project a native child `run_step_completed` event into `taskId`, `toolCallId`, tool name and executing agent identity. It takes the task ID from the store runtime and the call ID from the SDK event; for graph children it omits the synthetic graph subject when the executing member is unknown. Raw arguments, output and artifacts are discarded before the observer runs. Observer errors do not change task settlement. The production store does not configure this optional observer yet. This is provenance metadata, not an Oracle criterion/value or verification result. The SDK does not forward a direct child `TOOL_END` callback to the host.
+`SubagentThreadTaskStore` can optionally project a native child `run_step_completed` event into `taskId`, `toolCallId`, tool name and executing agent identity. It takes the task ID from the store runtime and the call ID from the SDK event; for graph children it omits the synthetic graph subject when the executing member is unknown. Raw arguments, output and artifacts are discarded before the observer runs. Observer errors do not change task settlement. The production store now routes this observer to a bounded MTO log when a native trace exists. This is provenance metadata, not an Oracle criterion/value or verification result. The SDK does not forward a direct child `TOOL_END` callback to the host.
 
 ## P10 — Distill validation boundary
 

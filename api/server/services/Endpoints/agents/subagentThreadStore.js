@@ -13,6 +13,7 @@ const {
 const db = require('~/models');
 const { observeMtoEvent } = require('./mtoObservation');
 const { observeStepLimitImprovementCandidate } = require('./improvementCandidate');
+const { observeSubagentToolCompletion } = require('./subagentToolObservation');
 const { enqueueAgentTrigger } = require('../../Agents/triggers');
 
 const GENERATION_DRAIN_TIMEOUT_MS = 45_000;
@@ -79,6 +80,7 @@ const subagentThreadTaskStore = createSubagentThreadTaskStore(
     releaseOwnerAdmission: db.releaseSubagentAdmission,
     cancelUnroutedTask: cancelUnroutedGeneration,
     onTaskPrepared: completionWakeupHandler,
+    onTaskToolCompleted: (completion) => observeSubagentToolCompletion(completion, observeMtoEvent),
     onTaskStepLimit: ({
       userId,
       tenantId,

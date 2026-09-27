@@ -55,6 +55,40 @@ describe('MTO host observation sink', () => {
     });
   });
 
+  it('projects only native child tool identity without copying tool content', () => {
+    const result = projectMtoObservation({
+      type: 'OBSERVED',
+      source: 'subagent-tool-completion',
+      timestamp: '2026-09-27T18:00:00.000Z',
+      identity: {
+        traceId: 'trace-1',
+        traceEventId: 'tool:call-1',
+        taskId: 'task-1',
+        agentId: 'agent-1',
+      },
+      payload: {
+        toolCallId: 'call-1',
+        toolName: 'verify',
+        output: 'private-output',
+        args: { secret: true },
+        criterionId: 'target',
+        value: true,
+      },
+    });
+    expect(result).toEqual({
+      type: 'OBSERVED',
+      source: 'subagent-tool-completion',
+      timestamp: '2026-09-27T18:00:00.000Z',
+      identity: {
+        traceId: 'trace-1',
+        traceEventId: 'tool:call-1',
+        taskId: 'task-1',
+        agentId: 'agent-1',
+      },
+      payload: { toolCallId: 'call-1', toolName: 'verify' },
+    });
+  });
+
   it('logs a bounded observation and ignores malformed events', () => {
     const event = {
       type: 'OBSERVED',

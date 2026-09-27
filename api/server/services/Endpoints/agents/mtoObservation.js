@@ -159,6 +159,10 @@ function projectMtoObservation(event) {
   let payload;
   if (event.source === 'subagent-activity') {
     payload = projectActivityPayload(event.payload);
+  } else if (event.source === 'subagent-tool-completion') {
+    const toolCallId = boundedHostText(event.payload?.toolCallId);
+    const toolName = boundedHostText(event.payload?.toolName);
+    if (toolCallId && toolName) payload = { toolCallId, toolName };
   } else if (event.source === 'subagent-usage') {
     payload = projectUsagePayload(event.payload);
   } else if (event.source === 'oracle') {
