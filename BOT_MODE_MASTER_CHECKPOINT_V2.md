@@ -219,3 +219,32 @@ REGLE REPRISE
 Ne jamais recommencer l'historique.
 
 Toujours lire ce checkpoint avant action.
+
+==================================================
+MISE A JOUR OPERATIONNELLE — 2026-09-27, APRES P11
+==================================================
+
+Les sections historiques P10.2 ci-dessus decrivent l'etat au moment de leur
+redaction. Pour la reprise, cette section plus recente fait autorite.
+
+Branche: bot-mode-p4-closed
+P10: termine par e0b3ec3 (tool evidence bridge).
+P11: contrat DecisionRecord et observation MTO DECIDED bornes, termines par
+8efd012 feat(bot-mode): add bounded P11 decision record.
+
+Validation P11: 26 tests sur decision/routing/mto, build packages/api et
+verification du diff; commit local effectue. Le hook de commit a valide les
+controles affectes. Aucun push n'a ete effectue.
+
+P11 reste une frontiere de contrat: aucune execution automatique de provider
+ni integration implicite dans createRun. Le DecisionProvider existant dans
+routing.ts ne classe que les candidats autorises et admissibles.
+
+Etat local hors P11 a preserver: .devcontainer/docker-compose.yml modifie,
+.devcontainer/devcontainer-lock.json non suivi, deux sauvegardes .bak-p10.2
+non suivies sous api/server. Ne pas les inclure dans un commit BOT MODE.
+
+Prochaine etape: examiner une integration hote explicite du contrat de decision
+avec le routage autorise, la politique et la provenance, en prouvant d'abord
+un appel de production concret. Ne pas inventer un second runtime ni brancher
+sur agentInputs comme s'il s'agissait de candidats modeles concurrents.
