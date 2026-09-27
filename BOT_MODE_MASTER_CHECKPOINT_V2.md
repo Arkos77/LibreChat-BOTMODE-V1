@@ -547,3 +547,7 @@ Aucune route P10 de création/approbation de ce payload n’est encore câblée 
 `edit_file` propose désormais le payload et le diff construits avant `updateSkill`. Le collecteur hôte s’active seulement lorsqu’un vrai `taskId` d’exécution enfant est présent. Il persiste le contenu exact et le diff dans `ImprovementSkillProposal` sous propriétaire/tenant avec idempotence et limite de taille, puis un candidat distinct borné avec digest, identités et `requiresHumanReview`. Le tour principal poursuit l’édition native. Les échecs de stockage bloquent la mutation enfant. Les tests du package données, du handler et de l’initialisation sont verts ; typechecks et builds des packages données/API passent.
 
 Ce raccordement ne vérifie pas encore la qualité du contenu avec des tests indépendants et n’expose aucune revue humaine du diff exact. Le candidat reste non publiable en production ; la publication P10 demeure inactive jusqu’à la preuve et la décision humaine liées au même digest.
+
+## P10 — identité native du producteur skill
+
+Le candidat skill enfant porte aussi le producteur observé lors du démarrage natif correspondant à la tâche. Sans producteur, la capture échoue avant l’écriture. Cette identité permet de refuser un vérificateur qui serait le même agent que le producteur ; aucun test indépendant de contenu n’est encore enregistré.

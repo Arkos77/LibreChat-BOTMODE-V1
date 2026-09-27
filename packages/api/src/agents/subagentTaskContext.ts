@@ -8,7 +8,11 @@ import type { UsageMetadata } from '~/stream/interfaces/IJobStore';
  * contract. AsyncLocalStorage follows the detached executor's promise chain
  * and naturally isolates concurrent child tasks.
  */
-const detachedUsageStorage = new AsyncLocalStorage<{ usage: UsageMetadata[]; taskId?: string }>();
+const detachedUsageStorage = new AsyncLocalStorage<{
+  usage: UsageMetadata[];
+  taskId?: string;
+  producerAgentId?: string;
+}>();
 
 export function runWithDetachedSubagentUsage<T>(
   usage: UsageMetadata[],
@@ -31,4 +35,16 @@ export function collectDetachedSubagentUsage(usage: UsageMetadata): boolean {
 /** Native Task Engine identity only within the owning detached execution. */
 export function getDetachedSubagentTaskId(): string | undefined {
   return detachedUsageStorage.getStore()?.taskId;
+}
+
+/** Accept only a host-observed native child start identity in its task context. */
+export function setDetachedSubagentProducerAgentId(agentId: string): void {
+  const context = detachedUsageStorage.getStore();
+  if (context?.taskId && typeof agentId === 'string' && agentId.trim() !== '') {
+    context.producerAgentId = agentId.trim();
+  }
+}
+
+export function getDetachedSubagentProducerAgentId(): string | undefined {
+  return detachedUsageStorage.getStore()?.producerAgentId;
 }

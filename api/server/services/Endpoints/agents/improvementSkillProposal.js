@@ -17,6 +17,7 @@ async function recordSkillImprovementProposal({
   conversationId,
   traceId,
   taskId,
+  producerAgentId,
   proposal,
   persistProposal,
   persistCandidate,
@@ -25,6 +26,7 @@ async function recordSkillImprovementProposal({
   const user = req?.user?._id ?? req?.user?.id;
   if (!user) throw new Error('Skill proposal requires authenticated owner');
   const nativeTaskId = required(taskId, 'native taskId');
+  const nativeProducer = required(producerAgentId, 'native producerAgentId');
   const normalizedTraceId = required(traceId, 'traceId');
   const toolCallId = required(proposal?.toolCallId, 'toolCallId');
   const normalizedConversationId = required(conversationId, 'conversationId');
@@ -41,6 +43,7 @@ async function recordSkillImprovementProposal({
       candidateId,
       traceId: normalizedTraceId,
       taskId: nativeTaskId,
+      producerAgentId: nativeProducer,
       toolCallId,
       skillId: required(proposal.skillId, 'skillId'),
       expectedVersion: proposal.expectedVersion,
@@ -56,6 +59,7 @@ async function recordSkillImprovementProposal({
       traceId: normalizedTraceId,
       traceEventId: `skill-proposal:${candidateId}`,
       taskId: nativeTaskId,
+      agentId: nativeProducer,
       timestamp,
     },
     'host',

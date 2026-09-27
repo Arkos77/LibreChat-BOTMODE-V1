@@ -1,4 +1,8 @@
-const { createTransientEvidenceBuffer, getDetachedSubagentTaskId } = require('@librechat/api');
+const {
+  createTransientEvidenceBuffer,
+  getDetachedSubagentTaskId,
+  getDetachedSubagentProducerAgentId,
+} = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 const { createContentAggregator, GraphNodeKeys } = require('@librechat/agents');
 const {
@@ -487,6 +491,7 @@ const initializeClient = async ({
         conversationId,
         traceId: mtoTraceId,
         taskId,
+        producerAgentId: getDetachedSubagentProducerAgentId(),
         proposal,
         persistProposal: db.recordImprovementSkillProposal,
         persistCandidate: db.recordImprovementCandidate,

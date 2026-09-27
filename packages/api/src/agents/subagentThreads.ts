@@ -45,12 +45,15 @@ import {
   SubagentTaskOwnerUnavailableError,
 } from './subagentTaskRouting';
 import {
+  runWithDetachedSubagentUsage,
+  setDetachedSubagentProducerAgentId,
+} from './subagentTaskContext';
+import {
   projectSubagentToolCompletion,
   type SubagentToolCompletion,
 } from './subagentToolCompletion';
 import { boundSubagentActivityUpdate, SubagentActivityStream } from './subagentActivity';
 import { createSubagentAttemptKey, createSubagentThreadId } from './subagentThreadIds';
-import { runWithDetachedSubagentUsage } from './subagentTaskContext';
 import { SUBAGENT_COMPLETION_DELIVERY } from './subagentDelivery';
 import { createConcurrencyLimiter } from '~/utils/promise';
 import { projectSubagentActivity } from './activity';
@@ -1373,6 +1376,7 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
                     event.subagentAgentId.trim() !== ''
                   ) {
                     producerAgentId = event.subagentAgentId.trim();
+                    setDetachedSubagentProducerAgentId(producerAgentId);
                   }
                   const sequence = activitySequence++;
                   const activityEvent: SubagentActivityUpdateEvent = {

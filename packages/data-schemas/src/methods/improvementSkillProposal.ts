@@ -45,6 +45,7 @@ export function createImprovementSkillProposalMethods(
     const candidateId = required(proposal?.candidateId, 'candidateId');
     required(proposal.traceId, 'traceId');
     required(proposal.taskId, 'taskId');
+    required(proposal.producerAgentId, 'producerAgentId');
     required(proposal.toolCallId, 'toolCallId');
     required(proposal.skillId, 'skillId');
     required(proposal.payloadDigest, 'payloadDigest');

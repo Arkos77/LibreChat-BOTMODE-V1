@@ -4,6 +4,7 @@ export interface ImprovementSkillProposalSnapshot {
   candidateId: string;
   traceId: string;
   taskId: string;
+  producerAgentId: string;
   toolCallId: string;
   skillId: string;
   expectedVersion: number;

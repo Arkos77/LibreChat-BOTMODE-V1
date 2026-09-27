@@ -9,6 +9,7 @@ function input(overrides = {}) {
     conversationId: 'conversation-1',
     traceId: 'trace-1',
     taskId: 'task-native',
+    producerAgentId: 'agent-native-child',
     proposal: {
       toolCallId: 'call-native',
       skillId: 'skill-1',
@@ -50,6 +51,13 @@ describe('native child skill proposal capture', () => {
     expect(JSON.stringify(candidate)).not.toContain('# Improved skill');
     expect(JSON.stringify(request.mtoEventSink.mock.calls)).not.toContain('# Improved skill');
   });
+  it('rejects an unidentifiable child producer before writing', async () => {
+    const request = input({ producerAgentId: undefined });
+    await expect(recordSkillImprovementProposal(request)).rejects.toThrow(/producer/i);
+    expect(request.persistProposal).not.toHaveBeenCalled();
+    expect(request.persistCandidate).not.toHaveBeenCalled();
+  });
+
   it('requires a real child task and leaves both stores untouched otherwise', async () => {
     const request = input({ taskId: undefined });
     await expect(recordSkillImprovementProposal(request)).rejects.toThrow(/task/i);

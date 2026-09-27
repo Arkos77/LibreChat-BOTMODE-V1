@@ -1,6 +1,25 @@
-import { getDetachedSubagentTaskId, runWithDetachedSubagentUsage } from './subagentTaskContext';
+import {
+  getDetachedSubagentTaskId,
+  getDetachedSubagentProducerAgentId,
+  setDetachedSubagentProducerAgentId,
+  runWithDetachedSubagentUsage,
+} from './subagentTaskContext';
 
 describe('detached native task identity context', () => {
+  it('binds the native producer only inside the owning detached task', async () => {
+    expect(getDetachedSubagentProducerAgentId()).toBeUndefined();
+    await runWithDetachedSubagentUsage(
+      [],
+      async () => {
+        expect(getDetachedSubagentProducerAgentId()).toBeUndefined();
+        setDetachedSubagentProducerAgentId('agent-native-child');
+        expect(getDetachedSubagentProducerAgentId()).toBe('agent-native-child');
+      },
+      'task-native',
+    );
+    expect(getDetachedSubagentProducerAgentId()).toBeUndefined();
+  });
+
   it('isolates concurrent sibling native task IDs and clears the context', async () => {
     let releaseA!: () => void;
     let releaseB!: () => void;

@@ -9,6 +9,7 @@ const proposal = {
   candidateId: 'skill:task-1:call-1',
   traceId: 'trace-1',
   taskId: 'task-1',
+  producerAgentId: 'agent-native-child',
   toolCallId: 'call-1',
   skillId: new mongoose.Types.ObjectId().toString(),
   expectedVersion: 3,
@@ -32,6 +33,27 @@ describe('durable skill improvement proposal', () => {
   afterAll(async () => {
     await mongoose.disconnect();
     await mongo.stop();
+  });
+
+  it('rejects mutation, deletion and oversized proposed content', async () => {
+    const input = { user: owner, tenantId: 'tenant-a', conversationId: 'conversation-1', proposal };
+    await methods.recordImprovementSkillProposal(input);
+    const model = mongoose.models.ImprovementSkillProposal;
+    await expect(model.updateOne({}, { $set: { 'proposal.diff': 'changed' } })).rejects.toThrow(
+      /immutable/i,
+    );
+    await expect(model.deleteOne({})).rejects.toThrow(/immutable/i);
+    await expect(
+      methods.recordImprovementSkillProposal({
+        ...input,
+        proposal: {
+          ...proposal,
+          candidateId: 'skill:task-2:call-2',
+          update: { ...proposal.update, body: 'x'.repeat(530000) },
+        },
+      }),
+    ).rejects.toThrow(/limit/i);
+    expect(await model.countDocuments({})).toBe(1);
   });
 
   it('replays only the exact content and isolates owner and tenant', async () => {
