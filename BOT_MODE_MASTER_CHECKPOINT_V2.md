@@ -526,3 +526,18 @@ Chemin d’implémentation minimal identifié : transmettre l’identité native
 ## P10 — identité de tâche enfant dans le contexte asynchrone
 
 Le store transmet désormais le vrai `runtime.taskId` au contexte `AsyncLocalStorage` de chaque exécution détachée. Le getter ne retourne rien hors de ce contexte ; deux enfants concurrents conservent chacun leur propre ID, et le collecteur d’usage garde son comportement. Preuves : 207 tests dans trois suites natives, typecheck complet et build réussis. Cette identité n’est pas encore un candidat skill ni une preuve indépendante de son contenu.
+
+## P10 — décision du propriétaire : tests indépendants puis revue du diff exact
+
+Le propriétaire a choisi l’option 1 : un skill amélioré doit passer des tests indépendants liés au contenu proposé, puis une revue humaine du diff exact avant sa publication. Cette décision remplace toute hypothèse antérieure selon laquelle un contrôle de format ou le seul `tool_approval` suffirait.
+
+Audit du chemin natif : `writeSkillMd` normalise et filtre le contenu, calcule un diff, puis appelle directement `options.updateSkill`. Le `PreToolUse` HITL existant intervient avant cette préparation ; ses `action_requests` portent l’appel d’outil et ses arguments, pas le diff final calculé. Il ne peut donc pas, à lui seul, attester l’approbation du payload exact. Le `taskId` natif est désormais disponible dans le contexte asynchrone de l’enfant, sans être injecté dans le tour principal.
+
+Ordre requis pour l’activation :
+1. Capturer la mise à jour skill avant `options.updateSkill`, avec skill/version, propriétaire/tenant, vrai `taskId`, producteur, trace et digest du payload ; ne pas muter à cette étape.
+2. Stocker le contenu proposé dans un emplacement durable scoped et distinct du candidat borné, avec rejeu/idempotence ; le candidat/MTO ne contiennent que le digest et des identités bornées.
+3. Exécuter des tests définis par l’hôte, distincts du producteur, sur ce contenu exact ; attacher résultats, critère et provenance au même digest. Les simples validateurs de schéma/PII ne sont pas une preuve de gain sémantique.
+4. Présenter le diff exact au propriétaire et persister sa décision liée à ce digest, au skill et à la version ; une édition de l’approbation exige une nouvelle vérification.
+5. Rejouer l’autorisation native et les contrôles de contenu, puis invoquer `updateSkill` sous version optimiste ; enregistrer l’effet réel et les conflits sans les convertir en succès.
+
+Aucune route P10 de création/approbation de ce payload n’est encore câblée et aucun jeu de tests hôte par skill n’est défini dans le checkout. Garder la publication autonome désactivée tant que ces deux sources ne sont pas réelles. Ne pas faire passer l’approbation générique de `edit_file` pour la revue du diff exact.
