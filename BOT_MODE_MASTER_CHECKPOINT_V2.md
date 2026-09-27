@@ -507,3 +507,18 @@ La publication contrôlée d’un update skill appelle désormais le même inspe
 ## P10 — champs autorisés de la mutation skill
 
 Le point de publication P10 refuse désormais un update vide et les champs absents de la liste de `PATCH /skills` avant même l’autorisation. Les champs internes comme `source`, `sourceMetadata` et `allowedTools` ne peuvent plus être transmis directement à la méthode Mongo par cette frontière. Quatre cas rouges avant patch passent après verrouillage.
+
+## P10 — matrice de validation de fin de phase (état du checkout)
+
+| Frontière | Preuve du checkout | Statut |
+| --- | --- | --- |
+| Observation bornée et candidat durable | Échec typé `GRAPH_RECURSION_LIMIT` après message enfant persistant, vrai `taskId`, trace, producteur natif si connu ; outil enfant borné dans MTO. | PROUVÉ pour ce chemin enfant. |
+| Distill / Oracle / disposition du candidat workflow | La tâche enfant ayant un producteur connu enregistre `VALIDATING`, le verdict déterministe sur les métadonnées du signal, puis `PROPOSAL_ONLY`; absence d’identité ou panne durable ferme la progression. | PROUVÉ pour la proposition workflow, sans mutation. |
+| Autorisation et publication skill | Contrats purs et adaptateurs requête : ACL `EDIT`, capacité native, digest exact, identité candidat/trace/acteur/skill/version, filtrage partagé, liste de champs PATCH, version optimiste. | PROUVÉ par tests isolés ; aucun appel de production P10. |
+| Production d’un candidat skill avec payload | `edit_file` construit un update avant d’appeler directement `updateSkill` ; aucun point P10 ne capture alors contenu, digest et vrai `taskId` de l’enfant dans un candidat durable. | À FAIRE. |
+| Vérification indépendante du contenu skill | Les fins d’outil enfant donnent `toolCallId`, outil et agent connu, sans déclaration hôte de critère/valeur ni résultat vérificateur distinct. Le contrôle workflow ne vérifie que ses propres métadonnées. | À FAIRE ; aucune preuve de qualité à inventer. |
+| Progression autorisée et effet durable | Aucun caller de production ne lie candidat skill vérifié, politique/humain si requis, `publishImprovementSkillUpdateForRequest`, résultat natif et événements `COMMITTED`/`PUBLISHED`. | À FAIRE. |
+
+Validation ciblée de cette passe : huit suites API P10, 65 tests ; 25 suites orchestrator/Oracle, 176 tests ; routes skill et publication, 65 tests ; typecheck complet `packages/api` et build réussis sur la modification du filtre partagé. La suite de la tâche enfant a passé 94 tests avant les derniers correctifs de publication indépendants. La validation P10 complète n’est **pas** revendiquée : il faut raccorder une proposition de contenu avant mutation, une vérification indépendante réellement liée à son digest et la transition contrôlée vers l’effet natif, avec rejeu et tests de bout en bout.
+
+Chemin d’implémentation minimal identifié : transmettre l’identité native de la tâche enfant dans son contexte d’exécution isolé ; intercepter l’update construit par `edit_file` avant `updateSkill` sans changer l’autorité de la méthode native ; conserver la proposition exacte et son digest sous le propriétaire/tenant ; faire produire au vérificateur hôte distinct une preuve correspondant au contenu et au critère déclaré ; seulement après verdict et politique, autoriser le payload immuable et appeler la mutation native sous version optimiste. Une vérification de format ou de métadonnées ne doit pas être présentée comme vérification sémantique de l’amélioration.
