@@ -25,3 +25,14 @@ Status: design for the next bounded implementation; no durable MTO store is acti
 - Implement model, schema, types and methods in `packages/data-schemas`; register through existing model/method factories.
 - Run focused tests, neighboring persistence tests, data-schemas build, API build and lint hooks.
 - Audit fresh request, resume and child-event host context before any opt-in production sink connection.
+
+## État d'implémentation
+
+Le contrat de stockage `MtoObservation` est implémenté dans `packages/data-schemas` :
+validation stricte des quatre observations hôte DECIDED/AUTHORIZED/DENIED/
+HUMAN_APPROVAL_REQUIRED, identité causale distincte, clé d'idempotence dans
+le périmètre propriétaire/locataire/trace, reprise exacte ou conflit explicite,
+registre append-only et lecture paginée par `(timestamp, traceEventId)`.
+Les écritures ne sont pas raccordées au sink de production. Leur activation
+attend la preuve de l'identité authentifiée et du locataire sur les chemins de
+requête initiale, reprise et livraison d'événements enfants.

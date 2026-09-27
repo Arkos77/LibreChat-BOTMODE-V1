@@ -347,3 +347,10 @@ The host MTO logging sink projects the scalar P11/P12 payload fields only for
 malformed identities, decisions, values, and oversized text fields. Other host
 observations, including `CANDIDATE`, remain payload-free in logs. The sink is
 stateless and does not provide durable provenance or execution authority.
+
+The `MtoObservation` data-schemas store now supplies an owner and tenant scoped,
+append-only contract for four bounded host decision and authorization events.
+Exact writes replay; changed content under the same trace event identity raises
+an explicit conflict. Trace reads use a bounded `(timestamp, traceEventId)` page
+cursor. It is not connected to the production logging sink yet; request and
+resume owner context must be established before recording any live event.

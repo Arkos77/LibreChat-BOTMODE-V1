@@ -19,6 +19,7 @@ import { createSessionMethods, DEFAULT_REFRESH_TOKEN_EXPIRY, type SessionMethods
 import { createUserMethods, DEFAULT_SESSION_EXPIRY, type UserMethods } from './user';
 import { createFileMethods, type FileMethods, type FileOwnerScope } from './file';
 import { createTokenMethods, type TokenMethods } from './token';
+import { createMtoObservationMethods } from './mtoObservation';
 import { createRoleMethods, RoleConflictError } from './role';
 import { createKeyMethods, type KeyMethods } from './key';
 /* Memories */
@@ -455,6 +456,7 @@ export function createMethods(
     ...createAuditLogMethods(mongoose),
     ...createImprovementCandidateMethods(mongoose),
     ...createImprovementLifecycleEventMethods(mongoose),
+    ...createMtoObservationMethods(mongoose),
     ...createShareMethods(mongoose),
     ...createPluginAuthMethods(mongoose),
     /* Tier 1 */

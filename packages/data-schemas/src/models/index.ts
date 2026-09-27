@@ -11,6 +11,7 @@ import { createAgentTriggerDeliveryModel } from './triggerDelivery';
 import { createSkillSyncStatusModel } from './skillSyncStatus';
 import { createConversationTagModel } from './conversationTag';
 import { createCodeEnvironmentModel } from './codeEnvironment';
+import { createMtoObservationModel } from './mtoObservation';
 import { createAgentCategoryModel } from './agentCategory';
 import { createAutonomyMandateModel } from './mandate';
 import { createChatProjectModel } from './chatProject';
@@ -91,6 +92,7 @@ export function createModels(mongoose: typeof import('mongoose')): {
   AuditLog: ReturnType<typeof createAuditLogModel>;
   ImprovementCandidate: ReturnType<typeof createImprovementCandidateModel>;
   ImprovementLifecycleEvent: ReturnType<typeof createImprovementLifecycleEventModel>;
+  MtoObservation: ReturnType<typeof createMtoObservationModel>;
   Group: ReturnType<typeof createGroupModel>;
   Config: ReturnType<typeof createConfigModel>;
   AgentTriggerDelivery: ReturnType<typeof createAgentTriggerDeliveryModel>;
@@ -143,6 +145,7 @@ export function createModels(mongoose: typeof import('mongoose')): {
     AuditLog: createAuditLogModel(mongoose),
     ImprovementCandidate: createImprovementCandidateModel(mongoose),
     ImprovementLifecycleEvent: createImprovementLifecycleEventModel(mongoose),
+    MtoObservation: createMtoObservationModel(mongoose),
     Group: createGroupModel(mongoose),
     Config: createConfigModel(mongoose),
     AgentTriggerDelivery: createAgentTriggerDeliveryModel(mongoose),

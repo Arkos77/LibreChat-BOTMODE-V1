@@ -43,6 +43,7 @@ export * from './systemGrant';
 export * from './auditLog';
 export * from './improvementCandidate';
 export * from './improvementLifecycleEvent';
+export * from './mtoObservation';
 export * from './group';
 /* Config */
 export * from './config';
