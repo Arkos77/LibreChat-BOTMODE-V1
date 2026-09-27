@@ -3354,6 +3354,79 @@ describe('createToolExecuteHandler', () => {
       expect(saveSkillFileContent).not.toHaveBeenCalled();
     });
 
+    it('captures an exact skill update proposal before native mutation', async () => {
+      const skill = {
+        _id: SKILL_ID,
+        name: 'runtime-skill',
+        body: '# Existing skill',
+        description: 'Existing description',
+        version: 3,
+        fileCount: 0,
+      };
+      const updateSkill = jest.fn();
+      const onSkillUpdateProposed = jest.fn(async () => ({
+        candidateId: 'candidate-native-skill',
+      }));
+      const handler = makeAuthoringHandler({
+        getSkillByName: jest.fn(async () => skill),
+        updateSkill: updateSkill as unknown as ToolExecuteOptions['updateSkill'],
+        onSkillUpdateProposed,
+      });
+      const [result] = await invokeHandler(handler, [
+        {
+          id: 'call_propose_skill',
+          name: 'edit_file',
+          args: {
+            path: 'skills/runtime-skill/SKILL.md',
+            old_text: '# Existing skill',
+            new_text: '# Improved skill',
+          },
+        },
+      ]);
+      expect(onSkillUpdateProposed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skillId: SKILL_ID.toString(),
+          expectedVersion: 3,
+          update: expect.objectContaining({ body: expect.stringContaining('# Improved skill') }),
+          diff: expect.stringContaining('Improved skill'),
+        }),
+      );
+      expect(updateSkill).not.toHaveBeenCalled();
+      expect(result.status).toBe('success');
+      expect(result.artifact).toMatchObject({
+        proposed: true,
+        candidateId: 'candidate-native-skill',
+      });
+    });
+
+    it('leaves the native skill untouched when proposal persistence fails', async () => {
+      const updateSkill = jest.fn();
+      const handler = makeAuthoringHandler({
+        getSkillByName: jest.fn(async () => ({
+          _id: SKILL_ID,
+          name: 'runtime-skill',
+          body: '# Existing skill',
+          version: 3,
+          fileCount: 0,
+        })),
+        updateSkill: updateSkill as unknown as ToolExecuteOptions['updateSkill'],
+        onSkillUpdateProposed: jest.fn(async () => ({ candidateId: '' })),
+      });
+      const [result] = await invokeHandler(handler, [
+        {
+          id: 'call_invalid_skill_proposal',
+          name: 'edit_file',
+          args: {
+            path: 'skills/runtime-skill/SKILL.md',
+            old_text: '# Existing skill',
+            new_text: '# Improved skill',
+          },
+        },
+      ]);
+      expect(result.status).toBe('error');
+      expect(updateSkill).not.toHaveBeenCalled();
+    });
+
     it('passes structured frontmatter when editing SKILL.md', async () => {
       const oldBody =
         '---\nname: runtime-skill\ndescription: Use before\naction: ignored\n---\n# Body\n';

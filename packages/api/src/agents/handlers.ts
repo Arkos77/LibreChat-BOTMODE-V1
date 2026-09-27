@@ -352,6 +352,18 @@ export interface ToolExecuteOptions {
     | { status: 'conflict'; current: { _id: Types.ObjectId; name: string; version: number } }
     | { status: 'not_found' }
   >;
+  /** Captures an exact skill update before mutation for governed child proposals. */
+  onSkillUpdateProposed?: (proposal: {
+    skillId: string;
+    expectedVersion: number;
+    update: {
+      body: string;
+      description: string;
+      frontmatter?: Record<string, unknown>;
+      alwaysApply?: boolean;
+    };
+    diff: string;
+  }) => Promise<{ candidateId: string }>;
   /** Checks role-level skill creation permission for the current user. */
   canCreateSkill?: (params: { req: ServerRequest }) => Promise<boolean>;
   /** Checks resource-level edit permission for an existing skill. */
@@ -3042,20 +3054,34 @@ async function writeSkillMd({
   ) {
     diff = '';
   }
-  const result = await options.updateSkill({
-    id: skill._id.toString(),
-    expectedVersion: skill.version,
-    update: {
-      body: content,
-      description: parsedContent.description,
-      ...(parsedContent.frontmatter !== undefined
-        ? { frontmatter: parsedContent.frontmatter }
-        : {}),
-      ...(parsedContent.alwaysApply !== undefined
-        ? { alwaysApply: parsedContent.alwaysApply }
-        : {}),
-    },
-  });
+  const update = {
+    body: content,
+    description: parsedContent.description,
+    ...(parsedContent.frontmatter !== undefined ? { frontmatter: parsedContent.frontmatter } : {}),
+    ...(parsedContent.alwaysApply !== undefined ? { alwaysApply: parsedContent.alwaysApply } : {}),
+  };
+  const skillId = skill._id.toString();
+  if (options.onSkillUpdateProposed) {
+    const proposal = await options.onSkillUpdateProposed({
+      skillId,
+      expectedVersion: skill.version,
+      update,
+      diff,
+    });
+    if (typeof proposal?.candidateId !== 'string' || proposal.candidateId.trim() === '') {
+      return errorResult(tc, 'Skill proposal was not recorded.');
+    }
+    return successResult(
+      tc,
+      `Proposed ${SKILL_FILE_PREFIX}${skillName}/${SKILL_MD} for independent tests and review.`,
+      {
+        path: `${SKILL_FILE_PREFIX}${skillName}/${SKILL_MD}`,
+        proposed: true,
+        candidateId: proposal.candidateId,
+      },
+    );
+  }
+  const result = await options.updateSkill({ id: skillId, expectedVersion: skill.version, update });
   if (result.status === 'conflict') {
     return errorResult(
       tc,
