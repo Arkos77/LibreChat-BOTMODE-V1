@@ -413,3 +413,20 @@ provenance et isolation sous le périmètre authentifié configuré. Elle ne pro
 pas la véracité générale des documents ni la qualité d'un fournisseur LLM réel.
 P7 passe de « non exécuté dans cette passe » à « intégration prouvée dans ce
 montage ». Les autres frontières ouvertes de la matrice demeurent inchangées.
+
+==================================================
+PREUVE P4 INTERRÉPLICAS — 2026-09-27
+==================================================
+
+Un conteneur Redis 7 Alpine éphémère a été lié uniquement à
+127.0.0.1:16379. Avec REDIS_URI=redis://127.0.0.1:16379,
+subagentCrossReplica.integration.spec.ts a passé son test d'intégration
+(1/1) : routage vers le propriétaire de l'exécution et livraison des deux
+wakeup frères après perte du propriétaire. Le conteneur de test a ensuite été
+arrêté et supprimé par --rm. Aucun service durable ni volume n'a été modifié.
+
+Les deux preuves précédemment non exécutées dans cette passe sont désormais
+obtenues : P7 RAG/pgvector réel (5/5) et P4 interréplicas Redis (1/1).
+Cette validation de leurs parcours ciblés ne change pas les frontières P9/P11
+et P10 sans appel de production prouvé, ni les phases P0–P3/P6/P8 dont la
+correspondance exhaustive demeure inconnue.
