@@ -273,3 +273,21 @@ Distill en inventant taskId depuis traceId, responseMessageId ou runId.
 Prochaine preuve: identifier une entree hote qui fournit effectivement des
 alternatives autorisees pour un meme binding, ou un vrai taskId Task Engine pour
 un candidat P10, avant toute activation de decision/autorisation/Distill.
+
+==================================================
+MISE A JOUR OPERATIONNELLE — MTO DURABLE
+==================================================
+
+Le contrat owner/tenant-scoped `MtoObservation` est commité en 9bc5058.
+Il conserve quatre observations hôte bornées, rejette les champs inconnus,
+préserve les identités causales distinctes, assure rejeu exact/conflit explicite,
+append-only et lecture paginée. Validation: 24 tests de persistance voisins,
+build data-schemas et API, puis hook Git.
+
+Le sink de production reste un logger stateless. `mtoTraceId` est stocké dans
+le job; le propriétaire vient de `req.user.id`. Le `tenantId` n'est pas établi
+uniformément dans `initialMetadata` de chaque chemin; les émissions enfants
+passent également par le même sink sans périmètre propriétaire explicite.
+Ne pas brancher l'écriture durable tant que l'identité et le locataire ne
+sont pas liés à chaque chemin initial/reprise/enfant. Aucun événement MTO
+n'accorde permission, ne règle Task Engine ou ne déclenche publication.

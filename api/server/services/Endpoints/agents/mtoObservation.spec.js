@@ -167,3 +167,40 @@ describe('bounded host decision and authorization payloads', () => {
     ).not.toHaveProperty('payload');
   });
 });
+
+describe('MTO identity projection bounds', () => {
+  const base = {
+    type: 'OBSERVED',
+    source: 'subagent-activity',
+    timestamp: '2026-09-27T00:00:00.000Z',
+    payload: { phase: 'run_step_closed' },
+  };
+
+  it('drops malformed optional identity values before logging', () => {
+    const projected = projectMtoObservation({
+      ...base,
+      identity: {
+        traceId: 'trace-1',
+        traceEventId: 'event-1',
+        taskId: { secret: 'raw task data' },
+        agentId: 'x'.repeat(400),
+        runId: 'run-1',
+      },
+    });
+    expect(projected.identity).toEqual({
+      traceId: 'trace-1',
+      traceEventId: 'event-1',
+      runId: 'run-1',
+    });
+    expect(JSON.stringify(projected)).not.toContain('secret');
+  });
+
+  it('rejects oversized required trace identities', () => {
+    expect(
+      projectMtoObservation({
+        ...base,
+        identity: { traceId: 'x'.repeat(400), traceEventId: 'event-1' },
+      }),
+    ).toBeNull();
+  });
+});

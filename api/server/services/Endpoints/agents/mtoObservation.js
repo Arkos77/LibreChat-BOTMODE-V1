@@ -56,11 +56,23 @@ function pickDefined(source, keys) {
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
+function pickIdentity(source) {
+  if (source == null || typeof source !== 'object' || Array.isArray(source)) return undefined;
+  const result = {};
+  for (const key of IDENTITY_KEYS) {
+    const value = source[key];
+    if (typeof value === 'string' && value.trim() !== '' && value.length <= 256) {
+      result[key] = value;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 function projectMtoObservation(event) {
   if (event == null || typeof event !== 'object' || Array.isArray(event)) {
     return null;
   }
-  const identity = pickDefined(event.identity, IDENTITY_KEYS);
+  const identity = pickIdentity(event.identity);
   if (
     typeof event.type !== 'string' ||
     typeof event.source !== 'string' ||
