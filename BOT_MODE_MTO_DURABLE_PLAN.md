@@ -1,6 +1,6 @@
 # BOT MODE — Durable MTO observation plan
 
-Status: design for the next bounded implementation; no durable MTO store is active.
+Status: durable store implemented; native skill EDIT authorization observations active for traced resumable agent requests.
 
 ## Proven baseline
 
@@ -33,6 +33,8 @@ validation stricte des quatre observations hôte DECIDED/AUTHORIZED/DENIED/
 HUMAN_APPROVAL_REQUIRED, identité causale distincte, clé d'idempotence dans
 le périmètre propriétaire/locataire/trace, reprise exacte ou conflit explicite,
 registre append-only et lecture paginée par `(timestamp, traceEventId)`.
-Les écritures ne sont pas raccordées au sink de production. Leur activation
-attend la preuve de l'identité authentifiée et du locataire sur les chemins de
-requête initiale, reprise et livraison d'événements enfants.
+Le contrôle natif `canEditSkill` des requêtes agent traçables produit désormais
+une observation durable AUTHORIZED ou DENIED, liée au propriétaire authentifié,
+au locataire résolu et au `mtoTraceId` de la génération. Le sink global reste un
+logger; les observations de décision, de validation humaine et les autres
+sources MTO ne sont pas écrites durablement par ce raccordement.

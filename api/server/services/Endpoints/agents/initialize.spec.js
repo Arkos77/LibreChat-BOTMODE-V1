@@ -255,6 +255,55 @@ describe('initializeClient — processAgent ACL gate', () => {
     expect(agentClientArgs.mtoEventSink).toBe(mtoEventSink);
   });
 
+  it('persists the native skill EDIT verdict under the request owner and tenant', async () => {
+    mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+    const req = makeReq();
+    req.user.tenantId = 'tenant-shadow';
+    req.tenantId = 'tenant-a';
+    const sink = jest.fn();
+    const native = jest.spyOn(getSkillToolDeps(), 'canEditSkill');
+    native.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    try {
+      await initializeClient({
+        req,
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption: makeEndpointOption(),
+        mtoTraceId: 'trace-skill-edit',
+        mtoEventSink: sink,
+      });
+      const skillId = new mongoose.Types.ObjectId().toString();
+      expect(await capturedToolExecuteOptions.canEditSkill({ req, skillId })).toBe(true);
+      expect(await capturedToolExecuteOptions.canEditSkill({ req, skillId })).toBe(false);
+      expect(native).toHaveBeenCalledTimes(2);
+      const records = await db.listMtoObservations({
+        user: req.user.id,
+        tenantId: 'tenant-a',
+        traceId: 'trace-skill-edit',
+      });
+      expect(records.map((record) => record.type)).toEqual(['AUTHORIZED', 'DENIED']);
+      expect(records.map((record) => record.payload)).toEqual([
+        expect.objectContaining({ decision: 'ALLOW', capability: 'skill.edit' }),
+        expect.objectContaining({ decision: 'DENY', capability: 'skill.edit' }),
+      ]);
+      expect(JSON.stringify(records.map((record) => record.payload))).not.toContain(req.user.id);
+      expect(JSON.stringify(records.map((record) => record.payload))).not.toContain(skillId);
+      expect(
+        await db.listMtoObservations({
+          user: new mongoose.Types.ObjectId(),
+          tenantId: 'tenant-a',
+          traceId: 'trace-skill-edit',
+        }),
+      ).toEqual([]);
+      expect(sink.mock.calls.map(([event]) => event.type)).toEqual(['AUTHORIZED', 'DENIED']);
+      expect(
+        await db.listMtoObservations({ user: req.user.id, traceId: 'trace-skill-edit' }),
+      ).toEqual([]);
+    } finally {
+      native.mockRestore();
+    }
+  });
+
   it('threads the host-owned MTO trace identity into AgentClient unchanged', async () => {
     mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
     const req = makeReq();

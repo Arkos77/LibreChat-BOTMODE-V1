@@ -338,9 +338,15 @@ actor, scope, conditions, approval reference, and any executable payload. Native
 ACL/capability checks and human approval remain authoritative. Neither this
 record nor its MTO event can grant permission, execute a tool, or settle a task.
 
-The host must obtain an actual native authorization outcome before recording it.
-There is no automatic production hook until that seam is proven for a specific
-operation; skill creation remains closed under the existing native policy.
+The resumable agent host now observes the actual `canEditSkill` EDIT ACL result
+for a skill file operation. Its wrapper delegates the native check once, then
+records `ALLOW` or `DENY` using the authenticated request owner, the canonical
+request tenant and the generation's independent MTO trace. The policy-version
+field identifies this host check profile (`librechat-skill-edit-check-v1`), not
+a revision of mutable ACL entries. A failed observation cannot change the
+native verdict. This event does not prove that a subsequent skill mutation
+succeeded or that an improvement candidate was approved. Skill creation and
+human approval have no P12 production observation seam yet.
 
 The host MTO logging sink projects the scalar P11/P12 payload fields only for
 `DECIDED`, `AUTHORIZED`, `DENIED`, and `HUMAN_APPROVAL_REQUIRED`. It rejects
@@ -352,8 +358,10 @@ The `MtoObservation` data-schemas store now supplies an owner and tenant scoped,
 append-only contract for four bounded host decision and authorization events.
 Exact writes replay; changed content under the same trace event identity raises
 an explicit conflict. Trace reads use a bounded `(timestamp, traceEventId)` page
-cursor. It is not connected to the production logging sink yet; request and
-resume owner context must be established before recording any live event.
+cursor. The skill EDIT ACL wrapper writes its bounded authorization result
+directly to this store before sending it to the logging sink. Other MTO sources
+and decision/human-approval events remain unconnected; the global logging sink
+itself stays stateless.
 
 The host logging projection also validates native subagent and Oracle fields at
 every nested boundary: activity labels and identities are bounded strings,

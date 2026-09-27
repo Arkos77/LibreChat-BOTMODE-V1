@@ -304,3 +304,21 @@ empreinte; un rejeu du meme candidat ne varie plus avec l'horloge du processus.
 Le mock de la requete initiale expose le vrai createStepLimitEvidenceContext,
 ce qui verifie effectivement le chemin de persistance du candidat. Aucun droit
 ni publication autonome n'est ajoute.
+
+==================================================
+MISE A JOUR OPERATIONNELLE — P12 ACL SKILL EDIT
+==================================================
+
+Le contrôle natif `canEditSkill` fourni au gestionnaire d'outils est observé
+après sa décision, sans second contrôle ACL. Pour les générations traçables,
+l'hôte crée un AuthorizationRecord et écrit AUTHORIZED/DENIED dans
+MtoObservation sous l'utilisateur authentifié et le locataire résolu par
+`resolveRequestTenantId`; un test Mongo couvre le refus, l'accord et
+l'isolement propriétaire/locataire. L'observation ne modifie jamais la décision
+native, y compris lors d'une panne du store ou du sink. Le `policyVersion`
+identifie le profil de contrôle hôte, pas la version des ACL variables.
+
+Portée: ce résultat décrit uniquement le bit EDIT d'un skill. Il ne prouve
+ni une publication P10, ni un succès de mutation, ni une validation humaine.
+Les chemins sans `mtoTraceId` et les autres types d'événement restent sans
+écriture durable P12; aucune identité Task Engine n'est inventée.

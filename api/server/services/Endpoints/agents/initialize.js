@@ -26,6 +26,7 @@ const {
   buildSubagentThreadTaskConfig,
   backgroundCompletionWakeupsEnabled,
   createLazyAgentHistoryResolver,
+  resolveRequestTenantId,
 } = require('@librechat/api');
 const {
   ResourceType,
@@ -64,6 +65,7 @@ const {
   resolveMemoryAvailability,
   enrichLoadedToolsWithAgentContext,
 } = require('./skillDeps');
+const { createObservedSkillEditCheck } = require('./skillAuthorizationObservation');
 const { getModelsConfig } = require('~/server/controllers/ModelController');
 const { checkPermission, findAccessibleResources } = require('~/server/services/PermissionService');
 const AgentClient = require('~/server/controllers/agents/client');
@@ -387,6 +389,7 @@ const initializeClient = async ({
   const endpointTokenConfigByAgentId = new Map();
 
   const invokedSkillIdentities = new Map();
+  const skillToolDeps = getSkillToolDeps();
   const toolExecuteOptions = {
     loadTools: async (toolNames, agentId, _configurable, callerCapabilityProjection) => {
       const ctx = agentToolContexts.get(agentId) ?? {};
@@ -470,7 +473,19 @@ const initializeClient = async ({
         invokedSkillIdentities.set(skill.id, skill);
       }
     },
-    ...getSkillToolDeps(),
+    ...skillToolDeps,
+    ...(typeof skillToolDeps.canEditSkill === 'function'
+      ? {
+          canEditSkill: createObservedSkillEditCheck({
+            req,
+            traceId: mtoTraceId,
+            nativeCheck: skillToolDeps.canEditSkill,
+            persist: db.recordMtoObservation,
+            sink: mtoEventSink,
+            tenantId: resolveRequestTenantId(req),
+          }),
+        }
+      : {}),
   };
 
   const summarizationOptions =
