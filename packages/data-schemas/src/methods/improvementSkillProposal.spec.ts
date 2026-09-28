@@ -35,6 +35,18 @@ describe('durable skill improvement proposal', () => {
     await mongo.stop();
   });
 
+  it('persists and reads an owner-scoped proposal without a tenant ID', async () => {
+    const input = { user: owner, conversationId: 'conversation-1', proposal };
+    const saved = await methods.recordImprovementSkillProposal(input);
+    expect(saved.record.tenantKey).toBe('');
+    await expect(
+      methods.getImprovementSkillProposal({ user: owner, candidateId: proposal.candidateId }),
+    ).resolves.toMatchObject({ proposal });
+    await expect(
+      methods.getImprovementSkillProposal({ user: otherOwner, candidateId: proposal.candidateId }),
+    ).resolves.toBeNull();
+  });
+
   it('rejects mutation, deletion and oversized proposed content', async () => {
     const input = { user: owner, tenantId: 'tenant-a', conversationId: 'conversation-1', proposal };
     await methods.recordImprovementSkillProposal(input);

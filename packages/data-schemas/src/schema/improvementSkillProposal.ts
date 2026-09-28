@@ -5,7 +5,7 @@ const schema: Schema<IImprovementSkillProposalRecord> = new Schema<IImprovementS
   {
     user: { type: Schema.Types.ObjectId, required: true },
     tenantId: { type: String },
-    tenantKey: { type: String, required: true },
+    tenantKey: { type: String, default: '' },
     conversationId: { type: String, required: true },
     proposal: { type: Schema.Types.Mixed, required: true },
     snapshotDigest: { type: String, required: true },
