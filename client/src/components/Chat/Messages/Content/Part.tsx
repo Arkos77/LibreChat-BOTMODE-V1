@@ -408,6 +408,7 @@ const Part = memo(function Part({
             <ToolApproval
               approval={toolCall.approval}
               toolCallId={toolCall.id ?? ''}
+              toolName={toolCall.name}
               args={toolCall.args}
             />
           </>

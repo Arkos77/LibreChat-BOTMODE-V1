@@ -1,4 +1,8 @@
 {
+  "com_ui_intelbase_lookup": "Recherche email IntelBase :",
+  "com_ui_intelbase_invalid": "Adresse invalide",
+  "com_ui_intelbase_unavailable": "La finalite et le plafond de cout doivent etre configures avant activation.",
+  "com_ui_intelbase_adult": "Je confirme que cette adresse concerne une personne majeure.",
   "com_ui_skill_improvement_review": "Revue d’une amélioration de skill",
   "com_ui_skill_improvement_loading": "Chargement du diff exact…",
   "com_ui_skill_improvement_unavailable": "Cette proposition est indisponible ou inaccessible.",

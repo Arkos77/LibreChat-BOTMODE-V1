@@ -5,7 +5,7 @@ const base = {
   actionId: 'action-1',
   submittedActionId: 'action-1',
   actionRequests: [{ name: 'osint_email_enrich', arguments: { email }, tool_call_id: 'call-1' }],
-  decisions: [{ tool_call_id: 'call-1', decision: 'approve' }],
+  decisions: [{ tool_call_id: 'call-1', decision: 'approve', adultTargetConfirmed: true }],
   adultTargetConfirmed: true,
   userId: 'owner-1',
   tenantId: 'tenant-1',
@@ -33,6 +33,7 @@ describe('IntelBase exact approval lease', () => {
   it.each([
     { submittedActionId: 'stale' },
     { adultTargetConfirmed: false },
+    { decisions: [{ tool_call_id: 'call-1', decision: 'approve' }] },
     { decisions: [{ tool_call_id: 'call-1', decision: 'edit', editedArguments: { email } }] },
     { decisions: [{ tool_call_id: 'call-1', decision: 'reject' }] },
     { decisions: [{ tool_call_id: 'other', decision: 'approve' }] },

@@ -51,3 +51,5 @@
 ## Boundary note
 
 The existing AutonomyMandate grants a capability, not approval of an address. The existing BudgetReservation holds LibreChat tokenCredits, not an IntelBase price. A host-configured conversion and observed provider quota are prerequisites for claiming a monetary budget. Until these facts are established, Task 2 must leave the tool disabled rather than fabricate a grant or a cost.
+
+Progress 2026-09-29: the client approval card now binds an explicit adult-target confirmation to the displayed email and tool_call_id. The backend lease requires the marker on that same approve decision. The native resume/controller and execution bridge, provider budget policy, and tool registration remain pending; no production caller exists.

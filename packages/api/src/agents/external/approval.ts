@@ -7,7 +7,7 @@ export interface IntelBaseApprovalRequest {
     arguments: unknown;
     tool_call_id: string;
   }[];
-  decisions: readonly { tool_call_id: string; decision: string }[];
+  decisions: readonly { tool_call_id: string; decision: string; adultTargetConfirmed?: boolean }[];
   adultTargetConfirmed: boolean;
   userId: string;
   tenantId?: string;
@@ -79,7 +79,8 @@ export function createIntelBaseApprovalLease(
   if (
     email === null ||
     matchingDecisions.length !== 1 ||
-    matchingDecisions[0].decision !== 'approve'
+    matchingDecisions[0].decision !== 'approve' ||
+    matchingDecisions[0].adultTargetConfirmed !== true
   ) {
     return null;
   }

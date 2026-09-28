@@ -563,6 +563,7 @@ export namespace Agents {
   export interface ToolApprovalResolution {
     tool_call_id: string;
     decision: ToolApprovalDecisionType;
+    adultTargetConfirmed?: true;
     editedArguments?: Record<string, unknown>;
     responseText?: string;
     reason?: string;

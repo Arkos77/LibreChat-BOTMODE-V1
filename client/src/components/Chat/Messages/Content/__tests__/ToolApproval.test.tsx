@@ -11,6 +11,11 @@ jest.mock('~/hooks', () => ({
       return `Submit ${values?.[0]} decisions`;
     }
     const map: Record<string, string> = {
+      com_ui_intelbase_lookup: 'IntelBase email lookup:',
+      com_ui_intelbase_invalid: 'Invalid email',
+      com_ui_intelbase_unavailable:
+        'Purpose and cost ceiling require host configuration before activation.',
+      com_ui_intelbase_adult: 'Adult target confirmation',
       com_ui_approve: 'Approve',
       com_ui_reject: 'Reject',
       com_ui_edit: 'Edit',
@@ -120,4 +125,20 @@ describe('ToolApproval', () => {
     expect(screen.getByRole('button', { name: 'Approve' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled();
   });
+});
+
+test('IntelBase needs confirmation for the exact email', () => {
+  renderCards(
+    <ToolApproval
+      approval={approval()}
+      toolCallId={'call-1'}
+      toolName={'osint_email_enrich'}
+      args={{ email: 'third.party@example.test' }}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+  expect(screen.getByRole('button', { name: 'Submit' })).toBeDisabled();
+  expect(screen.getByText('third.party@example.test')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('checkbox', { name: /adult target/i }));
+  expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled();
 });

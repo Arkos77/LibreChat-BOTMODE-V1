@@ -61,13 +61,27 @@ function seedArgs(args: string | Record<string, unknown> | undefined): string {
 export default function ToolApproval({
   approval,
   toolCallId,
+  toolName,
   args,
 }: {
   approval: NonNullable<Agents.ToolCall['approval']>;
   toolCallId: string;
+  toolName?: string;
   args: string | Record<string, unknown> | undefined;
 }) {
   const localize = useLocalize();
+  const intelBase = toolName === 'osint_email_enrich';
+  const intelBaseEmail = useMemo(() => {
+    if (!intelBase) return null;
+    try {
+      const parsed: unknown = typeof args === 'string' ? JSON.parse(args) : args;
+      if (!isPlainObject(parsed) || Object.keys(parsed).length !== 1) return null;
+      const email = parsed.email;
+      return typeof email === 'string' && email.length <= 254 && email.length > 0 ? email : null;
+    } catch {
+      return null;
+    }
+  }, [intelBase, args]);
   const { actionId, allowed_decisions: allowedDecisions, description } = approval;
   const {
     registerToolCall,
@@ -86,6 +100,10 @@ export default function ToolApproval({
     retainedDecision != null && allowedDecisions.includes(retainedDecision.decision)
       ? retainedDecision
       : undefined;
+  const [confirmedEmail, setConfirmedEmail] = useState<string | null>(() =>
+    initialDecision?.adultTargetConfirmed === true ? intelBaseEmail : null,
+  );
+  const adultTargetConfirmed = confirmedEmail !== null && confirmedEmail === intelBaseEmail;
   const [active, setActive] = useState<DecisionType | null>(
     () => initialDecision?.decision ?? null,
   );
@@ -122,7 +140,17 @@ export default function ToolApproval({
       return;
     }
     if (active === 'approve') {
-      setDecision(actionId, toolCallId, { tool_call_id: toolCallId, decision: 'approve' });
+      setDecision(
+        actionId,
+        toolCallId,
+        intelBase && (!adultTargetConfirmed || intelBaseEmail == null)
+          ? null
+          : {
+              tool_call_id: toolCallId,
+              decision: 'approve',
+              ...(intelBase && { adultTargetConfirmed: true as const }),
+            },
+      );
       return;
     }
     if (active === 'reject') {
@@ -158,7 +186,19 @@ export default function ToolApproval({
         setDecision(actionId, toolCallId, null);
       }
     }
-  }, [active, editText, responseText, reason, locked, setDecision, actionId, toolCallId]);
+  }, [
+    active,
+    editText,
+    responseText,
+    reason,
+    locked,
+    setDecision,
+    actionId,
+    toolCallId,
+    intelBase,
+    adultTargetConfirmed,
+    intelBaseEmail,
+  ]);
 
   const editIsValid = useMemo(() => {
     if (active !== 'edit') {
@@ -217,6 +257,29 @@ export default function ToolApproval({
           );
         })}
       </div>
+
+      {intelBase && (
+        <div className={'text-sm text-text-secondary'}>
+          <p>
+            {localize('com_ui_intelbase_lookup')}{' '}
+            <code>{intelBaseEmail ?? localize('com_ui_intelbase_invalid')}</code>
+          </p>
+          <p>{localize('com_ui_intelbase_unavailable')}</p>
+          {active === 'approve' && (
+            <label className={'mt-2 flex items-center gap-2'}>
+              <input
+                type={'checkbox'}
+                checked={adultTargetConfirmed}
+                disabled={locked || intelBaseEmail == null}
+                onChange={(event) =>
+                  setConfirmedEmail(event.target.checked ? intelBaseEmail : null)
+                }
+              />
+              {localize('com_ui_intelbase_adult')}
+            </label>
+          )}
+        </div>
+      )}
 
       {active === 'edit' && (
         <div className="flex flex-col gap-1">
