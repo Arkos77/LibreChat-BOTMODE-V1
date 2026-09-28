@@ -53,6 +53,27 @@ describe('native child skill proposal capture', () => {
     expect(JSON.stringify(candidate)).not.toContain('# Improved skill');
     expect(JSON.stringify(request.mtoEventSink.mock.calls)).not.toContain('# Improved skill');
   });
+  it('reuses the durable candidate when a second tool call repeats the exact edit', async () => {
+    const request = input({
+      persistProposal: jest.fn(async (arg) => ({
+        record: {
+          proposal: { ...arg.proposal, candidateId: 'skill:task-native:call-original' },
+          persistedAt: new Date('2026-09-28T00:00:00.000Z'),
+        },
+        replayed: true,
+      })),
+    });
+    expect(await recordSkillImprovementProposal(request)).toEqual({
+      candidateId: 'skill:task-native:call-original',
+    });
+    expect(request.persistCandidate.mock.calls[0][0].candidate.candidateId).toBe(
+      'skill:task-native:call-original',
+    );
+    expect(JSON.stringify(request.mtoEventSink.mock.calls)).toContain(
+      'candidate:skill:task-native:call-original',
+    );
+  });
+
   it('rejects an unidentifiable child producer before writing', async () => {
     const request = input({ producerAgentId: undefined });
     await expect(recordSkillImprovementProposal(request)).rejects.toThrow(/producer/i);

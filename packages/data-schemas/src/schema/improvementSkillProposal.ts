@@ -9,6 +9,7 @@ const schema: Schema<IImprovementSkillProposalRecord> = new Schema<IImprovementS
     conversationId: { type: String, required: true },
     proposal: { type: Schema.Types.Mixed, required: true },
     snapshotDigest: { type: String, required: true },
+    dedupeKey: { type: String },
     persistedAt: { type: Date, required: true, default: Date.now },
   },
   { strict: true },
@@ -35,5 +36,13 @@ schema.pre('save', function (next) {
 schema.index(
   { user: 1, tenantKey: 1, 'proposal.candidateId': 1 },
   { unique: true, name: 'improvement_skill_proposal_owner_idempotency' },
+);
+schema.index(
+  { user: 1, tenantKey: 1, dedupeKey: 1 },
+  {
+    unique: true,
+    name: 'improvement_skill_proposal_exact_child_edit',
+    partialFilterExpression: { dedupeKey: { $type: 'string' } },
+  },
 );
 export default schema;

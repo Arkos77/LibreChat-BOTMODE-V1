@@ -59,12 +59,14 @@ async function recordSkillImprovementProposal({
       update: proposal.update,
     },
   });
+  // The durable store may have coalesced this tool call into an earlier exact edit.
+  const canonicalCandidateId = saved.record.proposal.candidateId;
   const timestamp = new Date(saved.record.persistedAt).toISOString();
   const observation = createMtoEvent(
     'OBSERVED',
     {
       traceId: normalizedTraceId,
-      traceEventId: `skill-proposal:${candidateId}`,
+      traceEventId: `skill-proposal:${canonicalCandidateId}`,
       taskId: nativeTaskId,
       agentId: nativeProducer,
       timestamp,
@@ -73,7 +75,7 @@ async function recordSkillImprovementProposal({
     { payloadDigest },
   );
   const candidate = createImprovementCandidate({
-    candidateId,
+    candidateId: canonicalCandidateId,
     target: 'skill',
     title: 'Review proposed skill update',
     summary: 'A native child proposed a skill edit for independent tests and exact diff review.',
@@ -102,7 +104,7 @@ async function recordSkillImprovementProposal({
           'CANDIDATE',
           {
             traceId: normalizedTraceId,
-            traceEventId: `candidate:${candidateId}`,
+            traceEventId: `candidate:${canonicalCandidateId}`,
             causedByTraceEventId: observation.identity.traceEventId,
             taskId: nativeTaskId,
             timestamp,
@@ -115,6 +117,6 @@ async function recordSkillImprovementProposal({
       // Auxiliary MTO failure cannot roll back the durable proposal and candidate.
     }
   }
-  return { candidateId };
+  return { candidateId: canonicalCandidateId };
 }
 module.exports = { recordSkillImprovementProposal };

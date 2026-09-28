@@ -25,6 +25,7 @@ export interface IImprovementSkillProposalRecord {
   conversationId: string;
   proposal: ImprovementSkillProposalSnapshot;
   snapshotDigest: string;
+  dedupeKey?: string;
   persistedAt: Date;
 }
 export type IImprovementSkillProposalDocument = HydratedDocument<IImprovementSkillProposalRecord>;

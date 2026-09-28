@@ -68,6 +68,62 @@ describe('durable skill improvement proposal', () => {
     expect(await model.countDocuments({})).toBe(1);
   });
 
+  it('coalesces concurrent identical native calls while retaining distinct edits', async () => {
+    const input = { user: owner, tenantId: 'tenant-a', conversationId: 'conversation-1', proposal };
+    const duplicate = {
+      ...input,
+      proposal: { ...proposal, candidateId: 'skill:task-1:call-2', toolCallId: 'call-2' },
+    };
+    const [first, second] = await Promise.all([
+      methods.recordImprovementSkillProposal(input),
+      methods.recordImprovementSkillProposal(duplicate),
+    ]);
+    expect(first.record.proposal.candidateId).toBe(second.record.proposal.candidateId);
+    expect([first.replayed, second.replayed].sort()).toEqual([false, true]);
+    expect(await mongoose.models.ImprovementSkillProposal.countDocuments({})).toBe(1);
+    const changed = await methods.recordImprovementSkillProposal({
+      ...duplicate,
+      proposal: {
+        ...duplicate.proposal,
+        candidateId: 'skill:task-1:call-3',
+        toolCallId: 'call-3',
+        update: { ...proposal.update, body: '# Different' },
+      },
+    });
+    expect(changed.replayed).toBe(false);
+    expect(await mongoose.models.ImprovementSkillProposal.countDocuments({})).toBe(2);
+  });
+
+  it('keeps equal edits separate across tasks, owners and tenants', async () => {
+    const base = { user: owner, tenantId: 'tenant-a', conversationId: 'conversation-1', proposal };
+    await methods.recordImprovementSkillProposal(base);
+    const variants = [
+      {
+        ...base,
+        proposal: {
+          ...proposal,
+          candidateId: 'skill:task-2:call-2',
+          taskId: 'task-2',
+          toolCallId: 'call-2',
+        },
+      },
+      {
+        ...base,
+        user: otherOwner,
+        proposal: { ...proposal, candidateId: 'skill:task-1:call-3', toolCallId: 'call-3' },
+      },
+      {
+        ...base,
+        tenantId: 'tenant-b',
+        proposal: { ...proposal, candidateId: 'skill:task-1:call-4', toolCallId: 'call-4' },
+      },
+    ];
+    for (const variant of variants) {
+      expect((await methods.recordImprovementSkillProposal(variant)).replayed).toBe(false);
+    }
+    expect(await mongoose.models.ImprovementSkillProposal.countDocuments({})).toBe(4);
+  });
+
   it('replays only the exact content and isolates owner and tenant', async () => {
     const input = { user: owner, tenantId: 'tenant-a', conversationId: 'conversation-1', proposal };
     expect((await methods.recordImprovementSkillProposal(input)).replayed).toBe(false);

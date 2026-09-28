@@ -51,6 +51,22 @@ describe('P10 durable skill review and publication flow', () => {
       getHostTests: () => tests,
     });
     expect(recorded.candidateId).toBe(candidateId);
+    const repeated = await recordSkillImprovementProposal({
+      req,
+      tenantId,
+      conversationId: 'conversation-1',
+      traceId: 'trace-1',
+      taskId: 'native-task-1',
+      producerAgentId: 'agent-child',
+      proposal: { ...proposal, toolCallId: 'tool-call-2' },
+      persistProposal: db.recordImprovementSkillProposal,
+      persistCandidate: db.recordImprovementCandidate,
+      persistLifecycleEvent: db.recordImprovementLifecycleEvent,
+      getHostTests: () => tests,
+    });
+    expect(repeated.candidateId).toBe(candidateId);
+    expect(await mongoose.models.ImprovementSkillProposal.countDocuments({})).toBe(1);
+    expect(await mongoose.models.ImprovementCandidate.countDocuments({})).toBe(1);
     const dependencies = {
       req,
       tenantId,

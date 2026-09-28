@@ -61,6 +61,22 @@ export function createImprovementSkillProposalMethods(
     if (Buffer.byteLength(serialized, 'utf8') > 512 * 1024)
       throw new Error('Skill proposal exceeds content limit');
     const snapshotDigest = createHash('sha256').update(serialized).digest('hex');
+    /** Repeated native tool calls with exactly the same edit share one review. */
+    const dedupeKey = createHash('sha256')
+      .update(
+        JSON.stringify({
+          conversationId,
+          traceId: proposal.traceId,
+          taskId: proposal.taskId,
+          producerAgentId: proposal.producerAgentId,
+          skillId: proposal.skillId,
+          expectedVersion: proposal.expectedVersion,
+          payloadDigest: proposal.payloadDigest,
+          diff: proposal.diff,
+          update: proposal.update,
+        }),
+      )
+      .digest('hex');
     const scope = { user, tenantKey, 'proposal.candidateId': candidateId };
     if (!indexPromise)
       indexPromise = model()
@@ -77,6 +93,9 @@ export function createImprovementSkillProposalMethods(
     };
     const existing = await model().findOne(scope).lean<IImprovementSkillProposalRecord>();
     if (existing) return replay(existing);
+    const sameEditScope = { user, tenantKey, dedupeKey };
+    const sameEdit = await model().findOne(sameEditScope).lean<IImprovementSkillProposalRecord>();
+    if (sameEdit) return { record: sameEdit, replayed: true };
     try {
       const record = await model().create({
         user,
@@ -85,13 +104,18 @@ export function createImprovementSkillProposalMethods(
         conversationId,
         proposal,
         snapshotDigest,
+        dedupeKey,
       });
       return { record: record.toObject() as IImprovementSkillProposalRecord, replayed: false };
     } catch (error) {
       if ((error as { code?: number })?.code !== 11000) throw error;
       const raced = await model().findOne(scope).lean<IImprovementSkillProposalRecord>();
-      if (!raced) throw error;
-      return replay(raced);
+      if (raced) return replay(raced);
+      const racedEdit = await model()
+        .findOne(sameEditScope)
+        .lean<IImprovementSkillProposalRecord>();
+      if (!racedEdit) throw error;
+      return { record: racedEdit, replayed: true };
     }
   }
   async function getImprovementSkillProposal(
