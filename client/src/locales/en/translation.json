@@ -11,6 +11,7 @@
   "com_ui_skill_improvement_reviewed": "A decision has already been recorded for this proposal.",
   "com_ui_skill_improvement_result": "Result:",
   "com_ui_skill_improvement_approve": "Approve and publish",
+  "com_ui_skill_improvement_observation_pending": "Updated; the audit observation is pending reconciliation.",
   "com_ui_skill_improvement_decision_error": "The decision failed.",
   "com_ui_skill_improvement_passed": "passed",
   "com_ui_skill_improvement_failed": "failed",

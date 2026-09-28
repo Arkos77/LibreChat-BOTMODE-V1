@@ -1163,7 +1163,7 @@ export function decideSkillImprovementReview(
     payloadDigest: string;
     snapshotDigest: string;
   },
-): Promise<{ status: string }> {
+): Promise<{ status: string; observationPending?: boolean }> {
   return request.post(
     `${endpoints.skills()}/improvements/${encodeURIComponent(candidateId)}/review`,
     decision,

@@ -11,6 +11,7 @@
   "com_ui_skill_improvement_reviewed": "Une décision a déjà été enregistrée pour cette proposition.",
   "com_ui_skill_improvement_result": "Résultat :",
   "com_ui_skill_improvement_approve": "Approuver et publier",
+  "com_ui_skill_improvement_observation_pending": "Skill mis à jour ; le journal d’audit reste à réconcilier.",
   "com_ui_skill_improvement_decision_error": "La décision a échoué.",
   "com_ui_skill_improvement_passed": "réussi",
   "com_ui_skill_improvement_failed": "échoué",

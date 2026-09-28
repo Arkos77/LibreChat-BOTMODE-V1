@@ -30,7 +30,11 @@ export default function SkillImprovementReview() {
         payloadDigest: review.payloadDigest,
         snapshotDigest: review.snapshotDigest,
       });
-      setOutcome(result.status);
+      setOutcome(
+        result.observationPending
+          ? localize('com_ui_skill_improvement_observation_pending')
+          : result.status,
+      );
       await query.refetch();
     } catch (cause) {
       setError(

@@ -94,6 +94,22 @@ describe('exact human skill review', () => {
       expect.objectContaining({ update, skillId: 'skill-1', expectedVersion: 3 }),
     );
   });
+  it('reports a successful native update when only the commit observation fails', async () => {
+    const recordEvent = jest
+      .fn()
+      .mockResolvedValueOnce({ replayed: false })
+      .mockRejectedValueOnce(new Error('journal unavailable'));
+    const context = setup({ recordEvent });
+    const result = await decideSkillImprovementReview({
+      ...context,
+      decision: 'approve',
+      payloadDigest: digest,
+      snapshotDigest: 'snapshot-1',
+    });
+    expect(result).toMatchObject({ status: 'updated', observationPending: true });
+    expect(context.publish).toHaveBeenCalledTimes(1);
+  });
+
   it('does not claim a commit when native version checking conflicts', async () => {
     const context = setup({ publish: jest.fn(async () => ({ status: 'conflict' })) });
     const result = await decideSkillImprovementReview({

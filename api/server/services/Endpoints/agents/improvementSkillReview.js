@@ -1,4 +1,5 @@
 const { createImprovementPayloadDigest } = require('@librechat/api');
+const { logger } = require('@librechat/data-schemas');
 
 function fail(message) {
   const error = new Error(message);
@@ -144,23 +145,31 @@ async function decideSkillImprovementReview({
     update: review.proposal.update,
   });
   if (result?.status === 'updated') {
-    await recordEvent({
-      ...scope,
-      event: {
-        eventId: `skill-commit:${review.candidateId}`,
-        candidateId: review.candidateId,
-        traceId: review.traceId,
-        type: 'COMMITTED',
-        actor: { id: 'librechat:native-skill-update', type: 'host' },
-        data: {
-          payloadDigest,
-          snapshotDigest,
-          skillId: review.skillId,
-          expectedVersion: review.expectedVersion,
+    try {
+      await recordEvent({
+        ...scope,
+        event: {
+          eventId: `skill-commit:${review.candidateId}`,
+          candidateId: review.candidateId,
+          traceId: review.traceId,
+          type: 'COMMITTED',
+          actor: { id: 'librechat:native-skill-update', type: 'host' },
+          data: {
+            payloadDigest,
+            snapshotDigest,
+            skillId: review.skillId,
+            expectedVersion: review.expectedVersion,
+          },
+          occurredAt: new Date().toISOString(),
         },
-        occurredAt: new Date().toISOString(),
-      },
-    });
+      });
+    } catch (error) {
+      logger.warn(
+        '[BOT MODE P10] Native skill update committed; lifecycle observation pending',
+        error,
+      );
+      return { ...result, observationPending: true };
+    }
   }
   return result;
 }
