@@ -94,6 +94,18 @@ describe('exact human skill review', () => {
       expect.objectContaining({ update, skillId: 'skill-1', expectedVersion: 3 }),
     );
   });
+  it('does not claim a commit when native version checking conflicts', async () => {
+    const context = setup({ publish: jest.fn(async () => ({ status: 'conflict' })) });
+    const result = await decideSkillImprovementReview({
+      ...context,
+      decision: 'approve',
+      payloadDigest: digest,
+      snapshotDigest: 'snapshot-1',
+    });
+    expect(result.status).toBe('conflict');
+    expect(context.recordEvent.mock.calls.map(([arg]) => arg.event.type)).toEqual(['APPROVED']);
+  });
+
   it('prevents replayed approval and never calls native publication', async () => {
     const replay = setup({ recordEvent: jest.fn(async () => ({ replayed: true })) });
     await expect(

@@ -49,6 +49,21 @@ describe('independent skill content validation', () => {
     });
     expect(JSON.stringify(request.persistLifecycleEvent.mock.calls)).not.toContain('# New');
   });
+  it('records a rejected host assertion without an Oracle acceptance', async () => {
+    const request = input({
+      tests: [{ id: 'absent', field: 'body', operator: 'includes', expected: 'Absent claim' }],
+    });
+    const result = await validateSkillImprovementCandidate(request);
+    expect(result.status).toBe('REJECTED');
+    expect(request.persistLifecycleEvent.mock.calls.map(([arg]) => arg.event.type)).toEqual([
+      'VALIDATING',
+      'REJECTED',
+    ]);
+    expect(
+      request.persistLifecycleEvent.mock.calls.some(([arg]) => arg.event.actor.type === 'oracle'),
+    ).toBe(false);
+  });
+
   it('rejects missing tests and mismatched producer payload before any verdict', async () => {
     const missing = input({ tests: undefined });
     await expect(validateSkillImprovementCandidate(missing)).rejects.toThrow(/test/i);
