@@ -41,7 +41,7 @@ export interface IntelBaseGrant {
 export interface IntelBaseHost extends Omit<IntelBaseGrantRequest, 'email'> {
   authorize: (request: IntelBaseGrantRequest) => Promise<IntelBaseGrant>;
   getApiKey: () => Promise<string>;
-  fetch: typeof fetch;
+  fetch: (url: string, init: RequestInit) => Promise<Response>;
 }
 
 export interface IntelBaseObservation {
@@ -119,5 +119,106 @@ export async function lookupIntelBaseEmail(
   if (!validText(apiKey)) {
     throw new IntelBaseLookupError('credential_missing');
   }
-  throw new IntelBaseLookupError('provider_unavailable');
+  if (typeof host.fetch !== 'function') {
+    throw new IntelBaseLookupError('provider_unavailable');
+  }
+  let response: Response;
+  try {
+    response = await host.fetch('https://api.intelbase.is/lookup/email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+      body: JSON.stringify({ email: input.email, timeout_ms: 10000, include_data_breaches: false }),
+      signal: AbortSignal.timeout(12000),
+    });
+  } catch (error) {
+    if (isTimeoutError(error)) {
+      throw new IntelBaseLookupError('provider_timeout');
+    }
+    throw new IntelBaseLookupError('provider_unavailable');
+  }
+  const errorCode = statusCode(response.status);
+  if (errorCode) {
+    throw new IntelBaseLookupError(errorCode);
+  }
+  const raw = await readBoundedResponse(response);
+  let parsed: IntelBaseResponse;
+  try {
+    parsed = JSON.parse(raw) as IntelBaseResponse;
+  } catch {
+    throw new IntelBaseLookupError('provider_invalid_response');
+  }
+  const accounts = parsed?.identifier?.accounts;
+  if (!Array.isArray(accounts)) {
+    throw new IntelBaseLookupError('provider_invalid_response');
+  }
+  const modules = Array.from(
+    new Set(
+      accounts.slice(0, 32).flatMap((account) => {
+        const name = account?.module?.name;
+        return typeof name === 'string' && /^[a-z0-9_-]{1,40}$/.test(name) ? [name] : [];
+      }),
+    ),
+  );
+  return {
+    provider: 'intelbase',
+    category: 'email_account_signal',
+    status: 'unverified',
+    accountCount: Math.min(accounts.length, 32),
+    modules,
+    retrievedAt: new Date().toISOString(),
+  };
+}
+
+interface IntelBaseResponse {
+  identifier?: { accounts?: Array<{ module?: { name?: string } }> };
+}
+
+function statusCode(status: number): IntelBaseLookupErrorCode | undefined {
+  if (status === 200) return undefined;
+  if (status === 400) return 'provider_bad_request';
+  if (status === 401) return 'provider_unauthorized';
+  if (status === 403) return 'provider_forbidden';
+  if (status === 429) return 'provider_rate_limited';
+  return 'provider_unavailable';
+}
+
+async function readBoundedResponse(response: Response): Promise<string> {
+  if (!response.body) {
+    throw new IntelBaseLookupError('provider_invalid_response');
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  let size = 0;
+  let text = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > 262144) {
+        await reader.cancel();
+        throw new IntelBaseLookupError('provider_invalid_response');
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+  } catch (error) {
+    if (error instanceof IntelBaseLookupError) throw error;
+    if (isTimeoutError(error)) {
+      throw new IntelBaseLookupError('provider_timeout');
+    }
+    throw new IntelBaseLookupError('provider_invalid_response');
+  } finally {
+    reader.releaseLock();
+  }
+  return text;
+}
+
+function isTimeoutError(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === 'object' &&
+    'name' in error &&
+    (error.name === 'AbortError' || error.name === 'TimeoutError')
+  );
 }

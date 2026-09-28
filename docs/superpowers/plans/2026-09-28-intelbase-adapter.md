@@ -1,6 +1,6 @@
 # IntelBase Email Adapter Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Provide a tested, default-off IntelBase email lookup adapter that refuses unapproved egress and exposes only bounded, non-sensitive observations.
 
@@ -34,11 +34,11 @@
 
 **Interfaces:** `lookupIntelBaseEmail(input: { email: string }, host: { userId: string; tenantId?: string; agentId: string; taskId?: string; purpose: string; authorize: (request: { userId: string; tenantId?: string; agentId: string; taskId?: string; purpose: string; email: string }) => Promise<{ authorizationId: string; budgetReservationId: string; adultTargetConfirmed: true }>; getApiKey: () => Promise<string>; fetch: typeof fetch }): Promise<IntelBaseObservation>`; a missing grant, scope, purpose, credential or invalid email rejects with a constant code, never a value-containing error. The callback is trusted host code, never an agent argument. Its actual production implementation remains outside this task.
 
-- [ ] Write tests: malformed/extra input, missing identities, absent/throwing/incomplete grant, missing credential; assert `fetch` is untouched and diagnostics contain no email or secret.
-- [ ] Run focused Jest and observe RED.
-- [ ] Implement input validation and host grant gate before resolving the credential; keep exported API fail closed.
-- [ ] Run focused Jest and observe GREEN.
-- [ ] Commit only task files.
+- [x] Write tests: malformed/extra input, missing identities, absent/throwing/incomplete grant, missing credential; assert `fetch` is untouched and diagnostics contain no email or secret.
+- [x] Run focused Jest and observe RED.
+- [x] Implement input validation and host grant gate before resolving the credential; keep exported API fail closed.
+- [x] Run focused Jest and observe GREEN.
+- [x] Commit only task files.
 
 ### Task 2: Bounded REST and projection
 
@@ -46,13 +46,15 @@
 
 **Interfaces:** `IntelBaseObservation` contains only `provider: 'intelbase'`, `category: 'email_account_signal'`, `status: 'unverified'`, a bounded `accountCount`, `modules: string[]` from sanitized `identifier.accounts[].module.name`, and an ISO retrieval timestamp. No email or raw response field. Explicit `IntelBaseLookupError.code` distinguishes `invalid_request`, `unauthorized`, `credential_missing`, `provider_bad_request`, `provider_unauthorized`, `provider_forbidden`, `provider_rate_limited`, `provider_unavailable`, `provider_timeout`, `provider_invalid_response`.
 
-- [ ] Write tests: exact HTTP request shape, successful empty/multiple accounts, all documented HTTP errors, timeout, oversized and malformed response, nested sensitive fields; assert no retry and no sensitive output.
-- [ ] Run focused Jest and observe RED.
-- [ ] Implement one bounded request (10s timeout plus AbortSignal), max 256 KiB response streaming, JSON shape validation, sanitized module names and count; no error-body forwarding.
-- [ ] Run focused Jest and observe GREEN.
-- [ ] Run neighboring agent tests, `NODE_OPTIONS=--max-old-space-size=4608 npx tsc --noEmit` in packages/api, API build, ESLint and `git diff --check`; record exact results.
-- [ ] Commit only task files and update BOT_MODE_MASTER_CHECKPOINT_V2.md with the proven boundary and remaining host policy/tool integration.
+- [x] Write tests: exact HTTP request shape, successful empty/multiple accounts, all documented HTTP errors, timeout, oversized and malformed response, nested sensitive fields; assert no retry and no sensitive output.
+- [x] Run focused Jest and observe RED.
+- [x] Implement one bounded request (10s timeout plus AbortSignal), max 256 KiB response streaming, JSON shape validation, sanitized module names and count; no error-body forwarding.
+- [x] Run focused Jest and observe GREEN.
+- [ ] Full packages/api typecheck: timed out at 240 seconds under memory pressure. Neighboring tests, focused typecheck, API build, ESLint and `git diff --check` passed.
+- [x] Commit only task files and update BOT_MODE_MASTER_CHECKPOINT_V2.md with the proven boundary and remaining host policy/tool integration.
 
 ## Integration gate
 
 Do not expose a callable agent tool or activate a provider config until a host-owned policy can provide purpose, scope, adult-target decision and a budget reservation at execution time. The source cannot be a model argument. The next plan will test the real initial/resume tool path once that policy is specified and implemented.
+
+Execution note: full packages/api typecheck timed out at 240 seconds; focused typecheck, targeted tests and API build are the available proofs. Production integration gate remains open.
