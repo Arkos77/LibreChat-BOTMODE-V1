@@ -7609,6 +7609,7 @@ describe('AgentClient - resumeCompletion content protection', () => {
     buildActivityPhaseWiring: jest.fn(() => null),
     buildReasoningLabelWiring: jest.fn(() => null),
     buildSubagentUsageEmitter: jest.fn(),
+    buildMtoSubagentUsageObserver: jest.fn(() => () => {}),
     buildDetachedSubagentUsageRecorder: jest.fn(),
     handleRunInterrupt: jest.fn().mockResolvedValue(undefined),
     completeActivityPhase: jest.fn(),
