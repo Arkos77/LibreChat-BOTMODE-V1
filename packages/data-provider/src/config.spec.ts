@@ -1003,3 +1003,41 @@ describe('bedrockModels defaults', () => {
     expect(bedrockModels).not.toContain('anthropic.claude-opus-5');
   });
 });
+
+describe('host model routing configuration', () => {
+  it('accepts a bounded explicit pool and rejects unbounded or unknown binding fields', () => {
+    const valid = {
+      version: '1.0',
+      endpoints: {
+        agents: {
+          hostModelRouting: [
+            {
+              agentId: 'agent-one',
+              models: ['model-a:free', 'model-b:free'],
+              preferredModel: 'model-b:free',
+            },
+          ],
+        },
+      },
+    };
+    expect(configSchema.safeParse(valid).success).toBe(true);
+    expect(
+      configSchema.safeParse({
+        ...valid,
+        endpoints: {
+          agents: { hostModelRouting: [{ agentId: 'agent-one', models: ['only-one'] }] },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      configSchema.safeParse({
+        ...valid,
+        endpoints: {
+          agents: {
+            hostModelRouting: [{ agentId: 'agent-one', models: ['a', 'b'], apiKey: 'secret' }],
+          },
+        },
+      }).success,
+    ).toBe(false);
+  });
+});

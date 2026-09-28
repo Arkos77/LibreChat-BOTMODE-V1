@@ -366,11 +366,26 @@ to this store before sending them to the logging sink. After the native
 controllers record `HUMAN_APPROVAL_REQUIRED` with an action-scoped, replay-stable
 identity. An `ask_user_question` pause does not imply tool authorization. This
 record is evidence of an approval requirement, not an approval or an executable
-permission. Other MTO sources and decision events remain unconnected; the
-global logging sink itself stays stateless.
+permission. A configured host OpenRouter model selection now records DECIDED;
+other decision producers remain unconnected. The global logging sink stays stateless.
 
 The host logging projection also validates native subagent and Oracle fields at
 every nested boundary: activity labels and identities are bounded strings,
 usage contains only nonnegative token counters, and Oracle validator, reason
 codes and uncertainty are reduced to bounded scalar metadata. Unexpected
 nested values are omitted before logging.
+
+### Host P11 OpenRouter model selection
+
+An operator may set `endpoints.agents.hostModelRouting` in `librechat.yaml` for a saved agent. Example:
+
+```yaml
+endpoints:
+  agents:
+    hostModelRouting:
+      - agentId: agent_example
+        models: [current-model:free, alternate-model:free]
+        preferredModel: alternate-model:free
+```
+
+The first model must be the agent's saved model. The native host validates and separately initializes every alternative for the same OpenRouter agent, then selects the configured preferred model (or the saved model). It records a bounded `DECIDED` observation under the authenticated owner before the run uses the selected configuration. A failed validation or durable observation stops the configured run. The same initialization path runs on resume, so model access is checked again. A selected model's resolved context, token pricing and tool configuration travel together; no SDK fallback is installed. This opt-in does not provide dynamic quality or cost estimates, authorize other providers, or perform an automatic failover. Without this configuration, agent initialization is unchanged.

@@ -238,6 +238,58 @@ describe('initializeClient — processAgent ACL gate', () => {
     );
   });
 
+  it('revalidates configured OpenRouter choices and persists a DECIDED event on each initialization', async () => {
+    const makeOption = () => ({
+      agent: Promise.resolve({
+        id: PRIMARY_ID,
+        name: 'Primary',
+        provider: 'OpenRouter',
+        model: 'a:free',
+        tools: [],
+      }),
+      model_parameters: { model: 'a:free' },
+      endpoint: 'agents',
+    });
+    let alternativesValidated = 0;
+    mockValidateAgentModel.mockImplementation(async ({ agent }) => {
+      if (agent.model === 'b:free') alternativesValidated++;
+      return { isValid: true };
+    });
+    mockInitializeAgent.mockImplementation(async ({ agent }) => ({
+      ...makePrimaryConfig([]),
+      provider: 'openrouter',
+      model: agent.model,
+      model_parameters: { model: agent.model, apiKey: 'fixture-secret' },
+      endpointTokenConfig: { selectedFor: agent.model },
+    }));
+    for (let index = 0; index < 2; index++) {
+      const req = makeReq();
+      if (index === 1) req._resumableStreamId = 'resume-job';
+      req.config.endpoints.agents = {
+        hostModelRouting: [
+          { agentId: PRIMARY_ID, models: ['a:free', 'b:free'], preferredModel: 'b:free' },
+        ],
+      };
+      await initializeClient({
+        req,
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption: makeOption(),
+        mtoTraceId: 'trace-model-choice',
+      });
+      expect(agentClientArgs.agent.model_parameters.model).toBe('b:free');
+      expect(agentClientArgs.endpointTokenConfig).toEqual({ selectedFor: 'b:free' });
+    }
+    expect(alternativesValidated).toBe(2);
+    const records = await db.listMtoObservations({
+      user: testUser._id.toString(),
+      traceId: 'trace-model-choice',
+    });
+    expect(records).toHaveLength(2);
+    expect(records.map((record) => record.payload.selectedOption)).toEqual(['b:free', 'b:free']);
+    expect(JSON.stringify(records)).not.toContain('fixture-secret');
+  });
+
   it('threads the optional MTO event sink into AgentClient unchanged', async () => {
     mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
     const req = makeReq();

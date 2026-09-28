@@ -1119,6 +1119,20 @@ export const agentsEndpointSchema = baseEndpointSchema
         .optional()
         .default(MAX_SUBAGENTS),
       allowedProviders: z.array(z.union([z.string(), eModelEndpointSchema])).optional(),
+      /** Operator-authorized OpenRouter models for one saved agent. Rechecked on every run and resume. */
+      hostModelRouting: z
+        .array(
+          z
+            .object({
+              agentId: z.string().min(1).max(128),
+              models: z.array(z.string().min(1).max(256)).min(2).max(4),
+              preferredModel: z.string().min(1).max(256).optional(),
+            })
+            .strict(),
+        )
+        .max(32)
+        .optional(),
+
       capabilities: z
         .array(z.nativeEnum(AgentCapabilities))
         .optional()

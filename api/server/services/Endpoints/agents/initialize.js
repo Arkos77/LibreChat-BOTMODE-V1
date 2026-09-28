@@ -84,6 +84,8 @@ const {
   createDeadBackgroundToolClaimRecovery,
 } = require('./backgroundCompletion');
 const { recordSkillImprovementProposal } = require('./improvementSkillProposal');
+const { resolveHostModelRouting } = require('./hostModelRouting');
+const { randomUUID } = require('crypto');
 const { logViolation } = require('~/cache');
 const db = require('~/models');
 
@@ -645,7 +647,13 @@ const initializeClient = async ({
     ephemeralSkillsToggle,
   });
 
-  const primaryConfig = await initializeAgent(
+  const hostModelRouting = selectedModelSpec
+    ? undefined
+    : appConfig?.endpoints?.[EModelEndpoint.agents]?.hostModelRouting;
+  const originalPrimaryAgent = hostModelRouting?.some((entry) => entry.agentId === primaryAgent.id)
+    ? structuredClone(primaryAgent)
+    : primaryAgent;
+  let primaryConfig = await initializeAgent(
     {
       req,
       res,
@@ -687,6 +695,77 @@ const initializeClient = async ({
       getSkillByName: skillDbMethods.getSkillByName,
     },
   );
+
+  const initialPrimaryConfig = primaryConfig;
+  primaryConfig = await resolveHostModelRouting({
+    config: hostModelRouting,
+    originalAgent: originalPrimaryAgent,
+    primaryConfig,
+    validate: (agent) => validateAgentModel({ req, res, agent, modelsConfig, logViolation }),
+    initialize: (agent) =>
+      initializeAgent(
+        {
+          req,
+          res,
+          loadTools,
+          requestFiles,
+          conversationId,
+          parentMessageId,
+          requestBody: runtimeRequestBody,
+          agent,
+          endpointOption: {
+            ...endpointOption,
+            model_parameters: { ...(endpointOption.model_parameters ?? {}), model: agent.model },
+          },
+          allowedProviders,
+          isInitialAgent: true,
+          accessibleSkillIds: primaryScopedSkillIds,
+          skillAuthoringAvailable: primarySkillAuthoringAvailable,
+          codeEnvAvailable,
+          backgroundToolsAvailable,
+          toolIntentsAvailable,
+          statefulSessionsAvailable,
+          allowedStatefulCodeEnvironments,
+          memoryAvailable,
+          skillStates,
+          defaultActiveOnShare,
+          manualSkills,
+        },
+        {
+          getFiles: db.getFiles,
+          getUserKey: db.getUserKey,
+          getMessages: db.getMessages,
+          getConvoFiles: db.getConvoFiles,
+          getAccessibleMcpServerNames,
+          updateFilesUsage: db.updateFilesUsage,
+          getUserKeyValues: db.getUserKeyValues,
+          getUserCodeFiles: db.getUserCodeFiles,
+          getToolFilesByIds: db.getToolFilesByIds,
+          getCodeGeneratedFiles: db.getCodeGeneratedFiles,
+          filterFilesByAgentAccess,
+          listSkillsByAccess: skillDbMethods.listSkillsByAccess,
+          listAlwaysApplySkills: skillDbMethods.listAlwaysApplySkills,
+          getSkillByName: skillDbMethods.getSkillByName,
+        },
+      ),
+    decide: require('@librechat/api').decideHostModel,
+    persist: db.recordMtoObservation,
+    sink: mtoEventSink,
+    traceId: mtoTraceId,
+    user: req.user.id,
+    tenantId: resolveRequestTenantId(req),
+    timestamp: new Date().toISOString(),
+    decisionId: randomUUID(),
+    traceEventId: randomUUID(),
+  });
+
+  if (primaryConfig !== initialPrimaryConfig) {
+    Object.assign(primaryAgent, {
+      model: primaryConfig.model,
+      model_parameters: primaryConfig.model_parameters,
+      provider: primaryConfig.provider,
+    });
+  }
 
   /** Price emitted usage with the primary agent's resolved endpoint config so
    *  custom-endpoint agents reflect configured rates (mirrors the AgentClient
