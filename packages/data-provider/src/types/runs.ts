@@ -309,6 +309,8 @@ export type TTokenUsageEvent = {
     cache_creation?: number;
     cache_read?: number;
   };
+  /** Internal collector attribution only; never sent in on_token_usage SSE. */
+  agentId?: string;
   model?: string;
   provider?: string;
   /** Non-primary buckets fold into session cost/totals but not the live

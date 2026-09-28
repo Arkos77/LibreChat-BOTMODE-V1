@@ -505,7 +505,7 @@ function getDefaultHandlers({
     /** Collect the same payload the client folds so the response's usage rollup
      *  persisted on `metadata.usage` reproduces the live branch/total + cost. */
     if (usageEmitSink) {
-      usageEmitSink.push(payload);
+      usageEmitSink.push(agentId == null ? payload : { ...payload, agentId });
     }
     return emitForJob({ event: UsageEvents.ON_TOKEN_USAGE, data: payload });
   };

@@ -7,12 +7,15 @@ function projectHostModelUsage(decision, usageEvents) {
   const traceId = boundedText(decision?.traceId);
   const decisionId = boundedText(decision?.decisionId);
   const selectedModel = boundedText(decision?.selectedModel);
-  if (!traceId || !decisionId || !selectedModel || !Array.isArray(usageEvents)) return undefined;
+  const agentId = boundedText(decision?.agentId);
+  if (!traceId || !decisionId || !selectedModel || !agentId || !Array.isArray(usageEvents))
+    return undefined;
   const modelCalls = [];
   for (const event of usageEvents) {
     if (modelCalls.length >= 16) break;
     if (
       event?.usage_type != null ||
+      event?.agentId !== agentId ||
       typeof event?.provider !== 'string' ||
       event.provider.toLowerCase() !== 'openrouter'
     )

@@ -49,6 +49,7 @@ describe('host model routing', () => {
       traceId: 'trace',
       decisionId: 'decision',
       selectedModel: 'b:free',
+      agentId: 'agent-one',
     });
     expect(request.validate).toHaveBeenCalledWith(expect.objectContaining({ model: 'b:free' }));
     expect(request.initialize).toHaveBeenCalledWith(expect.objectContaining({ model: 'b:free' }));

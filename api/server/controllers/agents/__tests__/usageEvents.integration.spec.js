@@ -346,9 +346,7 @@ describe('usage events through the real agents pipeline', () => {
     for (const e of events) {
       expect(e.data.agentId).toBeUndefined();
     }
-    for (const entry of usageEmitSink) {
-      expect(entry.agentId).toBeUndefined();
-    }
+    expect(usageEmitSink.map((entry) => entry.agentId)).toEqual(['sub', 'primary']);
     /** Same tokens + model id, but the subagent endpoint's higher rates price
      *  its call above the primary — proving per-agent emit pricing. The 5× ratio
      *  ((100·0.05+50·0.15)/(100·0.01+50·0.03)) is scale-independent of credit units. */

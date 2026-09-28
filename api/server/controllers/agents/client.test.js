@@ -8369,11 +8369,18 @@ describe('AgentClient - P11 model invocation evidence', () => {
           traceId: 'trace-1',
           decisionId: 'decision-1',
           selectedModel: 'b:free',
+          agentId: 'agent-primary',
         },
       },
     };
     client.usageEmitSink = [
-      { model: 'b:free', provider: 'openrouter', input_tokens: 14, output_tokens: 3 },
+      {
+        agentId: 'agent-primary',
+        model: 'b:free',
+        provider: 'openrouter',
+        input_tokens: 14,
+        output_tokens: 3,
+      },
       { model: 'sub-model', provider: 'openrouter', usage_type: 'subagent', input_tokens: 20 },
     ];
     client.collectedThoughtSignatures = {};
