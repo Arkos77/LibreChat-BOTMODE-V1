@@ -50,3 +50,9 @@ Hors tranche : username/domain lookup direct, breach et stealer logs, bulk, moni
 ## Risques et prochaine preuve
 
 La politique publiée n'établit pas une durée de conservation bornée chez IntelBase ; elle déclare aussi des fournisseurs de données tiers. Les règles internes de finalité et de données sortantes doivent être fixées avant activation réelle. La prochaine preuve de code est le point précis de chargement de l'outil natif et du secret serveur, puis un test rouge qui démontre le refus avant le transport.
+
+## Décision propriétaire du 28 septembre 2026 : adresses de tiers
+
+Le propriétaire autorise la recherche d'adresses email de tiers. Le contrat n'est donc pas limité aux adresses qu'il contrôle. Par défaut, chaque lookup tiers devra être présenté pour une approbation humaine portant sur l'adresse exacte, la finalité, l'agent et le coût/plafond annoncé ; une édition de l'adresse ou de la finalité exige une nouvelle décision. Les cas connus ou présumés concernant un mineur restent refusés. Cette décision de produit n'est pas une approbation globale de requêtes futures ni une preuve que la cible est majeure.
+
+L'audit du checkout montre que `AutonomyMandate` lie utilisateur, tenant, agent, conversation, capacité et durée, mais pas l'adresse ni la finalité. Le HITL natif peut demander une décision sur les arguments d'un appel et revérifier avant effet, mais aucun raccordement IntelBase ne fournit encore une approbation durable vérifiable par son adaptateur. `BudgetReservation` réserve des `tokenCredits` LibreChat ; il ne représente pas à lui seul le quota ni le prix IntelBase. L'outil demeure indisponible jusqu'à une preuve de liaison exacte à la décision humaine et à une règle hôte de budget fournisseur. Aucun identifiant de mandat ou de réservation ne doit être fabriqué à partir de la réponse du modèle.
