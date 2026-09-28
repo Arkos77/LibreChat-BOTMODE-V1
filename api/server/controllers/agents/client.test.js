@@ -8358,3 +8358,35 @@ describe('seedContextMeta', () => {
     expect(client.contextMeta).toBeUndefined();
   });
 });
+
+describe('AgentClient - P11 model invocation evidence', () => {
+  it('persists decision-linked primary model-end usage while leaving ordinary runs unchanged', () => {
+    const client = Object.create(AgentClient.prototype);
+    client.options = {
+      agent: {
+        hostModelDecision: {
+          traceId: 'trace-1',
+          decisionId: 'decision-1',
+          selectedModel: 'b:free',
+        },
+      },
+    };
+    client.usageEmitSink = [
+      { model: 'b:free', provider: 'openrouter', input_tokens: 14, output_tokens: 3 },
+      { model: 'sub-model', provider: 'openrouter', usage_type: 'subagent', input_tokens: 20 },
+    ];
+    client.collectedThoughtSignatures = {};
+    const metadata = client.buildResponseMetadata();
+    expect(metadata.hostModelUsage).toEqual({
+      traceId: 'trace-1',
+      decisionId: 'decision-1',
+      selectedModel: 'b:free',
+      modelCalls: [
+        { usageModel: 'b:free', provider: 'openrouter', inputTokens: 14, outputTokens: 3 },
+      ],
+    });
+    expect(metadata.usage).toMatchObject({ input: 34, output: 3 });
+    client.options.agent = { id: 'ordinary' };
+    expect(client.buildResponseMetadata()).not.toHaveProperty('hostModelUsage');
+  });
+});

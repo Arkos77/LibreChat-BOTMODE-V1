@@ -104,6 +104,6 @@ async function resolveHostModelRouting({
       // Durable provenance already succeeded; a logging failure does not change the choice.
     }
   }
-  return selected;
+  return { ...selected, hostModelDecision: { traceId, decisionId, selectedModel } };
 }
 module.exports = { resolveHostModelRouting };

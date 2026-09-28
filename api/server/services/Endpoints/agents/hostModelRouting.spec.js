@@ -45,6 +45,11 @@ describe('host model routing', () => {
     const request = base();
     const result = await resolveHostModelRouting(request);
     expect(result.model_parameters.model).toBe('b:free');
+    expect(result.hostModelDecision).toEqual({
+      traceId: 'trace',
+      decisionId: 'decision',
+      selectedModel: 'b:free',
+    });
     expect(request.validate).toHaveBeenCalledWith(expect.objectContaining({ model: 'b:free' }));
     expect(request.initialize).toHaveBeenCalledWith(expect.objectContaining({ model: 'b:free' }));
     expect(request.decide.mock.calls[0][0].resolvedAlternatives[0].options.model).toBe('b:free');

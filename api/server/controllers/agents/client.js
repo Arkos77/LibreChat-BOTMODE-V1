@@ -1,5 +1,6 @@
 require('events').EventEmitter.defaultMaxListeners = 100;
 const { randomUUID } = require('crypto');
+const { projectHostModelUsage } = require('~/server/services/Endpoints/agents/hostModelUsage');
 const {
   logger,
   MAX_AGENT_EVENT_ACTOR_ENCODING_LENGTH,
@@ -3192,6 +3193,11 @@ class AgentClient extends BaseClient {
     if (summaryUsedTokens != null) {
       metadata.summaryUsedTokens = summaryUsedTokens;
     }
+    const hostModelUsage = projectHostModelUsage(
+      this.options.agent?.hostModelDecision,
+      usageEvents,
+    );
+    if (hostModelUsage) metadata.hostModelUsage = hostModelUsage;
     const usage = aggregateEmittedUsage(usageEvents);
     if (usage) {
       metadata.usage = usage;
