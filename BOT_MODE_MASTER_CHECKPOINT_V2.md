@@ -648,3 +648,7 @@ Gate V3 : lease, cancel, delete, takeover, stale, retry et recovery sans double 
 ## Clôture P2 — états, compteurs et rétention (29 septembre 2026)
 
 Gate V3 : transitions terminales, capacité runningTasks et totalTasks, cleanup et rétention cohérents. Preuves fraîches : background.spec.ts, guard.spec.ts et remote/lifecycle.spec.ts 128/128 PASS ; subagentThreads.spec.ts 94/94 PASS. Un contrôle comportemental direct du SDK @librechat/agents 3.7.17 confirme refus à maxRunningTotal, libération après succès et échec, éviction du résultat terminé à maxTasksTotal et absence de blocage résiduel. Les tests background couvrent TTL, capacité conversation/utilisateur/globale et éviction atomique. Décision : P2 PASS sur ce périmètre natif testé. P3 exige séparément la preuve de plusieurs workers réels.
+
+## P3 — gate multi-processus encore ouvert (29 septembre 2026)
+
+Le test subagentCrossReplica.integration.spec.ts passe avec Redis réel, deux stores et un scénario de perte du transport propriétaire ; ces deux stores vivent dans le même processus Jest. Le critère V3 demande deux workers A/B réellement distincts, perte du processus owner, reprise et absence de double effet. Statut : P3 OPEN. Prochaine preuve : exécuter un job durable avec deux processus API indépendants, interrompre le propriétaire après admission, vérifier reprise par B, fencing et résultat unique. Les tests de routage déjà verts restent acquis.
