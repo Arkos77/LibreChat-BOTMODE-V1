@@ -680,3 +680,7 @@ Preuve fraîche : routing.spec.ts et decision.spec.ts 22/22 PASS ; hostModelRout
 ## P10 — amélioration gouvernée partielle (29 septembre 2026)
 
 Preuve fraîche : cinq suites hôte candidate, validation, revue et publication 43/43 PASS ; deux suites orchestrator 16/16 PASS. Le parcours ciblé de skill vérifie diff et digest exacts, tests indépendants, Oracle lié au payload, décision humaine, ACL native et conflit de version ; les candidats de step limit restent proposal-only. Aucun orchestrateur autonome général de veille, apprentissage, réévaluation et publication continue n est activé ; la preuve live du cycle skill déployé reste distincte. Statut : P10 PARTIEL, gate V3 global OPEN. Prochaine preuve : mission complète instrumentée avec propositions bornées, vérifications indépendantes et effet publié uniquement après autorisation exacte.
+
+## P11 V3 — pipeline média encore ouvert (29 septembre 2026)
+
+Preuve fraîche : audio.spec.ts, image.spec.ts, images/session.spec.ts 32/32 PASS ; steering/media.spec.ts 17/17 PASS. Ces primitives prennent en charge des fichiers et le contexte média, sans démontrer le pipeline BOT MODE GenerationProvider interchangeable, brief, image/audio/vidéo, post-traitement, QA, provenance et artefact durable. Statut : P11 V3 OPEN ; distinct de la tranche technique P11 DecisionRecord déjà présente. Prochaine preuve : une génération média sous mandat et budget avec deux providers interchangeables, échec/fallback, QA et artefact vérifiable.
