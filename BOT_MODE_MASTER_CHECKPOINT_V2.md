@@ -688,3 +688,7 @@ Preuve fraîche : audio.spec.ts, image.spec.ts, images/session.spec.ts 32/32 PAS
 ## P12 V3 — production YouTube encore ouverte (29 septembre 2026)
 
 Preuve fraîche : endpoints/google/youtube.spec.ts 61/61 PASS pour extraction et injection sûre des URLs vidéo au contexte modèle. Ce chemin de lecture ne constitue pas la chaîne V3 claims sourcés, script, média, montage, miniature, SEO, QA, readiness, publication autorisée et analytics. Statut : P12 V3 OPEN ; distinct de la tranche technique P12 AuthorizationRecord. Prochaine preuve : dry run de chaîne complète bloquant claim non sourcé et métadonnées manquantes, puis publication seulement sur approbation.
+
+## P13 — rooms et interface BOT MODE encore ouvertes (29 septembre 2026)
+
+Preuve fraîche : schedules/project.spec.ts 29/29 PASS ; LibreChat dispose de composants ProjectWorkspace, ProjectsView et de routes projets. Le test valide la portée projet des tâches planifiées, dont refus hors propriétaire. La vue BOT MODE réunissant plan, agents, progression, preuves, coûts, pause/reprise et isolation de deux projets simultanés n est pas démontrée. Statut : P13 OPEN. Prochaine preuve : deux projets concurrents avec isolation de tâches, mémoire et sources, et reprise observable dans une UI dédiée.
