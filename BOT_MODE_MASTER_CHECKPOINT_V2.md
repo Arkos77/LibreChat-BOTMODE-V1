@@ -631,3 +631,12 @@ L'integration UI et runtime reste ouverte : la carte actuelle ne recueille pas l
 ### IntelBase — confirmation UI et decision exacte (29 septembre 2026)
 
 La carte native d'approbation identifie osint_email_enrich, affiche l'adresse exacte et exige une confirmation explicite de majorite avant de soumettre approve. Une adresse modifiee invalide la confirmation. Le marqueur est porte par la decision du tool_call_id correspondant et l'approbation backend le controle. Suites ciblees : 32 tests API et 10 tests client passent ; lint, TypeScript API cible et JSON en/fr ont ete verifies. L'outil reste non enregistre et aucun appel IntelBase reel n'a eu lieu. Le controleur de reprise apres CAS, la politique de budget fournisseur et la verification de l'agent executeur restent a realiser avant activation.
+
+
+## Clôture P0 — settlement natif (29 septembre 2026)
+
+Critère V3 : E.2, E.1, D et voisins préservent un seul résultat terminal durable, le fencing et la priorité du commit engagé sur un cancel tardif. Le test historique « lets durable settlement win once a successful commit has started » et les cas actuels de suppression concurrente, lease, cancellation, stale/recovery figurent dans packages/api/src/agents/subagentThreads.spec.ts. La suite actuelle couvre aussi la disparition effective d'un enfant après deletion et le rejet d'un succès tardif.
+
+Preuve fraîche : NODE_OPTIONS=--max-old-space-size=2048 npm exec jest -- --config packages/api/jest.config.mjs packages/api/src/agents/subagentThreads.spec.ts --runInBand --silent → 1 suite PASS, 94/94 tests PASS, 38.607 s (29/09/2026). La checklist du 13/09 consignait déjà 65/65, avec E.2 et les voisins PASS. Les anciens libellés « E.1 » et « D » ne sont plus présents comme noms de tests dans le checkout ; leurs comportements sont couverts par les cas de cancel/deletion/settlement actuels, sans prétendre à une correspondance ligne à ligne avec un ancien plan de test non conservé ici.
+
+Décision : P0 PASS sur les critères fonctionnels V3 vérifiés dans le montage de test actuel. Cette clôture n'étend pas le verdict à P1–P4 ni à une validation produit globale. Prochaine phase : P1 concurrence, avec matrice explicite.
