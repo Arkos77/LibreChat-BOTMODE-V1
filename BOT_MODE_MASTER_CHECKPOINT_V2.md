@@ -664,3 +664,7 @@ Preuves fraîches : oracle/runtime.spec.ts et deterministic.spec.ts 24/24 PASS ;
 ## P6 — orchestration produit encore ouverte (29 septembre 2026)
 
 Preuve fraîche : planner.spec.ts et native.spec.ts inclus dans 54/54 tests PASS avec checkpoint Mongo. deterministicPlanner et compileNativePlan produisent un graphe natif, des dépendances et des exigences Oracle, mais aucune invocation hôte de production de ces fonctions n est trouvée dans packages/api/src ni api/server. Statut : P6 OPEN. Prochaine preuve : un opt-in hôte avec mission structurée, bindings natifs autorisés, plan persistant, exécution et reprise du DAG, verdicts P5 avant synthèse, budget et arrêt bornés. Ne pas transformer le compilateur en second Task Engine.
+
+## Clôture P7 — RAG natif réel (29 septembre 2026)
+
+Gate V3 : upload, embeddings, pgvector, retrieval, contexte agent et provenance. Preuve fraîche : P7_RAG_E2E=1 avec rag_api, vectordb et LibreChat démarrés ; rag.integration.spec.ts 5/5 PASS en 40.861 s. Les assertions lisent des chunks persistés et embeddings de dimension 384, comparent source et chunkId, vérifient la consommation du ToolMessage par le run hôte, les requêtes non pertinentes et isolation entre utilisateurs. Campagne identique déjà consignée le 27/09. Décision : P7 PASS pour ce montage réel. La reproduction après reconstruction complète du stack reste un gate de release P14, non revendiqué ici.
