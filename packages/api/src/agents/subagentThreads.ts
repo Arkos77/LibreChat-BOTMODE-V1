@@ -140,6 +140,7 @@ interface PreparedThread {
   initialMessages: BaseMessage[];
   initialStoredMessages: StoredMessage[];
   attemptKey: string;
+  recoveryOnly?: boolean;
   /** Stable source-occurrence time shared by first delivery and every replay. */
   taskCreatedAt: number;
   userMessageId?: string;
@@ -153,6 +154,12 @@ interface PreparedThread {
 
 interface HostSubagentTaskStartRequest extends SubagentTaskStartRequest {
   completionDelivery?: typeof SUBAGENT_COMPLETION_DELIVERY;
+  verifyDurableRecovery?: (candidate: {
+    parentConversationId: string;
+    parentRunId: string;
+    parentToolCallId: string;
+    childThreadId: string;
+  }) => Promise<boolean>;
 }
 
 type ThreadMessage = Pick<
@@ -589,6 +596,7 @@ async function observeSlowPreparation<T>(
 /** Persists view-only logical child threads with owner-routed controls and a shared execution fence. */
 export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
   readonly supportsThreadContinuation = true;
+  readonly supportsDurableCheckpointRecovery = true;
   private readonly activeThreads = new Map<string, TaskThreadLease>();
   private readonly controlInvocations = new Map<string, ControlInvocationRecord>();
   private readonly terminalControlInvocations = new Map<string, ControlInvocationRecord>();
@@ -1362,6 +1370,7 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
               let activitySequence = 0;
               const activityRuntime: SubagentTaskRuntime = {
                 ...runtime,
+                ...(preparedThread.recoveryOnly === true ? { recoveryOnly: true } : {}),
                 reportProgress: (event) => {
                   if (
                     producerAgentId == null &&
@@ -2838,7 +2847,7 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
     scope: SubagentThreadScope,
     threadId: string,
     isContinuation: boolean,
-    request: SubagentTaskStartRequest,
+    request: HostSubagentTaskStartRequest,
     taskId: string,
     lease: TaskThreadLease,
   ): Promise<PreparedThread> {
@@ -3003,6 +3012,57 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
                   : 'The prior subagent task did not complete successfully.'),
             },
           };
+        }
+        const lineage = conversation.subagentThread;
+        const durableParentRunIds = [
+          ...new Set(
+            priorAttempt
+              .map((message) => message.subagentTask?.parentRunId)
+              .filter(
+                (parentRunId): parentRunId is string =>
+                  typeof parentRunId === 'string' && parentRunId !== '',
+              ),
+          ),
+        ];
+        const durableParentRunId =
+          durableParentRunIds.length === 1 ? durableParentRunIds[0] : undefined;
+        const durableParentToolCallId =
+          typeof lineage?.parentToolCallId === 'string' && lineage.parentToolCallId !== ''
+            ? lineage.parentToolCallId
+            : undefined;
+        const durableLineageMatches =
+          durableParentRunId != null &&
+          durableParentToolCallId != null &&
+          lineage?.parentMessageId === durableParentRunId;
+        if (request.verifyDurableRecovery != null && durableLineageMatches) {
+          try {
+            const recoverable = await request.verifyDurableRecovery({
+              parentConversationId: scope.parentConversationId,
+              parentRunId: durableParentRunId,
+              parentToolCallId: durableParentToolCallId,
+              childThreadId: threadId,
+            });
+            if (recoverable) {
+              const canonicalStart = priorAttempt[0];
+              return {
+                conversation,
+                initialMessages: [],
+                initialStoredMessages: [],
+                attemptKey,
+                recoveryOnly: true,
+                userMessageId: canonicalStart.messageId,
+                taskCreatedAt: durableMessageTime(
+                  canonicalStart,
+                  'The recoverable subagent attempt has no durable occurrence time.',
+                ),
+              };
+            }
+          } catch (error) {
+            logger.warn(
+              '[subagentThreads] Durable recovery verification failed; closing abandoned attempt',
+              error,
+            );
+          }
         }
         /** Reaching this point while holding the thread lease proves the original
          * worker no longer owns settlement. Close the abandoned attempt once rather
@@ -3544,6 +3604,7 @@ function completionWakeupStore(store: SubagentThreadTaskStore): CompletionWakeup
   }
   const adapter: CompletionWakeupStore = {
     supportsThreadContinuation: store.supportsThreadContinuation,
+    supportsDurableCheckpointRecovery: store.supportsDurableCheckpointRecovery,
     start: (request) => {
       const hostRequest: HostSubagentTaskStartRequest = {
         ...request,
@@ -3568,9 +3629,38 @@ function completionWakeupStore(store: SubagentThreadTaskStore): CompletionWakeup
 export function buildSubagentThreadTaskConfig(
   store: SubagentThreadTaskStore,
   scope: Omit<SubagentThreadScope, 'version'>,
-  options: { completionWakeups?: boolean; traceId?: string } = {},
+  options: {
+    completionWakeups?: boolean;
+    traceId?: string;
+    verifyDurableRecovery?: HostSubagentTaskStartRequest['verifyDurableRecovery'];
+  } = {},
 ): HostSubagentTaskConfig {
-  const taskStore = options.completionWakeups === true ? completionWakeupStore(store) : store;
+  const baseStore = options.completionWakeups === true ? completionWakeupStore(store) : store;
+  const taskStore: CompletionWakeupStore =
+    options.verifyDurableRecovery == null
+      ? baseStore
+      : {
+          supportsThreadContinuation: baseStore.supportsThreadContinuation,
+          supportsDurableCheckpointRecovery: baseStore.supportsDurableCheckpointRecovery,
+          start: (request) =>
+            store.start({
+              ...request,
+              ...(options.completionWakeups === true
+                ? { completionDelivery: SUBAGENT_COMPLETION_DELIVERY }
+                : {}),
+              verifyDurableRecovery: options.verifyDurableRecovery,
+            }),
+          get: (scopeId, taskId) => baseStore.get(scopeId, taskId),
+          list: (scopeId) => baseStore.list(scopeId),
+          claim: (scopeId, taskId) => baseStore.claim(scopeId, taskId),
+          control: (scopeId, taskId, command) => baseStore.control(scopeId, taskId, command),
+          claimTask: (scopeId, taskId, invocationId) =>
+            baseStore.claimTask(scopeId, taskId, invocationId),
+          controlTask: (scopeId, taskId, command, invocationId) =>
+            baseStore.controlTask(scopeId, taskId, command, invocationId),
+          hasTasks: (scopeId) => baseStore.hasTasks(scopeId),
+          listTasks: (scopeId) => baseStore.listTasks(scopeId),
+        };
   return {
     store: taskStore,
     scopeId: serializeScope(scope),

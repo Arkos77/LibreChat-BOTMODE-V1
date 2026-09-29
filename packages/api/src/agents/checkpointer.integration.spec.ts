@@ -1,15 +1,16 @@
+import { z } from 'zod';
 import mongoose from 'mongoose';
 import { logger } from '@librechat/data-schemas';
+import { tool } from '@librechat/agents/langchain/tools';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { FakeChatModel, Providers, Run } from '@librechat/agents';
 import { HumanMessage } from '@librechat/agents/langchain/messages';
-import { tool } from '@librechat/agents/langchain/tools';
 import { MongoDBSaver } from '@langchain/langgraph-checkpoint-mongodb';
 import { emptyCheckpoint, ERROR, INTERRUPT } from '@langchain/langgraph-checkpoint';
-import { z } from 'zod';
 import {
   getAgentCheckpointer,
   hasDurableAgentInterruptCheckpoint,
+  hasDurableSubagentRecoveryCheckpoint,
   captureAgentCheckpointGeneration,
   deleteAgentCheckpoint,
   deleteAgentCheckpoints,
@@ -1154,6 +1155,116 @@ describe('LazyMongoSaver (lazy persistence — mongodb-memory-server)', () => {
     expect(researchEffects).toEqual(['research']);
     expect(writerEffects).toEqual(['writer']);
     expect(approvalEffects).toEqual(['YES']);
+  });
+});
+
+describe('durable subagent recovery checkpoint proof', () => {
+  it('proves the exact child checkpoint from the durable parent interrupt manifest', async () => {
+    const saver = await getAgentCheckpointer(MONGO_CFG);
+    expect(saver).toBeDefined();
+
+    const checkpointNamespace = `generation-${new mongoose.Types.ObjectId().toString()}`;
+    const parentThreadId = `parent-${new mongoose.Types.ObjectId().toString()}`;
+    const childThreadId = `child-${new mongoose.Types.ObjectId().toString()}`;
+    const parentToolCallId = 'parent-subagent-call';
+
+    const child = emptyCheckpoint();
+    await saver!.putWrites(
+      {
+        configurable: {
+          thread_id: childThreadId,
+          checkpoint_ns: 'child-ns',
+          checkpoint_id: child.id,
+          [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: checkpointNamespace,
+        },
+      },
+      [[INTERRUPT, { id: 'child-interrupt', value: 'approve child output?' }]],
+      'child-task',
+    );
+    await saver!.put(
+      {
+        configurable: {
+          thread_id: childThreadId,
+          checkpoint_ns: 'child-ns',
+          [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: checkpointNamespace,
+        },
+      },
+      child,
+      { source: 'input', step: -1, writes: null, parents: {} },
+    );
+
+    const parent = emptyCheckpoint();
+    await saver!.putWrites(
+      {
+        configurable: {
+          thread_id: parentThreadId,
+          checkpoint_ns: '',
+          checkpoint_id: parent.id,
+          [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: checkpointNamespace,
+        },
+      },
+      [
+        [
+          INTERRUPT,
+          {
+            id: 'parent-interrupt',
+            value: {
+              __librechat_run_step_resume_payload: {
+                __librechat_subagent_resume_manifest: {
+                  version: 1,
+                  executions: [
+                    {
+                      parentToolCallId,
+                      checkpoints: [
+                        {
+                          threadId: childThreadId,
+                          checkpointNs: 'child-ns',
+                          checkpointId: child.id,
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        ],
+      ],
+      'parent-task',
+    );
+    await saver!.put(
+      {
+        configurable: {
+          thread_id: parentThreadId,
+          checkpoint_ns: '',
+          [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: checkpointNamespace,
+        },
+      },
+      parent,
+      { source: 'input', step: -1, writes: null, parents: {} },
+    );
+
+    await expect(
+      hasDurableSubagentRecoveryCheckpoint(parentThreadId, MONGO_CFG, {
+        checkpointNamespace,
+        parentToolCallId,
+        childThreadId,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      hasDurableSubagentRecoveryCheckpoint(parentThreadId, MONGO_CFG, {
+        checkpointNamespace,
+        parentToolCallId: 'wrong-tool-call',
+        childThreadId,
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      hasDurableSubagentRecoveryCheckpoint(parentThreadId, MONGO_CFG, {
+        checkpointNamespace: 'wrong-generation',
+        parentToolCallId,
+        childThreadId,
+      }),
+    ).resolves.toBe(false);
   });
 });
 

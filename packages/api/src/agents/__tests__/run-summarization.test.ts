@@ -3143,6 +3143,21 @@ describe('HITL wiring is gated on hitlCapable', () => {
     expect(config).not.toHaveProperty('humanInTheLoop');
   });
 
+  it('attaches only the checkpointer for a durable-recovery-capable subagent store', async () => {
+    const config = await runAndGetConfig({
+      hitlCapable: false,
+      subagentTasks: {
+        store: { supportsDurableCheckpointRecovery: true },
+        scopeId: 'p3-durable-recovery',
+      },
+    });
+    expect(config).not.toHaveProperty('humanInTheLoop');
+    expect(
+      (config.graphConfig as { compileOptions?: { checkpointer?: unknown } }).compileOptions
+        ?.checkpointer,
+    ).toBeDefined();
+  });
+
   it('heals aliases discovered when a lazy subagent resolves', async () => {
     const alias = { name: 'delete_mcp_acme', aliasName: 'acme_delete_mcp_acme' };
     const resolvedChild = makeAgent({ id: 'lazy-child', mcpToolAliases: [alias] });

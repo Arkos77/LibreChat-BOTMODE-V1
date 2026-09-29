@@ -286,6 +286,28 @@ beforeEach(async () => {
 });
 
 describe('SubagentThreadTaskStore', () => {
+  it('advertises durable checkpoint recovery through the direct and completion-wakeup stores', () => {
+    const store = createSubagentThreadTaskStore(methods);
+
+    expect(store.supportsDurableCheckpointRecovery).toBe(true);
+    expect(
+      buildSubagentThreadTaskConfig(store, {
+        userId: 'recovery-capability-user',
+        parentConversationId: 'recovery-capability-parent',
+      }).store.supportsDurableCheckpointRecovery,
+    ).toBe(true);
+    expect(
+      buildSubagentThreadTaskConfig(
+        store,
+        {
+          userId: 'recovery-capability-user',
+          parentConversationId: 'recovery-capability-parent',
+        },
+        { completionWakeups: true },
+      ).store.supportsDurableCheckpointRecovery,
+    ).toBe(true);
+  });
+
   it('records the automatic delivery contract without hiding routed store operations', async () => {
     const store = new SubagentThreadTaskStore(methods);
     const scope = { userId: 'delivery-user', parentConversationId: randomUUID() };
@@ -1391,6 +1413,223 @@ describe('SubagentThreadTaskStore', () => {
       '+subagentTask',
     );
     expect(messages.map((message) => message.subagentTask?.status)).toEqual(['running', 'error']);
+  });
+
+  it('resumes an abandoned durable attempt only when the host proves a recoverable checkpoint', async () => {
+    const userId = 'recoverable-attempt-user';
+    const parentConversationId = randomUUID();
+    const threadId = randomUUID();
+    await saveParent(userId, parentConversationId);
+    const store = new SubagentThreadTaskStore(methods);
+    const verifyDurableRecovery = jest.fn().mockResolvedValue(true);
+    const config = buildSubagentThreadTaskConfig(
+      store,
+      { userId, parentConversationId },
+      { verifyDurableRecovery },
+    );
+    await methods.saveConvo(
+      { userId },
+      {
+        conversationId: threadId,
+        endpoint: EModelEndpoint.agents,
+        title: 'Recoverable child',
+        agent_id: 'researcher-agent',
+        subagentThread: {
+          rootConversationId: parentConversationId,
+          parentConversationId,
+          parentMessageId: 'parent-run',
+          parentToolCallId: 'parent-tool',
+          parentAgentId: 'parent-agent',
+          subagentType: 'researcher-agent',
+          subagentKind: 'agent',
+          depth: 1,
+        },
+      },
+    );
+    await methods.saveMessage(
+      { userId },
+      {
+        messageId: 'recoverable:user',
+        conversationId: threadId,
+        parentMessageId: String(Constants.NO_PARENT),
+        sender: 'User',
+        text: 'Run once.',
+        endpoint: EModelEndpoint.agents,
+        isCreatedByUser: true,
+        subagentTask: {
+          attemptKey: createSubagentAttemptKey(config.scopeId, 'recoverable-attempt'),
+          requestFingerprint: 'same-inputs',
+          parentRunId: 'parent-run',
+          status: 'running',
+        },
+      },
+    );
+    const run = jest.fn(async (runtime: SubagentTaskRuntime) => {
+      expect(runtime.recoveryOnly).toBe(true);
+      return { content: 'Recovered.', messages: [new AIMessage('Recovered.')] };
+    });
+    const retry = config.store.start(
+      taskRequest(config.scopeId, {
+        threadId,
+        idempotencyKey: 'recoverable-attempt',
+        requestFingerprint: 'same-inputs',
+        run,
+      }),
+    );
+    await waitForSettled(store, config.scopeId, retry);
+
+    expect(verifyDurableRecovery).toHaveBeenCalledWith({
+      parentConversationId,
+      parentRunId: 'parent-run',
+      parentToolCallId: 'parent-tool',
+      childThreadId: threadId,
+    });
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(store.claim(config.scopeId, requireAccepted(retry).task.taskId)).toMatchObject({
+      status: 'completed',
+      result: 'Recovered.',
+    });
+    const messages = await methods.getMessages(
+      { user: userId, conversationId: threadId },
+      '+subagentTask',
+    );
+    expect(messages.filter((message) => message.isCreatedByUser === true)).toHaveLength(1);
+  });
+
+  it('keeps abandoned recovery fail-closed when the verifier rejects it', async () => {
+    const userId = 'recovery-rejected-user';
+    const parentConversationId = randomUUID();
+    const threadId = randomUUID();
+    await saveParent(userId, parentConversationId);
+    const store = new SubagentThreadTaskStore(methods);
+    const verifyDurableRecovery = jest.fn().mockResolvedValue(false);
+    const config = buildSubagentThreadTaskConfig(
+      store,
+      { userId, parentConversationId },
+      { verifyDurableRecovery },
+    );
+    await methods.saveConvo(
+      { userId },
+      {
+        conversationId: threadId,
+        endpoint: EModelEndpoint.agents,
+        title: 'Rejected recovery child',
+        agent_id: 'researcher-agent',
+        subagentThread: {
+          rootConversationId: parentConversationId,
+          parentConversationId,
+          parentMessageId: 'parent-run',
+          parentToolCallId: 'parent-tool',
+          parentAgentId: 'parent-agent',
+          subagentType: 'researcher-agent',
+          subagentKind: 'agent',
+          depth: 1,
+        },
+      },
+    );
+    await methods.saveMessage(
+      { userId },
+      {
+        messageId: 'rejected:user',
+        conversationId: threadId,
+        parentMessageId: String(Constants.NO_PARENT),
+        sender: 'User',
+        text: 'Run once.',
+        endpoint: EModelEndpoint.agents,
+        isCreatedByUser: true,
+        subagentTask: {
+          attemptKey: createSubagentAttemptKey(config.scopeId, 'rejected-attempt'),
+          requestFingerprint: 'same-inputs',
+          parentRunId: 'parent-run',
+          status: 'running',
+        },
+      },
+    );
+    const run = jest.fn(taskRequest(config.scopeId).run);
+    const retry = config.store.start(
+      taskRequest(config.scopeId, {
+        threadId,
+        idempotencyKey: 'rejected-attempt',
+        requestFingerprint: 'same-inputs',
+        run,
+      }),
+    );
+    await waitForSettled(store, config.scopeId, retry);
+
+    expect(run).not.toHaveBeenCalled();
+    expect(store.claim(config.scopeId, requireAccepted(retry).task.taskId)).toMatchObject({
+      status: 'error',
+      error:
+        'Subagent task failed: The prior execution ended before its result could be persisted.',
+    });
+  });
+
+  it('keeps abandoned recovery fail-closed when the verifier throws', async () => {
+    const userId = 'recovery-verifier-error-user';
+    const parentConversationId = randomUUID();
+    const threadId = randomUUID();
+    await saveParent(userId, parentConversationId);
+    const store = new SubagentThreadTaskStore(methods);
+    const verifyDurableRecovery = jest.fn().mockRejectedValue(new Error('checkpoint unavailable'));
+    const config = buildSubagentThreadTaskConfig(
+      store,
+      { userId, parentConversationId },
+      { verifyDurableRecovery },
+    );
+    await methods.saveConvo(
+      { userId },
+      {
+        conversationId: threadId,
+        endpoint: EModelEndpoint.agents,
+        title: 'Verifier error child',
+        agent_id: 'researcher-agent',
+        subagentThread: {
+          rootConversationId: parentConversationId,
+          parentConversationId,
+          parentMessageId: 'parent-run',
+          parentToolCallId: 'parent-tool',
+          parentAgentId: 'parent-agent',
+          subagentType: 'researcher-agent',
+          subagentKind: 'agent',
+          depth: 1,
+        },
+      },
+    );
+    await methods.saveMessage(
+      { userId },
+      {
+        messageId: 'verifier-error:user',
+        conversationId: threadId,
+        parentMessageId: String(Constants.NO_PARENT),
+        sender: 'User',
+        text: 'Run once.',
+        endpoint: EModelEndpoint.agents,
+        isCreatedByUser: true,
+        subagentTask: {
+          attemptKey: createSubagentAttemptKey(config.scopeId, 'verifier-error-attempt'),
+          requestFingerprint: 'same-inputs',
+          parentRunId: 'parent-run',
+          status: 'running',
+        },
+      },
+    );
+    const run = jest.fn(taskRequest(config.scopeId).run);
+    const retry = config.store.start(
+      taskRequest(config.scopeId, {
+        threadId,
+        idempotencyKey: 'verifier-error-attempt',
+        requestFingerprint: 'same-inputs',
+        run,
+      }),
+    );
+    await waitForSettled(store, config.scopeId, retry);
+
+    expect(run).not.toHaveBeenCalled();
+    expect(store.claim(config.scopeId, requireAccepted(retry).task.taskId)).toMatchObject({
+      status: 'error',
+      error:
+        'Subagent task failed: The prior execution ended before its result could be persisted.',
+    });
   });
 
   it('holds one active lease per child and exposes provisional ownership safely', async () => {

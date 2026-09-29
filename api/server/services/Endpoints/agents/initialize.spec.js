@@ -14,6 +14,9 @@ const { MongoMemoryServer } = require('mongodb-memory-server');
 
 const mockInitializeAgent = jest.fn();
 const mockValidateAgentModel = jest.fn();
+const mockGetGenerationJob = jest.fn();
+const mockHasDurableSubagentRecoveryCheckpoint = jest.fn();
+let capturedSubagentTaskConfigOptions;
 
 function deferred() {
   let resolve;
@@ -31,14 +34,28 @@ jest.mock('@librechat/agents', () => ({
   })),
 }));
 
-jest.mock('@librechat/api', () => ({
-  ...jest.requireActual('@librechat/api'),
-  initializeAgent: (...args) => mockInitializeAgent(...args),
-  validateAgentModel: (...args) => mockValidateAgentModel(...args),
-  GenerationJobManager: { setCollectedUsage: jest.fn() },
-  getCustomEndpointConfig: jest.fn(),
-  createSequentialChainEdges: jest.fn(),
-}));
+jest.mock('@librechat/api', () => {
+  const actual = jest.requireActual('@librechat/api');
+  return {
+    ...actual,
+    initializeAgent: (...args) => mockInitializeAgent(...args),
+    validateAgentModel: (...args) => mockValidateAgentModel(...args),
+    GenerationJobManager: {
+      setCollectedUsage: jest.fn(),
+      getJobStore: jest.fn(() => ({
+        getJob: (...args) => mockGetGenerationJob(...args),
+      })),
+    },
+    hasDurableSubagentRecoveryCheckpoint: (...args) =>
+      mockHasDurableSubagentRecoveryCheckpoint(...args),
+    buildSubagentThreadTaskConfig: (...args) => {
+      capturedSubagentTaskConfigOptions = args[2];
+      return actual.buildSubagentThreadTaskConfig(...args);
+    },
+    getCustomEndpointConfig: jest.fn(),
+    createSequentialChainEdges: jest.fn(),
+  };
+});
 
 /** Captured by the `getDefaultHandlers` mock so tests can drive the
  *  `ON_TOOL_EXECUTE` pipeline with a real subagent id and observe whether
@@ -946,6 +963,11 @@ describe('initializeClient — subagent loading', () => {
     });
 
     mockValidateAgentModel.mockResolvedValue({ isValid: true });
+    mockGetGenerationJob.mockReset();
+    mockGetGenerationJob.mockResolvedValue(null);
+    mockHasDurableSubagentRecoveryCheckpoint.mockReset();
+    mockHasDurableSubagentRecoveryCheckpoint.mockResolvedValue(false);
+    capturedSubagentTaskConfigOptions = undefined;
   });
 
   /** Grant the test user VIEW on an agent so processAgent loads it. */
@@ -1060,6 +1082,77 @@ describe('initializeClient — subagent loading', () => {
       userId: testUser._id.toString(),
       parentConversationId: 'conv_sub',
     });
+  });
+
+  it('binds durable recovery to the exact generation job and checkpoint namespace', async () => {
+    mockInitializeAgent.mockResolvedValue(
+      makePrimaryConfig({
+        subagents: { enabled: true, allowSelf: true, agent_ids: [] },
+      }),
+    );
+    const req = makeSubagentReq();
+    req.config.endpoints.agents.capabilities.push('run_in_background');
+    req.config.endpoints.agents.checkpointer = { type: 'mongo', ttl: 3600 };
+
+    await initializeClient({
+      req,
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption: makeEndpointOption(),
+    });
+
+    const verifyDurableRecovery = capturedSubagentTaskConfigOptions?.verifyDurableRecovery;
+    expect(verifyDurableRecovery).toEqual(expect.any(Function));
+
+    const candidate = {
+      parentConversationId: 'conv_sub',
+      parentRunId: 'parent-response',
+      parentToolCallId: 'parent-tool',
+      childThreadId: 'child-thread',
+    };
+    mockGetGenerationJob.mockResolvedValue({
+      streamId: 'conv_sub',
+      userId: testUser._id.toString(),
+      status: 'running',
+      createdAt: 123,
+      responseMessageId: 'parent-response',
+      checkpointNamespace: 'generation-123',
+    });
+    mockHasDurableSubagentRecoveryCheckpoint.mockResolvedValue(true);
+
+    await expect(verifyDurableRecovery(candidate)).resolves.toBe(true);
+    expect(mockGetGenerationJob).toHaveBeenLastCalledWith('conv_sub');
+    expect(mockHasDurableSubagentRecoveryCheckpoint).toHaveBeenLastCalledWith(
+      'conv_sub',
+      { type: 'mongo', ttl: 3600 },
+      {
+        checkpointNamespace: 'generation-123',
+        parentToolCallId: 'parent-tool',
+        childThreadId: 'child-thread',
+      },
+    );
+
+    mockHasDurableSubagentRecoveryCheckpoint.mockClear();
+    mockGetGenerationJob.mockResolvedValue({
+      streamId: 'conv_sub',
+      userId: testUser._id.toString(),
+      status: 'running',
+      createdAt: 123,
+      responseMessageId: 'different-response',
+      checkpointNamespace: 'generation-123',
+    });
+    await expect(verifyDurableRecovery(candidate)).resolves.toBe(false);
+    expect(mockHasDurableSubagentRecoveryCheckpoint).not.toHaveBeenCalled();
+
+    mockGetGenerationJob.mockResolvedValue({
+      streamId: 'conv_sub',
+      userId: testUser._id.toString(),
+      status: 'running',
+      createdAt: 123,
+      responseMessageId: 'parent-response',
+    });
+    await expect(verifyDurableRecovery(candidate)).resolves.toBe(false);
+    expect(mockHasDurableSubagentRecoveryCheckpoint).not.toHaveBeenCalled();
   });
 
   it('uses one normalized MCP body for discovery, deferred execution, and AgentClient', async () => {

@@ -90,3 +90,32 @@ Durable validation record: `P8-EFFECT-INTEGRATION-REAL`.
 - npm integrity: `sha512-wvXEQbnBcBvINA0+m117qT9pRUH8EPh7eeZYg2bG4Bp1gmzjwAkarBGETVVrdZxwgveWBPvXPjGdsW6QW0rdLA==`.
 
 The SDK passes the host trace identity into the detached task store and preserves LangGraph’s typed `GRAPH_RECURSION_LIMIT` signal across its internal failure envelope. The host correlates that signal only after a durable child failure row, using the store-owned `runtime.taskId`. The archived package was built and packed from the stated SDK commit; 145 targeted SDK tests and the build passed. Earlier artifacts remain for provenance.
+
+## Durable detached checkpoint recovery SDK — current artifact
+
+- Package: `@librechat/agents` 3.7.17.
+- Source commit: `b880d31a6a70171c671923b351a721b1a5e0ae6d`.
+- Commit message: `feat(subagents): isolate durable recovery authority`.
+- Artifact: `librechat-agents-3.7.17-b880d31a6a70171c671923b351a721b1a5e0ae6d.tgz`.
+- SHA-256: `681e6cf6149625ccaf5c423f4a062c40bf4402d69b1f680def52a05ce6441297`.
+- npm integrity: `sha512-HGRQZSv4PiktFVDxmSn8CvD2hO6zlCnGF8dCN1QePUYAmJ39fL42UGICukbyEt2y8OmgD3PxUNqJ+GOgbJrhfA==`.
+- Post-commit validation: `SubagentExecutor.test.ts` 132/132 PASS, TypeScript typecheck PASS, SDK build PASS.
+
+This SDK separates durable checkpoint recovery capability from background-task authority
+and HITL authority. A detached executor may recover from the host-provided checkpointer
+without inheriting the host task store, and durable background recovery fails closed when
+the persisted child state contains a HITL interrupt.
+
+Installing this artifact alone does not authorize host-side abandoned-task recovery.
+LibreChat must separately prove recovery admission from the existing durable identities,
+lease fencing, parent resume manifest, and exact child checkpoint address. Ambiguous or
+unproven abandoned `running` attempts remain fail-closed. Historical artifacts are retained.
+
+## Recovery-only reseed guard SDK — current artifact
+
+- source commit: `bc65f7b`
+- artifact: `librechat-agents-3.7.17-bc65f7b.tgz`
+- SHA256: `a592cfe612e1d5d1a4373a62cee5f449be989d6d7e15f671c9a8a3c5e68f5a78`
+- npm integrity: `sha512-uchGP/plMmuxvfKz4dPxZq/0d68LKwIJH0rlUkkoYXdOz6W/NO3/FXCsbiHGKXQOI9pivcDKBRJKuH5lTFIm8g==`
+- validation: SubagentExecutor 133/133 PASS; TypeScript noEmit PASS; build PASS; git diff --check PASS.
+- contract: host-proven abandoned-attempt recovery can set `SubagentTaskRuntime.recoveryOnly`; the SDK then refuses to seed a fresh child when no durable recoverable checkpoint exists. This does not itself authorize host takeover.

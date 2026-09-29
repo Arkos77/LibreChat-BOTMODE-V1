@@ -650,6 +650,156 @@ export async function hasDurableAgentInterruptCheckpoint(
   });
 }
 
+interface DurableSubagentRecoveryCheckpointOptions {
+  checkpointNamespace?: string;
+  parentToolCallId: string;
+  childThreadId: string;
+}
+
+interface DurableSubagentCheckpointReference {
+  threadId: string;
+  checkpointNs: string;
+  checkpointId: string;
+}
+
+function getDurableSubagentCheckpointReferences(
+  value: unknown,
+  parentToolCallId: string,
+  childThreadId: string,
+): DurableSubagentCheckpointReference[] {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) {
+    return [];
+  }
+  const interrupt = value as Record<string, unknown>;
+  const interruptValue = Object.prototype.hasOwnProperty.call(interrupt, 'value')
+    ? interrupt.value
+    : value;
+  if (
+    interruptValue == null ||
+    typeof interruptValue !== 'object' ||
+    Array.isArray(interruptValue)
+  ) {
+    return [];
+  }
+  const interruptPayload = interruptValue as Record<string, unknown>;
+  const rawPayload = Object.prototype.hasOwnProperty.call(
+    interruptPayload,
+    '__librechat_run_step_resume_payload',
+  )
+    ? interruptPayload.__librechat_run_step_resume_payload
+    : interruptValue;
+  if (rawPayload == null || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) {
+    return [];
+  }
+  const payload = rawPayload as Record<string, unknown>;
+  const manifest = payload.__librechat_subagent_resume_manifest;
+  if (manifest == null || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    return [];
+  }
+  const executions = (manifest as { executions?: unknown }).executions;
+  if (!Array.isArray(executions)) {
+    return [];
+  }
+
+  const matches: DurableSubagentCheckpointReference[] = [];
+  for (const execution of executions) {
+    if (execution == null || typeof execution !== 'object' || Array.isArray(execution)) {
+      continue;
+    }
+    const candidate = execution as Record<string, unknown>;
+    if (candidate.parentToolCallId !== parentToolCallId || !Array.isArray(candidate.checkpoints)) {
+      continue;
+    }
+    for (const checkpoint of candidate.checkpoints) {
+      if (checkpoint == null || typeof checkpoint !== 'object' || Array.isArray(checkpoint)) {
+        continue;
+      }
+      const reference = checkpoint as Record<string, unknown>;
+      if (
+        reference.threadId === childThreadId &&
+        typeof reference.checkpointNs === 'string' &&
+        typeof reference.checkpointId === 'string' &&
+        reference.checkpointId !== ''
+      ) {
+        matches.push({
+          threadId: childThreadId,
+          checkpointNs: reference.checkpointNs,
+          checkpointId: reference.checkpointId,
+        });
+      }
+    }
+  }
+  return matches;
+}
+
+/**
+ * Proves that one exact generation's durable parent interrupt names one exact
+ * child checkpoint for the detached subagent tool call being recovered.
+ *
+ * This is deliberately narrower than generic HITL resume: it does not authorize
+ * execution and it never searches across generations. The caller must already
+ * have matched the durable generation job (`responseMessageId === parentRunId`)
+ * and must pass that job's immutable `checkpointNamespace`.
+ */
+export async function hasDurableSubagentRecoveryCheckpoint(
+  parentThreadId: string,
+  cfg: TCheckpointerConfig | undefined,
+  options: DurableSubagentRecoveryCheckpointOptions,
+): Promise<boolean> {
+  if (
+    !parentThreadId ||
+    !options.parentToolCallId ||
+    !options.childThreadId ||
+    typeof options.checkpointNamespace !== 'string' ||
+    options.checkpointNamespace === ''
+  ) {
+    return false;
+  }
+  const saver = await getAgentCheckpointer(cfg);
+  if (!saver) {
+    return false;
+  }
+
+  const parentTuple = await saver.getTuple({
+    configurable: {
+      thread_id: parentThreadId,
+      checkpoint_ns: '',
+      [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: options.checkpointNamespace,
+    },
+  });
+  if (parentTuple == null) {
+    return false;
+  }
+
+  const references = (parentTuple.pendingWrites ?? []).flatMap((write) => {
+    if (write[1] !== INTERRUPT) {
+      return [];
+    }
+    const values = Array.isArray(write[2]) ? write[2] : [write[2]];
+    return values.flatMap((value) =>
+      getDurableSubagentCheckpointReferences(
+        value,
+        options.parentToolCallId,
+        options.childThreadId,
+      ),
+    );
+  });
+  if (references.length !== 1) {
+    return false;
+  }
+
+  const [reference] = references;
+  const childTuple = await saver.getTuple({
+    configurable: {
+      thread_id: reference.threadId,
+      checkpoint_ns: reference.checkpointNs,
+      checkpoint_id: reference.checkpointId,
+      [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: options.checkpointNamespace,
+    },
+  });
+  return childTuple?.checkpoint.id === reference.checkpointId;
+}
+
 /**
  * One saver per process, built lazily on first use so `setup()` (index creation)
  * runs exactly once. Keyed by the resolved settings so a config change rebuilds.

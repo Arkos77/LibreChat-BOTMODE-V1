@@ -31,6 +31,7 @@ const {
   backgroundCompletionWakeupsEnabled,
   createLazyAgentHistoryResolver,
   resolveRequestTenantId,
+  hasDurableSubagentRecoveryCheckpoint,
 } = require('@librechat/api');
 const {
   ResourceType,
@@ -1562,7 +1563,39 @@ const initializeClient = async ({
               ? { tenantId: req.user.tenantId }
               : {}),
           },
-          { completionWakeups: completionWakeupsEnabled, traceId: mtoTraceId },
+          {
+            completionWakeups: completionWakeupsEnabled,
+            traceId: mtoTraceId,
+            verifyDurableRecovery: async ({
+              parentConversationId,
+              parentRunId,
+              parentToolCallId,
+              childThreadId,
+            }) => {
+              const job = await GenerationJobManager.getJobStore().getJob(parentConversationId);
+              if (
+                job == null ||
+                job.userId !== req.user.id ||
+                (typeof req.user.tenantId === 'string' &&
+                  req.user.tenantId !== '' &&
+                  job.tenantId !== req.user.tenantId) ||
+                job.responseMessageId !== parentRunId ||
+                typeof job.checkpointNamespace !== 'string' ||
+                job.checkpointNamespace === ''
+              ) {
+                return false;
+              }
+              return hasDurableSubagentRecoveryCheckpoint(
+                parentConversationId,
+                appConfig?.endpoints?.[EModelEndpoint.agents]?.checkpointer,
+                {
+                  checkpointNamespace: job.checkpointNamespace,
+                  parentToolCallId,
+                  childThreadId,
+                },
+              );
+            },
+          },
         )
       : undefined;
   let hasExistingSubagentTask = false;
