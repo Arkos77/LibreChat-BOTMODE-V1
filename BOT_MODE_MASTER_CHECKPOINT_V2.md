@@ -684,3 +684,7 @@ Preuve fraîche : cinq suites hôte candidate, validation, revue et publication 
 ## P11 V3 — pipeline média encore ouvert (29 septembre 2026)
 
 Preuve fraîche : audio.spec.ts, image.spec.ts, images/session.spec.ts 32/32 PASS ; steering/media.spec.ts 17/17 PASS. Ces primitives prennent en charge des fichiers et le contexte média, sans démontrer le pipeline BOT MODE GenerationProvider interchangeable, brief, image/audio/vidéo, post-traitement, QA, provenance et artefact durable. Statut : P11 V3 OPEN ; distinct de la tranche technique P11 DecisionRecord déjà présente. Prochaine preuve : une génération média sous mandat et budget avec deux providers interchangeables, échec/fallback, QA et artefact vérifiable.
+
+## P12 V3 — production YouTube encore ouverte (29 septembre 2026)
+
+Preuve fraîche : endpoints/google/youtube.spec.ts 61/61 PASS pour extraction et injection sûre des URLs vidéo au contexte modèle. Ce chemin de lecture ne constitue pas la chaîne V3 claims sourcés, script, média, montage, miniature, SEO, QA, readiness, publication autorisée et analytics. Statut : P12 V3 OPEN ; distinct de la tranche technique P12 AuthorizationRecord. Prochaine preuve : dry run de chaîne complète bloquant claim non sourcé et métadonnées manquantes, puis publication seulement sur approbation.
