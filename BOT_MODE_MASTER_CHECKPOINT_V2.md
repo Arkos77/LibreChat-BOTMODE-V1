@@ -652,3 +652,7 @@ Gate V3 : transitions terminales, capacité runningTasks et totalTasks, cleanup 
 ## P3 — gate multi-processus encore ouvert (29 septembre 2026)
 
 Le test subagentCrossReplica.integration.spec.ts passe avec Redis réel, deux stores et un scénario de perte du transport propriétaire ; ces deux stores vivent dans le même processus Jest. Le critère V3 demande deux workers A/B réellement distincts, perte du processus owner, reprise et absence de double effet. Statut : P3 OPEN. Prochaine preuve : exécuter un job durable avec deux processus API indépendants, interrompre le propriétaire après admission, vérifier reprise par B, fencing et résultat unique. Les tests de routage déjà verts restent acquis.
+
+## Clôture P4 — Task Tree et reprise native (29 septembre 2026)
+
+Gate V3 : parent/enfants, dépendances, fan-out/fan-in, checkpoint, reprise et idempotence. Preuve fraîche : checkpointer.integration.spec.ts, orchestrator/native.spec.ts et planner.spec.ts 54/54 PASS ; subagentThreads.spec.ts 94/94 PASS. Les tests actifs compilent un diamant natif avec barrière fan-in, persistent un interrupt Mongo et reconstruisent un SubagentExecutor sans réexécuter researcher ; des tests de rejeu durable protègent les tâches enfants. Le test graph-subagent.e2e.test.ts avec fournisseur live est opt-in et a été ignoré : 2 skipped, aucune preuve live revendiquée ici. Décision : P4 PASS sur le Task Tree natif testé, sans clore P3 multi-processus ni la mission produit P6.
