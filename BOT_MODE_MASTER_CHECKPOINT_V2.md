@@ -660,3 +660,7 @@ Gate V3 : parent/enfants, dépendances, fan-out/fan-in, checkpoint, reprise et i
 ## P5 — Oracle produit encore ouvert (29 septembre 2026)
 
 Preuves fraîches : oracle/runtime.spec.ts et deterministic.spec.ts 24/24 PASS ; improvementValidation.spec.js 5/5 PASS. Un run opt-in et les propositions de skills possèdent une validation déterministe indépendante. Le critère V3 exige que chaque résultat critique de mission soit soumis avec ses preuves, un checker distinct et un verdict avant synthèse. Aucun appel hôte général par membre ou tâche critique du DAG n est prouvé. Statut : P5 OPEN pour la portée produit globale ; conserver les contrats et parcours ciblés PASS. Prochaine preuve : mission P6 avec déclaration hôte du critère, source indépendante, verdict UNKNOWN sans preuve et blocage de la synthèse critique non vérifiée.
+
+## P6 — orchestration produit encore ouverte (29 septembre 2026)
+
+Preuve fraîche : planner.spec.ts et native.spec.ts inclus dans 54/54 tests PASS avec checkpoint Mongo. deterministicPlanner et compileNativePlan produisent un graphe natif, des dépendances et des exigences Oracle, mais aucune invocation hôte de production de ces fonctions n est trouvée dans packages/api/src ni api/server. Statut : P6 OPEN. Prochaine preuve : un opt-in hôte avec mission structurée, bindings natifs autorisés, plan persistant, exécution et reprise du DAG, verdicts P5 avant synthèse, budget et arrêt bornés. Ne pas transformer le compilateur en second Task Engine.
