@@ -672,3 +672,7 @@ Gate V3 : upload, embeddings, pgvector, retrieval, contexte agent et provenance.
 ## P8 — Gateway et sandbox générique encore ouverts (29 septembre 2026)
 
 LibreChat dispose du sandbox code et de permissions natives pour certains outils, ACL skill et pauses HITL observées. Aucune preuve du contrat V3 complet de grant par job/action avec limites CPU/RAM/disque, modes réseau NONE/LOCAL_LAB/ALLOWLIST/WEB/TOR_ALLOWLIST, révocation et source registry vers outil enregistré ne ressort de ce contrôle. Statut : P8 OPEN ; ne pas interpréter une observation P12 comme autorisation. Prochaine preuve : matrice des contrôles natifs et test à effet de refus, expiration et révocation avant une tranche sandbox générique.
+
+## P9 — routage multi-modèle partiel (29 septembre 2026)
+
+Preuve fraîche : routing.spec.ts et decision.spec.ts 22/22 PASS ; hostModelRouting.spec.js et initialize.spec.js 64/64 PASS. L opt-in hôte choisit parmi des modèles OpenRouter explicitement configurés et validés pour un même agent ; la décision DECIDED est persistée avant le run. Les contraintes et signaux qualité, coût, latence, contexte et confidentialité du routeur générique restent des contrats, sans collecte hôte complète ni fallback multi-provider contrôlé. Statut : P9 PARTIEL, gate V3 global OPEN. Prochaine preuve : budgets et métriques réels alimentant le choix, bascule contrôlée sur échec, attribution usage/coût par modèle et tests de reprise.
