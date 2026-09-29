@@ -668,3 +668,7 @@ Preuve fraîche : planner.spec.ts et native.spec.ts inclus dans 54/54 tests PASS
 ## Clôture P7 — RAG natif réel (29 septembre 2026)
 
 Gate V3 : upload, embeddings, pgvector, retrieval, contexte agent et provenance. Preuve fraîche : P7_RAG_E2E=1 avec rag_api, vectordb et LibreChat démarrés ; rag.integration.spec.ts 5/5 PASS en 40.861 s. Les assertions lisent des chunks persistés et embeddings de dimension 384, comparent source et chunkId, vérifient la consommation du ToolMessage par le run hôte, les requêtes non pertinentes et isolation entre utilisateurs. Campagne identique déjà consignée le 27/09. Décision : P7 PASS pour ce montage réel. La reproduction après reconstruction complète du stack reste un gate de release P14, non revendiqué ici.
+
+## P8 — Gateway et sandbox générique encore ouverts (29 septembre 2026)
+
+LibreChat dispose du sandbox code et de permissions natives pour certains outils, ACL skill et pauses HITL observées. Aucune preuve du contrat V3 complet de grant par job/action avec limites CPU/RAM/disque, modes réseau NONE/LOCAL_LAB/ALLOWLIST/WEB/TOR_ALLOWLIST, révocation et source registry vers outil enregistré ne ressort de ce contrôle. Statut : P8 OPEN ; ne pas interpréter une observation P12 comme autorisation. Prochaine preuve : matrice des contrôles natifs et test à effet de refus, expiration et révocation avant une tranche sandbox générique.
