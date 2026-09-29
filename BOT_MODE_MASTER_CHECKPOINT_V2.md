@@ -676,3 +676,7 @@ LibreChat dispose du sandbox code et de permissions natives pour certains outils
 ## P9 — routage multi-modèle partiel (29 septembre 2026)
 
 Preuve fraîche : routing.spec.ts et decision.spec.ts 22/22 PASS ; hostModelRouting.spec.js et initialize.spec.js 64/64 PASS. L opt-in hôte choisit parmi des modèles OpenRouter explicitement configurés et validés pour un même agent ; la décision DECIDED est persistée avant le run. Les contraintes et signaux qualité, coût, latence, contexte et confidentialité du routeur générique restent des contrats, sans collecte hôte complète ni fallback multi-provider contrôlé. Statut : P9 PARTIEL, gate V3 global OPEN. Prochaine preuve : budgets et métriques réels alimentant le choix, bascule contrôlée sur échec, attribution usage/coût par modèle et tests de reprise.
+
+## P10 — amélioration gouvernée partielle (29 septembre 2026)
+
+Preuve fraîche : cinq suites hôte candidate, validation, revue et publication 43/43 PASS ; deux suites orchestrator 16/16 PASS. Le parcours ciblé de skill vérifie diff et digest exacts, tests indépendants, Oracle lié au payload, décision humaine, ACL native et conflit de version ; les candidats de step limit restent proposal-only. Aucun orchestrateur autonome général de veille, apprentissage, réévaluation et publication continue n est activé ; la preuve live du cycle skill déployé reste distincte. Statut : P10 PARTIEL, gate V3 global OPEN. Prochaine preuve : mission complète instrumentée avec propositions bornées, vérifications indépendantes et effet publié uniquement après autorisation exacte.
