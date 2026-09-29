@@ -692,3 +692,7 @@ Preuve fraîche : endpoints/google/youtube.spec.ts 61/61 PASS pour extraction et
 ## P13 — rooms et interface BOT MODE encore ouvertes (29 septembre 2026)
 
 Preuve fraîche : schedules/project.spec.ts 29/29 PASS ; LibreChat dispose de composants ProjectWorkspace, ProjectsView et de routes projets. Le test valide la portée projet des tâches planifiées, dont refus hors propriétaire. La vue BOT MODE réunissant plan, agents, progression, preuves, coûts, pause/reprise et isolation de deux projets simultanés n est pas démontrée. Statut : P13 OPEN. Prochaine preuve : deux projets concurrents avec isolation de tâches, mémoire et sources, et reprise observable dans une UI dédiée.
+
+## P14 — release et restauration encore ouvertes (29 septembre 2026)
+
+Des suites ciblées P0–P13 et un montage RAG réel ont été exécutés ; aucune installation propre suivie de backup, restauration vérifiée, rollback et mission globale de bout en bout n est attestée par cette campagne. Statut : P14 OPEN. Prochaine preuve : image et configuration reproductibles, doctor/health, sauvegarde Mongo et vecteurs, restauration isolée, panne simulée, audit des secrets et coûts, puis décision de release fondée sur les gates P3/P5/P6/P8/P9/P10/P11/P12/P13.
