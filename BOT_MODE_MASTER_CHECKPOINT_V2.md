@@ -673,9 +673,15 @@ Décision : P3 PASS sur les critères fonctionnels V3 multi-processus, takeover,
 
 Gate V3 : parent/enfants, dépendances, fan-out/fan-in, checkpoint, reprise et idempotence. Preuve fraîche : checkpointer.integration.spec.ts, orchestrator/native.spec.ts et planner.spec.ts 54/54 PASS ; subagentThreads.spec.ts 94/94 PASS. Les tests actifs compilent un diamant natif avec barrière fan-in, persistent un interrupt Mongo et reconstruisent un SubagentExecutor sans réexécuter researcher ; des tests de rejeu durable protègent les tâches enfants. Le test graph-subagent.e2e.test.ts avec fournisseur live est opt-in et a été ignoré : 2 skipped, aucune preuve live revendiquée ici. Décision : P4 PASS sur le Task Tree natif testé, sans clore P3 multi-processus ni la mission produit P6.
 
-## P5 — Oracle produit encore ouvert (29 septembre 2026)
+## Clôture P5 — Oracle et gate de synthèse critique (29 septembre 2026)
 
-Preuves fraîches : oracle/runtime.spec.ts et deterministic.spec.ts 24/24 PASS ; improvementValidation.spec.js 5/5 PASS. Un run opt-in et les propositions de skills possèdent une validation déterministe indépendante. Le critère V3 exige que chaque résultat critique de mission soit soumis avec ses preuves, un checker distinct et un verdict avant synthèse. Aucun appel hôte général par membre ou tâche critique du DAG n est prouvé. Statut : P5 OPEN pour la portée produit globale ; conserver les contrats et parcours ciblés PASS. Prochaine preuve : mission P6 avec déclaration hôte du critère, source indépendante, verdict UNKNOWN sans preuve et blocage de la synthèse critique non vérifiée.
+Gate V3 : chaque résultat critique soumis à des critères déclarés par l'hôte doit recevoir un verdict Oracle lié à l'identité exacte de la tâche avant d'être admis dans la synthèse critique. La vérification reste QA-only : elle ne crée ni permission, ni exécution, ni settlement, ni publication.
+
+Preuves fraîches : `oracle/runtime.spec.ts`, `oracle/deterministic.spec.ts`, `orchestrator/synthesisReadiness.spec.ts`, `orchestrator/synthesisReadiness.integration.spec.ts`, `native.spec.ts` et `planner.spec.ts` passent ensemble 52/52 ; `npm --prefix packages/api run build` PASS ; `git diff --check` PASS. Le nouveau contrat pur `evaluateSynthesisReadiness(...)` exige un verdict terminal cohérent par tâche/node critique, fail-closed sur verdict manquant, `REJECTED`, `UNKNOWN` ou `HUMAN_REVIEW`, et n'expose aucune autorité d'exécution.
+
+La preuve intégrée construit une mission structurée avec critère host-owned `total=42` et `requireEvidence=true`, la fait traverser `deterministicPlanner -> compileNativePlan.validation`, puis appelle l'Oracle déterministe avec une preuve outil attribuée à un checker distinct. Avec cette preuve, le verdict est `VERIFIED` et la synthèse devient `READY`. Sans preuve indépendante, le même candidat devient `UNKNOWN` avec `INDEPENDENT_EVIDENCE_MISSING`, puis le gate produit `BLOCKED_UNKNOWN` et refuse l'admission de la synthèse critique.
+
+Décision : P5 PASS/CLOSED sur le contrat V3 Oracle + evidence + checker distinct + fail-closed avant synthèse. P5 ne devient pas une autorité Policy/Auth et ne ferme pas P6 : l'invocation de production d'une mission structurée complète et de son orchestration hôte reste le gate P6.
 
 ## P6 — orchestration produit encore ouverte (29 septembre 2026)
 
@@ -711,4 +717,4 @@ Preuve fraîche : schedules/project.spec.ts 29/29 PASS ; LibreChat dispose de co
 
 ## P14 — release et restauration encore ouvertes (29 septembre 2026)
 
-Des suites ciblées P0–P13 et un montage RAG réel ont été exécutés ; aucune installation propre suivie de backup, restauration vérifiée, rollback et mission globale de bout en bout n est attestée par cette campagne. Statut : P14 OPEN. P3 est désormais fermé par preuve multi-processus réelle. Prochaine preuve : image et configuration reproductibles, doctor/health, sauvegarde Mongo et vecteurs, restauration isolée, panne simulée, audit des secrets et coûts, puis décision de release fondée sur les gates encore ouvertes P5/P6/P8/P9/P10/P11/P12/P13.
+Des suites ciblées P0–P13 et un montage RAG réel ont été exécutés ; aucune installation propre suivie de backup, restauration vérifiée, rollback et mission globale de bout en bout n est attestée par cette campagne. Statut : P14 OPEN. P3 et P5 sont désormais fermés par preuves dédiées. Prochaine preuve : image et configuration reproductibles, doctor/health, sauvegarde Mongo et vecteurs, restauration isolée, panne simulée, audit des secrets et coûts, puis décision de release fondée sur les gates encore ouvertes P6/P8/P9/P10/P11/P12/P13.

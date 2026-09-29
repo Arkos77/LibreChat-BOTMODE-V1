@@ -34,3 +34,5 @@ export * from './decision';
 export * from './authorization';
 
 export * from './hostModelDecision';
+
+export * from './synthesisReadiness';
