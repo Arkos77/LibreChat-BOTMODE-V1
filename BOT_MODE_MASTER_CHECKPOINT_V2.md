@@ -649,9 +649,25 @@ Gate V3 : lease, cancel, delete, takeover, stale, retry et recovery sans double 
 
 Gate V3 : transitions terminales, capacité runningTasks et totalTasks, cleanup et rétention cohérents. Preuves fraîches : background.spec.ts, guard.spec.ts et remote/lifecycle.spec.ts 128/128 PASS ; subagentThreads.spec.ts 94/94 PASS. Un contrôle comportemental direct du SDK @librechat/agents 3.7.17 confirme refus à maxRunningTotal, libération après succès et échec, éviction du résultat terminé à maxTasksTotal et absence de blocage résiduel. Les tests background couvrent TTL, capacité conversation/utilisateur/globale et éviction atomique. Décision : P2 PASS sur ce périmètre natif testé. P3 exige séparément la preuve de plusieurs workers réels.
 
-## P3 — gate multi-processus encore ouvert (29 septembre 2026)
+## Clôture P3 — multi-processus réel et takeover durable (29 septembre 2026)
 
-Le test subagentCrossReplica.integration.spec.ts passe avec Redis réel, deux stores et un scénario de perte du transport propriétaire ; ces deux stores vivent dans le même processus Jest. Le critère V3 demande deux workers A/B réellement distincts, perte du processus owner, reprise et absence de double effet. Statut : P3 OPEN. Prochaine preuve : exécuter un job durable avec deux processus API indépendants, interrompre le propriétaire après admission, vérifier reprise par B, fencing et résultat unique. Les tests de routage déjà verts restent acquis.
+Gate V3 : deux workers A/B dans des processus OS distincts, admission durable par A, perte brutale de A, expiration du lease, reprise par B avec fencing, preuve checkpoint durable exacte, résultat terminal unique et absence de double effet.
+
+Preuves fraîches :
+- subagentP3Multiprocess.integration.spec.ts lance deux vrais processus Node via fork ; A et B ont des PID distincts du processus Jest et l'un de l'autre ;
+- A est tué par SIGKILL après admission ; B reprend le même thread avec un nouveau taskId après expiration du lease partagé Mongo ;
+- B entre avec recoveryOnly=true et ne peut pas repartir d'un seed frais ;
+- l'autorisation de reprise appelle réellement hasDurableSubagentRecoveryCheckpoint et exige le parent interrupt manifest exact, parentToolCallId exact, childThreadId exact, checkpoint enfant lisible et même checkpoint namespace de génération ;
+- un seul effet externe est produit et une seule ligne terminale durable complète la tentative ;
+- subagentThreads.spec.ts : 98/98 PASS ; les cas ciblés de lease/fencing PASS ;
+- subagentCrossReplica.integration.spec.ts : 1/1 PASS avec Redis 7 Alpine éphémère local, prouvant routage propriétaire et wakeups après perte du propriétaire ;
+- checkpointer.integration.spec.ts : preuve checkpoint durable exacte PASS ;
+- initialize.spec.js : binding production génération/job/checkpoint namespace PASS ;
+- npm --prefix packages/api run build PASS ; exports runtime vérifiés ; git diff --check PASS.
+
+Checkpoint Git local : d99135c feat(bot-mode): prove P3 worker takeover. Aucun push.
+
+Décision : P3 PASS sur les critères fonctionnels V3 multi-processus, takeover, fencing, reprise durable et résultat unique couverts par ces montages. Cette clôture ne ferme pas P5/P6/P8/P9/P10/P11/P12/P13/P14.
 
 ## Clôture P4 — Task Tree et reprise native (29 septembre 2026)
 
@@ -695,4 +711,4 @@ Preuve fraîche : schedules/project.spec.ts 29/29 PASS ; LibreChat dispose de co
 
 ## P14 — release et restauration encore ouvertes (29 septembre 2026)
 
-Des suites ciblées P0–P13 et un montage RAG réel ont été exécutés ; aucune installation propre suivie de backup, restauration vérifiée, rollback et mission globale de bout en bout n est attestée par cette campagne. Statut : P14 OPEN. Prochaine preuve : image et configuration reproductibles, doctor/health, sauvegarde Mongo et vecteurs, restauration isolée, panne simulée, audit des secrets et coûts, puis décision de release fondée sur les gates P3/P5/P6/P8/P9/P10/P11/P12/P13.
+Des suites ciblées P0–P13 et un montage RAG réel ont été exécutés ; aucune installation propre suivie de backup, restauration vérifiée, rollback et mission globale de bout en bout n est attestée par cette campagne. Statut : P14 OPEN. P3 est désormais fermé par preuve multi-processus réelle. Prochaine preuve : image et configuration reproductibles, doctor/health, sauvegarde Mongo et vecteurs, restauration isolée, panne simulée, audit des secrets et coûts, puis décision de release fondée sur les gates encore ouvertes P5/P6/P8/P9/P10/P11/P12/P13.
