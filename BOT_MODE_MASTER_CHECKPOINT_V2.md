@@ -644,3 +644,7 @@ Décision : P0 PASS sur les critères fonctionnels V3 vérifiés dans le montage
 ## Clôture P1 — concurrence native (29 septembre 2026)
 
 Gate V3 : lease, cancel, delete, takeover, stale, retry et recovery sans double effet. Preuves fraîches : subagentThreads.spec.ts 94/94 PASS ; subagentTaskRouting.spec.ts et subagentCompletionWakeup.spec.ts 53/53 PASS ; deux tests de lease et takeover Mongo PASS ; subagentCrossReplica.integration.spec.ts avec Redis réel 1/1 PASS. Ce dernier route les contrôles vers le propriétaire et livre deux réveils frères une seule fois après perte du propriétaire. Redis éphémère arrêté et supprimé. Décision : P1 PASS sur les invariants de concurrence du Task Engine natif couverts par ces tests ; P2 compteurs et rétention reste distinct.
+
+## Clôture P2 — états, compteurs et rétention (29 septembre 2026)
+
+Gate V3 : transitions terminales, capacité runningTasks et totalTasks, cleanup et rétention cohérents. Preuves fraîches : background.spec.ts, guard.spec.ts et remote/lifecycle.spec.ts 128/128 PASS ; subagentThreads.spec.ts 94/94 PASS. Un contrôle comportemental direct du SDK @librechat/agents 3.7.17 confirme refus à maxRunningTotal, libération après succès et échec, éviction du résultat terminé à maxTasksTotal et absence de blocage résiduel. Les tests background couvrent TTL, capacité conversation/utilisateur/globale et éviction atomique. Décision : P2 PASS sur ce périmètre natif testé. P3 exige séparément la preuve de plusieurs workers réels.
