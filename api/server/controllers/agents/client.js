@@ -4405,7 +4405,15 @@ class AgentClient extends BaseClient {
           (activityLabel ? createAssistantPhaseStampingHandlers(offsetHandlers) : offsetHandlers);
         const createRunPromise = createRun({
           agents,
-          ...(this.orchestratorPlan == null ? {} : { orchestratorPlan: this.orchestratorPlan }),
+          ...(this.orchestratorPlan == null
+            ? {}
+            : {
+                orchestratorPlan: this.orchestratorPlan,
+                resolveMissionOracleEvidence: async (taskId) => {
+                  await this.persistTransientMissionOracleEvidence(streamId);
+                  return this.missionOracleState?.evidence?.[taskId] ?? [];
+                },
+              }),
           // Conversation-stable identity for the e2e run hook; a resumed run
           // carries no messages, so history cannot identify the conversation.
           conversationId: this.conversationId,
@@ -5015,7 +5023,15 @@ class AgentClient extends BaseClient {
         (activityLabel ? createAssistantPhaseStampingHandlers(offsetHandlers) : offsetHandlers);
       run = await createRun({
         agents,
-        ...(this.orchestratorPlan == null ? {} : { orchestratorPlan: this.orchestratorPlan }),
+        ...(this.orchestratorPlan == null
+          ? {}
+          : {
+              orchestratorPlan: this.orchestratorPlan,
+              resolveMissionOracleEvidence: async (taskId) => {
+                await this.persistTransientMissionOracleEvidence(streamId);
+                return this.missionOracleState?.evidence?.[taskId] ?? [];
+              },
+            }),
         conversationId: this.conversationId,
         modelCallbacks: [modelBoundCallback],
         // State (messages, tool calls) is rehydrated from the checkpoint by

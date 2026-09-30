@@ -5,6 +5,7 @@ import type {
   StandardGraphConfig,
 } from '@librechat/agents';
 import type { MissionPlan, OracleRequirement, PlannedTask } from './types';
+import type { MissionOracleTaskInput } from './missionOracle';
 import { assertMissionTaskVerified, validateMissionTask } from './missionOracle';
 import { getTaskLevels, nodeIdentity } from './planner';
 
@@ -24,7 +25,16 @@ function messageCandidate(
     : undefined;
 }
 
-function requirePredecessorOutputs(sourceTasks: readonly PlannedTask[]) {
+export type MissionOracleEvidenceResolver = (
+  taskId: string,
+) =>
+  | Promise<NonNullable<MissionOracleTaskInput['evidence']>>
+  | NonNullable<MissionOracleTaskInput['evidence']>;
+
+function requirePredecessorOutputs(
+  sourceTasks: readonly PlannedTask[],
+  resolveMissionOracleEvidence?: MissionOracleEvidenceResolver,
+) {
   const sourceNodeIds = sourceTasks.map((task) => task.nodeId);
   return async (state: BaseGraphState): Promise<void> => {
     const missing = sourceNodeIds.filter((nodeId) => state.agentOutputs?.[nodeId] == null);
@@ -44,7 +54,10 @@ function requirePredecessorOutputs(sourceTasks: readonly PlannedTask[]) {
         agentId: task.agentId,
         candidate: messageCandidate(state.agentOutputs?.[task.nodeId]),
         requirements: task.validation,
-        evidence: [],
+        evidence:
+          resolveMissionOracleEvidence == null
+            ? []
+            : await resolveMissionOracleEvidence(task.taskId),
       });
       assertMissionTaskVerified(result);
     }
@@ -60,6 +73,7 @@ export function compileNativePlan(
   plan: MissionPlan,
   bindings: ReadonlyMap<string, AgentInputs>,
   compileOptions?: MultiAgentGraphConfig['compileOptions'],
+  resolveMissionOracleEvidence?: MissionOracleEvidenceResolver,
 ): NativeMissionPlan {
   getTaskLevels(plan.tasks);
   const tasks = new Map(plan.tasks.map((task) => [task.key, task]));
@@ -99,7 +113,7 @@ export function compileNativePlan(
         from: sourceNodeIds,
         to: task.nodeId,
         edgeType: 'direct',
-        beforeTransition: requirePredecessorOutputs(sourceTasks),
+        beforeTransition: requirePredecessorOutputs(sourceTasks, resolveMissionOracleEvidence),
       };
     });
   return {

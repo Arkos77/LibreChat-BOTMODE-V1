@@ -3077,6 +3077,96 @@ describe('createRun P6 orchestrator topology', () => {
     expect(specialist.id).toBe('agent-x');
   });
 
+  it('forwards the host-owned Mission Oracle evidence resolver into native transition gates', async () => {
+    const signal = new AbortController().signal;
+    const primary = makeAgent({ id: 'worker', instructions: 'Primary authorized' });
+    const specialist = makeAgent({
+      id: 'agent-x',
+      instructions: 'Specialist authorized',
+      model: 'gpt-4o-mini',
+      model_parameters: { model: 'gpt-4o-mini' },
+    });
+    const plan = deterministicPlanner.planMission(
+      {
+        missionId: 'mission-transition-evidence',
+        taskId: 'root',
+        objective: 'Gate transition with durable evidence',
+        constraints: ['bounded'],
+        requiredCapabilities: ['basic', 'x'],
+        objectives: [
+          {
+            key: 'checked',
+            objective: 'Checked result',
+            requiredCapabilities: ['basic'],
+            dependsOn: [],
+            validation: {
+              criteria: [{ id: 'ok', field: 'ok', expected: true }],
+              requireIndependentEvidence: true,
+            },
+          },
+          {
+            key: 'consume',
+            objective: 'Consume result',
+            requiredCapabilities: ['x'],
+            dependsOn: ['checked'],
+          },
+        ],
+      },
+      {
+        worker: {
+          id: 'worker',
+          agentId: 'worker',
+          role: 'general',
+          capabilities: ['basic'],
+          constraints: [],
+        },
+        specialists: [
+          {
+            id: 'x',
+            agentId: 'agent-x',
+            role: 'research',
+            capabilities: ['x'],
+            constraints: [],
+          },
+        ],
+      },
+    );
+    const checked = plan.tasks[0];
+    const resolveMissionOracleEvidence = jest.fn(async (taskId: string) => {
+      expect(taskId).toBe(checked.taskId);
+      return [
+        {
+          id: 'tool-run-transition-1',
+          criterionId: 'ok',
+          value: true,
+          source: { id: 'tool-run-transition-1', type: 'tool' as const, agentId: 'checker' },
+        },
+      ];
+    });
+
+    await createRun({
+      agents: [primary, specialist] as never,
+      signal,
+      orchestratorPlan: plan,
+      resolveMissionOracleEvidence,
+      streaming: true,
+      streamUsage: true,
+    });
+
+    const runConfig = (Run.create as jest.Mock).mock.calls[0][0];
+    const edge = runConfig.graphConfig.edges[0];
+    const output = new (jest.requireActual('@librechat/agents/langchain/messages').AIMessage)(
+      '{"ok":true}',
+    );
+    await expect(
+      edge.beforeTransition({
+        messages: [output],
+        agentOutputs: { [checked.nodeId]: output },
+      }),
+    ).resolves.toBeUndefined();
+    expect(resolveMissionOracleEvidence).toHaveBeenCalledWith(checked.taskId);
+  });
+
   it('keeps BYOM approval bound after saved agent identity is remapped to a task node', async () => {
     const primary = makeAgent({
       id: 'worker',

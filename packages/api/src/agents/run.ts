@@ -95,6 +95,7 @@ import {
 } from '~/agents/config';
 import { applyCustomHandoffPromptKeyCompatibility } from '~/agents/handoffPromptKeyCompatibility';
 import { stripIntentFromToolRegistry, stripIntentFromToolDefinitions } from '~/agents/intent';
+import { compileNativePlan, type MissionOracleEvidenceResolver } from './orchestrator/native';
 import { extractDefaultParams, resolveReasoningParams } from '~/endpoints/openai/llm';
 import { getLLMConfig as getAnthropicLLMConfig } from '~/endpoints/anthropic/llm';
 import { CREATE_FILE_TOOL_NAME, EDIT_FILE_TOOL_NAME } from '~/agents/tools';
@@ -107,7 +108,6 @@ import { getPluginHookSource } from '~/agents/hooks/source';
 import { getOpenAIConfig } from '~/endpoints/openai/config';
 import { createStepBudgetHook } from '~/agents/stepBudget';
 import { buildHITLRunWiring } from '~/agents/hitl/runtime';
-import { compileNativePlan } from './orchestrator/native';
 import { buildLangfuseConfig } from '~/langfuse/config';
 import { applyTestRunHook } from '~/agents/testHook';
 import { attachRunOracle } from '~/agents/oracle';
@@ -1428,6 +1428,7 @@ export async function createRun({
   subagentTasks,
   oracle,
   orchestratorPlan,
+  resolveMissionOracleEvidence,
   steering,
   activityLabel,
   activityPhase,
@@ -1502,6 +1503,8 @@ export async function createRun({
    * through the normal authorized model/tool/policy initialization path.
    */
   orchestratorPlan?: MissionPlan;
+  /** Host-owned read-only evidence resolver for native dependency-transition QA. */
+  resolveMissionOracleEvidence?: MissionOracleEvidenceResolver;
   /**
    * Receives per-model-call usage from subagent child runs so hosts can bill
    * them (child graphs execute outside the run's `streamEvents` loop, so
@@ -1910,7 +1913,12 @@ export async function createRun({
       }
       authorizedBindings.set(savedAgentId, binding);
     }
-    const nativePlan = compileNativePlan(orchestratorPlan, authorizedBindings);
+    const nativePlan = compileNativePlan(
+      orchestratorPlan,
+      authorizedBindings,
+      undefined,
+      resolveMissionOracleEvidence,
+    );
     graphConfig = nativePlan.graphConfig;
     graphConfig.signal = signal;
 
@@ -2078,8 +2086,7 @@ export async function createRun({
   const durableSubagentCheckpointRecovery =
     (
       subagentTasks?.store as
-        | (typeof subagentTasks.store & { supportsDurableCheckpointRecovery?: boolean })
-        | undefined
+        (typeof subagentTasks.store & { supportsDurableCheckpointRecovery?: boolean }) | undefined
     )?.supportsDurableCheckpointRecovery === true;
   if (hitl || asksUserQuestions || eventActorCheckpointing || durableSubagentCheckpointRecovery) {
     const checkpointer = await getAgentCheckpointer(agentsEndpointConfig?.checkpointer);

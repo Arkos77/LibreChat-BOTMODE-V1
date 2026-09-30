@@ -217,6 +217,58 @@ describe('native plan compilation', () => {
     );
   });
 
+  it('uses host-resolved durable evidence when gating a validated predecessor transition', async () => {
+    const plan = deterministicPlanner.planMission(
+      {
+        ...base,
+        objectives: [
+          {
+            key: 'checked',
+            objective: 'Produce independently checked result',
+            requiredCapabilities: ['x'],
+            dependsOn: [],
+            validation: {
+              criteria: [{ id: 'ok', field: 'ok', expected: true }],
+              requireIndependentEvidence: true,
+            },
+          },
+          {
+            key: 'consume',
+            objective: 'Consume independently checked result',
+            requiredCapabilities: ['basic'],
+            dependsOn: ['checked'],
+          },
+        ],
+      },
+      context,
+    );
+    const checked = plan.tasks[0];
+    const resolveMissionOracleEvidence = jest.fn(async (taskId: string) => {
+      expect(taskId).toBe(checked.taskId);
+      return [
+        {
+          id: 'tool-transition-1',
+          criterionId: 'ok',
+          value: true,
+          source: { id: 'tool-transition-1', type: 'tool' as const, agentId: 'checker' },
+        },
+      ];
+    });
+    const native = compileNativePlan(plan, bindings, undefined, resolveMissionOracleEvidence);
+    expect(native.graphConfig.type).toBe('multi-agent');
+    if (native.graphConfig.type !== 'multi-agent') throw new Error('MultiAgentGraph required');
+    const edge = native.graphConfig.edges[0];
+    const output = new AIMessage('{"ok":true}');
+    const state = {
+      messages: [output],
+      agentOutputs: { [checked.nodeId]: output },
+    } as BaseGraphState;
+
+    await expect(edge.beforeTransition?.(state)).resolves.toBeUndefined();
+    expect(resolveMissionOracleEvidence).toHaveBeenCalledTimes(1);
+    expect(resolveMissionOracleEvidence).toHaveBeenCalledWith(checked.taskId);
+  });
+
   it('fails closed when predecessor validation requires independent evidence that is unavailable', async () => {
     const plan = deterministicPlanner.planMission(
       {
