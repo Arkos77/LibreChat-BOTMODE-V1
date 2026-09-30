@@ -1,4 +1,9 @@
-import type { AgentInputs, MultiAgentGraphConfig, StandardGraphConfig } from '@librechat/agents';
+import type {
+  AgentInputs,
+  BaseGraphState,
+  MultiAgentGraphConfig,
+  StandardGraphConfig,
+} from '@librechat/agents';
 import type { MissionPlan, OracleRequirement } from './types';
 import { getTaskLevels, nodeIdentity } from './planner';
 
@@ -8,6 +13,17 @@ export interface NativeMissionPlan {
   graphConfig: StandardGraphConfig | MultiAgentGraphConfig;
   actors: Array<{ nodeId: string; agentId: string; taskId: string }>;
   validation: Array<{ taskId: string; nodeId: string; requirements: OracleRequirement[] }>;
+}
+
+function requirePredecessorOutputs(sourceNodeIds: readonly string[]) {
+  return (state: BaseGraphState): void => {
+    const missing = sourceNodeIds.filter((nodeId) => state.agentOutputs?.[nodeId] == null);
+    if (missing.length > 0) {
+      throw new Error(
+        `Native mission transition missing checkpointed predecessor output: ${missing.join(', ')}`,
+      );
+    }
+  };
 }
 
 /**
@@ -51,11 +67,15 @@ export function compileNativePlan(
   });
   const edges: MultiAgentGraphConfig['edges'] = plan.tasks
     .filter((task) => task.dependsOn.length > 0)
-    .map((task) => ({
-      from: task.dependsOn.map((key) => tasks.get(key)!.nodeId),
-      to: task.nodeId,
-      edgeType: 'direct',
-    }));
+    .map((task) => {
+      const sourceNodeIds = task.dependsOn.map((key) => tasks.get(key)!.nodeId);
+      return {
+        from: sourceNodeIds,
+        to: task.nodeId,
+        edgeType: 'direct',
+        beforeTransition: requirePredecessorOutputs(sourceNodeIds),
+      };
+    });
   return {
     planId: plan.planId,
     missionId: plan.mission.missionId,

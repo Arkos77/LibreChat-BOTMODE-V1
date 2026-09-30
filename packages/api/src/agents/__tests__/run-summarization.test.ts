@@ -3064,7 +3064,12 @@ describe('createRun P6 orchestrator topology', () => {
       plan.tasks.map((task) => task.nodeId),
     );
     expect(runConfig.graphConfig.edges).toEqual([
-      { from: [plan.tasks[0].nodeId], to: plan.tasks[1].nodeId, edgeType: 'direct' },
+      expect.objectContaining({
+        from: [plan.tasks[0].nodeId],
+        to: plan.tasks[1].nodeId,
+        edgeType: 'direct',
+        beforeTransition: expect.any(Function),
+      }),
     ]);
     expect(runConfig.graphConfig.agents[0].instructions).toContain('Primary authorized');
     expect(runConfig.graphConfig.agents[1].instructions).toContain('Specialist authorized');

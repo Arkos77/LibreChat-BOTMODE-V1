@@ -1,6 +1,6 @@
 import { Run, Providers } from '@librechat/agents';
-import { HumanMessage } from '@librechat/agents/langchain/messages';
-import type { AgentInputs } from '@librechat/agents';
+import { AIMessage, HumanMessage } from '@librechat/agents/langchain/messages';
+import type { AgentInputs, BaseGraphState } from '@librechat/agents';
 import { deterministicPlanner } from './planner';
 import { compileNativePlan } from './native';
 
@@ -75,11 +75,14 @@ describe('native plan compilation', () => {
     if (native.graphConfig.type !== 'multi-agent') {
       throw new Error('MultiAgentGraph required');
     }
-    expect(native.graphConfig.edges).toContainEqual({
-      from: [plan.tasks[1].nodeId, plan.tasks[2].nodeId],
-      to: plan.tasks[3].nodeId,
-      edgeType: 'direct',
-    });
+    expect(native.graphConfig.edges).toContainEqual(
+      expect.objectContaining({
+        from: [plan.tasks[1].nodeId, plan.tasks[2].nodeId],
+        to: plan.tasks[3].nodeId,
+        edgeType: 'direct',
+        beforeTransition: expect.any(Function),
+      }),
+    );
     expect(native.validation[0]).toMatchObject({
       taskId: plan.tasks[3].taskId,
       nodeId: plan.tasks[3].nodeId,
@@ -125,6 +128,54 @@ describe('native plan compilation', () => {
     expect(run.getHaltReason()).toBeUndefined();
     expect(bindings.get('worker')?.instructions).toBe('Authorized instructions');
   });
+  it('fails closed until every direct predecessor output is checkpointed', async () => {
+    const plan = deterministicPlanner.planMission(
+      {
+        ...base,
+        objectives: [
+          { key: 'a', objective: 'Branch X', requiredCapabilities: ['x'], dependsOn: [] },
+          { key: 'b', objective: 'Branch Y', requiredCapabilities: ['y'], dependsOn: [] },
+          {
+            key: 'c',
+            objective: 'Synthesize',
+            requiredCapabilities: ['basic'],
+            dependsOn: ['a', 'b'],
+          },
+        ],
+      },
+      context,
+    );
+    const native = compileNativePlan(plan, bindings);
+    expect(native.graphConfig.type).toBe('multi-agent');
+    if (native.graphConfig.type !== 'multi-agent') {
+      throw new Error('MultiAgentGraph required');
+    }
+    const edge = native.graphConfig.edges[0];
+    expect(edge.beforeTransition).toEqual(expect.any(Function));
+    const outputA = new AIMessage('A');
+    const outputB = new AIMessage('B');
+    const state = (
+      agentOutputs: BaseGraphState['agentOutputs'],
+      messages: BaseGraphState['messages'] = [],
+    ): BaseGraphState => ({ messages, agentOutputs }) as BaseGraphState;
+
+    expect(() => edge.beforeTransition?.(state({}))).toThrow(plan.tasks[0].nodeId);
+    expect(() =>
+      edge.beforeTransition?.(state({ [plan.tasks[0].nodeId]: outputA }, [outputA])),
+    ).toThrow(plan.tasks[1].nodeId);
+    expect(() =>
+      edge.beforeTransition?.(
+        state(
+          {
+            [plan.tasks[0].nodeId]: outputA,
+            [plan.tasks[1].nodeId]: outputB,
+          },
+          [outputA, outputB],
+        ),
+      ),
+    ).not.toThrow();
+  });
+
   it('rejects missing authorized bindings', () => {
     const plan = deterministicPlanner.planMission(base, context);
     expect(() => compileNativePlan(plan, new Map())).toThrow('binding');
