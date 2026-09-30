@@ -11,6 +11,7 @@ import type {
 } from '../agents/triggers/types';
 import type { ActivityPhaseSnapshot } from '~/agents/activityPhases/runtime';
 import type { ResolvedAskUserQuestion } from '../agents/hitl/resume';
+import type { MissionPlan } from '~/agents/orchestrator/types';
 import type { MCPRuntimeRequestBody } from '../mcp/types';
 import type { ServerSentEvent } from './events';
 
@@ -29,6 +30,10 @@ export interface GenerationJobMetadata {
   responseMessageId?: string;
   /** Host-minted MTO correlation identity. Observational only; never aliases a run/message/task id. */
   mtoTraceId?: string;
+  /** Exact host-approved BOT MODE mission plan for this generation.
+   * Persisted before execution and replayed verbatim on HITL resume; it is
+   * planning/topology data only and grants no execution permission. */
+  orchestratorPlan?: MissionPlan;
   /** Whether this generation replaces an existing assistant branch. */
   isRegenerate?: boolean;
   /** Exact normalized MCP placeholder identity for this turn. Persisted so HITL

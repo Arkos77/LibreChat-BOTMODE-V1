@@ -12,6 +12,7 @@ import type { RunStep, StandardGraph } from '@librechat/agents';
 import type { AgentEventDetachedTerminalEvidence } from '~/agents/triggers/types';
 import type { ActivityPhaseSnapshot } from '~/agents/activityPhases/runtime';
 import type { ResolvedAskUserQuestion } from '~/agents/hitl/resume';
+import type { MissionPlan } from '~/agents/orchestrator/types';
 import type { RecoveredSteerPayload } from '../SteerRecovery';
 import type { MCPRuntimeRequestBody } from '~/mcp/types';
 
@@ -152,6 +153,9 @@ export interface SerializableJobData {
   responseMessageId?: string;
   /** Host-minted MTO correlation identity carried across HITL resume. */
   mtoTraceId?: string;
+  /** Exact host-approved BOT MODE mission plan carried across HITL resume.
+   * This is durable topology/planning evidence, not authorization. */
+  orchestratorPlan?: MissionPlan;
 
   /** Whether this generation replaces an existing assistant branch. */
   isRegenerate?: boolean;
@@ -432,6 +436,7 @@ export type JobMetadataPatch = Partial<
     SerializableJobData,
     | 'responseMessageId'
     | 'mtoTraceId'
+    | 'orchestratorPlan'
     | 'isRegenerate'
     | 'mcpRequestBody'
     | 'userSubmittedPaths'

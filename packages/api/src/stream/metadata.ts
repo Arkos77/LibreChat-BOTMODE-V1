@@ -9,6 +9,9 @@ export function sanitizeJobMetadata(metadata: Partial<GenerationJobMetadata>): J
   if (metadata.mtoTraceId) {
     patch.mtoTraceId = metadata.mtoTraceId;
   }
+  if (metadata.orchestratorPlan) {
+    patch.orchestratorPlan = structuredClone(metadata.orchestratorPlan);
+  }
   if (metadata.isRegenerate !== undefined) {
     patch.isRegenerate = metadata.isRegenerate;
   }

@@ -4921,6 +4921,7 @@ export class RedisJobStore implements IJobStoreV2 {
       userMessage: data.userMessage ? JSON.parse(data.userMessage) : undefined,
       responseMessageId: data.responseMessageId || undefined,
       mtoTraceId: data.mtoTraceId || undefined,
+      orchestratorPlan: data.orchestratorPlan ? JSON.parse(data.orchestratorPlan) : undefined,
       isRegenerate: data.isRegenerate != null ? data.isRegenerate === '1' : undefined,
       mcpRequestBody: data.mcpRequestBody ? JSON.parse(data.mcpRequestBody) : undefined,
       userSubmittedPaths: data.userSubmittedPaths ? JSON.parse(data.userSubmittedPaths) : undefined,

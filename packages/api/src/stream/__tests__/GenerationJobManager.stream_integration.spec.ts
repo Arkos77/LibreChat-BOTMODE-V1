@@ -405,24 +405,62 @@ describe('GenerationJobManager Integration Tests', () => {
         const hasJob = await GenerationJobManager.hasJob(streamId);
         expect(hasJob).toBe(true);
 
-        await GenerationJobManager.updateMetadata(streamId, {
-          sender: 'ConsistencyAgent',
-          responseMessageId: 'resp-123',
-          iconURL: 'https://example.com/spec-icon.png',
-          model: 'gpt-4.1',
-        });
+        const orchestratorPlan = {
+          planId: 'mission-p6:v1',
+          planVersion: 1,
+          mission: {
+            missionId: 'mission-p6',
+            taskId: 'root',
+            objective: 'Execute durable mission',
+            constraints: ['bounded'],
+            requiredCapabilities: ['basic'],
+          },
+          strategy: 'DIRECT',
+          tasks: [],
+          specialists: [],
+          reasons: [{ code: 'WORKER_CAPABLE' }],
+        };
+
+        await GenerationJobManager.updateMetadata(
+          streamId,
+          {
+            sender: 'ConsistencyAgent',
+            responseMessageId: 'resp-123',
+            iconURL: 'https://example.com/spec-icon.png',
+            model: 'gpt-4.1',
+            orchestratorPlan,
+          },
+          job.createdAt,
+        );
 
         const updated = await GenerationJobManager.getJob(streamId);
         expect(updated?.metadata?.sender).toBe('ConsistencyAgent');
         expect(updated?.metadata?.responseMessageId).toBe('resp-123');
         expect(updated?.metadata?.iconURL).toBe('https://example.com/spec-icon.png');
         expect(updated?.metadata?.model).toBe('gpt-4.1');
+        expect(updated?.metadata?.orchestratorPlan).toEqual(orchestratorPlan);
+
+        await GenerationJobManager.updateMetadata(
+          streamId,
+          {
+            orchestratorPlan: {
+              ...orchestratorPlan,
+              planId: 'stale-plan:v2',
+              planVersion: 2,
+            },
+          },
+          job.createdAt + 1,
+        );
+
+        const afterStaleUpdate = await GenerationJobManager.getJob(streamId);
+        expect(afterStaleUpdate?.metadata?.orchestratorPlan).toEqual(orchestratorPlan);
 
         const resumeState = await GenerationJobManager.getResumeState(streamId);
         expect(resumeState?.sender).toBe('ConsistencyAgent');
         expect(resumeState?.responseMessageId).toBe('resp-123');
         expect(resumeState?.iconURL).toBe('https://example.com/spec-icon.png');
         expect(resumeState?.model).toBe('gpt-4.1');
+        expect(resumeState?.orchestratorPlan).toEqual(orchestratorPlan);
 
         await GenerationJobManager.completeJob(streamId);
 
