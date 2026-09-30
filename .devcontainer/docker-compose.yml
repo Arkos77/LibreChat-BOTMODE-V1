@@ -7,8 +7,8 @@ services:
     links:
       - mongodb
       - meilisearch
-    # ports:
-    #   - 3080:3080               # Change it to 9000:3080 to use nginx
+    ports:
+      - "127.0.0.1:3080:3080"
     extra_hosts: # if you are running APIs on docker you need access to, you will need to uncomment this line and next
     - "host.docker.internal:host-gateway"
 
@@ -22,6 +22,7 @@ services:
       - MONGO_URI=mongodb://mongodb:27017/LibreChat
       # - OPENAI_REVERSE_PROXY=http://host.docker.internal:8070/v1
       - MEILI_HOST=http://meilisearch:7700
+      - RAG_API_URL=http://rag_api:8000
 
     # Runs app on the same network as the service container, allows "forwardPorts" in devcontainer.json function.
     # network_mode: service:another-service
@@ -41,7 +42,7 @@ services:
       - 27017
     # ports:
     #   - 27018:27017
-    image: mongo
+    image: mongo:8.0.20
     # restart: always
     volumes:
       - ./data-node:/data/db
@@ -60,3 +61,32 @@ services:
       - MEILI_MASTER_KEY=5c71cf56d672d009e36070b5bc5e47b743535ae55c818ae3b735bb6ebfb4ba63
     volumes:
       - ./meili_data_v1.5:/meili_data
+
+  vectordb:
+    container_name: vectordb
+    image: pgvector/pgvector:0.8.0-pg15-trixie
+    environment:
+      POSTGRES_DB: mydatabase
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+    restart: always
+    volumes:
+      - pgdata2:/var/lib/postgresql/data
+
+  rag_api:
+    container_name: rag_api
+    image: registry.librechat.ai/danny-avila/librechat-rag-api-dev:latest
+    environment:
+      DB_HOST: vectordb
+      RAG_PORT: 8000
+      EMBEDDINGS_PROVIDER: huggingface
+      EMBEDDINGS_MODEL: sentence-transformers/all-MiniLM-L6-v2
+    restart: always
+    depends_on:
+      - vectordb
+    env_file:
+      - ../.env
+      - ../.env.temp
+
+volumes:
+  pgdata2:
