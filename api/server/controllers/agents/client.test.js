@@ -858,6 +858,120 @@ describe('AgentClient - interrupt discovery persistence', () => {
     expect(client.pendingRequestReleased).toBe(true);
   });
 
+  it('promotes transient mission evidence when an event-actor staged pause is published', async () => {
+    const streamId = 'conversation-event-actor-mission-evidence';
+    const job = await GenerationJobManager.createJob(streamId, 'user-123', streamId);
+    const transientEvidenceBuffer = {
+      snapshot: jest.fn(() => [
+        {
+          source: 'native_tool_end',
+          toolCallId: 'tool-event-pause-1',
+          toolName: 'verify_pause',
+          producerAgentId: 'agent-123',
+          toolAgentId: 'checker',
+          taskId: 'task-pause',
+          criterionId: 'ok',
+          value: true,
+        },
+      ]),
+      clear: jest.fn(),
+    };
+    const client = new AgentClient({
+      req: {
+        user: { id: 'user-123' },
+        _resumableStreamId: streamId,
+        body: { endpoint: EModelEndpoint.agents, agent_id: 'agent-123' },
+        config: { endpoints: { [EModelEndpoint.agents]: {} } },
+      },
+      res: {},
+      agent: {
+        id: 'agent-123',
+        endpoint: EModelEndpoint.openAI,
+        provider: EModelEndpoint.openAI,
+        model_parameters: { model: 'gpt-4' },
+      },
+      contentParts: [],
+      collectedUsage: [],
+      artifactPromises: [],
+      transientEvidenceBuffer,
+    });
+    client.conversationId = streamId;
+    client.responseMessageId = 'response-event-actor-mission-evidence';
+    client.jobCreatedAt = job.createdAt;
+    client.eventActorInvocationId = 'event-mission-evidence';
+    client.orchestratorPlan = {
+      planId: 'plan-event-pause-evidence',
+      planVersion: 1,
+      mission: {
+        missionId: 'mission-event-pause-evidence',
+        taskId: 'root',
+        objective: 'Pause safely',
+        constraints: [],
+        requiredCapabilities: ['basic'],
+      },
+      strategy: 'DIRECT',
+      tasks: [
+        {
+          key: 'pause',
+          objective: 'Verify before pause',
+          requiredCapabilities: ['basic'],
+          dependsOn: [],
+          taskId: 'task-pause',
+          parentTaskId: 'root',
+          nodeId: 'node-pause',
+          agentId: 'agent-123',
+          constraints: [],
+          validation: [
+            {
+              criteria: [{ id: 'ok', field: 'ok', expected: true }],
+              requireIndependentEvidence: true,
+            },
+          ],
+          canRunInParallel: false,
+        },
+      ],
+      specialists: [],
+      reasons: [{ code: 'WORKER_CAPABLE' }],
+    };
+
+    await client.handleRunInterrupt(
+      {
+        getInterrupt: () => ({
+          interruptId: 'interrupt-event-mission-evidence',
+          threadId: streamId,
+          payload: {
+            type: 'ask_user_question',
+            question: { question: 'Proceed?' },
+          },
+        }),
+        getDiscoveredTools: () => [],
+        getRunMessages: () => [],
+      },
+      streamId,
+    );
+
+    await expect(GenerationJobManager.getJobStatus(streamId)).resolves.toBe('running');
+    await expect(
+      client.publishStagedApproval({
+        version: 1,
+        suspensionId: 'event-mission-evidence-suspension',
+        attempt: 0,
+      }),
+    ).resolves.toBe(true);
+
+    const paused = await GenerationJobManager.getJob(streamId);
+    expect(paused?.status).toBe('requires_action');
+    expect(paused?.metadata.missionOracleState?.evidence?.['task-pause']).toEqual([
+      {
+        id: 'tool-event-pause-1',
+        criterionId: 'ok',
+        value: true,
+        source: { id: 'tool-event-pause-1', type: 'tool', agentId: 'checker' },
+      },
+    ]);
+    expect(transientEvidenceBuffer.clear).toHaveBeenCalledTimes(1);
+  });
+
   it('makes the run discovery snapshot durable when the run pauses', async () => {
     const streamId = 'conversation-discovered-pause';
     const job = await GenerationJobManager.createJob(streamId, 'user-123', streamId);
@@ -1000,6 +1114,215 @@ describe('AgentClient - interrupt discovery persistence', () => {
     expect(paused?.status).toBe('requires_action');
     expect(paused?.metadata.missionOracleState).toEqual(client.missionOracleState);
     expect(paused?.metadata.missionOracleState).not.toBe(client.missionOracleState);
+  });
+
+  it('promotes transient mission evidence durably before publishing a HITL pause', async () => {
+    const streamId = 'conversation-mission-oracle-pause-evidence';
+    const job = await GenerationJobManager.createJob(streamId, 'user-123', streamId);
+    const transientEvidenceBuffer = {
+      snapshot: jest.fn(() => [
+        {
+          source: 'native_tool_end',
+          toolCallId: 'tool-pause-1',
+          toolName: 'verify_pause',
+          producerAgentId: 'agent-123',
+          toolAgentId: 'checker',
+          taskId: 'task-pause',
+          criterionId: 'ok',
+          value: true,
+        },
+      ]),
+      clear: jest.fn(),
+    };
+    const client = new AgentClient({
+      req: {
+        user: { id: 'user-123' },
+        _resumableStreamId: streamId,
+        body: { endpoint: EModelEndpoint.agents, agent_id: 'agent-123' },
+        config: { endpoints: { [EModelEndpoint.agents]: {} } },
+      },
+      res: {},
+      agent: {
+        id: 'agent-123',
+        endpoint: EModelEndpoint.openAI,
+        provider: EModelEndpoint.openAI,
+        model_parameters: { model: 'gpt-4' },
+      },
+      contentParts: [],
+      collectedUsage: [],
+      artifactPromises: [],
+      transientEvidenceBuffer,
+    });
+    client.conversationId = streamId;
+    client.responseMessageId = 'response-mission-oracle-pause-evidence';
+    client.jobCreatedAt = job.createdAt;
+    client.orchestratorPlan = {
+      planId: 'plan-pause-evidence',
+      planVersion: 1,
+      mission: {
+        missionId: 'mission-pause-evidence',
+        taskId: 'root',
+        objective: 'Pause safely',
+        constraints: [],
+        requiredCapabilities: ['basic'],
+      },
+      strategy: 'DIRECT',
+      tasks: [
+        {
+          key: 'pause',
+          objective: 'Verify before pause',
+          requiredCapabilities: ['basic'],
+          dependsOn: [],
+          taskId: 'task-pause',
+          parentTaskId: 'root',
+          nodeId: 'node-pause',
+          agentId: 'agent-123',
+          constraints: [],
+          validation: [
+            {
+              criteria: [{ id: 'ok', field: 'ok', expected: true }],
+              requireIndependentEvidence: true,
+            },
+          ],
+          canRunInParallel: false,
+        },
+      ],
+      specialists: [],
+      reasons: [{ code: 'WORKER_CAPABLE' }],
+    };
+
+    await client.handleRunInterrupt(
+      {
+        getInterrupt: () => ({
+          interruptId: 'ask-pause-evidence',
+          threadId: streamId,
+          payload: {
+            type: 'ask_user_question',
+            question: { question: 'Proceed?' },
+          },
+        }),
+        getDiscoveredTools: () => [],
+        getRunMessages: () => [],
+      },
+      streamId,
+    );
+
+    const paused = await GenerationJobManager.getJob(streamId);
+    expect(paused?.status).toBe('requires_action');
+    expect(paused?.metadata.missionOracleState?.evidence?.['task-pause']).toEqual([
+      {
+        id: 'tool-pause-1',
+        criterionId: 'ok',
+        value: true,
+        source: { id: 'tool-pause-1', type: 'tool', agentId: 'checker' },
+      },
+    ]);
+    expect(client.missionOracleState).toEqual(paused.metadata.missionOracleState);
+    expect(transientEvidenceBuffer.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains transient mission evidence and refuses the pause when durable readback mismatches', async () => {
+    const streamId = 'conversation-mission-oracle-pause-evidence-failure';
+    const job = await GenerationJobManager.createJob(streamId, 'user-123', streamId);
+    const transientEvidenceBuffer = {
+      snapshot: jest.fn(() => [
+        {
+          source: 'native_tool_end',
+          toolCallId: 'tool-pause-failure',
+          toolName: 'verify_pause',
+          producerAgentId: 'agent-123',
+          toolAgentId: 'checker',
+          taskId: 'task-pause',
+          criterionId: 'ok',
+          value: true,
+        },
+      ]),
+      clear: jest.fn(),
+    };
+    const client = new AgentClient({
+      req: {
+        user: { id: 'user-123' },
+        _resumableStreamId: streamId,
+        body: { endpoint: EModelEndpoint.agents, agent_id: 'agent-123' },
+        config: { endpoints: { [EModelEndpoint.agents]: {} } },
+      },
+      res: {},
+      agent: {
+        id: 'agent-123',
+        endpoint: EModelEndpoint.openAI,
+        provider: EModelEndpoint.openAI,
+        model_parameters: { model: 'gpt-4' },
+      },
+      contentParts: [],
+      collectedUsage: [],
+      artifactPromises: [],
+      transientEvidenceBuffer,
+    });
+    client.conversationId = streamId;
+    client.responseMessageId = 'response-mission-oracle-pause-evidence-failure';
+    client.jobCreatedAt = job.createdAt;
+    client.orchestratorPlan = {
+      planId: 'plan-pause-evidence-failure',
+      planVersion: 1,
+      mission: {
+        missionId: 'mission-pause-evidence-failure',
+        taskId: 'root',
+        objective: 'Pause safely',
+        constraints: [],
+        requiredCapabilities: ['basic'],
+      },
+      strategy: 'DIRECT',
+      tasks: [
+        {
+          key: 'pause',
+          objective: 'Verify before pause',
+          requiredCapabilities: ['basic'],
+          dependsOn: [],
+          taskId: 'task-pause',
+          parentTaskId: 'root',
+          nodeId: 'node-pause',
+          agentId: 'agent-123',
+          constraints: [],
+          validation: [
+            {
+              criteria: [{ id: 'ok', field: 'ok', expected: true }],
+              requireIndependentEvidence: true,
+            },
+          ],
+          canRunInParallel: false,
+        },
+      ],
+      specialists: [],
+      reasons: [{ code: 'WORKER_CAPABLE' }],
+    };
+
+    const getJobSpy = jest.spyOn(GenerationJobManager, 'getJob').mockResolvedValueOnce({
+      createdAt: job.createdAt,
+      metadata: { missionOracleState: { evidence: {}, results: {} } },
+    });
+
+    await expect(
+      client.handleRunInterrupt(
+        {
+          getInterrupt: () => ({
+            interruptId: 'ask-pause-evidence-failure',
+            threadId: streamId,
+            payload: {
+              type: 'ask_user_question',
+              question: { question: 'Proceed?' },
+            },
+          }),
+          getDiscoveredTools: () => [],
+          getRunMessages: () => [],
+        },
+        streamId,
+      ),
+    ).rejects.toThrow('persistence verification failed');
+
+    expect(transientEvidenceBuffer.clear).not.toHaveBeenCalled();
+    expect(client.missionOracleState).toBeUndefined();
+    await expect(GenerationJobManager.getJobStatus(streamId)).resolves.toBe('running');
+    getJobSpy.mockRestore();
   });
 
   it('promotes transient mission evidence durably before clearing the buffer', async () => {

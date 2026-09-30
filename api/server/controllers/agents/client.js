@@ -3686,6 +3686,7 @@ class AgentClient extends BaseClient {
     if (this.pendingApproval?.actionId === staged.pendingAction.actionId) {
       return true;
     }
+    await this.persistTransientMissionOracleEvidence(staged.streamId);
     const pauseProjection = {
       expectedCreatedAt: this.jobCreatedAt,
       ...(staged.discoveredTools.length > 0 ? { discoveredTools: staged.discoveredTools } : {}),
@@ -4734,15 +4735,16 @@ class AgentClient extends BaseClient {
     }
   }
 
-  async assertTerminalMissionOracle(run) {
+  async persistTransientMissionOracleEvidence(streamId) {
     if (this.orchestratorPlan == null) {
-      return;
-    }
-    if (run.getInterrupt() != null || run.getHaltReason() != null) {
       return;
     }
 
     const observations = this.transientEvidenceBuffer?.snapshot?.() ?? [];
+    if (observations.length === 0) {
+      return;
+    }
+
     let nextState = this.missionOracleState;
     for (const observation of observations) {
       nextState = promoteTransientMissionOracleEvidence(
@@ -4752,31 +4754,41 @@ class AgentClient extends BaseClient {
       );
     }
 
-    if (observations.length > 0) {
-      const streamId = this.options?.req?._resumableStreamId ?? this.conversationId;
-      if (typeof streamId !== 'string' || streamId.length === 0) {
-        throw new Error('Mission Oracle evidence persistence requires stream identity');
-      }
-      await GenerationJobManager.updateMetadata(
-        streamId,
-        { missionOracleState: nextState },
-        this.jobCreatedAt,
-      );
-      const persistedJob = await GenerationJobManager.getJob(streamId);
-      if (
-        persistedJob == null ||
-        persistedJob.createdAt !== this.jobCreatedAt ||
-        persistedJob.metadata?.missionOracleState == null
-      ) {
-        throw new Error('Mission Oracle evidence persistence verification failed');
-      }
-      const persistedState = normalizeMissionOracleState(persistedJob.metadata.missionOracleState);
-      if (JSON.stringify(persistedState) !== JSON.stringify(nextState)) {
-        throw new Error('Mission Oracle evidence persistence verification failed');
-      }
-      this.missionOracleState = persistedState;
-      this.transientEvidenceBuffer.clear();
+    const durableStreamId =
+      streamId ?? this.options?.req?._resumableStreamId ?? this.conversationId;
+    if (typeof durableStreamId !== 'string' || durableStreamId.length === 0) {
+      throw new Error('Mission Oracle evidence persistence requires stream identity');
     }
+    await GenerationJobManager.updateMetadata(
+      durableStreamId,
+      { missionOracleState: nextState },
+      this.jobCreatedAt,
+    );
+    const persistedJob = await GenerationJobManager.getJob(durableStreamId);
+    if (
+      persistedJob == null ||
+      persistedJob.createdAt !== this.jobCreatedAt ||
+      persistedJob.metadata?.missionOracleState == null
+    ) {
+      throw new Error('Mission Oracle evidence persistence verification failed');
+    }
+    const persistedState = normalizeMissionOracleState(persistedJob.metadata.missionOracleState);
+    if (JSON.stringify(persistedState) !== JSON.stringify(nextState)) {
+      throw new Error('Mission Oracle evidence persistence verification failed');
+    }
+    this.missionOracleState = persistedState;
+    this.transientEvidenceBuffer.clear();
+  }
+
+  async assertTerminalMissionOracle(run) {
+    if (this.orchestratorPlan == null) {
+      return;
+    }
+    if (run.getInterrupt() != null || run.getHaltReason() != null) {
+      return;
+    }
+
+    await this.persistTransientMissionOracleEvidence();
 
     await assertTerminalMissionTasksVerified(
       this.orchestratorPlan,
