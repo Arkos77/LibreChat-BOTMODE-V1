@@ -1121,6 +1121,251 @@ describe('ResumableAgentController resume metadata', () => {
     );
   });
 
+  it('activates exact mission tool evidence declarations only after durable plan readback', async () => {
+    const sendMessage = jest.fn(() => new Promise(() => {}));
+    const configureMissionEvidence = jest.fn();
+    const client = {
+      options: { agent: { id: 'agent-primary' } },
+      agentConfigs: new Map([['agent-specialist', { id: 'agent-specialist' }]]),
+      sendMessage,
+    };
+    const initializeClient = jest.fn().mockResolvedValue({
+      client,
+      missionEvidenceContext: { configure: configureMissionEvidence },
+    });
+    const missionRequest = {
+      mission: {
+        missionId: 'mission-p10-host',
+        taskId: 'root-task',
+        objective: 'Execute the checked mission',
+        constraints: ['bounded'],
+        requiredCapabilities: ['research'],
+        objectives: [
+          {
+            key: 'research',
+            objective: 'Research the input',
+            requiredCapabilities: ['research'],
+            dependsOn: [],
+            validation: {
+              criteria: [
+                { id: 'verified', field: 'verified', expected: true, requireEvidence: true },
+              ],
+            },
+          },
+        ],
+      },
+      plannerContext: {
+        worker: {
+          id: 'worker',
+          agentId: 'agent-primary',
+          role: 'primary',
+          capabilities: ['basic'],
+          constraints: [],
+        },
+        specialists: [
+          {
+            id: 'researcher',
+            agentId: 'agent-specialist',
+            role: 'research',
+            capabilities: ['research'],
+            constraints: ['bounded'],
+          },
+        ],
+      },
+      evidenceDeclarations: [
+        {
+          taskId: 'root-task/research',
+          toolName: 'verify_research',
+          criterionId: 'verified',
+          expectedValue: true,
+        },
+      ],
+    };
+    const req = {
+      user: { id: 'user-123' },
+      body: {
+        text: 'Run the checked structured mission.',
+        messageId: 'user-message',
+        conversationId: 'conversation-123',
+        orchestratorMission: missionRequest,
+        endpointOption: { endpoint: 'agents', modelOptions: { model: 'gpt-4.1' } },
+      },
+      config: {},
+    };
+    const res = createResumableResponse();
+
+    mockGenerationJobManager.updateMetadata.mockImplementation(async (_streamId, patch) => {
+      if (patch.orchestratorPlan) {
+        expect(configureMissionEvidence).not.toHaveBeenCalled();
+        mockGenerationJobManager.getJob.mockResolvedValue({
+          createdAt: 1000,
+          metadata: { orchestratorPlan: structuredClone(patch.orchestratorPlan) },
+        });
+      }
+    });
+
+    await AgentController(req, res, jest.fn(), initializeClient, null);
+    await nextTick();
+
+    const persistedPlan = mockGenerationJobManager.updateMetadata.mock.calls.find(
+      ([, patch]) => patch?.orchestratorPlan != null,
+    )[1].orchestratorPlan;
+    const task = persistedPlan.tasks[0];
+
+    expect(configureMissionEvidence).toHaveBeenCalledTimes(1);
+    expect(configureMissionEvidence).toHaveBeenCalledWith({
+      traceId: expect.any(String),
+      declarations: [
+        {
+          taskId: 'root-task/research',
+          nodeId: task.nodeId,
+          producerAgentId: 'agent-specialist',
+          toolName: 'verify_research',
+          criterionId: 'verified',
+          expectedValue: true,
+        },
+      ],
+    });
+    expect(mockGenerationJobManager.getJob.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      configureMissionEvidence.mock.invocationCallOrder[0],
+    );
+    expect(configureMissionEvidence.mock.invocationCallOrder[0]).toBeLessThan(
+      sendMessage.mock.invocationCallOrder[0],
+    );
+  });
+
+  it.each([
+    [
+      'an unknown task',
+      [
+        {
+          taskId: 'root-task/missing',
+          toolName: 'verify_research',
+          criterionId: 'verified',
+          expectedValue: true,
+        },
+      ],
+      'unknown task',
+    ],
+    [
+      'a mismatched criterion value',
+      [
+        {
+          taskId: 'root-task/research',
+          toolName: 'verify_research',
+          criterionId: 'verified',
+          expectedValue: false,
+        },
+      ],
+      'exactly one planned criterion',
+    ],
+    [
+      'an ambiguous task tool declaration',
+      [
+        {
+          taskId: 'root-task/research',
+          toolName: 'verify_research',
+          criterionId: 'verified',
+          expectedValue: true,
+        },
+        {
+          taskId: 'root-task/research',
+          toolName: 'verify_research',
+          criterionId: 'verified',
+          expectedValue: true,
+        },
+      ],
+      'unambiguous per task tool',
+    ],
+  ])(
+    'fails closed before sendMessage for mission evidence declaration with %s',
+    async (_label, evidenceDeclarations, expectedError) => {
+      const sendMessage = jest.fn(() => new Promise(() => {}));
+      const configureMissionEvidence = jest.fn();
+      const client = {
+        options: { agent: { id: 'agent-primary' } },
+        agentConfigs: new Map([['agent-specialist', { id: 'agent-specialist' }]]),
+        sendMessage,
+      };
+      const initializeClient = jest.fn().mockResolvedValue({
+        client,
+        missionEvidenceContext: { configure: configureMissionEvidence },
+      });
+      const req = {
+        user: { id: 'user-123' },
+        body: {
+          text: 'Reject invalid evidence declaration.',
+          messageId: 'user-message',
+          conversationId: 'conversation-123',
+          orchestratorMission: {
+            mission: {
+              missionId: 'mission-p10-invalid',
+              taskId: 'root-task',
+              objective: 'Execute checked mission',
+              constraints: [],
+              requiredCapabilities: ['research'],
+              objectives: [
+                {
+                  key: 'research',
+                  objective: 'Research',
+                  requiredCapabilities: ['research'],
+                  dependsOn: [],
+                  validation: {
+                    criteria: [
+                      { id: 'verified', field: 'verified', expected: true, requireEvidence: true },
+                    ],
+                  },
+                },
+              ],
+            },
+            plannerContext: {
+              worker: {
+                id: 'worker',
+                agentId: 'agent-primary',
+                role: 'primary',
+                capabilities: ['basic'],
+                constraints: [],
+              },
+              specialists: [
+                {
+                  id: 'researcher',
+                  agentId: 'agent-specialist',
+                  role: 'research',
+                  capabilities: ['research'],
+                  constraints: [],
+                },
+              ],
+            },
+            evidenceDeclarations,
+          },
+          endpointOption: { endpoint: 'agents', modelOptions: { model: 'gpt-4.1' } },
+        },
+        config: {},
+      };
+      const res = createResumableResponse();
+
+      mockGenerationJobManager.updateMetadata.mockImplementation(async (_streamId, patch) => {
+        if (patch.orchestratorPlan) {
+          mockGenerationJobManager.getJob.mockResolvedValue({
+            createdAt: 1000,
+            metadata: { orchestratorPlan: structuredClone(patch.orchestratorPlan) },
+          });
+        }
+      });
+
+      await AgentController(req, res, jest.fn(), initializeClient, null);
+
+      expect(configureMissionEvidence).not.toHaveBeenCalled();
+      expect(sendMessage).not.toHaveBeenCalled();
+      expect(mockGenerationJobManager.completeJob).toHaveBeenCalledWith(
+        'conversation-123',
+        expect.stringContaining(expectedError),
+        1000,
+        expect.anything(),
+      );
+    },
+  );
+
   it('fails closed before sendMessage when an orchestrator specialist is not host-authorized', async () => {
     const sendMessage = jest.fn(() => new Promise(() => {}));
     const initializeClient = jest.fn().mockResolvedValue({

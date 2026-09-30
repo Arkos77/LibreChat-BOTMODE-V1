@@ -967,6 +967,7 @@ function createToolEndCallback({
   improvementEvidenceProducerAgentId,
   improvementEvidenceTaskId,
   improvementEvidenceTraceId,
+  missionEvidenceContext,
 }) {
   /**
    * @type {ToolEndCallback}
@@ -981,23 +982,34 @@ function createToolEndCallback({
       await improvementEvidenceCallback(data, metadata);
     }
 
+    const missionEvidenceScope =
+      typeof missionEvidenceContext?.resolve === 'function'
+        ? missionEvidenceContext.resolve(metadata?.executingAgentId)
+        : undefined;
+    const evidenceDeclarations =
+      missionEvidenceScope?.declarations ?? improvementEvidenceDeclarations;
+    const evidenceProducerAgentId =
+      missionEvidenceScope?.producerAgentId ?? improvementEvidenceProducerAgentId;
+    const evidenceTaskId = missionEvidenceScope?.taskId ?? improvementEvidenceTaskId;
+    const evidenceTraceId = missionEvidenceScope?.traceId ?? improvementEvidenceTraceId;
+
     if (
       transientEvidenceBuffer != null &&
-      Array.isArray(improvementEvidenceDeclarations) &&
-      improvementEvidenceDeclarations.length > 0
+      Array.isArray(evidenceDeclarations) &&
+      evidenceDeclarations.length > 0
     ) {
       const declaration = resolveToolEvidenceIntent({
         toolName: output.name,
-        declarations: improvementEvidenceDeclarations,
+        declarations: evidenceDeclarations,
       });
 
       if (declaration != null) {
         transientEvidenceBuffer.append({
           toolCallId: output.tool_call_id,
           toolName: output.name,
-          producerAgentId: improvementEvidenceProducerAgentId,
-          ...(improvementEvidenceTaskId ? { taskId: improvementEvidenceTaskId } : {}),
-          ...(improvementEvidenceTraceId ? { traceId: improvementEvidenceTraceId } : {}),
+          producerAgentId: evidenceProducerAgentId,
+          ...(evidenceTaskId ? { taskId: evidenceTaskId } : {}),
+          ...(evidenceTraceId ? { traceId: evidenceTraceId } : {}),
           ...(metadata?.run_id ? { runId: metadata.run_id } : {}),
           ...(metadata?.thread_id ? { threadId: metadata.thread_id } : {}),
           criterionId: declaration.criterionId,

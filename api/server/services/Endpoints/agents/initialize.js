@@ -184,6 +184,72 @@ const initializeClient = async ({
   requestBody,
 }) => {
   const transientEvidenceBuffer = createTransientEvidenceBuffer();
+  let missionEvidenceTraceId;
+  const missionEvidenceByNodeId = new Map();
+  const missionEvidenceContext = {
+    configure({ traceId, declarations }) {
+      if (typeof traceId !== 'string' || traceId.trim() === '') {
+        throw new Error('Mission evidence context requires traceId');
+      }
+      if (!Array.isArray(declarations)) {
+        throw new Error('Mission evidence context requires declarations');
+      }
+      const next = new Map();
+      for (const declaration of declarations) {
+        const nodeId =
+          typeof declaration?.nodeId === 'string' && declaration.nodeId.trim() !== ''
+            ? declaration.nodeId.trim()
+            : undefined;
+        const taskId =
+          typeof declaration?.taskId === 'string' && declaration.taskId.trim() !== ''
+            ? declaration.taskId.trim()
+            : undefined;
+        const producerAgentId =
+          typeof declaration?.producerAgentId === 'string' &&
+          declaration.producerAgentId.trim() !== ''
+            ? declaration.producerAgentId.trim()
+            : undefined;
+        if (!nodeId || !taskId || !producerAgentId) {
+          throw new Error('Mission evidence declaration requires exact runtime identity');
+        }
+        const current = next.get(nodeId) ?? {
+          traceId: traceId.trim(),
+          taskId,
+          producerAgentId,
+          declarations: [],
+        };
+        if (current.taskId !== taskId || current.producerAgentId !== producerAgentId) {
+          throw new Error('Mission evidence declaration runtime identity mismatch');
+        }
+        current.declarations.push({
+          toolName: declaration.toolName,
+          criterionId: declaration.criterionId,
+          expectedValue: declaration.expectedValue,
+        });
+        next.set(nodeId, current);
+      }
+      missionEvidenceTraceId = traceId.trim();
+      missionEvidenceByNodeId.clear();
+      for (const [nodeId, value] of next) {
+        missionEvidenceByNodeId.set(nodeId, value);
+      }
+    },
+    resolve(nodeId) {
+      if (typeof nodeId !== 'string' || nodeId.trim() === '') {
+        return undefined;
+      }
+      const resolved = missionEvidenceByNodeId.get(nodeId.trim());
+      if (resolved == null) {
+        return undefined;
+      }
+      return {
+        traceId: missionEvidenceTraceId,
+        taskId: resolved.taskId,
+        producerAgentId: resolved.producerAgentId,
+        declarations: resolved.declarations.map((declaration) => ({ ...declaration })),
+      };
+    },
+  };
   if (!endpointOption) {
     throw new Error('Endpoint option not provided');
   }
@@ -233,6 +299,7 @@ const initializeClient = async ({
     streamId,
     jobCreatedAt,
     transientEvidenceBuffer,
+    missionEvidenceContext,
   });
 
   /** Query accessible skill IDs once per run (shared across all agents).
@@ -1810,7 +1877,7 @@ const initializeClient = async ({
     GenerationJobManager.setCollectedUsage(streamId, collectedUsage, jobCreatedAt);
   }
 
-  return { client, userMCPAuthMap, transientEvidenceBuffer };
+  return { client, userMCPAuthMap, transientEvidenceBuffer, missionEvidenceContext };
 };
 
 module.exports = { initializeClient };

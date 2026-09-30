@@ -227,6 +227,60 @@ describe('initializeClient — processAgent ACL gate', () => {
     expect(first.transientEvidenceBuffer.size).toBe(0);
   });
 
+  it('returns an isolated dormant mission evidence context and gives it to the tool-end callback', async () => {
+    const { createToolEndCallback } = require('~/server/controllers/agents/callbacks');
+    mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+
+    const first = await initializeClient({
+      req: makeReq(),
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption: makeEndpointOption(),
+      mtoTraceId: 'trace-p10-first',
+    });
+    const second = await initializeClient({
+      req: makeReq(),
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption: makeEndpointOption(),
+      mtoTraceId: 'trace-p10-second',
+    });
+
+    expect(first.missionEvidenceContext).toEqual(
+      expect.objectContaining({
+        configure: expect.any(Function),
+        resolve: expect.any(Function),
+      }),
+    );
+    expect(first.missionEvidenceContext).not.toBe(second.missionEvidenceContext);
+    expect(first.missionEvidenceContext.resolve('node-a')).toBeUndefined();
+
+    first.missionEvidenceContext.configure({
+      traceId: 'trace-p10-first',
+      declarations: [
+        {
+          taskId: 'task-a',
+          nodeId: 'node-a',
+          producerAgentId: 'producer-a',
+          toolName: 'verify_a',
+          criterionId: 'ok',
+          expectedValue: true,
+        },
+      ],
+    });
+
+    expect(first.missionEvidenceContext.resolve('node-a')).toEqual({
+      traceId: 'trace-p10-first',
+      taskId: 'task-a',
+      producerAgentId: 'producer-a',
+      declarations: [{ toolName: 'verify_a', criterionId: 'ok', expectedValue: true }],
+    });
+    expect(second.missionEvidenceContext.resolve('node-a')).toBeUndefined();
+    expect(createToolEndCallback).toHaveBeenCalledWith(
+      expect.objectContaining({ missionEvidenceContext: second.missionEvidenceContext }),
+    );
+  });
+
   it('replaces untrusted artifact route metadata with the executing agent context', async () => {
     mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
 

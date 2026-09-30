@@ -1843,6 +1843,77 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         throw new Error('Orchestrator plan persistence verification failed');
       }
       client.orchestratorPlan = persistedPlanJob.metadata.orchestratorPlan;
+
+      const evidenceDeclarations = orchestratorMission?.evidenceDeclarations;
+      if (evidenceDeclarations != null) {
+        if (!Array.isArray(evidenceDeclarations)) {
+          throw new Error('Orchestrator mission evidence declarations must be an array');
+        }
+        if (typeof result.missionEvidenceContext?.configure !== 'function') {
+          throw new Error('Mission evidence runtime context is unavailable');
+        }
+
+        const configuredDeclarations = evidenceDeclarations.map((declaration) => {
+          const taskId =
+            typeof declaration?.taskId === 'string' && declaration.taskId.trim() !== ''
+              ? declaration.taskId.trim()
+              : undefined;
+          const toolName =
+            typeof declaration?.toolName === 'string' && declaration.toolName.trim() !== ''
+              ? declaration.toolName.trim()
+              : undefined;
+          const criterionId =
+            typeof declaration?.criterionId === 'string' && declaration.criterionId.trim() !== ''
+              ? declaration.criterionId.trim()
+              : undefined;
+          if (!taskId || !toolName || !criterionId) {
+            throw new Error('Invalid orchestrator mission evidence declaration');
+          }
+
+          const task = client.orchestratorPlan.tasks.find(
+            (candidate) => candidate.taskId === taskId,
+          );
+          if (task == null) {
+            throw new Error('Mission evidence declaration references an unknown task');
+          }
+
+          const matchingCriteria = task.validation.flatMap((requirement) =>
+            requirement.criteria.filter(
+              (criterion) =>
+                criterion.id === criterionId &&
+                Object.is(criterion.expected, declaration.expectedValue),
+            ),
+          );
+          if (matchingCriteria.length !== 1) {
+            throw new Error(
+              'Mission evidence declaration must match exactly one planned criterion',
+            );
+          }
+
+          return {
+            taskId,
+            nodeId: task.nodeId,
+            producerAgentId: task.agentId,
+            toolName,
+            criterionId,
+            expectedValue: declaration.expectedValue,
+          };
+        });
+
+        const declarationKeys = new Set();
+        for (const declaration of configuredDeclarations) {
+          const key = JSON.stringify([declaration.nodeId, declaration.toolName]);
+          if (declarationKeys.has(key)) {
+            throw new Error('Mission evidence declaration must be unambiguous per task tool');
+          }
+          declarationKeys.add(key);
+        }
+
+        result.missionEvidenceContext.configure({
+          traceId: mtoTraceId,
+          declarations: configuredDeclarations,
+        });
+      }
     }
 
     /** Request-shape validation rejects every known edit/regenerate path, but

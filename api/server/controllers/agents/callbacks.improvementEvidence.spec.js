@@ -33,6 +33,69 @@ describe('P10 optional tool-end evidence callback', () => {
     expect(improvementEvidenceCallback).toHaveBeenCalledWith(data, metadata);
   });
 
+  it('resolves mission evidence scope from the executing node at tool-end time', async () => {
+    const transientEvidenceBuffer = { append: jest.fn() };
+    const missionEvidenceContext = {
+      resolve: jest.fn().mockReturnValue({
+        traceId: 'trace-p10',
+        taskId: 'task-a',
+        producerAgentId: 'producer-a',
+        declarations: [{ toolName: 'verify_a', criterionId: 'ok', expectedValue: true }],
+      }),
+    };
+    const callback = createToolEndCallback({
+      req: { user: { id: 'user-1' }, config: {} },
+      res: { headersSent: false },
+      artifactPromises: [],
+      streamId: null,
+      transientEvidenceBuffer,
+      missionEvidenceContext,
+    });
+
+    await callback(
+      { output: { name: 'verify_a', tool_call_id: 'call-p10-dynamic', content: 'ignored raw' } },
+      {
+        executingAgentId: 'node-a',
+        run_id: 'run-p10-dynamic',
+        thread_id: 'thread-p10-dynamic',
+      },
+    );
+
+    expect(missionEvidenceContext.resolve).toHaveBeenCalledWith('node-a');
+    expect(transientEvidenceBuffer.append).toHaveBeenCalledWith({
+      toolCallId: 'call-p10-dynamic',
+      toolName: 'verify_a',
+      producerAgentId: 'producer-a',
+      taskId: 'task-a',
+      traceId: 'trace-p10',
+      runId: 'run-p10-dynamic',
+      threadId: 'thread-p10-dynamic',
+      criterionId: 'ok',
+      value: true,
+    });
+  });
+
+  it('does not append mission evidence when the executing node has no configured task scope', async () => {
+    const transientEvidenceBuffer = { append: jest.fn() };
+    const missionEvidenceContext = { resolve: jest.fn().mockReturnValue(undefined) };
+    const callback = createToolEndCallback({
+      req: { user: { id: 'user-1' }, config: {} },
+      res: { headersSent: false },
+      artifactPromises: [],
+      streamId: null,
+      transientEvidenceBuffer,
+      missionEvidenceContext,
+    });
+
+    await callback(
+      { output: { name: 'verify_a', tool_call_id: 'call-unbound', content: 'ignored raw' } },
+      { executingAgentId: 'unknown-node', run_id: 'run-unbound' },
+    );
+
+    expect(missionEvidenceContext.resolve).toHaveBeenCalledWith('unknown-node');
+    expect(transientEvidenceBuffer.append).not.toHaveBeenCalled();
+  });
+
   it('preserves the existing no-artifact path when no hook is configured', async () => {
     const callback = makeCallback();
     await expect(
