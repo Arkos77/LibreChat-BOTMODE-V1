@@ -145,3 +145,41 @@ LibreChat currently compiles durable mission plans into native direct graph topo
 does not yet attach host transition predicates/barriers to those edges. Therefore this
 artifact makes the validated SDK capability reproducible and available without by itself
 activating a new host-side decision or authorization path. Historical artifacts are retained.
+
+## Durable per-node output accessor SDK — current artifact
+
+- Package: `@librechat/agents` 3.7.17.
+- Source commit: `b6ef55b8da8aaa397c89fc005224ef47c2c21a35`.
+- Commit message: `feat(agents): expose durable per-node outputs`.
+- Artifact: `librechat-agents-3.7.17-b6ef55b.tgz`.
+- SHA-256: `2c9dec39b8f0972f09d3e4974435b90dbb13d80612d94a922fd0dd142cd8ac0c`.
+- npm integrity: `sha512-1NZeKCRwP7VpwwcRRAjwBAKHjaDre7EA9wqi0YaxmcEPswziFO14LSkMh3e+RZppfiBITPtTW0X+qK7jP0Q4yg==`.
+- Distributed files: 1284.
+- Validation: TypeScript `--noEmit` PASS; `MultiAgentGraph.test.ts` 24/24 PASS;
+  neighboring run-step/token/close-step suites 28/28 PASS; SDK build PASS; `git diff --check` PASS.
+- Contract: exposes an observation-only defensive `Run.getAgentOutputs()` snapshot backed by
+  the checkpointed multi-agent `agentOutputs` state channel. Fresh-process HITL resume restores
+  checkpointed outputs into the sidecar before continuation. This grants no authorization,
+  task ownership, or execution authority.
+
+This artifact extends the previous transition-checkpoint SDK so LibreChat can inspect the exact
+per-node AI output at host finalization boundaries instead of reconstructing a candidate from UI
+content or message prose. Checkpoint state remains the durable source; the accessor is observation-only.
+
+## Standard + multi-agent durable output accessor SDK — current artifact
+
+- Package: `@librechat/agents` 3.7.17.
+- Source commit: `5157597` (`fix(agents): expose standard graph output`), built on `b6ef55b8da8aaa397c89fc005224ef47c2c21a35`.
+- Artifact: `librechat-agents-3.7.17-5157597.tgz`.
+- SHA-256: `5a0b841a3d584475bbe7e8c150f34db262bed0e93319b190d56b315c17679550`.
+- npm integrity: `sha512-7CC5Nn4tbBU09VgoQ6nv695eY79HnjryjwBXPy3viDeU3jr420+bIJ8/Mu3XAcUMTd1B0OfKpndi5Vz3GamMfQ==`.
+- Distributed files: 1284.
+- Validation: `composition.smoke.test.ts` 19/19 PASS; `MultiAgentGraph.test.ts` 24/24 PASS;
+  TypeScript `--noEmit` PASS; SDK build PASS; `git diff --check` PASS.
+- Contract: `Run.getAgentOutputs()` remains observation-only. Multi-agent output is backed by the checkpointed
+  `agentOutputs` state channel and restored on fresh-process HITL resume. StandardGraph exposes only the latest
+  AI message proven to have been produced by the current run, keyed by `defaultAgentId`, including after cleanup.
+  This grants no authorization, task ownership, or execution authority.
+
+This supersedes the interim `b6ef55b` package for LibreChat host integration because native one-task missions
+compile to StandardGraph and require the same exact-output observation contract at terminal finalization.

@@ -1,5 +1,6 @@
+import type { BaseMessage } from '@librechat/agents/langchain/messages';
 import type { OracleEvidence, OracleVerdict } from '../oracle';
-import type { OracleRequirement } from './types';
+import type { MissionPlan, OracleRequirement } from './types';
 import { deterministicOracle } from '../oracle';
 
 export interface MissionOracleTaskInput {
@@ -63,5 +64,38 @@ export function assertMissionTaskVerified(result: MissionOracleTaskResult): void
     throw new Error(
       `Native mission Oracle blocked task ${result.taskId} (${result.nodeId}): ${blocked.status}`,
     );
+  }
+}
+
+function messageCandidate(output: BaseMessage | undefined): string | undefined {
+  return typeof output?.content === 'string' && output.content.trim() !== ''
+    ? output.content
+    : undefined;
+}
+
+export async function assertTerminalMissionTasksVerified(
+  plan: MissionPlan,
+  outputs: Record<string, BaseMessage>,
+): Promise<void> {
+  const dependedOnKeys = new Set(plan.tasks.flatMap((task) => task.dependsOn));
+  const terminalTasks = plan.tasks.filter((task) => !dependedOnKeys.has(task.key));
+
+  for (const task of terminalTasks) {
+    if (task.validation.length === 0) {
+      continue;
+    }
+    const output = outputs[task.nodeId];
+    if (output == null) {
+      throw new Error(`Native mission terminal Oracle missing exact task output: ${task.nodeId}`);
+    }
+    const result = await validateMissionTask({
+      taskId: task.taskId,
+      nodeId: task.nodeId,
+      agentId: task.agentId,
+      candidate: messageCandidate(output),
+      requirements: task.validation,
+      evidence: [],
+    });
+    assertMissionTaskVerified(result);
   }
 }

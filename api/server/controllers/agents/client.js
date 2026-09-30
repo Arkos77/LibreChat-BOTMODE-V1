@@ -151,6 +151,7 @@ const {
   resolveRunFadingTiers,
   createContextMetaPublisher,
   selectRunContextMetaToPublish,
+  assertTerminalMissionTasksVerified,
 } = require('@librechat/api');
 const {
   Run,
@@ -4527,6 +4528,7 @@ class AgentClient extends BaseClient {
         // `requires_action` + emit the prompt and leave the turn unfinalized
         // (the resume route continues it). No-op when the run completed.
         await this.handleRunInterrupt(run, streamId);
+        await this.assertTerminalMissionOracle(run);
 
         config.signal = null;
       };
@@ -4721,6 +4723,16 @@ class AgentClient extends BaseClient {
       config = null;
       memoryPromise = null;
     }
+  }
+
+  async assertTerminalMissionOracle(run) {
+    if (this.orchestratorPlan == null) {
+      return;
+    }
+    if (run.getInterrupt() != null || run.getHaltReason() != null) {
+      return;
+    }
+    await assertTerminalMissionTasksVerified(this.orchestratorPlan, run.getAgentOutputs());
   }
 
   /**
@@ -5054,6 +5066,7 @@ class AgentClient extends BaseClient {
       // The model may pause AGAIN (another tool needs approval, or a follow-up
       // question). Re-arm the same interrupt gate so the cycle can repeat.
       await this.handleRunInterrupt(run, streamId);
+      await this.assertTerminalMissionOracle(run);
 
       // Mirror chatCompletion: settle label fills before the filter below can
       // shift part positions out from under an in-flight fill's claimed index.
