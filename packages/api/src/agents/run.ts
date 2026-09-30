@@ -54,6 +54,7 @@ import type { CodeExecutionContext } from '~/agents/execution';
 import type { MCPToolAlias } from '~/tools/classification';
 import type { SubagentUsageEvent } from '~/agents/usage';
 import type { OracleRunOptions } from '~/agents/oracle';
+import type { MissionPlan } from './orchestrator/types';
 import type { RunFadingTiers } from './fading';
 import type * as t from '~/types';
 import {
@@ -106,6 +107,7 @@ import { getPluginHookSource } from '~/agents/hooks/source';
 import { getOpenAIConfig } from '~/endpoints/openai/config';
 import { createStepBudgetHook } from '~/agents/stepBudget';
 import { buildHITLRunWiring } from '~/agents/hitl/runtime';
+import { compileNativePlan } from './orchestrator/native';
 import { buildLangfuseConfig } from '~/langfuse/config';
 import { applyTestRunHook } from '~/agents/testHook';
 import { attachRunOracle } from '~/agents/oracle';
@@ -1425,6 +1427,7 @@ export async function createRun({
   subagentUsageSink,
   subagentTasks,
   oracle,
+  orchestratorPlan,
   steering,
   activityLabel,
   activityPhase,
@@ -1493,6 +1496,12 @@ export async function createRun({
    * (e.g. "Ollama") in the summarization config to SDK-recognized providers.
    */
   appConfig?: AppConfig;
+  /**
+   * Exact host-approved P6 plan, persisted before execution. This is a
+   * topology description only: every binding is still built by createRun
+   * through the normal authorized model/tool/policy initialization path.
+   */
+  orchestratorPlan?: MissionPlan;
   /**
    * Receives per-model-call usage from subagent child runs so hosts can bill
    * them (child graphs execute outside the run's `streamEvents` loop, so
@@ -1885,16 +1894,55 @@ export async function createRun({
     agentInputs.push(agentInput);
   }
 
-  const graphConfig: RunConfig['graphConfig'] = {
-    signal,
-    agents: agentInputs,
-    edges: agents[0].edges ?? [],
-  };
+  let graphConfig: RunConfig['graphConfig'];
+  if (orchestratorPlan != null) {
+    const authorizedBindings = new Map<string, AgentInputs>();
+    for (let index = 0; index < agents.length; index++) {
+      const savedAgentId = agents[index]?.id;
+      const binding = agentInputs[index];
+      if (
+        typeof savedAgentId !== 'string' ||
+        savedAgentId.length === 0 ||
+        binding == null ||
+        binding.agentId !== savedAgentId
+      ) {
+        throw new Error('Invalid authorized agent binding for orchestrator plan');
+      }
+      authorizedBindings.set(savedAgentId, binding);
+    }
+    const nativePlan = compileNativePlan(orchestratorPlan, authorizedBindings);
+    graphConfig = nativePlan.graphConfig;
+    graphConfig.signal = signal;
 
-  if (agentInputs.length > 1 || ((graphConfig as MultiAgentGraphConfig).edges?.length ?? 0) > 0) {
-    (graphConfig as unknown as MultiAgentGraphConfig).type = 'multi-agent';
+    /**
+     * Native task nodes intentionally use task-scoped `nodeId`s as SDK agent identities.
+     * BYOM authorization remains bound to the host-authorized saved agent identity, so
+     * mirror only already-authorized attached-environment scope onto each compiled node.
+     * This is correlation, not a new grant: a node is added only when its actor.agentId
+     * is already present in the host-owned attached-environment set/settings map.
+     */
+    for (const actor of nativePlan.actors) {
+      if (!attachedCodeEnvironmentAgentIds.has(actor.agentId)) {
+        continue;
+      }
+      attachedCodeEnvironmentAgentIds.add(actor.nodeId);
+      const settings = attachedCodeEnvironmentSettings.get(actor.agentId);
+      if (settings != null) {
+        attachedCodeEnvironmentSettings.set(actor.nodeId, settings);
+      }
+    }
   } else {
-    (graphConfig as StandardGraphConfig).type = 'standard';
+    graphConfig = {
+      signal,
+      agents: agentInputs,
+      edges: agents[0].edges ?? [],
+    };
+
+    if (agentInputs.length > 1 || ((graphConfig as MultiAgentGraphConfig).edges?.length ?? 0) > 0) {
+      (graphConfig as unknown as MultiAgentGraphConfig).type = 'multi-agent';
+    } else {
+      (graphConfig as StandardGraphConfig).type = 'standard';
+    }
   }
 
   /**

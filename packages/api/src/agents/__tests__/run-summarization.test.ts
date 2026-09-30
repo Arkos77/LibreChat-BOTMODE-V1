@@ -1,3 +1,4 @@
+import { executeHooks } from '@librechat/agents';
 import { encryptV3, logger } from '@librechat/data-schemas';
 import { CallbackManager } from '@langchain/core/callbacks/manager';
 import {
@@ -12,6 +13,7 @@ import type { AppConfig, IUser } from '@librechat/data-schemas';
 import type { BaseMessage } from '@langchain/core/messages';
 import type { ModelBoundChatModelCallback } from '~/middleware/modelBoundContent';
 import { createRun, isAskUserQuestionAdminDisabled } from '~/agents/run';
+import { deterministicPlanner } from '~/agents/orchestrator/planner';
 
 // Mock winston logger — `format` must be callable so @librechat/data-schemas
 // dist module-load completes cleanly; see api/test/__mocks__/logger.js.
@@ -2996,6 +2998,162 @@ describe('toolOutputReferences gating', () => {
     const createMock = Run.create as jest.Mock;
     const callArgs = createMock.mock.calls[0][0] as Record<string, unknown>;
     expect(callArgs).not.toHaveProperty('toolOutputReferences');
+  });
+});
+
+describe('createRun P6 orchestrator topology', () => {
+  it('compiles a deterministic durable plan over already-built authorized agent inputs', async () => {
+    const signal = new AbortController().signal;
+    const primary = makeAgent({ id: 'worker', instructions: 'Primary authorized' });
+    const specialist = makeAgent({
+      id: 'agent-x',
+      instructions: 'Specialist authorized',
+      model: 'gpt-4o-mini',
+      model_parameters: { model: 'gpt-4o-mini' },
+    });
+    const plan = deterministicPlanner.planMission(
+      {
+        missionId: 'mission-p6-runtime',
+        taskId: 'root',
+        objective: 'Execute approved DAG',
+        constraints: ['bounded'],
+        requiredCapabilities: ['basic', 'x'],
+        objectives: [
+          { key: 'prepare', objective: 'Prepare', requiredCapabilities: ['basic'], dependsOn: [] },
+          {
+            key: 'research',
+            objective: 'Research',
+            requiredCapabilities: ['x'],
+            dependsOn: ['prepare'],
+          },
+        ],
+      },
+      {
+        worker: {
+          id: 'worker',
+          agentId: 'worker',
+          role: 'general',
+          capabilities: ['basic'],
+          constraints: [],
+        },
+        specialists: [
+          {
+            id: 'x',
+            agentId: 'agent-x',
+            role: 'research',
+            capabilities: ['x'],
+            constraints: [],
+          },
+        ],
+      },
+    );
+
+    await createRun({
+      agents: [primary, specialist] as never,
+      signal,
+      orchestratorPlan: plan,
+      streaming: true,
+      streamUsage: true,
+    });
+
+    const createMock = Run.create as jest.Mock;
+    const runConfig = createMock.mock.calls[0][0];
+    expect(runConfig.graphConfig.type).toBe('multi-agent');
+    expect(runConfig.graphConfig.signal).toBe(signal);
+    expect(runConfig.graphConfig.agents.map((agent: { agentId: string }) => agent.agentId)).toEqual(
+      plan.tasks.map((task) => task.nodeId),
+    );
+    expect(runConfig.graphConfig.edges).toEqual([
+      { from: [plan.tasks[0].nodeId], to: plan.tasks[1].nodeId, edgeType: 'direct' },
+    ]);
+    expect(runConfig.graphConfig.agents[0].instructions).toContain('Primary authorized');
+    expect(runConfig.graphConfig.agents[1].instructions).toContain('Specialist authorized');
+    expect(primary.id).toBe('worker');
+    expect(specialist.id).toBe('agent-x');
+  });
+
+  it('keeps BYOM approval bound after saved agent identity is remapped to a task node', async () => {
+    const primary = makeAgent({
+      id: 'worker',
+      instructions: 'Primary authorized',
+      codeExecutionContext: { environmentType: 'attached' },
+    });
+    const plan = deterministicPlanner.planMission(
+      {
+        missionId: 'mission-p6-byom',
+        taskId: 'root',
+        objective: 'Execute attached environment task',
+        constraints: ['bounded'],
+        requiredCapabilities: ['basic'],
+      },
+      {
+        worker: {
+          id: 'worker',
+          agentId: 'worker',
+          role: 'general',
+          capabilities: ['basic'],
+          constraints: [],
+        },
+        specialists: [],
+      },
+    );
+    const appConfig = {
+      config: {},
+      fileStrategy: FileSources.local,
+      imageOutputType: 'png',
+      endpoints: {
+        [EModelEndpoint.agents]: { toolApproval: { enabled: true } },
+      },
+    } as unknown as AppConfig;
+
+    await createRun({
+      agents: [primary] as never,
+      signal: new AbortController().signal,
+      orchestratorPlan: plan,
+      appConfig,
+      hitlCapable: true,
+      streaming: true,
+      streamUsage: true,
+    });
+
+    const runConfig = (Run.create as jest.Mock).mock.calls[0][0] as Record<string, unknown>;
+    const hooks = runConfig.hooks as Parameters<typeof executeHooks>[0]['registry'];
+    const result = await executeHooks({
+      registry: hooks,
+      matchQuery: 'bash_tool',
+      input: {
+        hook_event_name: 'PreToolUse',
+        runId: 'run-p6-byom',
+        toolName: 'bash_tool',
+        toolInput: { command: 'pwd' },
+        toolUseId: 'tool-p6-byom',
+        executingAgentId: plan.tasks[0].nodeId,
+      },
+    });
+
+    expect(result.decision).toBe('ask');
+  });
+
+  it('keeps the historical top-level graph unchanged when no orchestrator plan is supplied', async () => {
+    const signal = new AbortController().signal;
+    const edges = [{ from: 'worker', to: 'agent-x', edgeType: 'direct' }];
+    const primary = makeAgent({ id: 'worker', edges });
+    const specialist = makeAgent({ id: 'agent-x' });
+
+    await createRun({
+      agents: [primary, specialist] as never,
+      signal,
+      streaming: true,
+      streamUsage: true,
+    });
+
+    const createMock = Run.create as jest.Mock;
+    const runConfig = createMock.mock.calls[0][0];
+    expect(runConfig.graphConfig.type).toBe('multi-agent');
+    expect(runConfig.graphConfig.agents.map((agent: { agentId: string }) => agent.agentId)).toEqual(
+      ['worker', 'agent-x'],
+    );
+    expect(runConfig.graphConfig.edges).toBe(edges);
   });
 });
 
