@@ -1798,6 +1798,7 @@ const initializeClient = async ({
     usageEmitSink,
     startupTelemetry,
     toolInputValidationErrors,
+    transientEvidenceBuffer,
     jobCreatedAt,
     checkpointNamespace,
     mtoTraceId,

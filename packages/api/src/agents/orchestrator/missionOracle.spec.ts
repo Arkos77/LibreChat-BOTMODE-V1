@@ -231,6 +231,33 @@ describe('terminal mission Oracle', () => {
     ).rejects.toThrow('missing exact task output: node-terminal');
   });
 
+  it('uses exact durable task evidence when validating a terminal task', async () => {
+    const plan = terminalPlan();
+    plan.tasks[0].validation[0].requireIndependentEvidence = true;
+
+    await expect(
+      missionOracle.assertTerminalMissionTasksVerified(
+        plan,
+        {
+          'node-terminal': new AIMessage('{"ok":true}'),
+        },
+        {
+          evidence: {
+            'task-terminal': [
+              {
+                id: 'tool-independent',
+                criterionId: 'ok',
+                value: true,
+                source: { id: 'tool-independent', type: 'tool', agentId: 'checker' },
+              },
+            ],
+          },
+          results: {},
+        },
+      ),
+    ).resolves.toBeUndefined();
+  });
+
   it('fails closed when independent evidence is required but unavailable', async () => {
     const plan = terminalPlan();
     plan.tasks[0].validation[0].requireIndependentEvidence = true;

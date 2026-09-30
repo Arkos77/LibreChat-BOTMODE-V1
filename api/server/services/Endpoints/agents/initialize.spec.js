@@ -223,6 +223,8 @@ describe('initializeClient — processAgent ACL gate', () => {
     expect(first.transientEvidenceBuffer.snapshot()).toEqual([]);
     expect(second.transientEvidenceBuffer.snapshot()).toEqual([]);
     expect(first.transientEvidenceBuffer).not.toBe(second.transientEvidenceBuffer);
+    expect(agentClientArgs.transientEvidenceBuffer).toBe(second.transientEvidenceBuffer);
+    expect(first.transientEvidenceBuffer.size).toBe(0);
   });
 
   it('replaces untrusted artifact route metadata with the executing agent context', async () => {

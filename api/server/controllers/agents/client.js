@@ -152,6 +152,8 @@ const {
   createContextMetaPublisher,
   selectRunContextMetaToPublish,
   assertTerminalMissionTasksVerified,
+  normalizeMissionOracleState,
+  promoteTransientMissionOracleEvidence,
 } = require('@librechat/api');
 const {
   Run,
@@ -417,6 +419,7 @@ class AgentClient extends BaseClient {
       contextUsageSink,
       usageEmitSink,
       toolInputValidationErrors,
+      transientEvidenceBuffer,
       ...clientOptions
     } = options;
 
@@ -439,6 +442,9 @@ class AgentClient extends BaseClient {
      *  output that merely contains similar text.
      *  @type {Map<string, import('@librechat/api').ToolInputValidationError> | undefined} */
     this.toolInputValidationErrors = toolInputValidationErrors;
+    /** Request-local bounded P10 observation buffer. Raw tool output is never
+     * inspected here; only structured observations already admitted upstream. */
+    this.transientEvidenceBuffer = transientEvidenceBuffer;
     /** @type {MessageContentComplex[]} */
     this.contentParts = contentParts;
     /** Original run-step identity used by the content aggregator to attach
@@ -4735,7 +4741,48 @@ class AgentClient extends BaseClient {
     if (run.getInterrupt() != null || run.getHaltReason() != null) {
       return;
     }
-    await assertTerminalMissionTasksVerified(this.orchestratorPlan, run.getAgentOutputs());
+
+    const observations = this.transientEvidenceBuffer?.snapshot?.() ?? [];
+    let nextState = this.missionOracleState;
+    for (const observation of observations) {
+      nextState = promoteTransientMissionOracleEvidence(
+        this.orchestratorPlan,
+        nextState,
+        observation,
+      );
+    }
+
+    if (observations.length > 0) {
+      const streamId = this.options?.req?._resumableStreamId ?? this.conversationId;
+      if (typeof streamId !== 'string' || streamId.length === 0) {
+        throw new Error('Mission Oracle evidence persistence requires stream identity');
+      }
+      await GenerationJobManager.updateMetadata(
+        streamId,
+        { missionOracleState: nextState },
+        this.jobCreatedAt,
+      );
+      const persistedJob = await GenerationJobManager.getJob(streamId);
+      if (
+        persistedJob == null ||
+        persistedJob.createdAt !== this.jobCreatedAt ||
+        persistedJob.metadata?.missionOracleState == null
+      ) {
+        throw new Error('Mission Oracle evidence persistence verification failed');
+      }
+      const persistedState = normalizeMissionOracleState(persistedJob.metadata.missionOracleState);
+      if (JSON.stringify(persistedState) !== JSON.stringify(nextState)) {
+        throw new Error('Mission Oracle evidence persistence verification failed');
+      }
+      this.missionOracleState = persistedState;
+      this.transientEvidenceBuffer.clear();
+    }
+
+    await assertTerminalMissionTasksVerified(
+      this.orchestratorPlan,
+      run.getAgentOutputs(),
+      this.missionOracleState,
+    );
   }
 
   /**

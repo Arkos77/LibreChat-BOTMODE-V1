@@ -1002,6 +1002,195 @@ describe('AgentClient - interrupt discovery persistence', () => {
     expect(paused?.metadata.missionOracleState).not.toBe(client.missionOracleState);
   });
 
+  it('promotes transient mission evidence durably before clearing the buffer', async () => {
+    const streamId = 'conversation-mission-oracle-terminal-evidence';
+    const job = await GenerationJobManager.createJob(streamId, 'user-123', streamId);
+    const transientEvidenceBuffer = {
+      snapshot: jest.fn(() => [
+        {
+          source: 'native_tool_end',
+          toolCallId: 'tool-terminal-1',
+          toolName: 'verify_terminal',
+          producerAgentId: 'agent-123',
+          toolAgentId: 'checker',
+          taskId: 'task-terminal',
+          criterionId: 'ok',
+          value: true,
+        },
+      ]),
+      clear: jest.fn(),
+    };
+    const client = new AgentClient({
+      req: {
+        user: { id: 'user-123' },
+        _resumableStreamId: streamId,
+        body: { endpoint: EModelEndpoint.agents, agent_id: 'agent-123' },
+        config: { endpoints: { [EModelEndpoint.agents]: {} } },
+      },
+      res: {},
+      agent: {
+        id: 'agent-123',
+        endpoint: EModelEndpoint.openAI,
+        provider: EModelEndpoint.openAI,
+        model_parameters: { model: 'gpt-4' },
+      },
+      contentParts: [],
+      collectedUsage: [],
+      artifactPromises: [],
+      transientEvidenceBuffer,
+    });
+    client.conversationId = streamId;
+    client.jobCreatedAt = job.createdAt;
+    client.orchestratorPlan = {
+      planId: 'plan-terminal-evidence',
+      planVersion: 1,
+      mission: {
+        missionId: 'mission-terminal-evidence',
+        taskId: 'root',
+        objective: 'Verify',
+        constraints: [],
+        requiredCapabilities: ['basic'],
+      },
+      strategy: 'DIRECT',
+      tasks: [
+        {
+          key: 'terminal',
+          objective: 'Verify terminal',
+          requiredCapabilities: ['basic'],
+          dependsOn: [],
+          taskId: 'task-terminal',
+          parentTaskId: 'root',
+          nodeId: 'node-terminal',
+          agentId: 'agent-123',
+          constraints: [],
+          validation: [
+            {
+              criteria: [{ id: 'ok', field: 'ok', expected: true }],
+              requireIndependentEvidence: true,
+            },
+          ],
+          canRunInParallel: false,
+        },
+      ],
+      specialists: [],
+      reasons: [{ code: 'WORKER_CAPABLE' }],
+    };
+
+    await client.assertTerminalMissionOracle({
+      getInterrupt: () => null,
+      getHaltReason: () => null,
+      getAgentOutputs: () => ({
+        'node-terminal': { content: '{"ok":true}' },
+      }),
+    });
+
+    const persisted = await GenerationJobManager.getJob(streamId);
+    expect(persisted?.metadata.missionOracleState?.evidence?.['task-terminal']).toEqual([
+      {
+        id: 'tool-terminal-1',
+        criterionId: 'ok',
+        value: true,
+        source: { id: 'tool-terminal-1', type: 'tool', agentId: 'checker' },
+      },
+    ]);
+    expect(client.missionOracleState).toEqual(persisted.metadata.missionOracleState);
+    expect(transientEvidenceBuffer.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains transient mission evidence when durable persistence verification fails', async () => {
+    const streamId = 'conversation-mission-oracle-terminal-evidence-failure';
+    const job = await GenerationJobManager.createJob(streamId, 'user-123', streamId);
+    const transientEvidenceBuffer = {
+      snapshot: jest.fn(() => [
+        {
+          source: 'native_tool_end',
+          toolCallId: 'tool-terminal-failure',
+          toolName: 'verify_terminal',
+          producerAgentId: 'agent-123',
+          toolAgentId: 'checker',
+          taskId: 'task-terminal',
+          criterionId: 'ok',
+          value: true,
+        },
+      ]),
+      clear: jest.fn(),
+    };
+    const client = new AgentClient({
+      req: {
+        user: { id: 'user-123' },
+        _resumableStreamId: streamId,
+        body: { endpoint: EModelEndpoint.agents, agent_id: 'agent-123' },
+        config: { endpoints: { [EModelEndpoint.agents]: {} } },
+      },
+      res: {},
+      agent: {
+        id: 'agent-123',
+        endpoint: EModelEndpoint.openAI,
+        provider: EModelEndpoint.openAI,
+        model_parameters: { model: 'gpt-4' },
+      },
+      contentParts: [],
+      collectedUsage: [],
+      artifactPromises: [],
+      transientEvidenceBuffer,
+    });
+    client.conversationId = streamId;
+    client.jobCreatedAt = job.createdAt;
+    client.orchestratorPlan = {
+      planId: 'plan-terminal-evidence-failure',
+      planVersion: 1,
+      mission: {
+        missionId: 'mission-terminal-evidence-failure',
+        taskId: 'root',
+        objective: 'Verify',
+        constraints: [],
+        requiredCapabilities: ['basic'],
+      },
+      strategy: 'DIRECT',
+      tasks: [
+        {
+          key: 'terminal',
+          objective: 'Verify terminal',
+          requiredCapabilities: ['basic'],
+          dependsOn: [],
+          taskId: 'task-terminal',
+          parentTaskId: 'root',
+          nodeId: 'node-terminal',
+          agentId: 'agent-123',
+          constraints: [],
+          validation: [
+            {
+              criteria: [{ id: 'ok', field: 'ok', expected: true }],
+              requireIndependentEvidence: true,
+            },
+          ],
+          canRunInParallel: false,
+        },
+      ],
+      specialists: [],
+      reasons: [{ code: 'WORKER_CAPABLE' }],
+    };
+
+    const getJobSpy = jest.spyOn(GenerationJobManager, 'getJob').mockResolvedValueOnce({
+      createdAt: job.createdAt,
+      metadata: { missionOracleState: { evidence: {}, results: {} } },
+    });
+
+    await expect(
+      client.assertTerminalMissionOracle({
+        getInterrupt: () => null,
+        getHaltReason: () => null,
+        getAgentOutputs: () => ({
+          'node-terminal': { content: '{"ok":true}' },
+        }),
+      }),
+    ).rejects.toThrow('persistence verification failed');
+
+    expect(transientEvidenceBuffer.clear).not.toHaveBeenCalled();
+    expect(client.missionOracleState).toBeUndefined();
+    getJobSpy.mockRestore();
+  });
+
   it('makes the run context meta durable when the run pauses', async () => {
     const streamId = 'conversation-context-meta-pause';
     const job = await GenerationJobManager.createJob(streamId, 'user-123', streamId);

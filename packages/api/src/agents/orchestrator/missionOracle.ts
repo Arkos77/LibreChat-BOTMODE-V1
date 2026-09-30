@@ -282,6 +282,7 @@ function messageCandidate(output: BaseMessage | undefined): string | undefined {
 export async function assertTerminalMissionTasksVerified(
   plan: MissionPlan,
   outputs: Record<string, BaseMessage>,
+  state?: MissionOracleState,
 ): Promise<void> {
   const dependedOnKeys = new Set(plan.tasks.flatMap((task) => task.dependsOn));
   const terminalTasks = plan.tasks.filter((task) => !dependedOnKeys.has(task.key));
@@ -300,7 +301,7 @@ export async function assertTerminalMissionTasksVerified(
       agentId: task.agentId,
       candidate: messageCandidate(output),
       requirements: task.validation,
-      evidence: [],
+      evidence: state?.evidence[task.taskId] ?? [],
     });
     assertMissionTaskVerified(result);
   }
