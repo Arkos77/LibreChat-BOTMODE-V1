@@ -24,6 +24,26 @@ export type MissionOracleResultPersister = (
   result: MissionOracleTaskResult,
 ) => Promise<void> | void;
 
+export function areMissionOracleResultsEquivalent(
+  left: MissionOracleTaskResult,
+  right: MissionOracleTaskResult,
+): boolean {
+  if (
+    left.taskId !== right.taskId ||
+    left.nodeId !== right.nodeId ||
+    left.verdicts.length !== right.verdicts.length
+  ) {
+    return false;
+  }
+
+  const withoutTimestamps = (result: MissionOracleTaskResult) => ({
+    taskId: result.taskId,
+    nodeId: result.nodeId,
+    verdicts: result.verdicts.map(({ timestamp: _timestamp, ...verdict }) => verdict),
+  });
+  return JSON.stringify(withoutTimestamps(left)) === JSON.stringify(withoutTimestamps(right));
+}
+
 /** Durable host-owned QA execution state. Evidence/verdict state only; it is
  * not part of MissionPlan and grants no execution authorization. */
 export interface MissionOracleState {

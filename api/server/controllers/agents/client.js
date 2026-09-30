@@ -152,6 +152,7 @@ const {
   createContextMetaPublisher,
   selectRunContextMetaToPublish,
   assertTerminalMissionTasksVerified,
+  areMissionOracleResultsEquivalent,
   normalizeMissionOracleState,
   promoteTransientMissionOracleEvidence,
 } = require('@librechat/api');
@@ -4820,8 +4821,12 @@ class AgentClient extends BaseClient {
         ? { evidence: {}, results: {} }
         : normalizeMissionOracleState(this.missionOracleState);
     const existing = currentState.results[result.taskId];
-    if (existing != null && JSON.stringify(existing) !== JSON.stringify(result)) {
-      throw new Error(`Mission Oracle result replay conflict for task ${result.taskId}`);
+    if (existing != null) {
+      if (!areMissionOracleResultsEquivalent(existing, result)) {
+        throw new Error(`Mission Oracle result replay conflict for task ${result.taskId}`);
+      }
+      this.missionOracleState = currentState;
+      return;
     }
     const nextState = {
       evidence: currentState.evidence,

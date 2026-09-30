@@ -1427,6 +1427,113 @@ describe('AgentClient - interrupt discovery persistence', () => {
     expect(transientEvidenceBuffer.clear).toHaveBeenCalledTimes(1);
   });
 
+  it('reuses an equivalent durable mission Oracle result across timestamp-only replay', async () => {
+    const streamId = 'conversation-mission-oracle-result-replay';
+    const job = await GenerationJobManager.createJob(streamId, 'user-123', streamId);
+    const client = new AgentClient({
+      req: {
+        user: { id: 'user-123' },
+        _resumableStreamId: streamId,
+        body: { endpoint: EModelEndpoint.agents, agent_id: 'agent-123' },
+        config: { endpoints: { [EModelEndpoint.agents]: {} } },
+      },
+      res: {},
+      agent: {
+        id: 'agent-123',
+        endpoint: EModelEndpoint.openAI,
+        provider: EModelEndpoint.openAI,
+        model_parameters: { model: 'gpt-4' },
+      },
+      contentParts: [],
+      collectedUsage: [],
+      artifactPromises: [],
+    });
+    client.conversationId = streamId;
+    client.jobCreatedAt = job.createdAt;
+    client.orchestratorPlan = { planId: 'plan-result-replay' };
+
+    const first = {
+      taskId: 'task-replay',
+      nodeId: 'node-replay',
+      verdicts: [
+        {
+          status: 'VERIFIED',
+          input: { taskId: 'task-replay', agentId: 'agent-1', criteria: [], evidence: [] },
+          validator: { id: 'librechat:oracle:deterministic:v1', type: 'deterministic' },
+          timestamp: '2026-09-30T10:00:00.000Z',
+          reasons: [],
+          checks: [],
+          contradictions: [],
+          uncertainty: [],
+        },
+      ],
+    };
+    const replay = structuredClone(first);
+    replay.verdicts[0].timestamp = '2026-09-30T10:00:01.000Z';
+
+    await client.persistMissionOracleResult(first, streamId);
+    const afterFirst = await GenerationJobManager.getJob(streamId);
+    await client.persistMissionOracleResult(replay, streamId);
+    const afterReplay = await GenerationJobManager.getJob(streamId);
+
+    expect(afterReplay?.metadata.missionOracleState?.results?.['task-replay']).toEqual(first);
+    expect(afterReplay?.metadata.missionOracleState).toEqual(
+      afterFirst?.metadata.missionOracleState,
+    );
+    expect(client.missionOracleState).toEqual(afterFirst?.metadata.missionOracleState);
+  });
+
+  it('fails closed when a replay changes mission Oracle verdict semantics', async () => {
+    const streamId = 'conversation-mission-oracle-result-conflict';
+    const job = await GenerationJobManager.createJob(streamId, 'user-123', streamId);
+    const client = new AgentClient({
+      req: {
+        user: { id: 'user-123' },
+        _resumableStreamId: streamId,
+        body: { endpoint: EModelEndpoint.agents, agent_id: 'agent-123' },
+        config: { endpoints: { [EModelEndpoint.agents]: {} } },
+      },
+      res: {},
+      agent: {
+        id: 'agent-123',
+        endpoint: EModelEndpoint.openAI,
+        provider: EModelEndpoint.openAI,
+        model_parameters: { model: 'gpt-4' },
+      },
+      contentParts: [],
+      collectedUsage: [],
+      artifactPromises: [],
+    });
+    client.conversationId = streamId;
+    client.jobCreatedAt = job.createdAt;
+    client.orchestratorPlan = { planId: 'plan-result-conflict' };
+
+    const first = {
+      taskId: 'task-conflict',
+      nodeId: 'node-conflict',
+      verdicts: [
+        {
+          status: 'VERIFIED',
+          input: { taskId: 'task-conflict', agentId: 'agent-1', criteria: [], evidence: [] },
+          validator: { id: 'librechat:oracle:deterministic:v1', type: 'deterministic' },
+          timestamp: '2026-09-30T10:00:00.000Z',
+          reasons: [],
+          checks: [],
+          contradictions: [],
+          uncertainty: [],
+        },
+      ],
+    };
+    const changed = structuredClone(first);
+    changed.verdicts[0].status = 'REJECTED';
+    changed.verdicts[0].timestamp = '2026-09-30T10:00:01.000Z';
+
+    await client.persistMissionOracleResult(first, streamId);
+    await expect(client.persistMissionOracleResult(changed, streamId)).rejects.toThrow(
+      'Mission Oracle result replay conflict for task task-conflict',
+    );
+  });
+
   it('serializes concurrent mission Oracle result writes without losing either task result', async () => {
     const streamId = 'conversation-mission-oracle-concurrent-results';
     const job = await GenerationJobManager.createJob(streamId, 'user-123', streamId);

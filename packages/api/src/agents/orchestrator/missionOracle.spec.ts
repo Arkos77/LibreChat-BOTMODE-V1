@@ -72,6 +72,59 @@ describe('normalizeMissionOracleState', () => {
   });
 });
 
+describe('Mission Oracle result replay semantics', () => {
+  it('considers verdicts equivalent when only their timestamps differ', () => {
+    const base = {
+      taskId: 'task-1',
+      nodeId: 'node-1',
+      verdicts: [
+        {
+          status: 'VERIFIED' as const,
+          input: {
+            taskId: 'task-1',
+            agentId: 'agent-1',
+            criteria: [],
+            evidence: [],
+          },
+          reasons: [],
+          checks: [],
+          contradictions: [],
+          uncertainty: [],
+          validator: { id: 'librechat:oracle:deterministic:v1', type: 'deterministic' as const },
+          timestamp: '2026-09-30T10:00:00.000Z',
+        },
+      ],
+    };
+    const replay = structuredClone(base);
+    replay.verdicts[0].timestamp = '2026-09-30T10:00:01.000Z';
+
+    expect(missionOracle.areMissionOracleResultsEquivalent(base, replay)).toBe(true);
+  });
+
+  it('detects a real verdict change despite a new timestamp', () => {
+    const left = {
+      taskId: 'task-1',
+      nodeId: 'node-1',
+      verdicts: [
+        {
+          status: 'VERIFIED' as const,
+          input: { taskId: 'task-1', agentId: 'agent-1', criteria: [], evidence: [] },
+          reasons: [],
+          checks: [],
+          contradictions: [],
+          uncertainty: [],
+          validator: { id: 'librechat:oracle:deterministic:v1', type: 'deterministic' as const },
+          timestamp: '2026-09-30T10:00:00.000Z',
+        },
+      ],
+    };
+    const right = structuredClone(left);
+    right.verdicts[0].status = 'REJECTED';
+    right.verdicts[0].timestamp = '2026-09-30T10:00:01.000Z';
+    expect(missionOracle.areMissionOracleResultsEquivalent(left, right)).toBe(false);
+  });
+});
+
 describe('promoteTransientMissionOracleEvidence', () => {
   const promotionHelper = () =>
     (
