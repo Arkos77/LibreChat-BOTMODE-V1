@@ -1,6 +1,8 @@
 import type { BaseMessage } from '@librechat/agents/langchain/messages';
+import type { TransientToolEvidenceObservation } from './transientEvidenceBuffer';
 import type { OracleEvidence, OracleVerdict } from '../oracle';
 import type { MissionPlan, OracleRequirement } from './types';
+import { createNativeToolEvidence } from './toolEvidence';
 import { deterministicOracle } from '../oracle';
 
 export interface MissionOracleTaskInput {
@@ -117,6 +119,75 @@ function validateVerdict(value: unknown, path: string): void {
       Number.isFinite(Date.parse(value.timestamp)),
     `${path}.timestamp`,
   );
+}
+
+function emptyMissionOracleState(): MissionOracleState {
+  return { evidence: {}, results: {} };
+}
+
+function missionTaskCriterionIds(plan: MissionPlan, taskId: string): Set<string> {
+  const task = plan.tasks.find((candidate) => candidate.taskId === taskId);
+  if (task == null) {
+    throw new Error(`Mission Oracle evidence references unknown task: ${taskId}`);
+  }
+  return new Set(
+    task.validation.flatMap((requirement) =>
+      requirement.criteria.map((criterion) => requiredText(criterion.id, 'criterionId')),
+    ),
+  );
+}
+
+function sameEvidence(left: OracleEvidence, right: OracleEvidence): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/**
+ * Promotes only already-declared structured native tool observations into
+ * durable host-owned Oracle evidence. No tool output, arguments, artifacts or
+ * model prose are inspected here.
+ */
+export function promoteTransientMissionOracleEvidence(
+  plan: MissionPlan,
+  state: MissionOracleState | undefined,
+  observation: TransientToolEvidenceObservation,
+): MissionOracleState {
+  if (observation.source !== 'native_tool_end') {
+    throw new Error('Mission Oracle evidence requires native_tool_end observation');
+  }
+  const taskId = requiredText(observation.taskId ?? '', 'taskId');
+  const criterionId = requiredText(observation.criterionId ?? '', 'criterionId');
+  if (!Object.prototype.hasOwnProperty.call(observation, 'value')) {
+    throw new Error('Mission Oracle evidence requires explicit value');
+  }
+
+  const declaredCriteria = missionTaskCriterionIds(plan, taskId);
+  if (!declaredCriteria.has(criterionId)) {
+    throw new Error(
+      `Mission Oracle evidence criterion ${criterionId} is not declared for task ${taskId}`,
+    );
+  }
+
+  const nextState = state == null ? emptyMissionOracleState() : normalizeMissionOracleState(state);
+  const { evidence } = createNativeToolEvidence({
+    toolCallId: observation.toolCallId,
+    producerAgentId: observation.producerAgentId,
+    criterionId,
+    value: observation.value,
+    ...(observation.toolAgentId == null ? {} : { toolAgentId: observation.toolAgentId }),
+    ...(observation.runId == null ? {} : { runId: observation.runId }),
+  });
+
+  const bucket = nextState.evidence[taskId] ?? [];
+  const existing = bucket.find((candidate) => candidate.id === evidence.id);
+  if (existing != null) {
+    if (!sameEvidence(existing, evidence)) {
+      throw new Error(`Mission Oracle evidence replay conflict for task ${taskId}: ${evidence.id}`);
+    }
+    return nextState;
+  }
+
+  nextState.evidence[taskId] = [...bucket, evidence];
+  return nextState;
 }
 
 export function normalizeMissionOracleState(value: unknown): MissionOracleState {

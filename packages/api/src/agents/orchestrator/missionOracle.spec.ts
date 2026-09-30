@@ -72,6 +72,140 @@ describe('normalizeMissionOracleState', () => {
   });
 });
 
+describe('promoteTransientMissionOracleEvidence', () => {
+  const promotionHelper = () =>
+    (
+      missionOracle as typeof missionOracle & {
+        promoteTransientMissionOracleEvidence?: (
+          plan: MissionPlan,
+          state: missionOracle.MissionOracleState | undefined,
+          observation: {
+            source: 'native_tool_end';
+            toolCallId: string;
+            toolName: string;
+            producerAgentId: string;
+            toolAgentId?: string;
+            taskId?: string;
+            runId?: string;
+            criterionId?: string;
+            value?: string | number | boolean | null;
+          },
+        ) => missionOracle.MissionOracleState;
+      }
+    ).promoteTransientMissionOracleEvidence;
+
+  it('promotes only an explicit exact-task criterion observation and preserves null', () => {
+    const helper = promotionHelper();
+    expect(helper).toEqual(expect.any(Function));
+
+    const state = helper?.(terminalPlan(), undefined, {
+      source: 'native_tool_end',
+      toolCallId: 'tool-1',
+      toolName: 'verify_terminal',
+      producerAgentId: 'worker',
+      toolAgentId: 'checker',
+      taskId: 'task-terminal',
+      runId: 'run-1',
+      criterionId: 'ok',
+      value: null,
+    });
+
+    expect(state).toEqual({
+      evidence: {
+        'task-terminal': [
+          {
+            id: 'tool-1',
+            criterionId: 'ok',
+            value: null,
+            source: { id: 'tool-1', type: 'tool', agentId: 'checker' },
+          },
+        ],
+      },
+      results: {},
+    });
+  });
+
+  it('is idempotent for the same exact observation replay', () => {
+    const helper = promotionHelper();
+    expect(helper).toEqual(expect.any(Function));
+    const observation = {
+      source: 'native_tool_end' as const,
+      toolCallId: 'tool-1',
+      toolName: 'verify_terminal',
+      producerAgentId: 'worker',
+      taskId: 'task-terminal',
+      criterionId: 'ok',
+      value: true,
+    };
+    const once = helper?.(terminalPlan(), undefined, observation);
+    const twice = helper?.(terminalPlan(), once, observation);
+    expect(twice?.evidence['task-terminal']).toHaveLength(1);
+  });
+
+  it('fails closed for unknown tasks, undeclared criteria, missing values, or conflicting replays', () => {
+    const helper = promotionHelper();
+    expect(helper).toEqual(expect.any(Function));
+    const plan = terminalPlan();
+
+    expect(() =>
+      helper?.(plan, undefined, {
+        source: 'native_tool_end',
+        toolCallId: 'tool-unknown-task',
+        toolName: 'verify_terminal',
+        producerAgentId: 'worker',
+        taskId: 'task-missing',
+        criterionId: 'ok',
+        value: true,
+      }),
+    ).toThrow();
+
+    expect(() =>
+      helper?.(plan, undefined, {
+        source: 'native_tool_end',
+        toolCallId: 'tool-unknown-criterion',
+        toolName: 'verify_terminal',
+        producerAgentId: 'worker',
+        taskId: 'task-terminal',
+        criterionId: 'not-declared',
+        value: true,
+      }),
+    ).toThrow();
+
+    expect(() =>
+      helper?.(plan, undefined, {
+        source: 'native_tool_end',
+        toolCallId: 'tool-missing-value',
+        toolName: 'verify_terminal',
+        producerAgentId: 'worker',
+        taskId: 'task-terminal',
+        criterionId: 'ok',
+      }),
+    ).toThrow();
+
+    const first = helper?.(plan, undefined, {
+      source: 'native_tool_end',
+      toolCallId: 'tool-conflict',
+      toolName: 'verify_terminal',
+      producerAgentId: 'worker',
+      taskId: 'task-terminal',
+      criterionId: 'ok',
+      value: true,
+    });
+
+    expect(() =>
+      helper?.(plan, first, {
+        source: 'native_tool_end',
+        toolCallId: 'tool-conflict',
+        toolName: 'verify_terminal',
+        producerAgentId: 'worker',
+        taskId: 'task-terminal',
+        criterionId: 'ok',
+        value: false,
+      }),
+    ).toThrow();
+  });
+});
+
 describe('terminal mission Oracle', () => {
   it('blocks a validated terminal task whose exact output is rejected', async () => {
     const helper = (
