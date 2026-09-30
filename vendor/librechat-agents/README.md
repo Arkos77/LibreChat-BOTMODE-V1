@@ -119,3 +119,29 @@ unproven abandoned `running` attempts remain fail-closed. Historical artifacts a
 - npm integrity: `sha512-uchGP/plMmuxvfKz4dPxZq/0d68LKwIJH0rlUkkoYXdOz6W/NO3/FXCsbiHGKXQOI9pivcDKBRJKuH5lTFIm8g==`
 - validation: SubagentExecutor 133/133 PASS; TypeScript noEmit PASS; build PASS; git diff --check PASS.
 - contract: host-proven abandoned-attempt recovery can set `SubagentTaskRuntime.recoveryOnly`; the SDK then refuses to seed a fresh child when no durable recoverable checkpoint exists. This does not itself authorize host takeover.
+
+## Multi-agent transition checkpoint SDK — current artifact
+
+- Package: `@librechat/agents` 3.7.17.
+- Source commit: `28c10ce0fa651df6f4c9b2fd9e166e24bc50a56f`.
+- Commit message: `feat(graph): checkpoint per-agent outputs for transition gates`.
+- Artifact: `librechat-agents-3.7.17-28c10ce.tgz`.
+- SHA-256: `4216bb5cbbe4636d655a049852ec8aa0a0790e4316fddd8b40941242e48c9e48`.
+- npm integrity: `sha512-RDJ370jVQSPaZynT80F92rihH1mZYo6QdiSGAD0on4jPNnVM/+TWROQTITGEuULEyoRItRJuoXW3LhyoSlnB9g==`.
+- Distributed files: 1284.
+- Reproducibility: after a clean SDK build at the exact source commit, two independent
+  `npm pack --ignore-scripts` runs were byte-identical to each other and to the vendored archive.
+- Validation: `MultiAgentGraph.test.ts` 24/24 PASS; the focused transition/checkpoint
+  subset 2/2 PASS; SDK build PASS.
+
+This SDK adds an observation-only `agentOutputs` LangGraph state channel and checkpoints
+the last AI output per multi-agent node so a fresh graph can deterministically inspect
+predecessor output after a blocked direct transition. It follows the direct transition
+barrier introduced immediately before it and does not grant authorization, task ownership,
+or execution authority. Existing P3 durable checkpoint recovery contracts remain unchanged;
+the P3 source files in the prior `bc65f7b` package and this package are byte-identical.
+
+LibreChat currently compiles durable mission plans into native direct graph topology but
+does not yet attach host transition predicates/barriers to those edges. Therefore this
+artifact makes the validated SDK capability reproducible and available without by itself
+activating a new host-side decision or authorization path. Historical artifacts are retained.
