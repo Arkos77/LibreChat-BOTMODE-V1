@@ -339,14 +339,30 @@ describe('terminal mission Oracle', () => {
     );
   });
 
-  it('fails closed when independent evidence is required but unavailable', async () => {
+  it('persists UNKNOWN terminal Oracle result before failing closed', async () => {
     const plan = terminalPlan();
     plan.tasks[0].validation[0].requireIndependentEvidence = true;
+    const persistMissionOracleResult = jest.fn(async () => {});
+
     await expect(
-      missionOracle.assertTerminalMissionTasksVerified(plan, {
-        'node-terminal': new AIMessage('{"ok":true}'),
-      }),
+      missionOracle.assertTerminalMissionTasksVerified(
+        plan,
+        {
+          'node-terminal': new AIMessage('{"ok":true}'),
+        },
+        undefined,
+        persistMissionOracleResult,
+      ),
     ).rejects.toThrow('UNKNOWN');
+
+    expect(persistMissionOracleResult).toHaveBeenCalledTimes(1);
+    expect(persistMissionOracleResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'task-terminal',
+        nodeId: 'node-terminal',
+        verdicts: [expect.objectContaining({ status: 'UNKNOWN' })],
+      }),
+    );
   });
 
   it('skips non-terminal tasks because their outputs are gated at transitions', async () => {

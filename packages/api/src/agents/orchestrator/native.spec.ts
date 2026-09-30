@@ -348,7 +348,14 @@ describe('native plan compilation', () => {
       },
       context,
     );
-    const native = compileNativePlan(plan, bindings);
+    const persistMissionOracleResult = jest.fn(async () => {});
+    const native = compileNativePlan(
+      plan,
+      bindings,
+      undefined,
+      undefined,
+      persistMissionOracleResult,
+    );
     expect(native.graphConfig.type).toBe('multi-agent');
     if (native.graphConfig.type !== 'multi-agent') throw new Error('MultiAgentGraph required');
     const edge = native.graphConfig.edges[0];
@@ -360,6 +367,14 @@ describe('native plan compilation', () => {
     } as BaseGraphState;
 
     await expect(edge.beforeTransition?.(state)).rejects.toThrow('UNKNOWN');
+    expect(persistMissionOracleResult).toHaveBeenCalledTimes(1);
+    expect(persistMissionOracleResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: checked.taskId,
+        nodeId: checked.nodeId,
+        verdicts: [expect.objectContaining({ status: 'UNKNOWN' })],
+      }),
+    );
   });
 
   it('fails closed when a validated predecessor output is non-text content', async () => {
