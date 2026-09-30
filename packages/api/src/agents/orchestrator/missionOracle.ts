@@ -25,6 +25,134 @@ export interface MissionOracleState {
   results: Record<string, MissionOracleTaskResult>;
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function requireDurableState(condition: unknown, detail: string): asserts condition {
+  if (!condition) {
+    throw new Error(`Mission Oracle durable state invalid: ${detail}`);
+  }
+}
+
+function isOracleScalar(value: unknown): value is string | number | boolean | null {
+  return (
+    value == null ||
+    typeof value === 'string' ||
+    (typeof value === 'number' && Number.isFinite(value)) ||
+    typeof value === 'boolean'
+  );
+}
+
+function validateEvidence(value: unknown, path: string): void {
+  requireDurableState(isPlainRecord(value), `${path} must be an object`);
+  requireDurableState(typeof value.id === 'string' && value.id.trim() !== '', `${path}.id`);
+  requireDurableState(
+    typeof value.criterionId === 'string' && value.criterionId.trim() !== '',
+    `${path}.criterionId`,
+  );
+  requireDurableState(isOracleScalar(value.value), `${path}.value`);
+  requireDurableState(isPlainRecord(value.source), `${path}.source`);
+  requireDurableState(
+    typeof value.source.id === 'string' && value.source.id.trim() !== '',
+    `${path}.source.id`,
+  );
+  requireDurableState(
+    ['tool', 'source', 'model', 'producer'].includes(String(value.source.type)),
+    `${path}.source.type`,
+  );
+  if (value.source.agentId != null) {
+    requireDurableState(
+      typeof value.source.agentId === 'string' && value.source.agentId.trim() !== '',
+      `${path}.source.agentId`,
+    );
+  }
+  if (value.confidence != null) {
+    requireDurableState(
+      typeof value.confidence === 'number' &&
+        Number.isFinite(value.confidence) &&
+        value.confidence >= 0 &&
+        value.confidence <= 1,
+      `${path}.confidence`,
+    );
+  }
+}
+
+function validateVerdict(value: unknown, path: string): void {
+  requireDurableState(isPlainRecord(value), `${path} must be an object`);
+  requireDurableState(
+    ['VERIFIED', 'REJECTED', 'UNKNOWN', 'HUMAN_REVIEW'].includes(String(value.status)),
+    `${path}.status`,
+  );
+  requireDurableState(isPlainRecord(value.input), `${path}.input`);
+  requireDurableState(
+    typeof value.input.taskId === 'string' && value.input.taskId.trim() !== '',
+    `${path}.input.taskId`,
+  );
+  requireDurableState(
+    typeof value.input.agentId === 'string' && value.input.agentId.trim() !== '',
+    `${path}.input.agentId`,
+  );
+  requireDurableState(Array.isArray(value.input.criteria), `${path}.input.criteria`);
+  requireDurableState(Array.isArray(value.input.evidence), `${path}.input.evidence`);
+  for (const [index, evidence] of value.input.evidence.entries()) {
+    validateEvidence(evidence, `${path}.input.evidence[${index}]`);
+  }
+  requireDurableState(Array.isArray(value.reasons), `${path}.reasons`);
+  requireDurableState(Array.isArray(value.checks), `${path}.checks`);
+  requireDurableState(Array.isArray(value.contradictions), `${path}.contradictions`);
+  requireDurableState(Array.isArray(value.uncertainty), `${path}.uncertainty`);
+  requireDurableState(isPlainRecord(value.validator), `${path}.validator`);
+  requireDurableState(
+    typeof value.validator.id === 'string' && value.validator.id.trim() !== '',
+    `${path}.validator.id`,
+  );
+  requireDurableState(
+    ['deterministic', 'tool', 'source', 'model', 'human'].includes(String(value.validator.type)),
+    `${path}.validator.type`,
+  );
+  requireDurableState(
+    typeof value.timestamp === 'string' &&
+      value.timestamp.trim() !== '' &&
+      Number.isFinite(Date.parse(value.timestamp)),
+    `${path}.timestamp`,
+  );
+}
+
+export function normalizeMissionOracleState(value: unknown): MissionOracleState {
+  requireDurableState(isPlainRecord(value), 'root must be an object');
+  requireDurableState(isPlainRecord(value.evidence), 'evidence must be an object');
+  requireDurableState(isPlainRecord(value.results), 'results must be an object');
+
+  for (const [taskId, evidenceList] of Object.entries(value.evidence)) {
+    requireDurableState(taskId.trim() !== '', 'evidence task key');
+    requireDurableState(Array.isArray(evidenceList), `evidence.${taskId} must be an array`);
+    for (const [index, evidence] of evidenceList.entries()) {
+      validateEvidence(evidence, `evidence.${taskId}[${index}]`);
+    }
+  }
+
+  for (const [taskId, result] of Object.entries(value.results)) {
+    requireDurableState(taskId.trim() !== '', 'results task key');
+    requireDurableState(isPlainRecord(result), `results.${taskId} must be an object`);
+    requireDurableState(
+      typeof result.taskId === 'string' && result.taskId.trim() !== '',
+      `results.${taskId}.taskId`,
+    );
+    requireDurableState(result.taskId === taskId, `results.${taskId}.taskId mismatch`);
+    requireDurableState(
+      typeof result.nodeId === 'string' && result.nodeId.trim() !== '',
+      `results.${taskId}.nodeId`,
+    );
+    requireDurableState(Array.isArray(result.verdicts), `results.${taskId}.verdicts`);
+    for (const [index, verdict] of result.verdicts.entries()) {
+      validateVerdict(verdict, `results.${taskId}.verdicts[${index}]`);
+    }
+  }
+
+  return structuredClone(value) as MissionOracleState;
+}
+
 function requiredText(value: string, name: string): string {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new Error(`Mission Oracle requires non-empty ${name}`);

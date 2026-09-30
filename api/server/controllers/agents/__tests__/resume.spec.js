@@ -2885,6 +2885,27 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
       );
     });
 
+    it('fails closed on malformed durable mission Oracle execution state before resumeCompletion', async () => {
+      mockGenerationJobManager.getJob.mockResolvedValue(
+        makeToolApprovalJob({
+          metadata: {
+            missionOracleState: {
+              evidence: { 'task-research': [{}] },
+              results: {},
+            },
+          },
+        }),
+      );
+
+      await post(approveBody());
+      await settled;
+      await flush();
+
+      const client = await mockInitializeClient.mock.results[0].value.then((r) => r.client);
+      expect(client.resumeCompletion).not.toHaveBeenCalled();
+      expect(mockGenerationJobManager.completeJob).toHaveBeenCalled();
+    });
+
     it('restores durable mission Oracle execution state before resumeCompletion', async () => {
       const missionOracleState = {
         evidence: {

@@ -35,6 +35,43 @@ const terminalPlan = (candidateExpected = true): MissionPlan =>
     ],
   }) as MissionPlan;
 
+describe('normalizeMissionOracleState', () => {
+  it('returns a detached clone for valid durable state', () => {
+    const state = {
+      evidence: {
+        'task-a': [
+          {
+            id: 'evidence-1',
+            criterionId: 'criterion-a',
+            value: true,
+            source: { id: 'tool-1', type: 'tool' as const, agentId: 'agent-a' },
+            confidence: 0.9,
+          },
+        ],
+      },
+      results: {},
+    };
+
+    const normalized = missionOracle.normalizeMissionOracleState(state);
+    expect(normalized).toEqual(state);
+    expect(normalized).not.toBe(state);
+    expect(normalized.evidence['task-a']).not.toBe(state.evidence['task-a']);
+  });
+
+  it.each([
+    null,
+    [],
+    { evidence: [], results: {} },
+    { evidence: {}, results: [] },
+    { evidence: { 'task-a': [{}] }, results: {} },
+    { evidence: {}, results: { 'task-a': { taskId: '', nodeId: 'node-a', verdicts: [] } } },
+  ])('fails closed for malformed durable state: %p', (state) => {
+    expect(() => missionOracle.normalizeMissionOracleState(state)).toThrow(
+      /Mission Oracle durable state/,
+    );
+  });
+});
+
 describe('terminal mission Oracle', () => {
   it('blocks a validated terminal task whose exact output is rejected', async () => {
     const helper = (

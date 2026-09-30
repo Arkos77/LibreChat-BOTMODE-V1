@@ -45,6 +45,7 @@ const {
   createAgentEventActionRecorder,
   createAgentEventActorDetachedActionLifecycle,
   findAgentEventAppliedAction,
+  normalizeMissionOracleState,
 } = require('@librechat/api');
 const { disposeClient } = require('~/server/cleanup');
 const { observeMtoEvent } = require('~/server/services/Endpoints/agents/mtoObservation');
@@ -1829,7 +1830,7 @@ const ResumeAgentController = async (req, res, next, initializeClient, addTitle)
     client.missionOracleState =
       job.metadata?.missionOracleState == null
         ? undefined
-        : structuredClone(job.metadata.missionOracleState);
+        : normalizeMissionOracleState(job.metadata.missionOracleState);
     client.responseMessageId = job.metadata.responseMessageId;
     client.parentMessageId = job.metadata.userMessage?.messageId ?? Constants.NO_PARENT;
     // Seed the rebuilt pruner from the tier and calibration captured at the pause, so the
