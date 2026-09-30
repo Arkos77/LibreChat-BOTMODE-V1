@@ -4,7 +4,8 @@ import type {
   MultiAgentGraphConfig,
   StandardGraphConfig,
 } from '@librechat/agents';
-import type { MissionPlan, OracleRequirement } from './types';
+import type { MissionPlan, OracleRequirement, PlannedTask } from './types';
+import { assertMissionTaskVerified, validateMissionTask } from './missionOracle';
 import { getTaskLevels, nodeIdentity } from './planner';
 
 export interface NativeMissionPlan {
@@ -15,13 +16,37 @@ export interface NativeMissionPlan {
   validation: Array<{ taskId: string; nodeId: string; requirements: OracleRequirement[] }>;
 }
 
-function requirePredecessorOutputs(sourceNodeIds: readonly string[]) {
-  return (state: BaseGraphState): void => {
+function messageCandidate(
+  output: BaseGraphState['agentOutputs'][string] | undefined,
+): string | undefined {
+  return typeof output?.content === 'string' && output.content.trim() !== ''
+    ? output.content
+    : undefined;
+}
+
+function requirePredecessorOutputs(sourceTasks: readonly PlannedTask[]) {
+  const sourceNodeIds = sourceTasks.map((task) => task.nodeId);
+  return async (state: BaseGraphState): Promise<void> => {
     const missing = sourceNodeIds.filter((nodeId) => state.agentOutputs?.[nodeId] == null);
     if (missing.length > 0) {
       throw new Error(
         `Native mission transition missing checkpointed predecessor output: ${missing.join(', ')}`,
       );
+    }
+
+    for (const task of sourceTasks) {
+      if (task.validation.length === 0) {
+        continue;
+      }
+      const result = await validateMissionTask({
+        taskId: task.taskId,
+        nodeId: task.nodeId,
+        agentId: task.agentId,
+        candidate: messageCandidate(state.agentOutputs?.[task.nodeId]),
+        requirements: task.validation,
+        evidence: [],
+      });
+      assertMissionTaskVerified(result);
     }
   };
 }
@@ -68,12 +93,13 @@ export function compileNativePlan(
   const edges: MultiAgentGraphConfig['edges'] = plan.tasks
     .filter((task) => task.dependsOn.length > 0)
     .map((task) => {
-      const sourceNodeIds = task.dependsOn.map((key) => tasks.get(key)!.nodeId);
+      const sourceTasks = task.dependsOn.map((key) => tasks.get(key)!);
+      const sourceNodeIds = sourceTasks.map((sourceTask) => sourceTask.nodeId);
       return {
         from: sourceNodeIds,
         to: task.nodeId,
         edgeType: 'direct',
-        beforeTransition: requirePredecessorOutputs(sourceNodeIds),
+        beforeTransition: requirePredecessorOutputs(sourceTasks),
       };
     });
   return {

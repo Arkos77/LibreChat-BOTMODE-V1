@@ -159,11 +159,11 @@ describe('native plan compilation', () => {
       messages: BaseGraphState['messages'] = [],
     ): BaseGraphState => ({ messages, agentOutputs }) as BaseGraphState;
 
-    expect(() => edge.beforeTransition?.(state({}))).toThrow(plan.tasks[0].nodeId);
-    expect(() =>
+    await expect(edge.beforeTransition?.(state({}))).rejects.toThrow(plan.tasks[0].nodeId);
+    await expect(
       edge.beforeTransition?.(state({ [plan.tasks[0].nodeId]: outputA }, [outputA])),
-    ).toThrow(plan.tasks[1].nodeId);
-    expect(() =>
+    ).rejects.toThrow(plan.tasks[1].nodeId);
+    await expect(
       edge.beforeTransition?.(
         state(
           {
@@ -173,7 +173,123 @@ describe('native plan compilation', () => {
           [outputA, outputB],
         ),
       ),
-    ).not.toThrow();
+    ).resolves.toBeUndefined();
+  });
+
+  it('runs Oracle on validated predecessors before allowing a dependent transition', async () => {
+    const plan = deterministicPlanner.planMission(
+      {
+        ...base,
+        objectives: [
+          {
+            key: 'checked',
+            objective: 'Produce checked result',
+            requiredCapabilities: ['x'],
+            dependsOn: [],
+            validation: { criteria: [{ id: 'ok', field: 'ok', expected: true }] },
+          },
+          {
+            key: 'consume',
+            objective: 'Consume checked result',
+            requiredCapabilities: ['basic'],
+            dependsOn: ['checked'],
+          },
+        ],
+      },
+      context,
+    );
+    const native = compileNativePlan(plan, bindings);
+    expect(native.graphConfig.type).toBe('multi-agent');
+    if (native.graphConfig.type !== 'multi-agent') throw new Error('MultiAgentGraph required');
+    const edge = native.graphConfig.edges[0];
+    const checked = plan.tasks[0];
+    const state = (output: AIMessage): BaseGraphState =>
+      ({ messages: [output], agentOutputs: { [checked.nodeId]: output } }) as BaseGraphState;
+
+    await expect(
+      edge.beforeTransition?.(state(new AIMessage('{"ok":true}'))),
+    ).resolves.toBeUndefined();
+    await expect(edge.beforeTransition?.(state(new AIMessage('{"ok":false}')))).rejects.toThrow(
+      'REJECTED',
+    );
+    await expect(edge.beforeTransition?.(state(new AIMessage('not-json')))).rejects.toThrow(
+      'REJECTED',
+    );
+  });
+
+  it('fails closed when predecessor validation requires independent evidence that is unavailable', async () => {
+    const plan = deterministicPlanner.planMission(
+      {
+        ...base,
+        objectives: [
+          {
+            key: 'checked',
+            objective: 'Produce independently checked result',
+            requiredCapabilities: ['x'],
+            dependsOn: [],
+            validation: {
+              criteria: [{ id: 'ok', field: 'ok', expected: true }],
+              requireIndependentEvidence: true,
+            },
+          },
+          {
+            key: 'consume',
+            objective: 'Consume independently checked result',
+            requiredCapabilities: ['basic'],
+            dependsOn: ['checked'],
+          },
+        ],
+      },
+      context,
+    );
+    const native = compileNativePlan(plan, bindings);
+    expect(native.graphConfig.type).toBe('multi-agent');
+    if (native.graphConfig.type !== 'multi-agent') throw new Error('MultiAgentGraph required');
+    const edge = native.graphConfig.edges[0];
+    const checked = plan.tasks[0];
+    const output = new AIMessage('{"ok":true}');
+    const state = {
+      messages: [output],
+      agentOutputs: { [checked.nodeId]: output },
+    } as BaseGraphState;
+
+    await expect(edge.beforeTransition?.(state)).rejects.toThrow('UNKNOWN');
+  });
+
+  it('fails closed when a validated predecessor output is non-text content', async () => {
+    const plan = deterministicPlanner.planMission(
+      {
+        ...base,
+        objectives: [
+          {
+            key: 'checked',
+            objective: 'Produce checked result',
+            requiredCapabilities: ['x'],
+            dependsOn: [],
+            validation: { criteria: [{ id: 'ok', field: 'ok', expected: true }] },
+          },
+          {
+            key: 'consume',
+            objective: 'Consume checked result',
+            requiredCapabilities: ['basic'],
+            dependsOn: ['checked'],
+          },
+        ],
+      },
+      context,
+    );
+    const native = compileNativePlan(plan, bindings);
+    expect(native.graphConfig.type).toBe('multi-agent');
+    if (native.graphConfig.type !== 'multi-agent') throw new Error('MultiAgentGraph required');
+    const edge = native.graphConfig.edges[0];
+    const checked = plan.tasks[0];
+    const output = new AIMessage([{ type: 'text', text: '{"ok":true}' }]);
+    const state = {
+      messages: [output],
+      agentOutputs: { [checked.nodeId]: output },
+    } as BaseGraphState;
+
+    await expect(edge.beforeTransition?.(state)).rejects.toThrow('UNKNOWN');
   });
 
   it('rejects missing authorized bindings', () => {

@@ -36,3 +36,5 @@ export * from './authorization';
 export * from './hostModelDecision';
 
 export * from './synthesisReadiness';
+
+export * from './missionOracle';
