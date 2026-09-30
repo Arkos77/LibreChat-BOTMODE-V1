@@ -378,6 +378,9 @@ class AgentClient extends BaseClient {
     /** Generation-scoped LangGraph checkpoint namespace. Legacy paused jobs
      * intentionally use the historical empty namespace. @type {string} */
     this.checkpointNamespace = options.checkpointNamespace ?? '';
+    /** Exact durable P6 topology plan. Assigned only by the host controller
+     * after persistence/readback verification (or from paused job metadata). */
+    this.orchestratorPlan = options.orchestratorPlan;
     /** Bound-event invocation state is assigned immediately before sendMessage,
      * after the SDK has prepared its isolated fork. */
     this.eventActorCheckpointId = undefined;
@@ -4391,6 +4394,7 @@ class AgentClient extends BaseClient {
           (activityLabel ? createAssistantPhaseStampingHandlers(offsetHandlers) : offsetHandlers);
         const createRunPromise = createRun({
           agents,
+          ...(this.orchestratorPlan == null ? {} : { orchestratorPlan: this.orchestratorPlan }),
           // Conversation-stable identity for the e2e run hook; a resumed run
           // carries no messages, so history cannot identify the conversation.
           conversationId: this.conversationId,
@@ -4937,6 +4941,7 @@ class AgentClient extends BaseClient {
         (activityLabel ? createAssistantPhaseStampingHandlers(offsetHandlers) : offsetHandlers);
       run = await createRun({
         agents,
+        ...(this.orchestratorPlan == null ? {} : { orchestratorPlan: this.orchestratorPlan }),
         conversationId: this.conversationId,
         modelCallbacks: [modelBoundCallback],
         // State (messages, tool calls) is rehydrated from the checkpoint by

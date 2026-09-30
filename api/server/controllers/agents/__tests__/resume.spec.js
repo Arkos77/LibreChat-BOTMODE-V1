@@ -2840,6 +2840,51 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
       expect(capturedInit.requestBody).toBe(persistedMCPRequestBody);
     });
 
+    it('reuses the exact durable orchestrator plan before resumeCompletion without replanning', async () => {
+      const orchestratorPlan = {
+        planId: 'plan-p6-resume',
+        planVersion: 1,
+        mission: {
+          missionId: 'mission-p6-resume',
+          taskId: 'root',
+          objective: 'Resume exact topology',
+          constraints: ['bounded'],
+          requiredCapabilities: ['basic'],
+        },
+        strategy: 'DIRECT',
+        tasks: [
+          {
+            taskId: 'root/main',
+            parentTaskId: 'root',
+            nodeId: 'p6_resume_node',
+            agentId: 'agent_test',
+            objective: 'Resume',
+            requiredCapabilities: ['basic'],
+            dependsOn: [],
+            constraints: ['bounded'],
+            validation: [],
+            canRunInParallel: false,
+          },
+        ],
+        specialists: [],
+        reasons: [{ code: 'WORKER_CAPABLE' }],
+      };
+      mockGenerationJobManager.getJob.mockResolvedValue(
+        makeToolApprovalJob({ metadata: { orchestratorPlan } }),
+      );
+
+      await post(approveBody());
+      await settled;
+      await flush();
+
+      const client = await mockInitializeClient.mock.results[0].value.then((r) => r.client);
+      expect(client.orchestratorPlan).toBe(orchestratorPlan);
+      expect(client.resumeCompletion).toHaveBeenCalledTimes(1);
+      expect(mockInitializeClient.mock.invocationCallOrder[0]).toBeLessThan(
+        client.resumeCompletion.mock.invocationCallOrder[0],
+      );
+    });
+
     it('reuses the persisted generation checkpoint namespace and keeps legacy fallback explicit', async () => {
       mockGenerationJobManager.getJob.mockResolvedValue(
         makeToolApprovalJob({ metadata: { checkpointNamespace: 'generation-1000' } }),

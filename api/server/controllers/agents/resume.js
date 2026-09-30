@@ -1825,6 +1825,7 @@ const ResumeAgentController = async (req, res, next, initializeClient, addTitle)
     // avoid acting on a job a newer request has since replaced.
     client.jobCreatedAt = job.createdAt;
     client.checkpointNamespace = checkpointNamespace;
+    client.orchestratorPlan = job.metadata?.orchestratorPlan;
     client.responseMessageId = job.metadata.responseMessageId;
     client.parentMessageId = job.metadata.userMessage?.messageId ?? Constants.NO_PARENT;
     // Seed the rebuilt pruner from the tier and calibration captured at the pause, so the

@@ -41,6 +41,7 @@ const {
   agentRequestsAskUserQuestion,
   resolveAgentTurnExecutionPlan,
   resolveRequestTenantId,
+  deterministicPlanner,
 } = require('@librechat/api');
 const { disposeClient } = require('~/server/cleanup');
 const { observeMtoEvent } = require('~/server/services/Endpoints/agents/mtoObservation');
@@ -1777,6 +1778,72 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
     });
     startupTelemetry?.mark('client_initialized');
     client = result.client;
+
+    /**
+     * P6 native mission planning is an explicit opt-in. The planner consumes
+     * only declarative capability metadata supplied by the caller, while every
+     * selected agent binding must already exist in the host-authorized client
+     * configuration produced by initializeClient.
+     *
+     * Persist + read back the exact deterministic plan before sendMessage can
+     * expose any model/tool execution. The plan is topology evidence only; it
+     * grants no permission and does not replace the native runtime.
+     */
+    const orchestratorMission = req.body?.orchestratorMission;
+    if (orchestratorMission != null) {
+      const mission = orchestratorMission?.mission;
+      const plannerContext = orchestratorMission?.plannerContext;
+      if (
+        mission == null ||
+        plannerContext == null ||
+        plannerContext.worker == null ||
+        !Array.isArray(plannerContext.specialists)
+      ) {
+        throw new Error('Invalid orchestrator mission request');
+      }
+
+      const primaryAgentId = client?.options?.agent?.id;
+      if (
+        typeof primaryAgentId !== 'string' ||
+        primaryAgentId.length === 0 ||
+        plannerContext.worker.agentId !== primaryAgentId
+      ) {
+        throw new Error('Orchestrator worker must match the authorized primary agent');
+      }
+
+      const authorizedAgentIds = new Set([
+        primaryAgentId,
+        ...(client?.agentConfigs?.keys?.() ?? []),
+      ]);
+      for (const specialist of plannerContext.specialists) {
+        if (
+          specialist == null ||
+          typeof specialist.agentId !== 'string' ||
+          !authorizedAgentIds.has(specialist.agentId)
+        ) {
+          throw new Error('Orchestrator specialist is not an authorized agent binding');
+        }
+      }
+
+      const orchestratorPlan = deterministicPlanner.planMission(mission, plannerContext);
+      for (const task of orchestratorPlan.tasks) {
+        if (!authorizedAgentIds.has(task.agentId)) {
+          throw new Error('Orchestrator plan selected an unauthorized agent binding');
+        }
+      }
+
+      await GenerationJobManager.updateMetadata(streamId, { orchestratorPlan }, jobCreatedAt);
+      const persistedPlanJob = await GenerationJobManager.getJob(streamId);
+      if (
+        persistedPlanJob == null ||
+        persistedPlanJob.createdAt !== jobCreatedAt ||
+        JSON.stringify(persistedPlanJob.metadata?.orchestratorPlan) !==
+          JSON.stringify(orchestratorPlan)
+      ) {
+        throw new Error('Orchestrator plan persistence verification failed');
+      }
+      client.orchestratorPlan = persistedPlanJob.metadata.orchestratorPlan;
+    }
 
     /** Request-shape validation rejects every known edit/regenerate path, but
      * the client owns the final persistence decision. Fail closed if a future

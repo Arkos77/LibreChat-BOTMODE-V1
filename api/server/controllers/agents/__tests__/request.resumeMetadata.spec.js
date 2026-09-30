@@ -258,6 +258,7 @@ jest.mock('@librechat/data-schemas', () => ({
 }));
 
 jest.mock('@librechat/api', () => ({
+  deterministicPlanner: jest.requireActual('@librechat/api').deterministicPlanner,
   resolveRequestTenantId: (req) => req.tenantId ?? req.user?.tenantId,
   createMtoEvent: (...args) => jest.requireActual('@librechat/api').createMtoEvent(...args),
   createStepLimitEvidenceContext: (...args) =>
@@ -994,6 +995,254 @@ describe('ResumableAgentController resume metadata', () => {
     expect(initializeClient).toHaveBeenCalledWith(expect.objectContaining({ mtoTraceId }));
     expect(initializeClient).toHaveBeenCalledWith(
       expect.objectContaining({ mtoEventSink: expect.any(Function) }),
+    );
+  });
+
+  it('leaves the default request path unchanged when no orchestrator mission is supplied', async () => {
+    const sendMessage = jest.fn(() => new Promise(() => {}));
+    const client = {
+      options: { agent: { id: 'agent-primary' } },
+      agentConfigs: new Map(),
+      sendMessage,
+    };
+    const initializeClient = jest.fn().mockResolvedValue({ client });
+    const req = {
+      user: { id: 'user-123' },
+      body: {
+        text: 'Use the ordinary path.',
+        messageId: 'user-message',
+        conversationId: 'conversation-123',
+        endpointOption: { endpoint: 'agents', modelOptions: { model: 'gpt-4.1' } },
+      },
+      config: {},
+    };
+    const res = createResumableResponse();
+
+    await AgentController(req, res, jest.fn(), initializeClient, null);
+    await nextTick();
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(mockGenerationJobManager.updateMetadata).not.toHaveBeenCalledWith(
+      'conversation-123',
+      expect.objectContaining({ orchestratorPlan: expect.anything() }),
+      1000,
+    );
+  });
+
+  it('persists and verifies an exact authorized orchestrator plan before sendMessage', async () => {
+    const sendMessage = jest.fn(() => new Promise(() => {}));
+    const client = {
+      options: { agent: { id: 'agent-primary' } },
+      agentConfigs: new Map([['agent-specialist', { id: 'agent-specialist' }]]),
+      sendMessage,
+    };
+    const initializeClient = jest.fn().mockResolvedValue({ client });
+    const missionRequest = {
+      mission: {
+        missionId: 'mission-p6-host',
+        taskId: 'root-task',
+        objective: 'Execute the approved mission',
+        constraints: ['bounded'],
+        requiredCapabilities: ['research'],
+        objectives: [
+          {
+            key: 'research',
+            objective: 'Research the input',
+            requiredCapabilities: ['research'],
+            dependsOn: [],
+          },
+        ],
+      },
+      plannerContext: {
+        worker: {
+          id: 'worker',
+          agentId: 'agent-primary',
+          role: 'primary',
+          capabilities: ['basic'],
+          constraints: [],
+        },
+        specialists: [
+          {
+            id: 'researcher',
+            agentId: 'agent-specialist',
+            role: 'research',
+            capabilities: ['research'],
+            constraints: ['bounded'],
+          },
+        ],
+      },
+    };
+    const req = {
+      user: { id: 'user-123' },
+      body: {
+        text: 'Run the structured mission.',
+        messageId: 'user-message',
+        conversationId: 'conversation-123',
+        orchestratorMission: missionRequest,
+        endpointOption: { endpoint: 'agents', modelOptions: { model: 'gpt-4.1' } },
+      },
+      config: {},
+    };
+    const res = createResumableResponse();
+
+    mockGenerationJobManager.updateMetadata.mockImplementation(async (_streamId, patch) => {
+      if (patch.orchestratorPlan) {
+        mockGenerationJobManager.getJob.mockResolvedValue({
+          createdAt: 1000,
+          metadata: { orchestratorPlan: structuredClone(patch.orchestratorPlan) },
+        });
+      }
+    });
+
+    await AgentController(req, res, jest.fn(), initializeClient, null);
+    await nextTick();
+
+    const planUpdate = mockGenerationJobManager.updateMetadata.mock.calls.find(
+      ([, patch]) => patch?.orchestratorPlan != null,
+    );
+    expect(planUpdate).toBeDefined();
+    expect(planUpdate[0]).toBe('conversation-123');
+    expect(planUpdate[2]).toBe(1000);
+    expect(planUpdate[1].orchestratorPlan).toMatchObject({
+      mission: missionRequest.mission,
+      strategy: 'SINGLE',
+      tasks: [
+        expect.objectContaining({
+          agentId: 'agent-specialist',
+          taskId: 'root-task/research',
+        }),
+      ],
+    });
+    expect(mockGenerationJobManager.updateMetadata.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      sendMessage.mock.invocationCallOrder[0],
+    );
+    expect(mockGenerationJobManager.getJob.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      sendMessage.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('fails closed before sendMessage when an orchestrator specialist is not host-authorized', async () => {
+    const sendMessage = jest.fn(() => new Promise(() => {}));
+    const initializeClient = jest.fn().mockResolvedValue({
+      client: {
+        options: { agent: { id: 'agent-primary' } },
+        agentConfigs: new Map(),
+        sendMessage,
+      },
+    });
+    const req = {
+      user: { id: 'user-123' },
+      body: {
+        text: 'Reject the unauthorized specialist.',
+        messageId: 'user-message',
+        conversationId: 'conversation-123',
+        orchestratorMission: {
+          mission: {
+            missionId: 'mission-p6-host',
+            taskId: 'root-task',
+            objective: 'Execute',
+            constraints: [],
+            requiredCapabilities: ['research'],
+          },
+          plannerContext: {
+            worker: {
+              id: 'worker',
+              agentId: 'agent-primary',
+              role: 'primary',
+              capabilities: ['basic'],
+              constraints: [],
+            },
+            specialists: [
+              {
+                id: 'researcher',
+                agentId: 'agent-not-authorized',
+                role: 'research',
+                capabilities: ['research'],
+                constraints: [],
+              },
+            ],
+          },
+        },
+        endpointOption: { endpoint: 'agents', modelOptions: { model: 'gpt-4.1' } },
+      },
+      config: {},
+    };
+    const res = createResumableResponse();
+
+    await AgentController(req, res, jest.fn(), initializeClient, null);
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(mockGenerationJobManager.updateMetadata).not.toHaveBeenCalledWith(
+      'conversation-123',
+      expect.objectContaining({ orchestratorPlan: expect.anything() }),
+      1000,
+    );
+    expect(mockGenerationJobManager.completeJob).toHaveBeenCalledWith(
+      'conversation-123',
+      expect.stringContaining('not an authorized agent binding'),
+      1000,
+      expect.anything(),
+    );
+  });
+
+  it('fails closed before sendMessage when persisted orchestrator plan readback differs', async () => {
+    const sendMessage = jest.fn(() => new Promise(() => {}));
+    const initializeClient = jest.fn().mockResolvedValue({
+      client: {
+        options: { agent: { id: 'agent-primary' } },
+        agentConfigs: new Map(),
+        sendMessage,
+      },
+    });
+    const req = {
+      user: { id: 'user-123' },
+      body: {
+        text: 'Verify durable plan readback.',
+        messageId: 'user-message',
+        conversationId: 'conversation-123',
+        orchestratorMission: {
+          mission: {
+            missionId: 'mission-p6-direct',
+            taskId: 'root-task',
+            objective: 'Execute',
+            constraints: [],
+            requiredCapabilities: ['basic'],
+          },
+          plannerContext: {
+            worker: {
+              id: 'worker',
+              agentId: 'agent-primary',
+              role: 'primary',
+              capabilities: ['basic'],
+              constraints: [],
+            },
+            specialists: [],
+          },
+        },
+        endpointOption: { endpoint: 'agents', modelOptions: { model: 'gpt-4.1' } },
+      },
+      config: {},
+    };
+    const res = createResumableResponse();
+
+    mockGenerationJobManager.updateMetadata.mockResolvedValue(undefined);
+    mockGenerationJobManager.getJob.mockResolvedValue({
+      createdAt: 1000,
+      metadata: {
+        orchestratorPlan: {
+          planId: 'different-plan',
+        },
+      },
+    });
+
+    await AgentController(req, res, jest.fn(), initializeClient, null);
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(mockGenerationJobManager.completeJob).toHaveBeenCalledWith(
+      'conversation-123',
+      expect.stringContaining('persistence verification failed'),
+      1000,
+      expect.anything(),
     );
   });
 
