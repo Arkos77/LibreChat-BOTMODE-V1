@@ -10,6 +10,7 @@ import type {
 } from 'librechat-data-provider';
 import type { RunStep, StandardGraph } from '@librechat/agents';
 import type { AgentEventDetachedTerminalEvidence } from '~/agents/triggers/types';
+import type { MissionOracleState } from '~/agents/orchestrator/missionOracle';
 import type { ActivityPhaseSnapshot } from '~/agents/activityPhases/runtime';
 import type { ResolvedAskUserQuestion } from '~/agents/hitl/resume';
 import type { MissionPlan } from '~/agents/orchestrator/types';
@@ -156,6 +157,9 @@ export interface SerializableJobData {
   /** Exact host-approved BOT MODE mission plan carried across HITL resume.
    * This is durable topology/planning evidence, not authorization. */
   orchestratorPlan?: MissionPlan;
+  /** Durable Mission Oracle evidence/verdict state carried across HITL resume.
+   * QA state only; never authorization or task settlement authority. */
+  missionOracleState?: MissionOracleState;
 
   /** Whether this generation replaces an existing assistant branch. */
   isRegenerate?: boolean;
@@ -437,6 +441,7 @@ export type JobMetadataPatch = Partial<
     | 'responseMessageId'
     | 'mtoTraceId'
     | 'orchestratorPlan'
+    | 'missionOracleState'
     | 'isRegenerate'
     | 'mcpRequestBody'
     | 'userSubmittedPaths'
@@ -577,8 +582,7 @@ export interface SteerEnqueueResult {
 }
 
 export type TerminalSteerAdmissionResult =
-  | { outcome: 'claimed'; items: SteerQueueItem[] }
-  | { outcome: 'open' | 'sealed' | 'unavailable' };
+  { outcome: 'claimed'; items: SteerQueueItem[] } | { outcome: 'open' | 'sealed' | 'unavailable' };
 
 export interface TerminalSteerAdmissionPolicy {
   allowClaim: boolean;

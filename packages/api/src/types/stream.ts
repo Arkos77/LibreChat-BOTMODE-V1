@@ -9,6 +9,7 @@ import type {
   AgentEventSuspensionProjection,
   AgentTriggerExpectedAction,
 } from '../agents/triggers/types';
+import type { MissionOracleState } from '~/agents/orchestrator/missionOracle';
 import type { ActivityPhaseSnapshot } from '~/agents/activityPhases/runtime';
 import type { ResolvedAskUserQuestion } from '../agents/hitl/resume';
 import type { MissionPlan } from '~/agents/orchestrator/types';
@@ -34,6 +35,8 @@ export interface GenerationJobMetadata {
    * Persisted before execution and replayed verbatim on HITL resume; it is
    * planning/topology data only and grants no execution permission. */
   orchestratorPlan?: MissionPlan;
+  /** Durable Mission Oracle QA state for this exact generation. */
+  missionOracleState?: MissionOracleState;
   /** Whether this generation replaces an existing assistant branch. */
   isRegenerate?: boolean;
   /** Exact normalized MCP placeholder identity for this turn. Persisted so HITL

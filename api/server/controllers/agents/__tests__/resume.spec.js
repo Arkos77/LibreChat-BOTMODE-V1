@@ -2885,6 +2885,34 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
       );
     });
 
+    it('restores durable mission Oracle execution state before resumeCompletion', async () => {
+      const missionOracleState = {
+        evidence: {
+          'task-research': [
+            {
+              id: 'tool-call-1',
+              criterionId: 'fresh',
+              value: true,
+              source: { id: 'tool-call-1', type: 'tool', agentId: 'tool-agent' },
+            },
+          ],
+        },
+        results: {},
+      };
+      mockGenerationJobManager.getJob.mockResolvedValue(
+        makeToolApprovalJob({ metadata: { missionOracleState } }),
+      );
+
+      await post(approveBody());
+      await settled;
+      await flush();
+
+      const client = await mockInitializeClient.mock.results[0].value.then((r) => r.client);
+      expect(client.missionOracleState).toEqual(missionOracleState);
+      expect(client.missionOracleState).not.toBe(missionOracleState);
+      expect(client.resumeCompletion).toHaveBeenCalledTimes(1);
+    });
+
     it('reuses the persisted generation checkpoint namespace and keeps legacy fallback explicit', async () => {
       mockGenerationJobManager.getJob.mockResolvedValue(
         makeToolApprovalJob({ metadata: { checkpointNamespace: 'generation-1000' } }),

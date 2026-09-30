@@ -921,6 +921,87 @@ describe('AgentClient - interrupt discovery persistence', () => {
     });
   });
 
+  it('makes mission Oracle execution state durable when the run pauses', async () => {
+    const streamId = 'conversation-mission-oracle-state-pause';
+    const job = await GenerationJobManager.createJob(streamId, 'user-123', streamId);
+    const client = new AgentClient({
+      req: {
+        user: { id: 'user-123' },
+        body: { endpoint: EModelEndpoint.agents, agent_id: 'agent-123' },
+        config: { endpoints: { [EModelEndpoint.agents]: {} } },
+      },
+      res: {},
+      agent: {
+        id: 'agent-123',
+        endpoint: EModelEndpoint.openAI,
+        provider: EModelEndpoint.openAI,
+        model_parameters: { model: 'gpt-4' },
+      },
+      contentParts: [],
+      collectedUsage: [],
+      artifactPromises: [],
+    });
+    client.conversationId = streamId;
+    client.responseMessageId = 'response-mission-oracle-state-pause';
+    client.jobCreatedAt = job.createdAt;
+    client.missionOracleState = {
+      evidence: {
+        'task-research': [
+          {
+            id: 'tool-call-1',
+            criterionId: 'fresh',
+            value: true,
+            source: { id: 'tool-call-1', type: 'tool', agentId: 'tool-agent' },
+          },
+        ],
+      },
+      results: {
+        'task-research': {
+          taskId: 'task-research',
+          nodeId: 'node-research',
+          verdicts: [
+            {
+              status: 'VERIFIED',
+              input: {
+                taskId: 'task-research',
+                agentId: 'researcher',
+                criteria: [],
+                evidence: [],
+              },
+              reasons: [],
+              checks: [],
+              contradictions: [],
+              uncertainty: [],
+              validator: { id: 'deterministic-oracle', type: 'deterministic' },
+              timestamp: '2026-09-30T00:00:00.000Z',
+            },
+          ],
+        },
+      },
+    };
+
+    await client.handleRunInterrupt(
+      {
+        getInterrupt: () => ({
+          interruptId: 'ask-interrupt',
+          threadId: streamId,
+          payload: {
+            type: 'ask_user_question',
+            question: { question: 'Proceed?' },
+          },
+        }),
+        getDiscoveredTools: () => [],
+        getRunMessages: () => [],
+      },
+      streamId,
+    );
+
+    const paused = await GenerationJobManager.getJob(streamId);
+    expect(paused?.status).toBe('requires_action');
+    expect(paused?.metadata.missionOracleState).toEqual(client.missionOracleState);
+    expect(paused?.metadata.missionOracleState).not.toBe(client.missionOracleState);
+  });
+
   it('makes the run context meta durable when the run pauses', async () => {
     const streamId = 'conversation-context-meta-pause';
     const job = await GenerationJobManager.createJob(streamId, 'user-123', streamId);

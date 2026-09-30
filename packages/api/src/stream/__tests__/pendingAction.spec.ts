@@ -317,6 +317,35 @@ describe('ApprovalLifecycle via GenerationJobManager.approvals (in-memory)', () 
       expect(repaused?.metadata.contextMeta).toBeUndefined();
     });
 
+    test('clears the previous mission Oracle state when a re-pause has none', async () => {
+      const streamId = 'stream-pause-mission-oracle-state-cleared';
+      await manager.createJob(streamId, 'user-1');
+      const firstAction = buildAction(streamId);
+      const missionOracleState = {
+        evidence: {
+          'task-research': [
+            {
+              id: 'tool-call-1',
+              criterionId: 'fresh',
+              value: true,
+              source: { id: 'tool-call-1', type: 'tool' as const, agentId: 'tool-agent' },
+            },
+          ],
+        },
+        results: {},
+      };
+
+      expect(await manager.approvals.pause(streamId, firstAction, { missionOracleState })).toBe(
+        true,
+      );
+      expect(await manager.approvals.resolve(streamId, firstAction.actionId)).toBe(true);
+      expect(await manager.approvals.pause(streamId, buildAction(streamId))).toBe(true);
+
+      const repaused = await manager.getJob(streamId);
+      expect(repaused?.status).toBe('requires_action');
+      expect(repaused?.metadata.missionOracleState).toBeUndefined();
+    });
+
     test('does not write a stale pause or discoveries onto a replacement job', async () => {
       const streamId = 'stream-pause-replaced';
       const original = await manager.createJob(streamId, 'user-1');

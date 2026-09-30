@@ -4922,6 +4922,7 @@ export class RedisJobStore implements IJobStoreV2 {
       responseMessageId: data.responseMessageId || undefined,
       mtoTraceId: data.mtoTraceId || undefined,
       orchestratorPlan: data.orchestratorPlan ? JSON.parse(data.orchestratorPlan) : undefined,
+      missionOracleState: data.missionOracleState ? JSON.parse(data.missionOracleState) : undefined,
       isRegenerate: data.isRegenerate != null ? data.isRegenerate === '1' : undefined,
       mcpRequestBody: data.mcpRequestBody ? JSON.parse(data.mcpRequestBody) : undefined,
       userSubmittedPaths: data.userSubmittedPaths ? JSON.parse(data.userSubmittedPaths) : undefined,

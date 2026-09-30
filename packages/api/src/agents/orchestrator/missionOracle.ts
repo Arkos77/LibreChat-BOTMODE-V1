@@ -18,6 +18,13 @@ export interface MissionOracleTaskResult {
   verdicts: OracleVerdict[];
 }
 
+/** Durable host-owned QA execution state. Evidence/verdict state only; it is
+ * not part of MissionPlan and grants no execution authorization. */
+export interface MissionOracleState {
+  evidence: Record<string, OracleEvidence[]>;
+  results: Record<string, MissionOracleTaskResult>;
+}
+
 function requiredText(value: string, name: string): string {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new Error(`Mission Oracle requires non-empty ${name}`);

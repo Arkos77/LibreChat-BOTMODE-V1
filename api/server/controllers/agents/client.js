@@ -3690,6 +3690,9 @@ class AgentClient extends BaseClient {
         ? {}
         : { compactionSemanticIndex: staged.compactionSemanticIndex }),
       ...(staged.contextMeta == null ? {} : { contextMeta: staged.contextMeta }),
+      ...(this.missionOracleState == null
+        ? {}
+        : { missionOracleState: structuredClone(this.missionOracleState) }),
       persistencePending: true,
       ...(eventActorSuspension == null
         ? {}

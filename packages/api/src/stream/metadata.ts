@@ -12,6 +12,9 @@ export function sanitizeJobMetadata(metadata: Partial<GenerationJobMetadata>): J
   if (metadata.orchestratorPlan) {
     patch.orchestratorPlan = structuredClone(metadata.orchestratorPlan);
   }
+  if (metadata.missionOracleState) {
+    patch.missionOracleState = structuredClone(metadata.missionOracleState);
+  }
   if (metadata.isRegenerate !== undefined) {
     patch.isRegenerate = metadata.isRegenerate;
   }

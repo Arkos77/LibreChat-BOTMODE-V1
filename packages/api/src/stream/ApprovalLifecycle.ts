@@ -10,6 +10,7 @@ import type {
   SerializableJobData,
   SteerQueueItem,
 } from '~/stream/interfaces/IJobStore';
+import type { MissionOracleState } from '~/agents/orchestrator/missionOracle';
 import type { ActivityPhaseSnapshot } from '~/agents/activityPhases/runtime';
 import {
   JobStatusTransitionDeadlineError,
@@ -37,6 +38,8 @@ export interface ApprovalPauseOptions {
   compactionSemanticIndex?: ICompactionSemanticIndexProjection;
   /** Calibration and fading state at the pause; seeds the resumed run's pruner. */
   contextMeta?: IAgentEventActorContextMeta;
+  /** Durable Mission Oracle QA state captured atomically with the pause. */
+  missionOracleState?: MissionOracleState;
   /** Generation identity observed by the interrupted run. */
 
   expectedCreatedAt?: number;
@@ -123,6 +126,7 @@ export class ApprovalLifecycle {
     const activityPhaseSnapshot = options.activityPhaseSnapshot;
     const compactionSemanticIndex = options.compactionSemanticIndex;
     const contextMeta = options.contextMeta;
+    const missionOracleState = options.missionOracleState;
     /** The normal receipt TTL matches a running job, but a review pause can
      * live for 24h or an explicit later expiry. The store extends every
      * receipt in the SAME CAS that closes running enqueues: a separate pass
@@ -156,13 +160,23 @@ export class ApprovalLifecycle {
           ...(activityPhaseSnapshot != null ? { activityPhaseSnapshot } : {}),
           ...(compactionSemanticIndex != null ? { compactionSemanticIndex } : {}),
           ...(contextMeta != null ? { contextMeta } : {}),
+          ...(missionOracleState != null
+            ? { missionOracleState: structuredClone(missionOracleState) }
+            : {}),
           ...(options.agentEventSuspension != null
             ? { agentEventSuspension: options.agentEventSuspension }
             : {}),
         },
         /** A re-pause with nothing persistable must not leave the previous
          * segment's calibration and tier on the job for the next resume. */
-        ...(contextMeta == null ? { clear: ['contextMeta' as const] } : {}),
+        ...(contextMeta == null || missionOracleState == null
+          ? {
+              clear: [
+                ...(contextMeta == null ? ['contextMeta' as const] : []),
+                ...(missionOracleState == null ? ['missionOracleState' as const] : []),
+              ],
+            }
+          : {}),
         expectCreatedAt: expectedCreatedAt,
         notAfterMs: pendingAction.expiresAt,
         steerReceiptTtlSeconds: pauseReceiptTtl,

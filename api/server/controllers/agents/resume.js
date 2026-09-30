@@ -1826,6 +1826,10 @@ const ResumeAgentController = async (req, res, next, initializeClient, addTitle)
     client.jobCreatedAt = job.createdAt;
     client.checkpointNamespace = checkpointNamespace;
     client.orchestratorPlan = job.metadata?.orchestratorPlan;
+    client.missionOracleState =
+      job.metadata?.missionOracleState == null
+        ? undefined
+        : structuredClone(job.metadata.missionOracleState);
     client.responseMessageId = job.metadata.responseMessageId;
     client.parentMessageId = job.metadata.userMessage?.messageId ?? Constants.NO_PARENT;
     // Seed the rebuilt pruner from the tier and calibration captured at the pause, so the
