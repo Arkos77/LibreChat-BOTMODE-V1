@@ -269,6 +269,60 @@ describe('native plan compilation', () => {
     expect(resolveMissionOracleEvidence).toHaveBeenCalledWith(checked.taskId);
   });
 
+  it('persists the exact Oracle result before allowing a validated predecessor transition', async () => {
+    const plan = deterministicPlanner.planMission(
+      {
+        ...base,
+        objectives: [
+          {
+            key: 'checked',
+            objective: 'Produce checked result',
+            requiredCapabilities: ['x'],
+            dependsOn: [],
+            validation: { criteria: [{ id: 'ok', field: 'ok', expected: true }] },
+          },
+          {
+            key: 'consume',
+            objective: 'Consume checked result',
+            requiredCapabilities: ['basic'],
+            dependsOn: ['checked'],
+          },
+        ],
+      },
+      context,
+    );
+    const checked = plan.tasks[0];
+    const persistMissionOracleResult = jest.fn(async () => {});
+    const compile = compileNativePlan as unknown as (
+      plan: typeof plan,
+      bindings: typeof bindings,
+      compileOptions?: undefined,
+      resolveMissionOracleEvidence?: undefined,
+      persistMissionOracleResult?: (result: unknown) => Promise<void>,
+    ) => ReturnType<typeof compileNativePlan>;
+    const native = compile(plan, bindings, undefined, undefined, persistMissionOracleResult);
+    expect(native.graphConfig.type).toBe('multi-agent');
+    if (native.graphConfig.type !== 'multi-agent') throw new Error('MultiAgentGraph required');
+    const edge = native.graphConfig.edges[0];
+    const output = new AIMessage('{"ok":true}');
+
+    await expect(
+      edge.beforeTransition?.({
+        messages: [output],
+        agentOutputs: { [checked.nodeId]: output },
+      } as BaseGraphState),
+    ).resolves.toBeUndefined();
+
+    expect(persistMissionOracleResult).toHaveBeenCalledTimes(1);
+    expect(persistMissionOracleResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: checked.taskId,
+        nodeId: checked.nodeId,
+        verdicts: [expect.objectContaining({ status: 'VERIFIED' })],
+      }),
+    );
+  });
+
   it('fails closed when predecessor validation requires independent evidence that is unavailable', async () => {
     const plan = deterministicPlanner.planMission(
       {

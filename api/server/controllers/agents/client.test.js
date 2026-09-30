@@ -1416,8 +1416,59 @@ describe('AgentClient - interrupt discovery persistence', () => {
         source: { id: 'tool-terminal-1', type: 'tool', agentId: 'checker' },
       },
     ]);
+    expect(persisted?.metadata.missionOracleState?.results?.['task-terminal']).toEqual(
+      expect.objectContaining({
+        taskId: 'task-terminal',
+        nodeId: 'node-terminal',
+        verdicts: [expect.objectContaining({ status: 'VERIFIED' })],
+      }),
+    );
     expect(client.missionOracleState).toEqual(persisted.metadata.missionOracleState);
     expect(transientEvidenceBuffer.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it('serializes concurrent mission Oracle result writes without losing either task result', async () => {
+    const streamId = 'conversation-mission-oracle-concurrent-results';
+    const job = await GenerationJobManager.createJob(streamId, 'user-123', streamId);
+    const client = new AgentClient({
+      req: {
+        user: { id: 'user-123' },
+        _resumableStreamId: streamId,
+        body: { endpoint: EModelEndpoint.agents, agent_id: 'agent-123' },
+        config: { endpoints: { [EModelEndpoint.agents]: {} } },
+      },
+      res: {},
+      agent: {
+        id: 'agent-123',
+        endpoint: EModelEndpoint.openAI,
+        provider: EModelEndpoint.openAI,
+        model_parameters: { model: 'gpt-4' },
+      },
+      contentParts: [],
+      collectedUsage: [],
+      artifactPromises: [],
+    });
+    client.conversationId = streamId;
+    client.jobCreatedAt = job.createdAt;
+    client.orchestratorPlan = { planId: 'plan-concurrent-results' };
+
+    await Promise.all([
+      client.persistMissionOracleResult(
+        { taskId: 'task-a', nodeId: 'node-a', verdicts: [] },
+        streamId,
+      ),
+      client.persistMissionOracleResult(
+        { taskId: 'task-b', nodeId: 'node-b', verdicts: [] },
+        streamId,
+      ),
+    ]);
+
+    const persisted = await GenerationJobManager.getJob(streamId);
+    expect(Object.keys(persisted?.metadata.missionOracleState?.results ?? {}).sort()).toEqual([
+      'task-a',
+      'task-b',
+    ]);
+    expect(client.missionOracleState).toEqual(persisted?.metadata.missionOracleState);
   });
 
   it('retains transient mission evidence when durable persistence verification fails', async () => {

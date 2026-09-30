@@ -4413,6 +4413,9 @@ class AgentClient extends BaseClient {
                   await this.persistTransientMissionOracleEvidence(streamId);
                   return this.missionOracleState?.evidence?.[taskId] ?? [];
                 },
+                persistMissionOracleResult: async (result) => {
+                  await this.persistMissionOracleResult(result, streamId);
+                },
               }),
           // Conversation-stable identity for the e2e run hook; a resumed run
           // carries no messages, so history cannot identify the conversation.
@@ -4743,7 +4746,20 @@ class AgentClient extends BaseClient {
     }
   }
 
+  async runMissionOraclePersistence(operation) {
+    const previous = this._missionOraclePersistenceTail ?? Promise.resolve();
+    const current = previous.catch(() => {}).then(operation);
+    this._missionOraclePersistenceTail = current.catch(() => {});
+    return current;
+  }
+
   async persistTransientMissionOracleEvidence(streamId) {
+    return this.runMissionOraclePersistence(() =>
+      this.persistTransientMissionOracleEvidenceUnlocked(streamId),
+    );
+  }
+
+  async persistTransientMissionOracleEvidenceUnlocked(streamId) {
     if (this.orchestratorPlan == null) {
       return;
     }
@@ -4788,6 +4804,58 @@ class AgentClient extends BaseClient {
     this.transientEvidenceBuffer.clear();
   }
 
+  async persistMissionOracleResult(result, streamId) {
+    return this.runMissionOraclePersistence(() =>
+      this.persistMissionOracleResultUnlocked(result, streamId),
+    );
+  }
+
+  async persistMissionOracleResultUnlocked(result, streamId) {
+    if (this.orchestratorPlan == null) {
+      return;
+    }
+
+    const currentState =
+      this.missionOracleState == null
+        ? { evidence: {}, results: {} }
+        : normalizeMissionOracleState(this.missionOracleState);
+    const existing = currentState.results[result.taskId];
+    if (existing != null && JSON.stringify(existing) !== JSON.stringify(result)) {
+      throw new Error(`Mission Oracle result replay conflict for task ${result.taskId}`);
+    }
+    const nextState = {
+      evidence: currentState.evidence,
+      results: {
+        ...currentState.results,
+        [result.taskId]: result,
+      },
+    };
+
+    const durableStreamId =
+      streamId ?? this.options?.req?._resumableStreamId ?? this.conversationId;
+    if (typeof durableStreamId !== 'string' || durableStreamId.length === 0) {
+      throw new Error('Mission Oracle result persistence requires stream identity');
+    }
+    await GenerationJobManager.updateMetadata(
+      durableStreamId,
+      { missionOracleState: nextState },
+      this.jobCreatedAt,
+    );
+    const persistedJob = await GenerationJobManager.getJob(durableStreamId);
+    if (
+      persistedJob == null ||
+      persistedJob.createdAt !== this.jobCreatedAt ||
+      persistedJob.metadata?.missionOracleState == null
+    ) {
+      throw new Error('Mission Oracle result persistence verification failed');
+    }
+    const persistedState = normalizeMissionOracleState(persistedJob.metadata.missionOracleState);
+    if (JSON.stringify(persistedState) !== JSON.stringify(nextState)) {
+      throw new Error('Mission Oracle result persistence verification failed');
+    }
+    this.missionOracleState = persistedState;
+  }
+
   async assertTerminalMissionOracle(run) {
     if (this.orchestratorPlan == null) {
       return;
@@ -4802,6 +4870,9 @@ class AgentClient extends BaseClient {
       this.orchestratorPlan,
       run.getAgentOutputs(),
       this.missionOracleState,
+      async (result) => {
+        await this.persistMissionOracleResult(result);
+      },
     );
   }
 
@@ -5030,6 +5101,9 @@ class AgentClient extends BaseClient {
               resolveMissionOracleEvidence: async (taskId) => {
                 await this.persistTransientMissionOracleEvidence(streamId);
                 return this.missionOracleState?.evidence?.[taskId] ?? [];
+              },
+              persistMissionOracleResult: async (result) => {
+                await this.persistMissionOracleResult(result, streamId);
               },
             }),
         conversationId: this.conversationId,

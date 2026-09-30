@@ -3143,12 +3143,14 @@ describe('createRun P6 orchestrator topology', () => {
         },
       ];
     });
+    const persistMissionOracleResult = jest.fn(async () => {});
 
     await createRun({
       agents: [primary, specialist] as never,
       signal,
       orchestratorPlan: plan,
       resolveMissionOracleEvidence,
+      persistMissionOracleResult,
       streaming: true,
       streamUsage: true,
     });
@@ -3165,6 +3167,14 @@ describe('createRun P6 orchestrator topology', () => {
       }),
     ).resolves.toBeUndefined();
     expect(resolveMissionOracleEvidence).toHaveBeenCalledWith(checked.taskId);
+    expect(persistMissionOracleResult).toHaveBeenCalledTimes(1);
+    expect(persistMissionOracleResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: checked.taskId,
+        nodeId: checked.nodeId,
+        verdicts: [expect.objectContaining({ status: 'VERIFIED' })],
+      }),
+    );
   });
 
   it('keeps BYOM approval bound after saved agent identity is remapped to a task node', async () => {

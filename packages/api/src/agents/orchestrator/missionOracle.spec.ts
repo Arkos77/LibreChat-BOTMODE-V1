@@ -258,6 +258,34 @@ describe('terminal mission Oracle', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('persists the exact terminal Oracle result before accepting verification', async () => {
+    const persistMissionOracleResult = jest.fn(async () => {});
+    const helper = missionOracle.assertTerminalMissionTasksVerified as unknown as (
+      plan: MissionPlan,
+      outputs: Record<string, AIMessage>,
+      state?: missionOracle.MissionOracleState,
+      persistMissionOracleResult?: (result: missionOracle.MissionOracleTaskResult) => Promise<void>,
+    ) => Promise<void>;
+
+    await expect(
+      helper(
+        terminalPlan(),
+        { 'node-terminal': new AIMessage('{"ok":true}') },
+        undefined,
+        persistMissionOracleResult,
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(persistMissionOracleResult).toHaveBeenCalledTimes(1);
+    expect(persistMissionOracleResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'task-terminal',
+        nodeId: 'node-terminal',
+        verdicts: [expect.objectContaining({ status: 'VERIFIED' })],
+      }),
+    );
+  });
+
   it('fails closed when independent evidence is required but unavailable', async () => {
     const plan = terminalPlan();
     plan.tasks[0].validation[0].requireIndependentEvidence = true;

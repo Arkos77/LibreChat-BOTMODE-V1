@@ -20,6 +20,10 @@ export interface MissionOracleTaskResult {
   verdicts: OracleVerdict[];
 }
 
+export type MissionOracleResultPersister = (
+  result: MissionOracleTaskResult,
+) => Promise<void> | void;
+
 /** Durable host-owned QA execution state. Evidence/verdict state only; it is
  * not part of MissionPlan and grants no execution authorization. */
 export interface MissionOracleState {
@@ -283,6 +287,7 @@ export async function assertTerminalMissionTasksVerified(
   plan: MissionPlan,
   outputs: Record<string, BaseMessage>,
   state?: MissionOracleState,
+  persistMissionOracleResult?: MissionOracleResultPersister,
 ): Promise<void> {
   const dependedOnKeys = new Set(plan.tasks.flatMap((task) => task.dependsOn));
   const terminalTasks = plan.tasks.filter((task) => !dependedOnKeys.has(task.key));
@@ -303,6 +308,7 @@ export async function assertTerminalMissionTasksVerified(
       requirements: task.validation,
       evidence: state?.evidence[task.taskId] ?? [],
     });
+    await persistMissionOracleResult?.(result);
     assertMissionTaskVerified(result);
   }
 }

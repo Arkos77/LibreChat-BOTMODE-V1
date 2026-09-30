@@ -46,6 +46,7 @@ import type { CallbackHandlerMethods } from '@langchain/core/callbacks/base';
 import type { BaseMessage } from '@librechat/agents/langchain/messages';
 import type { Callbacks } from '@langchain/core/callbacks/manager';
 import type { ModelBoundChatModelCallback } from '~/middleware/modelBoundContent';
+import type { MissionOracleResultPersister } from './orchestrator/missionOracle';
 import type { ToolInputValidationError } from '~/agents/toolValidation';
 import type { ResolvedToolApprovalHook } from '~/agents/hitl/hooks';
 import type { TerminalSteerHook } from '~/agents/steering/runtime';
@@ -1429,6 +1430,7 @@ export async function createRun({
   oracle,
   orchestratorPlan,
   resolveMissionOracleEvidence,
+  persistMissionOracleResult,
   steering,
   activityLabel,
   activityPhase,
@@ -1505,6 +1507,8 @@ export async function createRun({
   orchestratorPlan?: MissionPlan;
   /** Host-owned read-only evidence resolver for native dependency-transition QA. */
   resolveMissionOracleEvidence?: MissionOracleEvidenceResolver;
+  /** Host-owned durable sink for exact Mission Oracle task results. */
+  persistMissionOracleResult?: MissionOracleResultPersister;
   /**
    * Receives per-model-call usage from subagent child runs so hosts can bill
    * them (child graphs execute outside the run's `streamEvents` loop, so
@@ -1918,6 +1922,7 @@ export async function createRun({
       authorizedBindings,
       undefined,
       resolveMissionOracleEvidence,
+      persistMissionOracleResult,
     );
     graphConfig = nativePlan.graphConfig;
     graphConfig.signal = signal;

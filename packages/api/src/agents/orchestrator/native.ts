@@ -4,8 +4,8 @@ import type {
   MultiAgentGraphConfig,
   StandardGraphConfig,
 } from '@librechat/agents';
+import type { MissionOracleResultPersister, MissionOracleTaskInput } from './missionOracle';
 import type { MissionPlan, OracleRequirement, PlannedTask } from './types';
-import type { MissionOracleTaskInput } from './missionOracle';
 import { assertMissionTaskVerified, validateMissionTask } from './missionOracle';
 import { getTaskLevels, nodeIdentity } from './planner';
 
@@ -34,6 +34,7 @@ export type MissionOracleEvidenceResolver = (
 function requirePredecessorOutputs(
   sourceTasks: readonly PlannedTask[],
   resolveMissionOracleEvidence?: MissionOracleEvidenceResolver,
+  persistMissionOracleResult?: MissionOracleResultPersister,
 ) {
   const sourceNodeIds = sourceTasks.map((task) => task.nodeId);
   return async (state: BaseGraphState): Promise<void> => {
@@ -59,6 +60,7 @@ function requirePredecessorOutputs(
             ? []
             : await resolveMissionOracleEvidence(task.taskId),
       });
+      await persistMissionOracleResult?.(result);
       assertMissionTaskVerified(result);
     }
   };
@@ -74,6 +76,7 @@ export function compileNativePlan(
   bindings: ReadonlyMap<string, AgentInputs>,
   compileOptions?: MultiAgentGraphConfig['compileOptions'],
   resolveMissionOracleEvidence?: MissionOracleEvidenceResolver,
+  persistMissionOracleResult?: MissionOracleResultPersister,
 ): NativeMissionPlan {
   getTaskLevels(plan.tasks);
   const tasks = new Map(plan.tasks.map((task) => [task.key, task]));
@@ -113,7 +116,11 @@ export function compileNativePlan(
         from: sourceNodeIds,
         to: task.nodeId,
         edgeType: 'direct',
-        beforeTransition: requirePredecessorOutputs(sourceTasks, resolveMissionOracleEvidence),
+        beforeTransition: requirePredecessorOutputs(
+          sourceTasks,
+          resolveMissionOracleEvidence,
+          persistMissionOracleResult,
+        ),
       };
     });
   return {
