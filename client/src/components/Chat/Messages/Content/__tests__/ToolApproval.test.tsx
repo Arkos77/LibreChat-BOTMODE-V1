@@ -127,6 +127,32 @@ describe('ToolApproval', () => {
   });
 });
 
+test('IntelBase confirmation is scoped to each action and tool call', () => {
+  const card = (actionId: string, toolCallId: string) => (
+    <RecoilRoot>
+      <ApprovalProvider>
+        <ToolApproval
+          approval={{ ...approval(), actionId }}
+          toolCallId={toolCallId}
+          toolName="osint_email_enrich"
+          args={{ email: 'third.party@example.test' }}
+        />
+      </ApprovalProvider>
+    </RecoilRoot>
+  );
+  const view = render(card('action-1', 'call-1'));
+  fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: /adult target/i }));
+  expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled();
+
+  view.rerender(card('action-2', 'call-2'));
+  expect(screen.getByRole('checkbox', { name: /adult target/i })).not.toBeChecked();
+  expect(screen.getByRole('button', { name: 'Submit' })).toBeDisabled();
+
+  fireEvent.click(screen.getByRole('checkbox', { name: /adult target/i }));
+  expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled();
+});
+
 test('IntelBase needs confirmation for the exact email', () => {
   renderCards(
     <ToolApproval

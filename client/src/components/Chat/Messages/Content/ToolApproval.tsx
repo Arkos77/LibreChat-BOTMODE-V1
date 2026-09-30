@@ -100,10 +100,19 @@ export default function ToolApproval({
     retainedDecision != null && allowedDecisions.includes(retainedDecision.decision)
       ? retainedDecision
       : undefined;
-  const [confirmedEmail, setConfirmedEmail] = useState<string | null>(() =>
-    initialDecision?.adultTargetConfirmed === true ? intelBaseEmail : null,
+  const [confirmedEmail, setConfirmedEmail] = useState<{
+    actionId: string;
+    toolCallId: string;
+    email: string;
+  } | null>(() =>
+    initialDecision?.adultTargetConfirmed === true && intelBaseEmail != null
+      ? { actionId, toolCallId, email: intelBaseEmail }
+      : null,
   );
-  const adultTargetConfirmed = confirmedEmail !== null && confirmedEmail === intelBaseEmail;
+  const adultTargetConfirmed =
+    confirmedEmail?.actionId === actionId &&
+    confirmedEmail.toolCallId === toolCallId &&
+    confirmedEmail.email === intelBaseEmail;
   const [active, setActive] = useState<DecisionType | null>(
     () => initialDecision?.decision ?? null,
   );
@@ -272,7 +281,11 @@ export default function ToolApproval({
                 checked={adultTargetConfirmed}
                 disabled={locked || intelBaseEmail == null}
                 onChange={(event) =>
-                  setConfirmedEmail(event.target.checked ? intelBaseEmail : null)
+                  setConfirmedEmail(
+                    event.target.checked && intelBaseEmail != null
+                      ? { actionId, toolCallId, email: intelBaseEmail }
+                      : null,
+                  )
                 }
               />
               {localize('com_ui_intelbase_adult')}
