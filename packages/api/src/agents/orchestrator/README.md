@@ -118,11 +118,11 @@ The candidate is always born in `CANDIDATE` state. Oracle verification and autho
 
 ## P10 — Transient tool evidence buffer
 
-The agents `initializeClient` path now creates one isolated transient evidence buffer per initialization and returns it alongside the native client context. The buffer remains dormant: this seam does not pass it to tool-end callbacks, request settlement, MTO, Oracle, persistence, authorization or publication.
+The agents `initializeClient` path creates one isolated transient evidence buffer per initialization and passes that same request-local buffer into the native tool-end callback. For a configured mission evidence declaration, the callback appends only bounded native tool identity and the explicit criterion/value binding. The client promotes those observations into mission Oracle state, persists that state first, reads it back to verify the durable write, and only then clears the transient buffer.
 
 `transientEvidenceBuffer.ts` defines a request/run-local, in-memory and bounded observation buffer for native tool-end evidence. It preserves explicit native identity plus optional declared criterion/value only, deduplicates by the pair (`taskId`, native `toolCallId`) when task identity is available, evicts the oldest entry when capacity is reached, and supports defensive snapshot, atomic consume and clear operations.
 
-The buffer is not durable state and has no authority: it contains no raw tool output, arguments, artifacts, reasoning, confidence, Oracle verdict, authorization or publication state. It is intentionally dormant until a dedicated host integration proves the lifecycle and declaration source.
+The buffer is still not durable state and has no authority: it contains no raw tool output, arguments, artifacts, reasoning, confidence, Oracle verdict, authorization or publication state. It is only a staging boundary: durability begins when the client promotes the observations into the mission Oracle state and successfully verifies the persisted readback.
 
 ## P10 — Step-limit evidence context
 
@@ -130,7 +130,7 @@ The existing `observeStepLimitImprovementCandidate` host path now consumes this 
 
 `stepLimitEvidenceContext.ts` normalizes the host-owned `tool_call_limit` signal into a bounded `native_step_limit` context. Trace and response-message identity are required because they identify the host observation; task, producer, native tool-call, tool name, checker agent, run and thread identities remain optional and are preserved only when explicitly supplied.
 
-The context never derives one identity from another and contains no raw output, tool arguments, artifacts, reasoning, confidence, Oracle verdict, authorization or publication state. It is a correlation boundary only and remains dormant until explicitly consumed by the existing step-limit candidate host path.
+The context never derives one identity from another and contains no raw output, tool arguments, artifacts, reasoning, confidence, Oracle verdict, authorization or publication state. It remains a correlation boundary only, and the existing step-limit candidate host path consumes it directly before constructing the durable candidate and MTO correlation observations.
 
 ## P10 — Improvement evidence context
 
@@ -148,7 +148,7 @@ This contract does not discover evidence, execute tools, call models, invoke Ora
 
 `toolEvidenceIntent.ts` resolves only explicit host-owned declarations that bind an exact tool name to an Oracle criterion and expected scalar value. It returns no evidence semantics for undeclared tools and fails closed when multiple declarations make the mapping ambiguous.
 
-The contract does not inspect or interpret raw tool output, tool arguments, artifacts, model text, confidence or producer instructions. It therefore cannot promote arbitrary tool output into trusted evidence. It only supplies the host-declared semantic binding later consumed by the native tool evidence adapter. The contract is exported but intentionally has no production caller yet.
+The contract does not inspect or interpret raw tool output, tool arguments, artifacts, model text, confidence or producer instructions. It therefore cannot promote arbitrary tool output into trusted evidence. `resolveToolEvidenceIntent` is now called by the production `tool-end` callback when explicit mission evidence declarations are present; undeclared or ambiguous tool semantics remain fail-closed.
 
 ## P10 — Native tool evidence adapter
 
