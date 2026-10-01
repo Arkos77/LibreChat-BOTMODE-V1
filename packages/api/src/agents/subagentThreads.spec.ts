@@ -2140,6 +2140,67 @@ describe('SubagentThreadTaskStore', () => {
     });
   });
 
+  it('inherits the parent project identity into the durable child conversation', async () => {
+    const userId = 'project-user';
+    const parentConversationId = randomUUID();
+    const ChatProject = mongoose.models.ChatProject;
+    const project = await ChatProject.create({
+      user: userId,
+      name: 'Project A',
+    });
+    await saveParent(userId, parentConversationId, {
+      chatProjectId: project._id.toString(),
+    });
+    const store = new SubagentThreadTaskStore(methods);
+    const config = buildSubagentThreadTaskConfig(store, { userId, parentConversationId });
+    const started = store.start(taskRequest(config.scopeId));
+    await waitForSettled(store, config.scopeId, started);
+
+    const child = await methods.getConvo(userId, requireThreadId(started));
+    expect(child?.chatProjectId).toBe(project._id.toString());
+  });
+
+  it('keeps two concurrent project tasks durably project-isolated', async () => {
+    const userId = 'two-project-user';
+    const ChatProject = mongoose.models.ChatProject;
+    const [projectA, projectB] = await ChatProject.create([
+      { user: userId, name: 'Project A' },
+      { user: userId, name: 'Project B' },
+    ]);
+    const parentA = randomUUID();
+    const parentB = randomUUID();
+    await Promise.all([
+      saveParent(userId, parentA, {
+        chatProjectId: projectA._id.toString(),
+      }),
+      saveParent(userId, parentB, {
+        chatProjectId: projectB._id.toString(),
+      }),
+    ]);
+    const store = new SubagentThreadTaskStore(methods);
+    const configA = buildSubagentThreadTaskConfig(store, { userId, parentConversationId: parentA });
+    const configB = buildSubagentThreadTaskConfig(store, { userId, parentConversationId: parentB });
+    const [startedA, startedB] = await Promise.all([
+      Promise.resolve(store.start(taskRequest(configA.scopeId))),
+      Promise.resolve(store.start(taskRequest(configB.scopeId))),
+    ]);
+    await Promise.all([
+      waitForSettled(store, configA.scopeId, startedA),
+      waitForSettled(store, configB.scopeId, startedB),
+    ]);
+
+    const [childA, childB] = await Promise.all([
+      methods.getConvo(userId, requireThreadId(startedA)),
+      methods.getConvo(userId, requireThreadId(startedB)),
+    ]);
+
+    expect(configA.scopeId).not.toBe(configB.scopeId);
+    expect(requireAccepted(startedA).task.taskId).not.toBe(requireAccepted(startedB).task.taskId);
+    expect(childA?.chatProjectId).toBe(projectA._id.toString());
+    expect(childB?.chatProjectId).toBe(projectB._id.toString());
+    expect(childA?.chatProjectId).not.toBe(childB?.chatProjectId);
+  });
+
   it('persists graph children without assigning a saved-agent identity', async () => {
     const userId = 'graph-user';
     const parentConversationId = randomUUID();

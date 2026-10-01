@@ -402,10 +402,7 @@ export interface ConversationMethods {
     checkpoint: IAgentEventActorReconciliation['checkpoint'];
     expectedActionAdmitted?: boolean;
     resolution:
-      | 'checkpoint_verified'
-      | 'action_compensated'
-      | 'history_repaired'
-      | 'invocation_abandoned';
+      'checkpoint_verified' | 'action_compensated' | 'history_repaired' | 'invocation_abandoned';
   }): Promise<boolean>;
   clearAgentEventActorReconciliation(input: {
     user: string;
@@ -462,7 +459,7 @@ export interface ConversationMethods {
     user: string,
     conversationId: string,
     tenantId?: string | null,
-  ): Promise<Pick<IConversation, 'user' | 'tenantId' | 'subagentThread'> | null>;
+  ): Promise<Pick<IConversation, 'user' | 'tenantId' | 'chatProjectId' | 'subagentThread'> | null>;
   getConvoRetention(
     user: string,
     conversationId: string,
@@ -479,8 +476,10 @@ export interface ConversationMethods {
   archiveAllConvos(user: string): Promise<{ archivedCount: number }>;
 }
 
-export interface ConversationMethodDeps
-  extends Pick<MessageMethods, 'getMessages' | 'deleteMessages'> {
+export interface ConversationMethodDeps extends Pick<
+  MessageMethods,
+  'getMessages' | 'deleteMessages'
+> {
   searchMessages?: MessageMethods['searchMessages'];
   deleteAgentQueuedTurns?: (
     user: string,
@@ -1432,10 +1431,7 @@ export function createConversationMethods(
     checkpoint: IAgentEventActorReconciliation['checkpoint'];
     expectedActionAdmitted?: boolean;
     resolution:
-      | 'checkpoint_verified'
-      | 'action_compensated'
-      | 'history_repaired'
-      | 'invocation_abandoned';
+      'checkpoint_verified' | 'action_compensated' | 'history_repaired' | 'invocation_abandoned';
   }): Promise<boolean> {
     if (input.checkpoint.threadId !== input.conversationId) {
       throw new Error('Event actor reconciliation changed its logical thread');
@@ -1734,8 +1730,7 @@ export function createConversationMethods(
     const cutoff = new Date(now.getTime() - AGENT_EVENT_ACTOR_RECEIPT_RETENTION_MS);
     const Conversation = mongoose.models.Conversation as Model<IConversation>;
     const Delivery = mongoose.models.AgentTriggerDelivery as
-      | Model<IAgentTriggerDeliveryDocument>
-      | undefined;
+      Model<IAgentTriggerDeliveryDocument> | undefined;
     if (Delivery == null) {
       return 0;
     }
@@ -2018,8 +2013,8 @@ export function createConversationMethods(
           ...tenantFilter,
           ...activeExpirationFilter<IConversation>(),
         },
-        'user tenantId subagentThread',
-      ).lean<Pick<IConversation, 'user' | 'tenantId' | 'subagentThread'>>();
+        'user tenantId chatProjectId subagentThread',
+      ).lean<Pick<IConversation, 'user' | 'tenantId' | 'chatProjectId' | 'subagentThread'>>();
     } catch (error) {
       logger.error('[getConvoOwnership] Error checking conversation ownership', error);
       throw new Error('Error checking conversation ownership');

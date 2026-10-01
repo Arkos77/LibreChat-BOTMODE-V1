@@ -1591,6 +1591,7 @@ describe('Conversation Operations', () => {
         conversationId: mockConversationData.conversationId,
         user: 'user123',
         tenantId: 'tenant-a',
+        chatProjectId: 'project-a',
         title: 'Test Conversation',
         endpoint: EModelEndpoint.openAI,
       });
@@ -1602,6 +1603,7 @@ describe('Conversation Operations', () => {
 
       expect(result?.user).toBe('user123');
       expect(result?.tenantId).toBe('tenant-a');
+      expect(result?.chatProjectId).toBe('project-a');
       expect(result).not.toHaveProperty('title');
       expect(result).not.toHaveProperty('messages');
       expect(result).not.toHaveProperty('endpoint');

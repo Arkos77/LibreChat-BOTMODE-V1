@@ -490,11 +490,13 @@ function retentionFields(conversation: IConversation): {
   isTemporary?: boolean;
   expiredAt?: Date;
   tenantId?: string;
+  chatProjectId?: string;
 } {
   return {
     ...(conversation.isTemporary == null ? {} : { isTemporary: conversation.isTemporary }),
     ...(conversation.expiredAt == null ? {} : { expiredAt: conversation.expiredAt }),
     ...(conversation.tenantId == null ? {} : { tenantId: conversation.tenantId }),
+    ...(conversation.chatProjectId == null ? {} : { chatProjectId: conversation.chatProjectId }),
   };
 }
 
