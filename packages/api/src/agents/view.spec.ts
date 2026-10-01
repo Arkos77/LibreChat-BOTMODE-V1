@@ -631,6 +631,8 @@ describe('subagent thread parent-scoped view', () => {
 
   it.each([
     ['running', 'running'],
+    ['pause_requested', 'pause_requested'],
+    ['paused', 'paused'],
     ['error', 'failed'],
     ['cancelled', 'cancelled'],
   ] as const)('normalizes durable %s tasks as %s', async (durableStatus, publicStatus) => {

@@ -2927,6 +2927,64 @@ describe('SubagentThreadTaskStore', () => {
     await store.destroyTaskControlTransport();
   });
 
+  it('pauses and resumes the same durable task and thread at a safe boundary', async () => {
+    const userId = 'pause-resume-user';
+    const parentConversationId = randomUUID();
+    await saveParent(userId, parentConversationId);
+    const store = new SubagentThreadTaskStore(methods);
+    const config = buildSubagentThreadTaskConfig(store, { userId, parentConversationId });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const started = store.start(
+      taskRequest(config.scopeId, {
+        run: async (runtime) => {
+          await gate;
+          await runtime.waitIfPaused('turn');
+          return { content: 'Resumed result.' };
+        },
+      }),
+    );
+    const taskId = requireAccepted(started).task.taskId;
+    const threadId = requireThreadId(started);
+    await waitUntil(
+      async () =>
+        (
+          await methods.getMessages(
+            { user: userId, conversationId: threadId, messageId: `${taskId}:user` },
+            '+subagentTask',
+          )
+        ).length === 1,
+      'the pause task seed',
+    );
+    await expect(
+      store.controlTask(config.scopeId, taskId, { action: 'pause' }, 'pause-1'),
+    ).resolves.toMatchObject({ status: 'accepted', task: { taskId, threadId } });
+    release();
+    await waitUntil(
+      () => store.get(config.scopeId, taskId)?.status === 'paused',
+      'the paused task',
+    );
+    await waitUntil(
+      async () =>
+        (
+          await methods.getMessages(
+            { user: userId, conversationId: threadId, messageId: `${taskId}:user` },
+            '+subagentTask',
+          )
+        )[0]?.subagentTask?.status === 'paused',
+      'the durable paused task',
+    );
+    await expect(
+      store.controlTask(config.scopeId, taskId, { action: 'resume' }, 'resume-1'),
+    ).resolves.toMatchObject({ status: 'accepted', task: { taskId, threadId } });
+    await waitForSettled(store, config.scopeId, started);
+    await expect(store.claimTask(config.scopeId, taskId)).resolves.toMatchObject({
+      status: 'completed',
+      result: 'Resumed result.',
+    });
+    await store.destroyTaskControlTransport();
+  });
+
   it('waits for a raced authoritative receipt generation before acknowledging control', async () => {
     const userId = 'receipt-generation-race-user';
     const parentConversationId = randomUUID();

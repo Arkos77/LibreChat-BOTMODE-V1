@@ -225,6 +225,10 @@ const publicStatus = (
   switch (persistedStatus) {
     case 'running':
       return 'interrupted';
+    case 'pause_requested':
+      return 'pause_requested';
+    case 'paused':
+      return 'paused';
     case 'completed':
       return 'completed';
     case 'error':
@@ -396,6 +400,10 @@ const publicTaskStatus = (
   switch (status) {
     case 'running':
       return 'interrupted';
+    case 'pause_requested':
+      return 'pause_requested';
+    case 'paused':
+      return 'paused';
     case 'completed':
       return 'completed';
     case 'error':

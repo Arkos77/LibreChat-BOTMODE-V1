@@ -183,3 +183,15 @@ content or message prose. Checkpoint state remains the durable source; the acces
 
 This supersedes the interim `b6ef55b` package for LibreChat host integration because native one-task missions
 compile to StandardGraph and require the same exact-output observation contract at terminal finalization.
+
+## Cooperative detached-task pause/resume SDK — current artifact
+
+- Package: `@librechat/agents` 3.7.17.
+- Source commit: `3bf51da` (`feat(agents): support cooperative task pause resume`).
+- Artifact: `librechat-agents-3.7.17-3bf51da.tgz`.
+- SHA-256: `9f720feecb1d9d9646c4ba1e525ff35446d95b5170e1a95850a57cfaf23ca2f2`.
+- Distributed files: 1284.
+- Validation: `SubagentExecutor.test.ts` 134/134 PASS; TypeScript `--noEmit` PASS; SDK build PASS; `git diff --check` PASS.
+- Contract: adds cooperative operator task states `pause_requested` and `paused`, plus `pause`/`resume` controls. Pause is applied only at child-safe `PostToolBatch`, `PreemptBoundary`, or turn boundaries; resume continues the same task/thread identity. Paused time does not consume the in-memory task timeout.
+
+This is task-control authority only. It is not HITL authority and does not by itself make pause durable across owner-process loss. Host-side durable task persistence, takeover/recovery semantics, API projection and UI controls must be proven separately before P13 can claim durable observable pause/resume. Historical SDK artifacts remain retained for provenance.

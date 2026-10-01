@@ -46,13 +46,15 @@ const validAction = (value: unknown): value is SubagentControlAction =>
   value === 'steer' ||
   value === 'queue' ||
   value === 'interrupt' ||
+  value === 'pause' ||
+  value === 'resume' ||
   value === 'cancel' ||
   value === 'cancel_message';
 
 const requestKeysForAction = (action: SubagentControlAction): Set<string> => {
   const keys = new Set(['taskId', 'invocationId', 'action']);
   if (action === 'cancel_message') keys.add('controlId');
-  else if (action !== 'cancel') keys.add('message');
+  else if (action !== 'cancel' && action !== 'pause' && action !== 'resume') keys.add('message');
   return keys;
 };
 
@@ -60,7 +62,9 @@ const commandFromRequest = (
   body: SubagentControlRequest,
 ): SubagentTaskControlCommand | undefined => {
   if (!validAction(body.action)) return undefined;
-  if (body.action === 'cancel') return { action: 'cancel' };
+  if (body.action === 'cancel' || body.action === 'pause' || body.action === 'resume') {
+    return { action: body.action };
+  }
   if (body.action === 'cancel_message') {
     return validId(body.controlId, MAX_TASK_ID_BYTES)
       ? { action: 'cancel_message', controlId: body.controlId }

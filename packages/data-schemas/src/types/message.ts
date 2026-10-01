@@ -10,6 +10,8 @@ export type SubagentTaskControlAction =
   | 'steer'
   | 'queue'
   | 'interrupt'
+  | 'pause'
+  | 'resume'
   | 'cancel'
   | 'cancel_message';
 
@@ -109,7 +111,7 @@ export interface IMessage extends Document {
     /** Parent response that initiated this exact child task. */
     parentRunId?: string;
     requestFingerprint?: string;
-    status: 'running' | 'completed' | 'error' | 'cancelled';
+    status: 'running' | 'pause_requested' | 'paused' | 'completed' | 'error' | 'cancelled';
     resultClaim?: {
       kind: 'manual' | 'wakeup';
       claimId: string;

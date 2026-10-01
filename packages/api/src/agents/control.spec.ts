@@ -84,6 +84,28 @@ describe('subagent control handler', () => {
         message: 'unused',
       }),
     ).toBe(false);
+    expect(
+      isValidSubagentControlRequest({ taskId, invocationId: 'pause-1', action: 'pause' }),
+    ).toBe(true);
+    expect(
+      isValidSubagentControlRequest({ taskId, invocationId: 'resume-1', action: 'resume' }),
+    ).toBe(true);
+    expect(
+      isValidSubagentControlRequest({
+        taskId,
+        invocationId: 'pause-2',
+        action: 'pause',
+        message: 'unused',
+      }),
+    ).toBe(false);
+    expect(
+      isValidSubagentControlRequest({
+        taskId,
+        invocationId: 'resume-2',
+        action: 'resume',
+        message: 'unused',
+      }),
+    ).toBe(false);
   });
 
   it('returns one bounded public accepted receipt from the authorized live owner', async () => {

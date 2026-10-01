@@ -109,6 +109,12 @@ class SubagentThreadPublicError extends Error {}
 class SubagentThreadDeletedError extends SubagentThreadPublicError {}
 class SubagentControlReceiptConflictError extends Error {}
 
+const isActiveTaskStatus = (status: SubagentTaskSnapshot['status']): boolean =>
+  status === 'running' || status === 'pause_requested' || status === 'paused';
+
+const isTerminalTaskStatus = (status: NonNullable<IMessage['subagentTask']>['status']): boolean =>
+  status === 'completed' || status === 'error' || status === 'cancelled';
+
 type SubagentThreadMethods = Pick<
   AllMethods,
   | 'acquireSubagentThreadLease'
@@ -169,7 +175,7 @@ type ThreadMessage = Pick<
 
 type SdkControlReceipt = {
   controlId: string;
-  action: 'steer' | 'queue' | 'interrupt';
+  action: 'steer' | 'queue' | 'interrupt' | 'pause' | 'resume';
   status: 'accepted' | 'applied' | 'rejected' | 'failed';
   createdAt: number;
   updatedAt: number;
@@ -826,7 +832,11 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
     if (
       result.status === 'accepted' &&
       result.controlId != null &&
-      (command.action === 'steer' || command.action === 'queue' || command.action === 'interrupt')
+      (command.action === 'steer' ||
+        command.action === 'queue' ||
+        command.action === 'interrupt' ||
+        command.action === 'pause' ||
+        command.action === 'resume')
     ) {
       const sdkReceipt = snapshot.controlReceipts?.find(
         (receipt) => receipt.controlId === result.controlId,
@@ -910,7 +920,11 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
       resultClaimed: durableTask.resultClaimed,
       pendingControls: durableTask.pendingControls,
       ...(receipt.controlId != null &&
-      (receipt.action === 'steer' || receipt.action === 'queue' || receipt.action === 'interrupt')
+      (receipt.action === 'steer' ||
+        receipt.action === 'queue' ||
+        receipt.action === 'interrupt' ||
+        receipt.action === 'pause' ||
+        receipt.action === 'resume')
         ? {
             controlReceipts: [
               {
@@ -1107,7 +1121,10 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
     this.controlCommandAdmissionClosed = true;
     const cancellationFlushes: Promise<void>[] = [];
     for (const lease of this.activeThreads.values()) {
-      if (lease.taskId !== '' && this.get(lease.scopeId, lease.taskId)?.status === 'running') {
+      if (
+        lease.taskId !== '' &&
+        isActiveTaskStatus(this.get(lease.scopeId, lease.taskId)?.status ?? 'completed')
+      ) {
         const cancellation = super.control(lease.scopeId, lease.taskId, { action: 'cancel' });
         if (cancellation.status === 'cancelled') {
           /** The SDK hook above is synchronous, but retain direct promises for the
@@ -1599,7 +1616,12 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
       local.status !== 'not_found'
         ? local
         : ((await this.taskControlTransport?.claim(scopeId, taskId)) ?? local);
-    if (invocationId == null || claim.status === 'running') {
+    if (
+      invocationId == null ||
+      claim.status === 'running' ||
+      claim.status === 'pause_requested' ||
+      claim.status === 'paused'
+    ) {
       return claim;
     }
     if (claim.status === 'not_found') {
@@ -1839,7 +1861,7 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
       /** Terminal materialization and one-shot collection can change after the
        * receipt becomes durable. Refresh those flags from the exact durable row so
        * same-owner replay agrees with replay after owner loss. */
-      if ('task' in retained.result && retained.result.task.status !== 'running') {
+      if ('task' in retained.result && !isActiveTaskStatus(retained.result.task.status)) {
         const current = this.get(scopeId, taskId);
         if (current != null) {
           retained.result = {
@@ -1938,7 +1960,7 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
        * owner applies its own window to the routed request. */
       return this.control(scopeId, taskId, command);
     }
-    if (localTask.status !== 'running') {
+    if (!isActiveTaskStatus(localTask.status)) {
       const result = this.control(scopeId, taskId, command);
       if (result.status === 'not_found' || result.status === 'invalid') return result;
       if (this.terminalControlInvocations.size >= MAX_TERMINAL_CONTROL_INVOCATIONS) {
@@ -1999,7 +2021,11 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
     if (
       result.status === 'accepted' &&
       result.controlId != null &&
-      (command.action === 'steer' || command.action === 'queue' || command.action === 'interrupt')
+      (command.action === 'steer' ||
+        command.action === 'queue' ||
+        command.action === 'interrupt' ||
+        command.action === 'pause' ||
+        command.action === 'resume')
     ) {
       this.controlInvocationByReceipt.set(
         controlReceiptKey(scopeId, taskId, result.controlId),
@@ -2025,7 +2051,11 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
       throw new SubagentTaskOwnerUnavailableError();
     }
     const localTask = this.get(scopeId, taskId);
-    if (localTask?.status === 'running') {
+    if (
+      localTask?.status === 'running' ||
+      localTask?.status === 'pause_requested' ||
+      localTask?.status === 'paused'
+    ) {
       if (localTask.threadId == null || localTask.threadId === '') {
         throw new SubagentTaskOwnerUnavailableError();
       }
@@ -2729,13 +2759,13 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
         }
         if (!ownerActive) {
           const task = this.get(scopeId, lease.taskId);
-          if (task?.status === 'running') {
+          if (task != null && isActiveTaskStatus(task.status)) {
             super.control(scopeId, lease.taskId, { action: 'cancel' });
           }
         }
         if (!(await this.renewSharedLeaseFence(scope, threadId, lease))) {
           const task = this.get(scopeId, lease.taskId);
-          if (task?.status === 'running') {
+          if (task != null && isActiveTaskStatus(task.status)) {
             super.control(scopeId, lease.taskId, { action: 'cancel' });
           }
         }
@@ -2982,7 +3012,10 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
         }
         const terminal = [...priorAttempt]
           .reverse()
-          .find((message) => message.subagentTask?.status !== 'running');
+          .find(
+            (message) =>
+              message.subagentTask != null && isTerminalTaskStatus(message.subagentTask.status),
+          );
         if (terminal?.subagentTask != null) {
           const canonicalTaskId = terminal.messageId.endsWith(':assistant')
             ? terminal.messageId.slice(0, -':assistant'.length)

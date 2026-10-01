@@ -1690,7 +1690,15 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
     tenantId?: string;
     receipt: NonNullable<NonNullable<IMessage['subagentTask']>['controlReceipts']>[number];
   }): Promise<boolean | 'unchanged' | 'conflict'> {
-    const validActions = new Set(['steer', 'queue', 'interrupt', 'cancel', 'cancel_message']);
+    const validActions = new Set([
+      'steer',
+      'queue',
+      'interrupt',
+      'pause',
+      'resume',
+      'cancel',
+      'cancel_message',
+    ]);
     const validStatuses = new Set(['reserved', 'accepted', 'applied', 'rejected', 'failed']);
     if (
       userId.length === 0 ||
@@ -1721,17 +1729,21 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
       messageId: `${taskId}:user`,
       /** A genuinely new command can arrive after its task settles or its final
        * lease expires. Persist that authoritative rejection for retries; every
-       * command that could still be applied remains fenced to a running task. */
+       * command that could still be applied remains fenced to an active task. */
       ...(recordsTerminalRejection
-        ? { 'subagentTask.status': { $in: ['running', 'completed', 'error', 'cancelled'] } }
-        : { 'subagentTask.status': 'running' }),
+        ? {
+            'subagentTask.status': {
+              $in: ['running', 'pause_requested', 'paused', 'completed', 'error', 'cancelled'],
+            },
+          }
+        : { 'subagentTask.status': { $in: ['running', 'pause_requested', 'paused'] } }),
     };
     /** Amazon DocumentDB does not support aggregation-pipeline updates. Use a
      * bounded optimistic compare-and-swap: the read is small, the write uses
      * only plain operators, and concurrent writers retry rather than overwrite. */
     for (let attempt = 0; attempt < MAX_SUBAGENT_CONTROL_RECEIPT_CAS_ATTEMPTS; attempt += 1) {
       const currentMessage = await Message.findOne(identity)
-        .select({ 'subagentTask.controlReceipts': 1, _id: 0 })
+        .select({ 'subagentTask.controlReceipts': 1, 'subagentTask.status': 1, _id: 0 })
         .lean<Pick<IMessage, 'subagentTask'> | null>();
       if (currentMessage == null) return false;
       const current = currentMessage.subagentTask?.controlReceipts ?? [];
@@ -1740,17 +1752,52 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
       if (retained.status === 'unchanged') return 'unchanged';
       if (retained.status === 'capacity') return false;
       const next = retained.receipts;
-      const currentFilter =
-        currentMessage.subagentTask?.controlReceipts == null
+      const currentStatus = currentMessage.subagentTask?.status;
+      let nextStatus = currentStatus;
+      if (
+        receipt.action === 'pause' &&
+        receipt.status === 'accepted' &&
+        currentStatus === 'running'
+      ) {
+        nextStatus = 'pause_requested';
+      } else if (
+        receipt.action === 'pause' &&
+        receipt.status === 'applied' &&
+        currentStatus === 'pause_requested'
+      ) {
+        nextStatus = 'paused';
+      } else if (
+        receipt.action === 'pause' &&
+        receipt.status === 'rejected' &&
+        receipt.reason === 'withdrawn' &&
+        currentStatus === 'pause_requested'
+      ) {
+        nextStatus = 'running';
+      } else if (
+        receipt.action === 'resume' &&
+        receipt.status === 'applied' &&
+        (currentStatus === 'paused' || currentStatus === 'pause_requested')
+      ) {
+        nextStatus = 'running';
+      }
+      const currentFilter = {
+        ...(currentMessage.subagentTask?.controlReceipts == null
           ? { 'subagentTask.controlReceipts': { $exists: false } }
-          : { 'subagentTask.controlReceipts': current };
+          : { 'subagentTask.controlReceipts': current }),
+        ...(currentStatus == null ? {} : { 'subagentTask.status': currentStatus }),
+      };
+      const updateSet: Record<string, unknown> = { 'subagentTask.controlReceipts': next };
+      if (nextStatus != null && nextStatus !== currentStatus) {
+        updateSet['subagentTask.status'] = nextStatus;
+      }
       const updated = await Message.findOneAndUpdate(
         { ...identity, ...currentFilter },
-        { $set: { 'subagentTask.controlReceipts': next } },
+        { $set: updateSet },
         { new: false, projection: { messageId: 1 } },
       ).lean<{ messageId: string } | null>();
       if (updated != null) return true;
     }
+
     throw new Error('Subagent control receipt write contention exceeded its retry bound.');
   }
 
@@ -1820,7 +1867,7 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
       taskId: string;
       threadId: string;
       subagentType: string;
-      status: 'running' | 'completed' | 'error' | 'cancelled';
+      status: 'running' | 'pause_requested' | 'paused' | 'completed' | 'error' | 'cancelled';
       resultAvailable: boolean;
       resultClaimed: boolean;
       pendingControls: number;

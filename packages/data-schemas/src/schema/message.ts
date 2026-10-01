@@ -188,7 +188,7 @@ const messageSchema: Schema<IMessage> = new Schema(
         requestFingerprint: { type: String },
         status: {
           type: String,
-          enum: ['running', 'completed', 'error', 'cancelled'],
+          enum: ['running', 'pause_requested', 'paused', 'completed', 'error', 'cancelled'],
           required: true,
         },
         resultClaim: {
@@ -208,7 +208,15 @@ const messageSchema: Schema<IMessage> = new Schema(
               controlId: { type: String },
               action: {
                 type: String,
-                enum: ['steer', 'queue', 'interrupt', 'cancel', 'cancel_message'],
+                enum: [
+                  'steer',
+                  'queue',
+                  'interrupt',
+                  'pause',
+                  'resume',
+                  'cancel',
+                  'cancel_message',
+                ],
                 required: true,
               },
               status: {

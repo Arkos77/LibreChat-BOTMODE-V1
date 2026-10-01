@@ -1,6 +1,8 @@
 export type SubagentThreadStatus =
   | 'dispatched'
   | 'running'
+  | 'pause_requested'
+  | 'paused'
   | 'completed'
   | 'failed'
   | 'interrupted'
@@ -84,7 +86,14 @@ export type SubagentActivityItem =
       outputTruncated?: boolean;
     };
 
-export type SubagentControlAction = 'steer' | 'queue' | 'interrupt' | 'cancel' | 'cancel_message';
+export type SubagentControlAction =
+  | 'steer'
+  | 'queue'
+  | 'interrupt'
+  | 'pause'
+  | 'resume'
+  | 'cancel'
+  | 'cancel_message';
 
 export type SubagentControlReceipt = {
   invocationId: string;

@@ -3644,6 +3644,57 @@ describe('Message Operations', () => {
       ]);
     });
 
+    it('persists pause and resume task status transitions', async () => {
+      const conversationId = uuidv4();
+      await createTaskInput(conversationId);
+      const now = new Date('2026-10-01T12:00:00.000Z');
+      const write = (receipt: Parameters<typeof recordSubagentTaskControlReceipt>[0]['receipt']) =>
+        recordSubagentTaskControlReceipt({
+          userId: 'user123',
+          conversationId,
+          taskId: 'task-1',
+          receipt,
+        });
+      const status = async () =>
+        (
+          await Message.findOne({ user: 'user123', conversationId, messageId: 'task-1:user' })
+            .select('+subagentTask')
+            .lean<IMessage>()
+        )?.subagentTask?.status;
+      const pause = {
+        invocationId: 'pause-1',
+        fingerprint: 'fp-pause',
+        controlId: 'control-pause',
+        action: 'pause' as const,
+        status: 'accepted' as const,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await expect(write(pause)).resolves.toBe(true);
+      await expect(status()).resolves.toBe('pause_requested');
+      await expect(
+        write({
+          ...pause,
+          status: 'applied',
+          boundary: 'turn',
+          updatedAt: new Date(now.getTime() + 1),
+        }),
+      ).resolves.toBe(true);
+      await expect(status()).resolves.toBe('paused');
+      await expect(
+        write({
+          invocationId: 'resume-1',
+          fingerprint: 'fp-resume',
+          controlId: 'control-resume',
+          action: 'resume',
+          status: 'applied',
+          createdAt: new Date(now.getTime() + 2),
+          updatedAt: new Date(now.getTime() + 2),
+        }),
+      ).resolves.toBe(true);
+      await expect(status()).resolves.toBe('running');
+    });
+
     it('updates only the authorized tenant when message identities collide', async () => {
       const conversationId = uuidv4();
       const taskId = 'tenant-task';
