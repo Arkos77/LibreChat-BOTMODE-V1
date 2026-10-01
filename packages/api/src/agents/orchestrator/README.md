@@ -142,7 +142,7 @@ The context contains no raw tool output, arguments, artifacts, confidence, verdi
 
 `evidence.ts` adds a pure normalization boundary for source-addressed Oracle evidence. It accepts only explicit host-supplied provenance and classifies evidence as independent when it is neither producer-declared nor attributed to the producing agent. Callers may require independence, in which case producer evidence and same-producer model/tool evidence fail closed.
 
-This contract does not discover evidence, execute tools, call models, invoke Oracle, authorize work, publish improvements, persist lifecycle state, create tasks, or mutate runtime state. It only normalizes already-existing provenance into the native `OracleEvidence` shape. Production evidence collection and Distill activation remain dormant until a real native tool/source/artifact provenance seam is proven.
+This contract does not discover evidence, execute tools, call models, invoke Oracle, authorize work, publish improvements, persist lifecycle state, create tasks, or mutate runtime state. It normalizes already-existing provenance into the native `OracleEvidence` shape. The mission Oracle path now consumes this boundary for structured `native_tool_end` observations after explicit criterion/value binding; this production wiring does not make the pure contract authoritative.
 
 ## P10 — Tool evidence intent contract
 
@@ -154,7 +154,7 @@ The contract does not inspect or interpret raw tool output, tool arguments, arti
 
 `toolEvidence.ts` maps already-observed native tool provenance into the P10 evidence contract. It preserves the native `tool_call_id`, optional native run identity and the tool/checker agent identity when the host already has them. It never derives those identities from trace, candidate, message or response identifiers.
 
-The adapter does not interpret raw tool output, infer a criterion, infer an evidence value, execute a tool, persist evidence, invoke Oracle, authorize work, publish an improvement, create a task or mutate runtime state. Tool provenance is independent only when the native tool has a known checker agent distinct from the producer; a missing checker or same-producer tool remains non-independent. Source-addressed evidence retains its separate host provenance contract. The adapter is exported but intentionally has no production caller yet; wiring remains dormant until the host seam can supply criterion/value semantics and native producer/checker identity without inference.
+The adapter does not interpret raw tool output, infer a criterion, infer an evidence value, execute a tool, persist evidence, invoke Oracle, authorize work, publish an improvement, create a task or mutate runtime state. Tool provenance is independent only when the native tool has a known checker agent distinct from the producer; a missing checker or same-producer tool remains non-independent. Source-addressed evidence retains its separate host provenance contract. `createNativeToolEvidence` is now called by the production mission Oracle promotion path for already-bounded `native_tool_end` observations; missing checker or same-producer evidence still remains non-independent.
 
 ## P10 — Optional tool-end observation hook
 
