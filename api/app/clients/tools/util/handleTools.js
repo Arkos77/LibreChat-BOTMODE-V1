@@ -462,6 +462,11 @@ const loadTools = async ({
           req: options.req,
           agent,
           userId: user,
+          projectId:
+            typeof options.req?.body?.chatProjectId === 'string' &&
+            options.req.body.chatProjectId.trim() !== ''
+              ? options.req.body.chatProjectId.trim()
+              : undefined,
           memoryMethods: { setMemory, deleteMemory, getFormattedMemories },
           getRoleByName,
         });

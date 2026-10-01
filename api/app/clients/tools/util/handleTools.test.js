@@ -15,6 +15,7 @@ const mockPrimeCodeFiles = jest.fn(async () => ({ files: [], toolContext: undefi
 
 const mockCreateSearchTool = jest.fn(() => ({ name: 'web_search' }));
 const mockCreateCodeExecutionTool = jest.fn(() => ({ name: 'execute_code' }));
+const mockBuildInlineMemoryTool = jest.fn(() => ({ name: 'set_memory' }));
 const mockLoadWebSearchAuth = jest.fn(async () => ({
   authenticated: true,
   authResult: { searchProvider: 'serper', searxngInstanceUrl: 'http://searxng.internal:8080' },
@@ -33,6 +34,7 @@ jest.mock('~/server/services/Files/Code/process', () => ({
 jest.mock('@librechat/api', () => ({
   ...jest.requireActual('@librechat/api'),
   loadWebSearchAuth: (...args) => mockLoadWebSearchAuth(...args),
+  buildInlineMemoryTool: (...args) => mockBuildInlineMemoryTool(...args),
 }));
 
 jest.mock('~/server/services/PluginService', () => mockPluginService);
@@ -94,7 +96,7 @@ jest.mock('~/config', () => ({
 
 const { Calculator } = require('@librechat/agents');
 const { Tools, Constants } = require('librechat-data-provider');
-const { ASK_USER_QUESTION_TOOL_NAME } = require('@librechat/api');
+const { ASK_USER_QUESTION_TOOL_NAME, SET_MEMORY_TOOL_NAME } = require('@librechat/api');
 
 const { User } = require('~/db/models');
 const PluginService = require('~/server/services/PluginService');
@@ -370,6 +372,24 @@ describe('Tool Handlers', () => {
       });
       expect(loadedTools).toHaveLength(1);
       expect(loadedTools[0].name).toBe(ASK_USER_QUESTION_TOOL_NAME);
+    });
+
+    it('threads the explicit chat project into inline memory tools', async () => {
+      const toolMap = await loadTools({
+        user: fakeUser._id.toString(),
+        tools: [SET_MEMORY_TOOL_NAME],
+        returnMap: true,
+        agent: { id: 'agent-1' },
+        options: {
+          req: { body: { chatProjectId: ' project-a ' } },
+        },
+      });
+
+      await toolMap[SET_MEMORY_TOOL_NAME]();
+
+      expect(mockBuildInlineMemoryTool).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId: 'project-a' }),
+      );
     });
 
     it('routes code file priming to the selected bridge worker', async () => {

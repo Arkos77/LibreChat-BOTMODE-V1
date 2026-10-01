@@ -953,6 +953,47 @@ describe('getRequestMemories caching', () => {
     expect(getFormattedMemories).toHaveBeenCalledTimes(2);
   });
 
+  it('caches request memories independently per project', async () => {
+    const getFormattedMemories = jest
+      .fn()
+      .mockResolvedValue({ withKeys: '', withoutKeys: '', totalTokens: 10 });
+    const req = {};
+
+    await getRequestMemories({
+      req,
+      userId: 'user-1',
+      agentId: 'agent_a',
+      projectId: 'project-a',
+      getFormattedMemories,
+    });
+    await getRequestMemories({
+      req,
+      userId: 'user-1',
+      agentId: 'agent_a',
+      projectId: 'project-b',
+      getFormattedMemories,
+    });
+    await getRequestMemories({
+      req,
+      userId: 'user-1',
+      agentId: 'agent_a',
+      projectId: 'project-a',
+      getFormattedMemories,
+    });
+
+    expect(getFormattedMemories).toHaveBeenCalledTimes(2);
+    expect(getFormattedMemories).toHaveBeenNthCalledWith(1, {
+      userId: 'user-1',
+      agentId: 'agent_a',
+      projectId: 'project-a',
+    });
+    expect(getFormattedMemories).toHaveBeenNthCalledWith(2, {
+      userId: 'user-1',
+      agentId: 'agent_a',
+      projectId: 'project-b',
+    });
+  });
+
   it('caches and invalidates per partition', async () => {
     const getFormattedMemories = jest
       .fn()

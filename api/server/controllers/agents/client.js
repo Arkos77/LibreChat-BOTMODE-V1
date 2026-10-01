@@ -2493,6 +2493,7 @@ class AgentClient extends BaseClient {
           req: this.options.req,
           userId: this.options.req.user.id + '',
           agentId: agentPartition,
+          projectId: this.options.chatProjectId,
           getFormattedMemories: db.getFormattedMemories,
         });
       } catch (error) {
@@ -2516,6 +2517,7 @@ class AgentClient extends BaseClient {
           db.getUserMemories({
             userId: this.options.req.user.id + '',
             agentId,
+            projectId: this.options.chatProjectId,
           }),
         );
       }
@@ -2815,6 +2817,7 @@ class AgentClient extends BaseClient {
           req: this.options.req,
           userId,
           agentId: memoryAgentId,
+          projectId: this.options.chatProjectId,
           getFormattedMemories: db.getFormattedMemories,
         });
         return { withKeys, withoutKeys };
@@ -2923,6 +2926,7 @@ class AgentClient extends BaseClient {
     const [withoutKeys, processMemory] = await createMemoryProcessor({
       userId,
       agentId: memoryAgentId,
+      projectId: this.options.chatProjectId,
       config,
       filters: this.options.req.config?.filters,
       messageId,
@@ -2947,6 +2951,7 @@ class AgentClient extends BaseClient {
         req: this.options.req,
         userId,
         agentId: memoryAgentId,
+        projectId: this.options.chatProjectId,
         getFormattedMemories: db.getFormattedMemories,
       }));
     } catch (error) {
@@ -2993,6 +2998,7 @@ class AgentClient extends BaseClient {
           req: this.options.req,
           userId,
           agentId,
+          projectId: this.options.chatProjectId,
           getFormattedMemories: db.getFormattedMemories,
         });
         scopes.set(scope, snapshot);

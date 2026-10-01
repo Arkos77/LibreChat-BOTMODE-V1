@@ -11,7 +11,10 @@ const formatDate = (date: Date): string => {
 
 /** Partition filter: `agentId: null` matches both null and missing fields,
  *  so pre-partition entries remain part of the shared personal pool. */
-const partitionFilter = (agentId?: string) => ({ agentId: agentId ?? null });
+const partitionFilter = (agentId?: string, projectId?: string) => ({
+  agentId: agentId ?? null,
+  projectId: projectId ?? null,
+});
 
 // Factory function that takes mongoose instance and returns the methods
 export function createMemoryMethods(mongoose: typeof import('mongoose')): {
@@ -37,6 +40,7 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
   getFormattedMemories: ({
     userId,
     agentId,
+    projectId,
   }: t.GetFormattedMemoriesParams) => Promise<t.FormattedMemoriesResult>;
   deleteAllUserMemories: (userId: string | Types.ObjectId) => Promise<number>;
 } {
@@ -50,6 +54,7 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
     value,
     tokenCount = 0,
     agentId,
+    projectId,
   }: t.SetMemoryParams): Promise<t.MemoryResult> {
     try {
       if (key?.toLowerCase() === 'nothing') {
@@ -60,7 +65,7 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
       const existingMemory = await MemoryEntry.findOne({
         userId,
         key,
-        ...partitionFilter(agentId),
+        ...partitionFilter(agentId, projectId),
       });
       if (existingMemory) {
         throw new Error('Memory with this key already exists');
@@ -72,6 +77,7 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
         value,
         tokenCount,
         ...(agentId ? { agentId } : {}),
+        ...(projectId ? { projectId } : {}),
         updated_at: new Date(),
       });
 
@@ -92,6 +98,7 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
     value,
     tokenCount = 0,
     agentId,
+    projectId,
   }: t.SetMemoryParams): Promise<t.MemoryResult> {
     try {
       if (key?.toLowerCase() === 'nothing') {
@@ -100,11 +107,12 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
 
       const MemoryEntry = mongoose.models.MemoryEntry;
       await MemoryEntry.findOneAndUpdate(
-        { userId, key, ...partitionFilter(agentId) },
+        { userId, key, ...partitionFilter(agentId, projectId) },
         {
           value,
           tokenCount,
           ...(agentId ? { agentId } : {}),
+          ...(projectId ? { projectId } : {}),
           updated_at: new Date(),
         },
         {
@@ -128,13 +136,14 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
     userId,
     key,
     agentId,
+    projectId,
   }: t.DeleteMemoryParams): Promise<t.MemoryResult> {
     try {
       const MemoryEntry = mongoose.models.MemoryEntry;
       const result = await MemoryEntry.findOneAndDelete({
         userId,
         key,
-        ...partitionFilter(agentId),
+        ...partitionFilter(agentId, projectId),
       });
       return { ok: !!result };
     } catch (error) {
@@ -152,6 +161,7 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
     value,
     tokenCount = 0,
     agentId,
+    projectId,
   }: t.SetMemoryByIdParams): Promise<t.SetMemoryByIdResult> {
     try {
       if (!mongoose.Types.ObjectId.isValid(id) || key?.toLowerCase() === 'nothing') {
@@ -159,7 +169,7 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
       }
 
       const MemoryEntry = mongoose.models.MemoryEntry;
-      const recordFilter = { _id: id, userId, ...partitionFilter(agentId) };
+      const recordFilter = { _id: id, userId, ...partitionFilter(agentId, projectId) };
       const existingMemory = (await MemoryEntry.findOne(
         recordFilter,
       ).lean()) as t.IMemoryEntryLean | null;
@@ -171,7 +181,7 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
         const duplicate = await MemoryEntry.exists({
           userId,
           key,
-          ...partitionFilter(agentId),
+          ...partitionFilter(agentId, projectId),
           _id: { $ne: existingMemory._id },
         });
         if (duplicate) {
@@ -203,6 +213,7 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
     userId,
     id,
     agentId,
+    projectId,
   }: t.MemoryByIdParams): Promise<t.MemoryResult> {
     try {
       if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -213,7 +224,7 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
       const result = await MemoryEntry.findOneAndDelete({
         _id: id,
         userId,
-        ...partitionFilter(agentId),
+        ...partitionFilter(agentId, projectId),
       });
       return { ok: !!result };
     } catch (error) {
@@ -246,12 +257,13 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
   async function getUserMemories({
     userId,
     agentId,
+    projectId,
   }: t.GetUserMemoriesParams): Promise<t.IMemoryEntryLean[]> {
     try {
       const MemoryEntry = mongoose.models.MemoryEntry;
       return (await MemoryEntry.find({
         userId,
-        ...partitionFilter(agentId),
+        ...partitionFilter(agentId, projectId),
       }).lean()) as t.IMemoryEntryLean[];
     } catch (error) {
       throw new Error(
@@ -266,9 +278,10 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
   async function getFormattedMemories({
     userId,
     agentId,
+    projectId,
   }: t.GetFormattedMemoriesParams): Promise<t.FormattedMemoriesResult> {
     try {
-      const memories = await getUserMemories({ userId, agentId });
+      const memories = await getUserMemories({ userId, agentId, projectId });
 
       if (!memories || memories.length === 0) {
         return {

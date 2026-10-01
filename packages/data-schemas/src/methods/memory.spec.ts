@@ -39,6 +39,29 @@ beforeEach(async () => {
 });
 
 describe('memory partitions', () => {
+  it('isolates the same memory key across chat projects', async () => {
+    await methods.setMemory({
+      userId,
+      key: 'project_context',
+      value: 'alpha',
+      projectId: 'project-a',
+    });
+    await methods.setMemory({
+      userId,
+      key: 'project_context',
+      value: 'beta',
+      projectId: 'project-b',
+    });
+
+    const projectA = await methods.getUserMemories({ userId, projectId: 'project-a' });
+    const projectB = await methods.getUserMemories({ userId, projectId: 'project-b' });
+    const global = await methods.getUserMemories({ userId });
+
+    expect(projectA.map((memory) => memory.value)).toEqual(['alpha']);
+    expect(projectB.map((memory) => memory.value)).toEqual(['beta']);
+    expect(global).toHaveLength(0);
+  });
+
   it('writes to the shared personal pool when agentId is omitted', async () => {
     await methods.setMemory({ userId, key: 'preference', value: 'likes tea', tokenCount: 3 });
 
@@ -153,6 +176,40 @@ describe('memory partitions', () => {
       memory: { key: 'private_key', value: 'after', tokenCount: 2, agentId },
     });
     expect(await methods.getUserMemories({ userId, agentId })).toHaveLength(1);
+  });
+
+  it('blocks by ID update and delete across chat projects', async () => {
+    await methods.setMemory({
+      userId,
+      key: 'project_private',
+      value: 'alpha',
+      agentId,
+      projectId: 'project-a',
+    });
+    const [stored] = await methods.getUserMemories({
+      userId,
+      agentId,
+      projectId: 'project-a',
+    });
+    const id = stored._id.toString();
+
+    await expect(
+      methods.setMemoryById({
+        userId,
+        id,
+        value: 'beta',
+        agentId,
+        projectId: 'project-b',
+      }),
+    ).resolves.toEqual({ ok: false });
+
+    await expect(
+      methods.deleteMemoryById({ userId, id, agentId, projectId: 'project-b' }),
+    ).resolves.toEqual({ ok: false });
+
+    await expect(
+      methods.getUserMemories({ userId, agentId, projectId: 'project-a' }),
+    ).resolves.toEqual([expect.objectContaining({ value: 'alpha' })]);
   });
 
   it('renames by opaque id without creating a duplicate record', async () => {
