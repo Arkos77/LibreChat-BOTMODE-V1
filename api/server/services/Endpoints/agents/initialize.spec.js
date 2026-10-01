@@ -194,6 +194,142 @@ describe('initializeClient — processAgent ACL gate', () => {
     },
   });
 
+  it('blocks cross-project source reuse for an existing conversation', async () => {
+    const req = makeReq();
+    req.resolvedConversation = {
+      conversationId: 'conv_1',
+      chatProjectId: 'project-a',
+      files: ['file-a'],
+    };
+    const endpointOption = makeEndpointOption();
+    endpointOption.chatProjectId = 'project-b';
+
+    await expect(
+      initializeClient({
+        req,
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption,
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: 'Conversation project does not match requested project',
+    });
+    expect(mockInitializeAgent).not.toHaveBeenCalled();
+  });
+
+  it('blocks a project conversation from dropping into the global scope', async () => {
+    const req = makeReq();
+    req.resolvedConversation = {
+      conversationId: 'conv_1',
+      chatProjectId: 'project-a',
+      files: ['file-a'],
+    };
+
+    await expect(
+      initializeClient({
+        req,
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption: makeEndpointOption(),
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('blocks a global conversation from being reclassified into a project', async () => {
+    const req = makeReq();
+    req.resolvedConversation = {
+      conversationId: 'conv_1',
+      files: ['file-global'],
+    };
+    const endpointOption = makeEndpointOption();
+    endpointOption.chatProjectId = 'project-b';
+
+    await expect(
+      initializeClient({
+        req,
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('allows an existing conversation when the chat project matches', async () => {
+    mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+    const req = makeReq();
+    req.resolvedConversation = {
+      conversationId: 'conv_1',
+      chatProjectId: 'project-a',
+      files: ['file-a'],
+    };
+    const endpointOption = makeEndpointOption();
+    endpointOption.chatProjectId = 'project-a';
+
+    await expect(
+      initializeClient({
+        req,
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption,
+      }),
+    ).resolves.toBeDefined();
+    expect(mockInitializeAgent).toHaveBeenCalled();
+  });
+
+  it('fails closed when a partial continuation cannot resolve its conversation', async () => {
+    const req = makeReq();
+    req.resolvedConversation = {
+      [Symbol.for('librechat.resolvedConversation.partial')]: true,
+      conversationId: 'conv_1',
+    };
+    jest.spyOn(db, 'getConvo').mockResolvedValueOnce(null);
+    const endpointOption = makeEndpointOption();
+    endpointOption.chatProjectId = 'project-a';
+
+    await expect(
+      initializeClient({
+        req,
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption,
+      }),
+    ).rejects.toMatchObject({
+      status: 404,
+      message: 'Conversation could not be resolved for continuation',
+    });
+    expect(mockInitializeAgent).not.toHaveBeenCalled();
+  });
+
+  it('resolves a partial event continuation to authoritative project metadata', async () => {
+    mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+    const req = makeReq();
+    req.resolvedConversation = {
+      [Symbol.for('librechat.resolvedConversation.partial')]: true,
+      conversationId: 'conv_1',
+    };
+    const fullConversation = {
+      conversationId: 'conv_1',
+      chatProjectId: 'project-a',
+      files: ['file-a'],
+    };
+    const getConvoSpy = jest.spyOn(db, 'getConvo').mockResolvedValueOnce(fullConversation);
+    const endpointOption = makeEndpointOption();
+    endpointOption.chatProjectId = 'project-a';
+
+    await expect(
+      initializeClient({
+        req,
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption,
+      }),
+    ).resolves.toBeDefined();
+    expect(getConvoSpy).toHaveBeenCalledWith(testUser._id.toString(), 'conv_1');
+    expect(req.resolvedConversation).toBe(fullConversation);
+    expect(mockInitializeAgent).toHaveBeenCalled();
+  });
+
   it('returns an isolated dormant transient evidence buffer for the request', async () => {
     mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
 

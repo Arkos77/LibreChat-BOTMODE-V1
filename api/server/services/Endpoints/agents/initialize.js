@@ -636,7 +636,7 @@ const initializeClient = async ({
     skillCreateAllowed,
     { skillStates, defaultActiveOnShare },
     { primaryAgent, modelsConfig },
-    requestConversation,
+    requestConversationCandidate,
   ] = await Promise.all([
     memoryAvailablePromise,
     accessibleSkillIdsPromise,
@@ -646,6 +646,36 @@ const initializeClient = async ({
     validatedPrimaryAgentPromise,
     requestConversationPromise,
   ]);
+  const requestConversationIsPartial =
+    requestConversationCandidate != null &&
+    requestConversationCandidate[Symbol.for('librechat.resolvedConversation.partial')] === true;
+  let requestConversation = requestConversationCandidate;
+  if (requestConversationIsPartial && typeof conversationId === 'string' && conversationId !== '') {
+    requestConversation = await db.getConvo(req.user.id, conversationId);
+    if (requestConversation == null) {
+      const error = new Error('Conversation could not be resolved for continuation');
+      error.status = 404;
+      throw error;
+    }
+  }
+  if (requestConversation != null) {
+    req.resolvedConversation = requestConversation;
+  }
+  const requestedChatProjectId =
+    typeof endpointOption.chatProjectId === 'string' && endpointOption.chatProjectId.trim() !== ''
+      ? endpointOption.chatProjectId.trim()
+      : undefined;
+  const storedChatProjectId =
+    typeof requestConversation?.chatProjectId === 'string' &&
+    requestConversation.chatProjectId.trim() !== ''
+      ? requestConversation.chatProjectId.trim()
+      : undefined;
+  if (requestConversation != null && storedChatProjectId !== requestedChatProjectId) {
+    const error = new Error('Conversation project does not match requested project');
+    error.status = 409;
+    throw error;
+  }
+
   delete endpointOption.agent;
 
   const agentConfigs = new Map();
