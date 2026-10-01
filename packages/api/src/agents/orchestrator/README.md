@@ -348,7 +348,11 @@ Each wrapper delegates its native check once, then records `ALLOW` or `DENY`
 under the authenticated owner, resolved tenant and generation MTO trace. Its
 policy version identifies the host check profile, not mutable ACL entries. A
 failed observation does not change the native verdict or prove a mutation
-succeeded. P10 improvement candidate publication remains unconnected.
+succeeded. P10 skill-improvement publication now reuses these same wrappers around
+the request-backed native capability and EDIT checks, so each native check still
+runs once while its ALLOW or DENY outcome is observed under the candidate trace.
+This P12 observation remains non-authoritative and does not replace the durable P10
+AUTHORIZED lifecycle receipt required before mutation.
 
 The host MTO logging sink projects the scalar P11/P12 payload fields only for
 `DECIDED`, `AUTHORIZED`, `DENIED`, and `HUMAN_APPROVAL_REQUIRED`. It rejects

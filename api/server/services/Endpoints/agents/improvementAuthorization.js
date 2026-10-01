@@ -1,5 +1,9 @@
 const { authorizeImprovementPublication } = require('@librechat/api');
 const { getSkillToolDeps } = require('./skillDeps');
+const {
+  createObservedSkillEditCheck,
+  createObservedSkillCreateCheck,
+} = require('./skillAuthorizationObservation');
 
 function resolveRequestActorId(req) {
   const actorId = req?.user?.id ?? req?.user?._id?.toString?.();
@@ -26,6 +30,7 @@ async function authorizeImprovementPublicationForRequest({
   skillId,
   expectedVersion,
   payloadDigest,
+  authorizationObservation,
 }) {
   const requestActorId = resolveRequestActorId(req);
   if (!actorId || String(actorId) !== requestActorId) {
@@ -40,6 +45,24 @@ async function authorizeImprovementPublicationForRequest({
     throw new Error('Native skill authorization helpers are unavailable');
   }
 
+  const observation = authorizationObservation ?? {};
+  const observedCreate = createObservedSkillCreateCheck({
+    req,
+    traceId: disposition?.traceId,
+    nativeCheck: canCreateSkill,
+    persist: observation.persist,
+    sink: observation.sink,
+    tenantId: observation.tenantId,
+  });
+  const observedEdit = createObservedSkillEditCheck({
+    req,
+    traceId: disposition?.traceId,
+    nativeCheck: canEditSkill,
+    persist: observation.persist,
+    sink: observation.sink,
+    tenantId: observation.tenantId,
+  });
+
   return authorizeImprovementPublication({
     disposition,
     operation,
@@ -47,8 +70,8 @@ async function authorizeImprovementPublicationForRequest({
     skillId,
     expectedVersion,
     payloadDigest,
-    checkSkillCapability: async () => canCreateSkill({ req }),
-    checkPermission: async ({ resourceId }) => canEditSkill({ req, skillId: resourceId }),
+    checkSkillCapability: async () => observedCreate({ req }),
+    checkPermission: async ({ resourceId }) => observedEdit({ req, skillId: resourceId }),
   });
 }
 

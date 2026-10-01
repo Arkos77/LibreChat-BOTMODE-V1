@@ -21,6 +21,11 @@ function dependencies(req) {
     getSkillById: getSkillDbMethods().getSkillById,
     publish: publishImprovementSkillUpdateForRequest,
     mtoEventSink: observeMtoEvent,
+    authorizationObservation: {
+      persist: db.recordMtoObservation,
+      sink: observeMtoEvent,
+      tenantId: resolveRequestTenantId(req),
+    },
   };
 }
 function handleFailure(res, error) {

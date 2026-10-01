@@ -290,6 +290,7 @@ async function decideSkillImprovementReview({
     skillId: review.skillId,
     expectedVersion: review.expectedVersion,
     update: review.proposal.update,
+    authorizationObservation: context.authorizationObservation,
     onAuthorized: async (authorization) => {
       if (recoveryAuthorization) {
         if (

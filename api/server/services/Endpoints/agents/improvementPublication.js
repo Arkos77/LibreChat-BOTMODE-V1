@@ -23,6 +23,7 @@ async function publishImprovementSkillUpdateForRequest({
   expectedVersion,
   update,
   onAuthorized,
+  authorizationObservation,
 }) {
   if (operation !== 'update') {
     throw new Error('Controlled improvement publication only supports skill updates');
@@ -57,6 +58,7 @@ async function publishImprovementSkillUpdateForRequest({
     skillId,
     expectedVersion,
     payloadDigest,
+    authorizationObservation,
   });
 
   if (

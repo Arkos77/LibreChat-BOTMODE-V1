@@ -55,6 +55,97 @@ describe('request-backed improvement authorization binding', () => {
     expect(result.publishable).toBe(true);
   });
 
+  it('observes the exact native ALLOW checks without executing either check twice', async () => {
+    const req = { user: { id: 'user-1', role: 'user' } };
+    const canCreateSkill = jest.fn(async () => true);
+    const canEditSkill = jest.fn(async () => true);
+    const persist = jest.fn(async () => ({ replayed: false }));
+    const sink = jest.fn(async () => undefined);
+    getSkillToolDeps.mockReturnValue({ canCreateSkill, canEditSkill });
+
+    const result = await authorizeImprovementPublicationForRequest({
+      req,
+      disposition: acceptedDisposition(),
+      operation: 'update',
+      actorId: 'user-1',
+      skillId: 'skill-1',
+      expectedVersion: 7,
+      payloadDigest: 'digest-abc',
+      authorizationObservation: { persist, sink, tenantId: 'tenant-1' },
+    });
+
+    expect(result.authorized).toBe(true);
+    expect(canCreateSkill).toHaveBeenCalledTimes(1);
+    expect(canEditSkill).toHaveBeenCalledTimes(1);
+    expect(persist).toHaveBeenCalledTimes(2);
+    expect(persist.mock.calls.map(([arg]) => arg.event.payload.capability)).toEqual([
+      'skill.create',
+      'skill.edit',
+    ]);
+    expect(persist.mock.calls.every(([arg]) => arg.event.type === 'AUTHORIZED')).toBe(true);
+    expect(sink).toHaveBeenCalledTimes(2);
+  });
+
+  it('observes native capability DENY without manufacturing an EDIT observation', async () => {
+    const req = { user: { id: 'user-1', role: 'user' } };
+    const canCreateSkill = jest.fn(async () => false);
+    const canEditSkill = jest.fn(async () => true);
+    const persist = jest.fn(async () => ({ replayed: false }));
+    getSkillToolDeps.mockReturnValue({ canCreateSkill, canEditSkill });
+
+    const result = await authorizeImprovementPublicationForRequest({
+      req,
+      disposition: acceptedDisposition(),
+      operation: 'update',
+      actorId: 'user-1',
+      skillId: 'skill-1',
+      expectedVersion: 7,
+      payloadDigest: 'digest-abc',
+      authorizationObservation: { persist, tenantId: 'tenant-1' },
+    });
+
+    expect(result.authorized).toBe(false);
+    expect(canCreateSkill).toHaveBeenCalledTimes(1);
+    expect(canEditSkill).not.toHaveBeenCalled();
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(persist).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        event: expect.objectContaining({
+          type: 'DENIED',
+          payload: expect.objectContaining({ decision: 'DENY', capability: 'skill.create' }),
+        }),
+      }),
+    );
+  });
+
+  it('keeps P12 observation failure independent from an allowed native publication check', async () => {
+    const req = { user: { id: 'user-1', role: 'user' } };
+    const canCreateSkill = jest.fn(async () => true);
+    const canEditSkill = jest.fn(async () => true);
+    const persist = jest.fn(async () => {
+      throw new Error('mto unavailable');
+    });
+    getSkillToolDeps.mockReturnValue({ canCreateSkill, canEditSkill });
+
+    const result = await authorizeImprovementPublicationForRequest({
+      req,
+      disposition: acceptedDisposition(),
+      operation: 'update',
+      actorId: 'user-1',
+      skillId: 'skill-1',
+      expectedVersion: 7,
+      payloadDigest: 'digest-abc',
+      authorizationObservation: { persist, tenantId: 'tenant-1' },
+    });
+
+    expect(result.authorized).toBe(true);
+    expect(result.publishable).toBe(true);
+    expect(canCreateSkill).toHaveBeenCalledTimes(1);
+    expect(canEditSkill).toHaveBeenCalledTimes(1);
+    expect(persist).toHaveBeenCalledTimes(2);
+  });
+
   it('short-circuits EDIT when native create capability denies', async () => {
     const req = { user: { id: 'user-1', role: 'user' } };
     const canCreateSkill = jest.fn(async () => false);
