@@ -45,6 +45,11 @@ import {
   SubagentTaskOwnerUnavailableError,
 } from './subagentTaskRouting';
 import {
+  createSubagentAttemptKey,
+  createSubagentTaskId,
+  createSubagentThreadId,
+} from './subagentThreadIds';
+import {
   runWithDetachedSubagentUsage,
   setDetachedSubagentProducerAgentId,
 } from './subagentTaskContext';
@@ -53,7 +58,6 @@ import {
   type SubagentToolCompletion,
 } from './subagentToolCompletion';
 import { boundSubagentActivityUpdate, SubagentActivityStream } from './subagentActivity';
-import { createSubagentAttemptKey, createSubagentThreadId } from './subagentThreadIds';
 import { SUBAGENT_COMPLETION_DELIVERY } from './subagentDelivery';
 import { createConcurrencyLimiter } from '~/utils/promise';
 import { projectSubagentActivity } from './activity';
@@ -147,6 +151,10 @@ interface PreparedThread {
   initialStoredMessages: StoredMessage[];
   attemptKey: string;
   recoveryOnly?: boolean;
+  recovery?: {
+    taskId: string;
+    status: 'running' | 'pause_requested' | 'paused';
+  };
   /** Stable source-occurrence time shared by first delivery and every replay. */
   taskCreatedAt: number;
   userMessageId?: string;
@@ -1309,6 +1317,7 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
     const requestedThreadId = request.threadId?.trim();
     const isContinuation = requestedThreadId != null && requestedThreadId !== '';
     const idempotencyKey = request.idempotencyKey.trim();
+    const taskId = createSubagentTaskId(request.scopeId, idempotencyKey);
     const threadId = isContinuation
       ? requestedThreadId
       : createSubagentThreadId(request.scopeId, idempotencyKey);
@@ -1335,6 +1344,7 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
       started = super.start({
         ...request,
         threadId,
+        recovery: { taskId, status: 'running' },
         run: (runtime: SubagentTaskRuntime) => {
           const execution = this.runWithOwnerContext(scope, async () => {
             lease.taskId = runtime.taskId;
@@ -1386,6 +1396,15 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
                 );
               }
               const preparedThread = prepared;
+              if (preparedThread.recovery != null) {
+                if (preparedThread.recovery.taskId !== runtime.taskId) {
+                  throw new Error('Recovered subagent task identity does not match the runtime.');
+                }
+                if (preparedThread.recovery.status !== 'running') {
+                  runtime.rehydrate(preparedThread.recovery.status);
+                  await runtime.waitIfPaused('preempt');
+                }
+              }
               let activitySequence = 0;
               const activityRuntime: SubagentTaskRuntime = {
                 ...runtime,
@@ -3079,12 +3098,31 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
             });
             if (recoverable) {
               const canonicalStart = priorAttempt[0];
+              const canonicalTaskId = canonicalStart.messageId.endsWith(':user')
+                ? canonicalStart.messageId.slice(0, -':user'.length)
+                : '';
+              const durableStatus = [...priorAttempt]
+                .reverse()
+                .map((message) => message.subagentTask?.status)
+                .find(
+                  (status) =>
+                    status === 'running' || status === 'pause_requested' || status === 'paused',
+                );
+              if (canonicalTaskId === '' || durableStatus == null) {
+                throw new Error('The recoverable subagent attempt has invalid durable task state.');
+              }
+              if (canonicalTaskId !== taskId) {
+                throw new Error(
+                  'The recoverable subagent attempt has a conflicting task identity.',
+                );
+              }
               return {
                 conversation,
                 initialMessages: [],
                 initialStoredMessages: [],
                 attemptKey,
                 recoveryOnly: true,
+                recovery: { taskId: canonicalTaskId, status: durableStatus },
                 userMessageId: canonicalStart.messageId,
                 taskCreatedAt: durableMessageTime(
                   canonicalStart,

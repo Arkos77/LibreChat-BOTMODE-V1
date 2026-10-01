@@ -36,9 +36,9 @@ import {
   SubagentThreadTaskStore,
 } from './subagentThreads';
 import { controlFingerprint, SubagentTaskOwnerUnavailableError } from './subagentTaskRouting';
+import { createSubagentAttemptKey, createSubagentTaskId } from './subagentThreadIds';
 import { SUBAGENT_COMPLETION_DELIVERY } from './subagentDelivery';
 import { getDetachedSubagentTaskId } from './subagentTaskContext';
-import { createSubagentAttemptKey } from './subagentThreadIds';
 import { SubagentActivityStream } from './subagentActivity';
 import { createSubagentUsageSink } from './usage';
 
@@ -1446,10 +1446,11 @@ describe('SubagentThreadTaskStore', () => {
         },
       },
     );
+    const recoverableTaskId = createSubagentTaskId(config.scopeId, 'recoverable-attempt');
     await methods.saveMessage(
       { userId },
       {
-        messageId: 'recoverable:user',
+        messageId: `${recoverableTaskId}:user`,
         conversationId: threadId,
         parentMessageId: String(Constants.NO_PARENT),
         sender: 'User',
@@ -1489,6 +1490,117 @@ describe('SubagentThreadTaskStore', () => {
       status: 'completed',
       result: 'Recovered.',
     });
+    const messages = await methods.getMessages(
+      { user: userId, conversationId: threadId },
+      '+subagentTask',
+    );
+    expect(messages.filter((message) => message.isCreatedByUser === true)).toHaveLength(1);
+  });
+
+  it('keeps a durably paused task suspended across owner loss and resumes the same task and thread', async () => {
+    const userId = 'paused-owner-loss-user';
+    const parentConversationId = randomUUID();
+    const threadId = randomUUID();
+    await saveParent(userId, parentConversationId);
+
+    /** This fresh store models a replacement API owner: it has no process-local task state. */
+    const restartedStore = new SubagentThreadTaskStore(methods);
+    const verifyDurableRecovery = jest.fn().mockResolvedValue(true);
+    const config = buildSubagentThreadTaskConfig(
+      restartedStore,
+      { userId, parentConversationId },
+      { verifyDurableRecovery },
+    );
+    const idempotencyKey = 'paused-owner-loss-attempt';
+    const taskId = createSubagentTaskId(config.scopeId, idempotencyKey);
+
+    await methods.saveConvo(
+      { userId },
+      {
+        conversationId: threadId,
+        endpoint: EModelEndpoint.agents,
+        title: 'Paused recoverable child',
+        agent_id: 'researcher-agent',
+        subagentThread: {
+          rootConversationId: parentConversationId,
+          parentConversationId,
+          parentMessageId: 'paused-parent-run',
+          parentToolCallId: 'paused-parent-tool',
+          parentAgentId: 'parent-agent',
+          subagentType: 'researcher-agent',
+          subagentKind: 'agent',
+          depth: 1,
+        },
+      },
+    );
+    await methods.saveMessage(
+      { userId },
+      {
+        messageId: `${taskId}:user`,
+        conversationId: threadId,
+        parentMessageId: String(Constants.NO_PARENT),
+        sender: 'User',
+        text: 'Resume only after explicit control.',
+        endpoint: EModelEndpoint.agents,
+        isCreatedByUser: true,
+        subagentTask: {
+          attemptKey: createSubagentAttemptKey(config.scopeId, idempotencyKey),
+          requestFingerprint: 'paused-owner-loss-inputs',
+          parentRunId: 'paused-parent-run',
+          status: 'paused',
+        },
+      },
+    );
+
+    const run = jest.fn(async (runtime: SubagentTaskRuntime) => {
+      expect(runtime.recoveryOnly).toBe(true);
+      return { content: 'Recovered after resume.' };
+    });
+    const restarted = config.store.start(
+      taskRequest(config.scopeId, {
+        threadId,
+        idempotencyKey,
+        parentRunId: 'paused-parent-run',
+        parentToolCallId: 'paused-parent-tool',
+        requestFingerprint: 'paused-owner-loss-inputs',
+        run,
+      }),
+    );
+
+    expect(requireAccepted(restarted).task).toMatchObject({ taskId, threadId });
+    await waitUntil(
+      () => restartedStore.get(config.scopeId, taskId)?.status === 'paused',
+      'the replacement owner to rehydrate the durable paused state',
+    );
+    expect(verifyDurableRecovery).toHaveBeenCalledTimes(1);
+    expect(run).not.toHaveBeenCalled();
+
+    await expect(
+      restartedStore.controlTask(
+        config.scopeId,
+        taskId,
+        { action: 'resume' },
+        'paused-owner-loss-resume',
+      ),
+    ).resolves.toMatchObject({
+      status: 'accepted',
+      task: { taskId, threadId },
+    });
+
+    await waitForSettled(restartedStore, config.scopeId, restarted);
+    expect(run).toHaveBeenCalledTimes(1);
+    await expect(restartedStore.claimTask(config.scopeId, taskId)).resolves.toMatchObject({
+      status: 'completed',
+      result: 'Recovered after resume.',
+      task: { taskId, threadId },
+    });
+    expect(verifyDurableRecovery).toHaveBeenCalledWith({
+      parentConversationId,
+      parentRunId: 'paused-parent-run',
+      parentToolCallId: 'paused-parent-tool',
+      childThreadId: threadId,
+    });
+
     const messages = await methods.getMessages(
       { user: userId, conversationId: threadId },
       '+subagentTask',

@@ -19,6 +19,17 @@ export function createSubagentThreadId(scopeId: string, idempotencyKey: string):
   )}-${hash.slice(20, 32)}`;
 }
 
+/** Deterministic so one logical attempt preserves its task identity across API owners. */
+export function createSubagentTaskId(scopeId: string, idempotencyKey: string): string {
+  const hash = sha256(
+    `librechat:subagent-task:v1\u0000${scopeId.trim()}\u0000${idempotencyKey.trim()}`,
+  );
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-8${hash.slice(13, 16)}-b${hash.slice(
+    17,
+    20,
+  )}-${hash.slice(20, 32)}`;
+}
+
 export function isReservedSubagentThreadId(conversationId: string): boolean {
   return RESERVED_SUBAGENT_THREAD_ID.test(conversationId);
 }
