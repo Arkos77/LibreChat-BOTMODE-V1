@@ -1,4 +1,4 @@
-const { createImprovementPayloadDigest } = require('@librechat/api');
+const { createImprovementPayloadDigest, createMtoEvent } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 
 function fail(message) {
@@ -93,6 +93,7 @@ async function decideSkillImprovementReview({
   snapshotDigest,
   recordEvent,
   publish,
+  mtoEventSink,
   ...context
 }) {
   if (decision !== 'approve' && decision !== 'reject') fail('Skill review decision is invalid');
@@ -145,6 +146,7 @@ async function decideSkillImprovementReview({
     update: review.proposal.update,
   });
   if (result?.status === 'updated') {
+    const committedAt = new Date().toISOString();
     try {
       await recordEvent({
         ...scope,
@@ -160,7 +162,7 @@ async function decideSkillImprovementReview({
             skillId: review.skillId,
             expectedVersion: review.expectedVersion,
           },
-          occurredAt: new Date().toISOString(),
+          occurredAt: committedAt,
         },
       });
     } catch (error) {
@@ -169,6 +171,37 @@ async function decideSkillImprovementReview({
         error,
       );
       return { ...result, observationPending: true };
+    }
+
+    if (typeof mtoEventSink === 'function') {
+      try {
+        await mtoEventSink(
+          createMtoEvent(
+            'COMMITTED',
+            {
+              traceId: review.traceId,
+              traceEventId: `skill-commit:${review.candidateId}`,
+              ...(typeof review.proposal.taskId === 'string' && review.proposal.taskId.trim()
+                ? { taskId: review.proposal.taskId.trim() }
+                : {}),
+              ...(typeof review.proposal.producerAgentId === 'string' &&
+              review.proposal.producerAgentId.trim()
+                ? { agentId: review.proposal.producerAgentId.trim() }
+                : {}),
+              timestamp: committedAt,
+            },
+            'host',
+          ),
+        );
+      } catch (error) {
+        try {
+          logger.warn('[BOT MODE P10] Failed to emit committed improvement observation', {
+            name: error?.name,
+          });
+        } catch (_) {
+          // MTO observation failures cannot change an already-committed native update.
+        }
+      }
     }
   }
   return result;

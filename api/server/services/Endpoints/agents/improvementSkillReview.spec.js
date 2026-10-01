@@ -51,6 +51,7 @@ function setup(overrides = {}) {
     canView: jest.fn(async () => true),
     recordEvent: jest.fn(async () => ({ replayed: false })),
     publish: jest.fn(async () => ({ status: 'updated' })),
+    mtoEventSink: jest.fn(async () => undefined),
     ...overrides,
   };
 }
@@ -93,7 +94,37 @@ describe('exact human skill review', () => {
     expect(context.publish).toHaveBeenCalledWith(
       expect.objectContaining({ update, skillId: 'skill-1', expectedVersion: 3 }),
     );
+    expect(context.mtoEventSink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'COMMITTED',
+        source: 'host',
+        identity: expect.objectContaining({
+          traceId: 'trace',
+          traceEventId: 'skill-commit:skill:task:call',
+        }),
+      }),
+    );
   });
+  it('does not let MTO observation failure change an already-committed native update', async () => {
+    const context = setup({
+      mtoEventSink: jest.fn(async () => {
+        throw new Error('mto unavailable');
+      }),
+    });
+    const result = await decideSkillImprovementReview({
+      ...context,
+      decision: 'approve',
+      payloadDigest: digest,
+      snapshotDigest: 'snapshot-1',
+    });
+    expect(result).toEqual({ status: 'updated' });
+    expect(context.publish).toHaveBeenCalledTimes(1);
+    expect(context.recordEvent.mock.calls.map(([arg]) => arg.event.type)).toEqual([
+      'APPROVED',
+      'COMMITTED',
+    ]);
+  });
+
   it('reports a successful native update when only the commit observation fails', async () => {
     const recordEvent = jest
       .fn()
