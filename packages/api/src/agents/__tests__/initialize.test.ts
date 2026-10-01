@@ -1335,6 +1335,65 @@ describe('initializeAgent — attachment scoping', () => {
     expect(result.agentContextAttachments).toEqual([agentContextFile]);
   });
 
+  it('uses only authoritative resolved conversation files for RAG resources', async () => {
+    const { primeResources } = jest.requireMock('../resources') as {
+      primeResources: jest.Mock;
+    };
+    const { filterFilesByEndpointRuntimeConfig } = jest.requireMock('~/files') as {
+      filterFilesByEndpointRuntimeConfig: jest.Mock;
+    };
+    const projectFile = { file_id: 'project-a-file', filename: 'a.txt' } as IMongoFile;
+    const { agent, req, res, loadTools, db } = createMocks();
+    agent.tools = [EToolResources.file_search];
+    req.resolvedConversation = {
+      conversationId: 'conversation-1',
+      chatProjectId: 'project-a',
+      files: [projectFile.file_id],
+    };
+    mockExtractLibreChatParams.mockReturnValueOnce({
+      resendFiles: true,
+      maxContextTokens: undefined,
+      modelOptions: { model: agent.model },
+    });
+    (db.getConvoFiles as jest.Mock).mockResolvedValueOnce(['project-b-file']);
+    (db.getToolFilesByIds as jest.Mock).mockResolvedValueOnce([projectFile]);
+    (db.getFiles as jest.Mock).mockResolvedValueOnce([projectFile]);
+    (db.updateFilesUsage as jest.Mock).mockResolvedValueOnce([projectFile]);
+    filterFilesByEndpointRuntimeConfig.mockImplementationOnce(
+      (_req: ServerRequest, { files }: { files: IMongoFile[] }) => files,
+    );
+
+    await initializeAgent(
+      {
+        req,
+        res,
+        agent,
+        loadTools,
+        conversationId: 'conversation-1',
+        endpointOption: { endpoint: EModelEndpoint.agents },
+        allowedProviders: new Set([Providers.OPENAI]),
+        isInitialAgent: true,
+      },
+      db,
+    );
+
+    expect(db.getConvoFiles).not.toHaveBeenCalled();
+    expect(db.getToolFilesByIds).toHaveBeenCalledWith(
+      [projectFile.file_id],
+      new Set([EToolResources.file_search]),
+      { userId: 'user-1', tenantId: undefined },
+    );
+    expect(db.getFiles).toHaveBeenCalledWith(
+      {
+        file_id: { $in: [projectFile.file_id] },
+        user: 'user-1',
+      },
+      {},
+      {},
+    );
+    await expect(primeResources.mock.calls[0][0].attachments).resolves.toEqual([projectFile]);
+  });
+
   it('owner-scopes request file usage updates while preserving trusted tool files', async () => {
     const { primeResources } = jest.requireMock('../resources') as {
       primeResources: jest.Mock;
