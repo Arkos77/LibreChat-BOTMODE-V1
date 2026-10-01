@@ -1085,6 +1085,66 @@ describe('SubagentThreadPanel', () => {
     expect(mockControlMutate.mock.calls[1][0].command).toEqual(firstCommand);
   });
 
+  it('sends pause for a running durable task', () => {
+    mockUseSubagentThreadQuery.mockReturnValue({
+      data: { ...completedView, status: 'running', controlReceipts: [] },
+      isLoading: false,
+      isError: false,
+      isReadinessPending: false,
+    });
+    render(
+      <Root seed={(jotai) => jotai.set(activeSubagentPanel, selection)}>
+        <SubagentThreadPanel selection={selection} />
+      </Root>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'com_ui_subagent_pause_task' }));
+    expect(mockControlMutate).toHaveBeenCalledTimes(1);
+    expect(mockControlMutate.mock.calls[0][0].command).toMatchObject({
+      taskId: 'task',
+      action: 'pause',
+    });
+  });
+
+  it('sends resume for a paused durable task', () => {
+    mockUseSubagentThreadQuery.mockReturnValue({
+      data: { ...completedView, status: 'paused', controlReceipts: [] },
+      isLoading: false,
+      isError: false,
+      isReadinessPending: false,
+    });
+    render(
+      <Root seed={(jotai) => jotai.set(activeSubagentPanel, selection)}>
+        <SubagentThreadPanel selection={selection} />
+      </Root>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'com_ui_subagent_resume_task' }));
+    expect(mockControlMutate).toHaveBeenCalledTimes(1);
+    expect(mockControlMutate.mock.calls[0][0].command).toMatchObject({
+      taskId: 'task',
+      action: 'resume',
+    });
+  });
+
+  it('does not emit a duplicate control while pause is requested', () => {
+    mockUseSubagentThreadQuery.mockReturnValue({
+      data: { ...completedView, status: 'pause_requested', controlReceipts: [] },
+      isLoading: false,
+      isError: false,
+      isReadinessPending: false,
+    });
+    render(
+      <Root seed={(jotai) => jotai.set(activeSubagentPanel, selection)}>
+        <SubagentThreadPanel selection={selection} />
+      </Root>,
+    );
+    const button = screen.getByRole('button', {
+      name: 'com_ui_subagent_thread_status_pause_requested',
+    });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(mockControlMutate).not.toHaveBeenCalled();
+  });
+
   it('records an ambiguous result after the panel closes before the mutation settles', () => {
     mockUseSubagentThreadQuery.mockReturnValue({
       data: { ...completedView, status: 'running', controlReceipts: [] },

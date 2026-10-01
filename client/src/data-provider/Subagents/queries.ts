@@ -15,7 +15,10 @@ const IDLE_PARENT_REFRESH_MS = 10_000;
 const CHILD_READY_POLL_WINDOW_MS = 60_000;
 
 export const parentSubagentsRefetchInterval = (index: ParentSubagentIndex | undefined): number =>
-  index?.children.some((child) => child.status === 'running') === true
+  index?.children.some(
+    (child) =>
+      child.status === 'running' || child.status === 'pause_requested' || child.status === 'paused',
+  ) === true
     ? ACTIVE_THREAD_REFRESH_MS
     : IDLE_PARENT_REFRESH_MS;
 

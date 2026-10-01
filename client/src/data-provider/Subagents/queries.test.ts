@@ -43,6 +43,8 @@ describe('subagent thread refresh policy', () => {
     expect(subagentThreadRefetchInterval(undefined, 1_000, 1_000)).toBe(false);
     expect(subagentThreadRefetchInterval(view('dispatched'), 1_000, 1_000)).toBe(false);
     expect(subagentThreadRefetchInterval(view('running'), 1_000, 10_000)).toBe(2_000);
+    expect(subagentThreadRefetchInterval(view('pause_requested'), 1_000, 10_000)).toBe(2_000);
+    expect(subagentThreadRefetchInterval(view('paused'), 1_000, 10_000)).toBe(2_000);
   });
 
   it.each(['completed', 'failed', 'interrupted', 'cancelled'] as const)(
@@ -126,6 +128,20 @@ describe('subagent thread refresh policy', () => {
         parentConversationId: 'parent-conversation',
         childrenTruncated: false,
         children: [{ status: 'running' }],
+      } as ParentSubagentIndex),
+    ).toBe(2_000);
+    expect(
+      parentSubagentsRefetchInterval({
+        parentConversationId: 'parent-conversation',
+        childrenTruncated: false,
+        children: [{ status: 'pause_requested' }],
+      } as ParentSubagentIndex),
+    ).toBe(2_000);
+    expect(
+      parentSubagentsRefetchInterval({
+        parentConversationId: 'parent-conversation',
+        childrenTruncated: false,
+        children: [{ status: 'paused' }],
       } as ParentSubagentIndex),
     ).toBe(2_000);
     expect(

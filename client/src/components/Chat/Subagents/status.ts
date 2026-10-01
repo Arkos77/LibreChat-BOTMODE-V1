@@ -18,6 +18,9 @@ export const subagentStatusLabelKey = (status: SubagentThreadStatus) =>
     ({
       dispatched: 'com_ui_subagent_thread_status_dispatched',
       running: 'com_ui_subagent_thread_status_running',
+      pause_requested: 'com_ui_subagent_thread_status_pause_requested',
+      paused: 'com_ui_subagent_thread_status_paused',
+
       completed: 'com_ui_subagent_thread_status_completed',
       failed: 'com_ui_subagent_thread_status_failed',
       interrupted: 'com_ui_subagent_thread_status_interrupted',
@@ -31,7 +34,8 @@ export const subagentStatusLabelKey = (status: SubagentThreadStatus) =>
  *  running tool call, so the two cues never animate against each other. */
 export const subagentStatusDotClass = (status: SubagentThreadStatus): string => {
   if (status === 'completed') return 'bg-status-success';
-  if (status === 'running') return 'bg-status-info';
+  if (status === 'running' || status === 'pause_requested') return 'bg-status-info';
+  if (status === 'paused') return 'bg-status-warning';
   if (status === 'failed' || status === 'interrupted') return 'bg-status-error';
   if (status === 'cancelled') return 'bg-status-warning';
   return 'bg-text-tertiary';
@@ -39,4 +43,7 @@ export const subagentStatusDotClass = (status: SubagentThreadStatus): string => 
 
 /** A run is live in both of the statuses the panel treats as in-flight. */
 export const isLiveSubagentStatus = (status: SubagentThreadStatus): boolean =>
-  status === 'running' || status === 'dispatched';
+  status === 'running' ||
+  status === 'dispatched' ||
+  status === 'pause_requested' ||
+  status === 'paused';

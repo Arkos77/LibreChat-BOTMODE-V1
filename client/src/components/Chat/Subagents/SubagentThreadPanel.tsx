@@ -678,7 +678,7 @@ export default function SubagentThreadPanel({ selection }: { selection: ActiveSu
           action,
           controlId,
         };
-      } else if (action === 'cancel') {
+      } else if (action === 'cancel' || action === 'pause' || action === 'resume') {
         command = {
           taskId: selection.durable.taskId,
           invocationId: v4(),
@@ -695,6 +695,8 @@ export default function SubagentThreadPanel({ selection }: { selection: ActiveSu
       if (
         action !== 'cancel' &&
         action !== 'cancel_message' &&
+        action !== 'pause' &&
+        action !== 'resume' &&
         (command.message == null || command.message === '')
       ) {
         return;
@@ -990,10 +992,21 @@ export default function SubagentThreadPanel({ selection }: { selection: ActiveSu
       (taskView.status === 'dispatched' && subagentThreadHasTaskEvidence(taskView, taskId)));
   const controlAvailable =
     selection.durable != null && controlAddressable && !taskInaccessible && !controlsClosed;
+  const pauseResumeAddressable =
+    selection.durable != null &&
+    taskView != null &&
+    (taskView.status === 'running' ||
+      taskView.status === 'pause_requested' ||
+      taskView.status === 'paused') &&
+    !taskInaccessible &&
+    !controlsClosed;
   const controlPending =
     controlTask.isLoading || transientControl?.status === 'submitted' || retryControl != null;
   const showControlFooter =
-    controlAvailable || retryControl != null || transientControl?.reason === 'task_inaccessible';
+    controlAvailable ||
+    pauseResumeAddressable ||
+    retryControl != null ||
+    transientControl?.reason === 'task_inaccessible';
   const canContinueAsChat =
     selection.host === 'conversation' &&
     selection.durable != null &&
@@ -1057,6 +1070,32 @@ export default function SubagentThreadPanel({ selection }: { selection: ActiveSu
       ? localize('com_ui_steer_send')
       : localize('com_ui_subagent_continue_new_chat');
   const cancelTask = useCallback(() => submitControl('cancel'), [submitControl]);
+  const pauseTask = useCallback(() => submitControl('pause'), [submitControl]);
+  const resumeTask = useCallback(() => submitControl('resume'), [submitControl]);
+  let pauseResumeAction: {
+    action: (() => void) | undefined;
+    label: string;
+    disabled: boolean;
+  } | null = null;
+  if (taskView?.status === 'running') {
+    pauseResumeAction = {
+      action: pauseTask,
+      label: localize('com_ui_subagent_pause_task'),
+      disabled: controlPending,
+    };
+  } else if (taskView?.status === 'paused') {
+    pauseResumeAction = {
+      action: resumeTask,
+      label: localize('com_ui_subagent_resume_task'),
+      disabled: controlPending,
+    };
+  } else if (taskView?.status === 'pause_requested') {
+    pauseResumeAction = {
+      action: undefined,
+      label: localize('com_ui_subagent_thread_status_pause_requested'),
+      disabled: true,
+    };
+  }
   /** Handler and label travel as one value, so the Stop control can never
    *  render without an accessible name. */
   const stopProps: ComposerStopProps =
@@ -1478,6 +1517,19 @@ export default function SubagentThreadPanel({ selection }: { selection: ActiveSu
                 </Button>
               )}
             </Alert>
+          )}
+          {pauseResumeAddressable && pauseResumeAction != null && (
+            <div className="mb-2 flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={pauseResumeAction.disabled}
+                onClick={pauseResumeAction.action}
+              >
+                {pauseResumeAction.label}
+              </Button>
+            </div>
           )}
           {composerMode != null && (
             /* One surface across the run's whole life, and one control on it:
