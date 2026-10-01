@@ -206,7 +206,7 @@ For accepted skill-update candidates, authorization is composed through bounded 
 4. `resolveImprovementAuthorization` maps the native authorization evidence to the bounded result.
 5. `authorizeImprovementPublication` only composes these stages; it does not own ACL policy or mutate skills.
 
-Skill creation remains closed until its native create-policy seam is explicitly proven. The authorization slice does not call skill mutation methods, persist improvement content, schedule work, or convert Oracle acceptance into execution authority.
+Skill creation remains closed for controlled P10 publication. LibreChat does have a proven native creation seam: `SKILLS USE+CREATE` capability check, `createSkill`, owner ACL grant, and compensating delete if owner initialization fails. The governed improvement path still lacks an atomic creation receipt bound to the candidate/payload, exact create recovery/idempotence, and request-backed publication proof equivalent to the validated update path. Until those inherit the same fail-closed guarantees, improvement create must not mutate Skill runtime state.
 
 ## P10 — Governed Self-Improvement Capability
 
@@ -239,7 +239,7 @@ Execution authority remains outside P10. The native Task Engine owns execution i
 - Native optimistic concurrency remains authoritative through `expectedVersion`; `conflict` and `not_found` are preserved as native results.
 - Durable ImprovementCandidate and ImprovementLifecycleEvent stores are persistence-only and cannot validate, authorize, schedule, execute, publish, or settle work.
 - P10 must not create a second runtime, orchestrator, task engine, scheduler, permission system, durable authority, or source of truth.
-- Skill creation remains closed until a distinct native create-policy seam is proven.
+- Controlled improvement Skill creation remains closed until create has a candidate/payload-bound atomic receipt and exact recovery/idempotence proof equivalent to the update path.
 
 ### MTO mapping
 
