@@ -749,6 +749,57 @@ describe('Skill CRUD methods', () => {
     }
   });
 
+  it('writes the BOT MODE improvement mutation receipt atomically with the version bump', async () => {
+    const { skill } = await methods.createSkill(makeSkillInput({ name: 'bot-receipt' }));
+    const candidateId = 'skill:native-task-1:tool-call-1';
+    const payloadDigest = 'a'.repeat(64);
+    const result = await methods.updateSkill({
+      id: skill._id.toString(),
+      expectedVersion: skill.version,
+      update: { description: 'Atomic BOT MODE improvement receipt update.' },
+      improvementMutation: {
+        candidateId,
+        payloadDigest,
+        expectedVersion: skill.version,
+      },
+    });
+    expect(result.status).toBe('updated');
+    if (result.status === 'updated') {
+      expect(result.skill.version).toBe(skill.version + 1);
+      expect(result.skill.lastImprovementMutation).toEqual({
+        candidateId,
+        payloadDigest,
+        expectedVersion: skill.version,
+      });
+      const reloaded = await methods.getSkillById(skill._id);
+      expect(reloaded?.lastImprovementMutation).toEqual({
+        candidateId,
+        payloadDigest,
+        expectedVersion: skill.version,
+      });
+    }
+  });
+
+  it('rejects a BOT MODE mutation receipt that is not bound to the optimistic version', async () => {
+    const { skill } = await methods.createSkill(makeSkillInput({ name: 'bad-bot-receipt' }));
+    await expect(
+      methods.updateSkill({
+        id: skill._id.toString(),
+        expectedVersion: skill.version,
+        update: { description: 'This mutation must not be applied.' },
+        improvementMutation: {
+          candidateId: 'skill:native-task-1:tool-call-1',
+          payloadDigest: 'b'.repeat(64),
+          expectedVersion: skill.version + 1,
+        },
+      }),
+    ).rejects.toThrow(/mutation receipt/i);
+    const reloaded = await methods.getSkillById(skill._id);
+    expect(reloaded?.version).toBe(skill.version);
+    expect(reloaded?.description).toBe(skill.description);
+    expect(reloaded?.lastImprovementMutation).toBeUndefined();
+  });
+
   it('deleteSkill cascades ACL entries and skill files', async () => {
     const { skill } = await methods.createSkill(makeSkillInput());
     await grantOwner(skill._id);

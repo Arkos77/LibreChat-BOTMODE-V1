@@ -69,7 +69,12 @@ async function loadSkillImprovementReview({
       event.data?.oracleDecision === 'ACCEPT' &&
       event.data?.disposition === 'AUTHORIZATION_REQUIRED',
   );
-  const reviewed = events.some((event) => event.eventId === `skill-review:${candidateId}`);
+  const reviewEvent = events.find((event) => event.eventId === `skill-review:${candidateId}`);
+  const authorizationEvent = events.find(
+    (event) => event.eventId === `skill-authorization:${candidateId}`,
+  );
+  const commitEvent = events.find((event) => event.eventId === `skill-commit:${candidateId}`);
+  const reviewed = reviewEvent != null;
   return {
     candidateId,
     traceId: candidate.traceId,
@@ -80,10 +85,105 @@ async function loadSkillImprovementReview({
     snapshotDigest: record.snapshotDigest,
     quality: test && oracle ? 'VERIFIED' : 'PENDING',
     reviewed,
+    reviewEvent,
+    authorizationEvent,
+    commitEvent,
     checks: test?.data.checks ?? [],
     proposal,
     candidate,
   };
+}
+
+function exactReviewApproval(review, event, user) {
+  return (
+    event?.type === 'APPROVED' &&
+    event?.actor?.type === 'human' &&
+    event?.actor?.id === String(user) &&
+    event?.data?.payloadDigest === review.payloadDigest &&
+    event?.data?.snapshotDigest === review.snapshotDigest &&
+    event?.data?.skillId === review.skillId &&
+    event?.data?.expectedVersion === review.expectedVersion
+  );
+}
+
+function exactAuthorizationReceipt(review, event, user) {
+  return (
+    event?.type === 'AUTHORIZED' &&
+    event?.actor?.type === 'policy' &&
+    event?.actor?.id === 'librechat:native-skill-authorization' &&
+    event?.data?.payloadDigest === review.payloadDigest &&
+    event?.data?.snapshotDigest === review.snapshotDigest &&
+    event?.data?.actorId === String(user) &&
+    event?.data?.skillId === review.skillId &&
+    event?.data?.expectedVersion === review.expectedVersion
+  );
+}
+
+function exactNativeMutationReceipt(review, skill) {
+  const receipt = skill?.lastImprovementMutation;
+  return (
+    skill?.version === review.expectedVersion + 1 &&
+    receipt?.candidateId === review.candidateId &&
+    receipt?.payloadDigest === review.payloadDigest &&
+    receipt?.expectedVersion === review.expectedVersion
+  );
+}
+
+async function recordCommittedObservation({
+  review,
+  scope,
+  recordEvent,
+  mtoEventSink,
+  committedAt,
+}) {
+  await recordEvent({
+    ...scope,
+    event: {
+      eventId: `skill-commit:${review.candidateId}`,
+      candidateId: review.candidateId,
+      traceId: review.traceId,
+      type: 'COMMITTED',
+      actor: { id: 'librechat:native-skill-update', type: 'host' },
+      data: {
+        payloadDigest: review.payloadDigest,
+        snapshotDigest: review.snapshotDigest,
+        skillId: review.skillId,
+        expectedVersion: review.expectedVersion,
+      },
+      occurredAt: committedAt,
+    },
+  });
+
+  if (typeof mtoEventSink === 'function') {
+    try {
+      await mtoEventSink(
+        createMtoEvent(
+          'COMMITTED',
+          {
+            traceId: review.traceId,
+            traceEventId: `skill-commit:${review.candidateId}`,
+            ...(typeof review.proposal.taskId === 'string' && review.proposal.taskId.trim()
+              ? { taskId: review.proposal.taskId.trim() }
+              : {}),
+            ...(typeof review.proposal.producerAgentId === 'string' &&
+            review.proposal.producerAgentId.trim()
+              ? { agentId: review.proposal.producerAgentId.trim() }
+              : {}),
+            timestamp: committedAt,
+          },
+          'host',
+        ),
+      );
+    } catch (error) {
+      try {
+        logger.warn('[BOT MODE P10] Failed to emit committed improvement observation', {
+          name: error?.name,
+        });
+      } catch (_) {
+        // MTO Observation failures cannot change an already-committed native update.
+      }
+    }
+  }
 }
 
 /** A human request binds to the exact viewed snapshot; native policy is checked by publish. */
@@ -100,28 +200,74 @@ async function decideSkillImprovementReview({
   const review = await loadSkillImprovementReview(context);
   if (payloadDigest !== review.payloadDigest || snapshotDigest !== review.snapshotDigest)
     fail('Skill review digest or snapshot mismatch');
-  if (review.reviewed) fail('Skill review has already been decided');
-  if (decision === 'approve' && review.quality !== 'VERIFIED')
-    fail('Skill review requires verified tests and Oracle');
   const user = context.req.user.id ?? context.req.user._id.toString();
   const scope = { user, tenantId: context.tenantId };
-  const outcome = await recordEvent({
-    ...scope,
-    event: {
-      eventId: `skill-review:${review.candidateId}`,
-      candidateId: review.candidateId,
-      traceId: review.traceId,
-      type: decision === 'approve' ? 'APPROVED' : 'REJECTED',
-      actor: { id: String(user), type: 'human' },
-      data: {
-        payloadDigest,
-        snapshotDigest,
-        skillId: review.skillId,
-        expectedVersion: review.expectedVersion,
-      },
-      occurredAt: new Date().toISOString(),
-    },
-  });
+  let recoveryAuthorization = null;
+
+  if (review.reviewed) {
+    if (
+      decision !== 'approve' ||
+      !exactReviewApproval(review, review.reviewEvent, user) ||
+      review.commitEvent
+    ) {
+      fail('Skill review has already been decided');
+    }
+    if (!exactAuthorizationReceipt(review, review.authorizationEvent, user)) {
+      fail('Skill review durable authorization receipt is invalid');
+    }
+    if (typeof context.getSkillById !== 'function') {
+      fail('Skill review recovery requires native skill state');
+    }
+    const current = await context.getSkillById(review.skillId);
+    if (!current) fail('Skill review recovery cannot find the native skill');
+
+    if (current.version === review.expectedVersion) {
+      recoveryAuthorization = review.authorizationEvent;
+    } else if (exactNativeMutationReceipt(review, current)) {
+      const committedAt = new Date(current.updatedAt ?? Date.now()).toISOString();
+      try {
+        await recordCommittedObservation({
+          review,
+          scope,
+          recordEvent,
+          mtoEventSink,
+          committedAt,
+        });
+      } catch (error) {
+        logger.warn(
+          '[BOT MODE P10] Proven native skill update found; lifecycle observation still pending',
+          error,
+        );
+        return { status: 'updated', recovered: true, observationPending: true };
+      }
+      return { status: 'updated', recovered: true };
+    } else {
+      fail('Skill review recovery cannot prove the authorized native mutation');
+    }
+  }
+
+  if (decision === 'approve' && review.quality !== 'VERIFIED')
+    fail('Skill review requires verified tests and Oracle');
+
+  const outcome = review.reviewed
+    ? { replayed: false }
+    : await recordEvent({
+        ...scope,
+        event: {
+          eventId: `skill-review:${review.candidateId}`,
+          candidateId: review.candidateId,
+          traceId: review.traceId,
+          type: decision === 'approve' ? 'APPROVED' : 'REJECTED',
+          actor: { id: String(user), type: 'human' },
+          data: {
+            payloadDigest,
+            snapshotDigest,
+            skillId: review.skillId,
+            expectedVersion: review.expectedVersion,
+          },
+          occurredAt: new Date().toISOString(),
+        },
+      });
   if (outcome.replayed) fail('Skill review has already been decided');
   if (decision === 'reject') return { status: 'rejected' };
   const disposition = {
@@ -144,6 +290,37 @@ async function decideSkillImprovementReview({
     skillId: review.skillId,
     expectedVersion: review.expectedVersion,
     update: review.proposal.update,
+    onAuthorized: async (authorization) => {
+      if (recoveryAuthorization) {
+        if (
+          authorization.actorId !== recoveryAuthorization.data.actorId ||
+          authorization.skillId !== recoveryAuthorization.data.skillId ||
+          authorization.expectedVersion !== recoveryAuthorization.data.expectedVersion ||
+          authorization.payloadDigest !== recoveryAuthorization.data.payloadDigest
+        ) {
+          fail('Skill review current authorization does not match durable receipt');
+        }
+        return;
+      }
+      await recordEvent({
+        ...scope,
+        event: {
+          eventId: `skill-authorization:${review.candidateId}`,
+          candidateId: review.candidateId,
+          traceId: review.traceId,
+          type: 'AUTHORIZED',
+          actor: { id: 'librechat:native-skill-authorization', type: 'policy' },
+          data: {
+            payloadDigest,
+            snapshotDigest,
+            actorId: authorization.actorId,
+            skillId: authorization.skillId,
+            expectedVersion: authorization.expectedVersion,
+          },
+          occurredAt: new Date().toISOString(),
+        },
+      });
+    },
   });
   if (result?.status === 'updated') {
     const committedAt = new Date().toISOString();

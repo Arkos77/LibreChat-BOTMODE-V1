@@ -179,6 +179,16 @@ const skillSchema: Schema<ISkillDocument> = new Schema(
       min: 1,
     },
     /**
+     * Internal BOT MODE idempotency receipt. It is intentionally not exposed
+     * by the public Skill serializer and is only written atomically with the
+     * corresponding optimistic skill mutation.
+     */
+    lastImprovementMutation: {
+      candidateId: { type: String, maxlength: 512 },
+      payloadDigest: { type: String, maxlength: 128 },
+      expectedVersion: { type: Number, min: 1 },
+    },
+    /**
      * Provenance of this skill's canonical definition.
      *
      * - `inline` — authored directly inside LibreChat.

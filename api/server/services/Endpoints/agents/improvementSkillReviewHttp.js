@@ -1,6 +1,6 @@
 const { resolveRequestTenantId } = require('@librechat/api');
 const db = require('~/models');
-const { getSkillToolDeps } = require('./skillDeps');
+const { getSkillToolDeps, getSkillDbMethods } = require('./skillDeps');
 const { publishImprovementSkillUpdateForRequest } = require('./improvementPublication');
 const { observeMtoEvent } = require('./mtoObservation');
 const {
@@ -18,6 +18,7 @@ function dependencies(req) {
     listEvents: db.listImprovementLifecycleEvents,
     recordEvent: db.recordImprovementLifecycleEvent,
     canView: getSkillToolDeps().canEditSkill,
+    getSkillById: getSkillDbMethods().getSkillById,
     publish: publishImprovementSkillUpdateForRequest,
     mtoEventSink: observeMtoEvent,
   };

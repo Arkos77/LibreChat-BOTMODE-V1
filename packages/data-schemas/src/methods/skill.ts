@@ -812,9 +812,7 @@ export type CreateSkillResult = {
 };
 
 type BodyAlwaysApplyResult =
-  | { status: 'absent' }
-  | { status: 'valid'; value: boolean }
-  | { status: 'invalid' };
+  { status: 'absent' } | { status: 'valid'; value: boolean } | { status: 'invalid' };
 
 /**
  * Extractor for the `always-apply` / `alwaysApply` flag sitting inside a SKILL.md body's
@@ -1465,8 +1463,13 @@ export function createSkillMethods(
     id: string;
     expectedVersion: number;
     update: UpdateSkillInput;
+    improvementMutation?: {
+      candidateId: string;
+      payloadDigest: string;
+      expectedVersion: number;
+    };
   }): Promise<UpdateSkillResult> {
-    const { id, expectedVersion, update } = params;
+    const { id, expectedVersion, update, improvementMutation } = params;
     if (!isValidObjectIdString(id)) {
       return { status: 'not_found' };
     }
@@ -1519,8 +1522,29 @@ export function createSkillMethods(
       throw error;
     }
 
+    if (improvementMutation !== undefined) {
+      if (
+        typeof improvementMutation.candidateId !== 'string' ||
+        improvementMutation.candidateId.trim() === '' ||
+        improvementMutation.candidateId.length > 512 ||
+        typeof improvementMutation.payloadDigest !== 'string' ||
+        !/^[a-f0-9]{64}$/i.test(improvementMutation.payloadDigest) ||
+        improvementMutation.expectedVersion !== expectedVersion
+      ) {
+        throw new Error('Skill improvement mutation receipt is invalid');
+      }
+    }
+
     const Skill = mongoose.models.Skill as Model<ISkillDocument>;
     const setPayload: Record<string, unknown> = {};
+    if (improvementMutation !== undefined) {
+      setPayload.lastImprovementMutation = {
+        candidateId: improvementMutation.candidateId.trim(),
+        payloadDigest: improvementMutation.payloadDigest.toLowerCase(),
+        expectedVersion: improvementMutation.expectedVersion,
+      };
+    }
+
     const unsetPayload: Record<string, ''> = {};
     if (update.name !== undefined) setPayload.name = update.name;
     if (update.displayTitle !== undefined) setPayload.displayTitle = update.displayTitle;

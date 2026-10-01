@@ -50,7 +50,14 @@ function setup(overrides = {}) {
     listEvents: jest.fn(async () => events),
     canView: jest.fn(async () => true),
     recordEvent: jest.fn(async () => ({ replayed: false })),
-    publish: jest.fn(async () => ({ status: 'updated' })),
+    publish: jest.fn(async (input) => {
+      await input.onAuthorized?.({
+        actorId: '507f1f77bcf86cd799439011',
+        skillId: 'skill-1',
+        expectedVersion: 3,
+      });
+      return { status: 'updated' };
+    }),
     mtoEventSink: jest.fn(async () => undefined),
     ...overrides,
   };
@@ -92,8 +99,18 @@ describe('exact human skill review', () => {
       context.recordEvent.mock.invocationCallOrder[0],
     );
     expect(context.publish).toHaveBeenCalledWith(
-      expect.objectContaining({ update, skillId: 'skill-1', expectedVersion: 3 }),
+      expect.objectContaining({
+        update,
+        skillId: 'skill-1',
+        expectedVersion: 3,
+        onAuthorized: expect.any(Function),
+      }),
     );
+    expect(context.recordEvent.mock.calls.map(([arg]) => arg.event.type)).toEqual([
+      'APPROVED',
+      'AUTHORIZED',
+      'COMMITTED',
+    ]);
     expect(context.mtoEventSink).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'COMMITTED',
@@ -121,13 +138,36 @@ describe('exact human skill review', () => {
     expect(context.publish).toHaveBeenCalledTimes(1);
     expect(context.recordEvent.mock.calls.map(([arg]) => arg.event.type)).toEqual([
       'APPROVED',
+      'AUTHORIZED',
       'COMMITTED',
+    ]);
+  });
+
+  it('fails closed before publication mutation when the durable AUTHORIZED receipt fails', async () => {
+    const recordEvent = jest
+      .fn()
+      .mockResolvedValueOnce({ replayed: false })
+      .mockRejectedValueOnce(new Error('authorization journal unavailable'));
+    const context = setup({ recordEvent });
+    await expect(
+      decideSkillImprovementReview({
+        ...context,
+        decision: 'approve',
+        payloadDigest: digest,
+        snapshotDigest: 'snapshot-1',
+      }),
+    ).rejects.toThrow(/journal unavailable/i);
+    expect(context.publish).toHaveBeenCalledTimes(1);
+    expect(context.recordEvent.mock.calls.map(([arg]) => arg.event.type)).toEqual([
+      'APPROVED',
+      'AUTHORIZED',
     ]);
   });
 
   it('reports a successful native update when only the commit observation fails', async () => {
     const recordEvent = jest
       .fn()
+      .mockResolvedValueOnce({ replayed: false })
       .mockResolvedValueOnce({ replayed: false })
       .mockRejectedValueOnce(new Error('journal unavailable'));
     const context = setup({ recordEvent });
@@ -165,6 +205,283 @@ describe('exact human skill review', () => {
     ).rejects.toThrow(/already/i);
     expect(replay.publish).not.toHaveBeenCalled();
   });
+  it('retries an approved and authorized review exactly once when the native mutation did not happen', async () => {
+    const userId = '507f1f77bcf86cd799439011';
+    const recoveryEvents = [
+      {
+        eventId: 'skill-tests:verified:skill:task:call',
+        type: 'VERIFIED',
+        actor: { type: 'host' },
+        data: { payloadDigest: digest, checks: [{ id: 'content', passed: true }] },
+      },
+      {
+        eventId: 'skill-oracle:skill:task:call',
+        type: 'VERIFIED',
+        actor: { type: 'oracle' },
+        data: {
+          payloadDigest: digest,
+          oracleDecision: 'ACCEPT',
+          disposition: 'AUTHORIZATION_REQUIRED',
+        },
+      },
+      {
+        eventId: 'skill-review:skill:task:call',
+        type: 'APPROVED',
+        actor: { id: userId, type: 'human' },
+        data: {
+          payloadDigest: digest,
+          snapshotDigest: 'snapshot-1',
+          skillId: 'skill-1',
+          expectedVersion: 3,
+        },
+      },
+      {
+        eventId: 'skill-authorization:skill:task:call',
+        type: 'AUTHORIZED',
+        actor: { id: 'librechat:native-skill-authorization', type: 'policy' },
+        data: {
+          payloadDigest: digest,
+          snapshotDigest: 'snapshot-1',
+          actorId: userId,
+          skillId: 'skill-1',
+          expectedVersion: 3,
+        },
+      },
+    ];
+    const publish = jest.fn(async (input) => {
+      await input.onAuthorized?.({
+        actorId: userId,
+        skillId: 'skill-1',
+        expectedVersion: 3,
+        payloadDigest: digest,
+      });
+      return { status: 'updated' };
+    });
+    const context = setup({
+      listEvents: jest.fn(async () => recoveryEvents),
+      getSkillById: jest.fn(async () => ({ _id: 'skill-1', version: 3 })),
+      publish,
+    });
+
+    const result = await decideSkillImprovementReview({
+      ...context,
+      decision: 'approve',
+      payloadDigest: digest,
+      snapshotDigest: 'snapshot-1',
+    });
+
+    expect(result).toEqual({ status: 'updated' });
+    expect(context.getSkillById).toHaveBeenCalledWith('skill-1');
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(context.recordEvent.mock.calls.map(([arg]) => arg.event.type)).toEqual(['COMMITTED']);
+  });
+
+  it('repairs only the missing COMMITTED observation when the native receipt proves the mutation', async () => {
+    const userId = '507f1f77bcf86cd799439011';
+    const recoveryEvents = [
+      {
+        eventId: 'skill-tests:verified:skill:task:call',
+        type: 'VERIFIED',
+        actor: { type: 'host' },
+        data: { payloadDigest: digest, checks: [{ id: 'content', passed: true }] },
+      },
+      {
+        eventId: 'skill-oracle:skill:task:call',
+        type: 'VERIFIED',
+        actor: { type: 'oracle' },
+        data: {
+          payloadDigest: digest,
+          oracleDecision: 'ACCEPT',
+          disposition: 'AUTHORIZATION_REQUIRED',
+        },
+      },
+      {
+        eventId: 'skill-review:skill:task:call',
+        type: 'APPROVED',
+        actor: { id: userId, type: 'human' },
+        data: {
+          payloadDigest: digest,
+          snapshotDigest: 'snapshot-1',
+          skillId: 'skill-1',
+          expectedVersion: 3,
+        },
+      },
+      {
+        eventId: 'skill-authorization:skill:task:call',
+        type: 'AUTHORIZED',
+        actor: { id: 'librechat:native-skill-authorization', type: 'policy' },
+        data: {
+          payloadDigest: digest,
+          snapshotDigest: 'snapshot-1',
+          actorId: userId,
+          skillId: 'skill-1',
+          expectedVersion: 3,
+        },
+      },
+    ];
+    const context = setup({
+      listEvents: jest.fn(async () => recoveryEvents),
+      getSkillById: jest.fn(async () => ({
+        _id: 'skill-1',
+        version: 4,
+        updatedAt: '2026-10-01T00:00:00.000Z',
+        lastImprovementMutation: {
+          candidateId: 'skill:task:call',
+          payloadDigest: digest,
+          expectedVersion: 3,
+        },
+      })),
+    });
+
+    const result = await decideSkillImprovementReview({
+      ...context,
+      decision: 'approve',
+      payloadDigest: digest,
+      snapshotDigest: 'snapshot-1',
+    });
+
+    expect(result).toEqual({ status: 'updated', recovered: true });
+    expect(context.publish).not.toHaveBeenCalled();
+    expect(context.recordEvent.mock.calls.map(([arg]) => arg.event.type)).toEqual(['COMMITTED']);
+    expect(context.mtoEventSink).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed when the native mutation receipt does not match the authorized candidate', async () => {
+    const userId = '507f1f77bcf86cd799439011';
+    const recoveryEvents = [
+      {
+        eventId: 'skill-tests:verified:skill:task:call',
+        type: 'VERIFIED',
+        actor: { type: 'host' },
+        data: { payloadDigest: digest, checks: [{ id: 'content', passed: true }] },
+      },
+      {
+        eventId: 'skill-oracle:skill:task:call',
+        type: 'VERIFIED',
+        actor: { type: 'oracle' },
+        data: {
+          payloadDigest: digest,
+          oracleDecision: 'ACCEPT',
+          disposition: 'AUTHORIZATION_REQUIRED',
+        },
+      },
+      {
+        eventId: 'skill-review:skill:task:call',
+        type: 'APPROVED',
+        actor: { id: userId, type: 'human' },
+        data: {
+          payloadDigest: digest,
+          snapshotDigest: 'snapshot-1',
+          skillId: 'skill-1',
+          expectedVersion: 3,
+        },
+      },
+      {
+        eventId: 'skill-authorization:skill:task:call',
+        type: 'AUTHORIZED',
+        actor: { id: 'librechat:native-skill-authorization', type: 'policy' },
+        data: {
+          payloadDigest: digest,
+          snapshotDigest: 'snapshot-1',
+          actorId: userId,
+          skillId: 'skill-1',
+          expectedVersion: 3,
+        },
+      },
+    ];
+    const context = setup({
+      listEvents: jest.fn(async () => recoveryEvents),
+      getSkillById: jest.fn(async () => ({
+        _id: 'skill-1',
+        version: 4,
+        lastImprovementMutation: {
+          candidateId: 'other',
+          payloadDigest: digest,
+          expectedVersion: 3,
+        },
+      })),
+    });
+
+    await expect(
+      decideSkillImprovementReview({
+        ...context,
+        decision: 'approve',
+        payloadDigest: digest,
+        snapshotDigest: 'snapshot-1',
+      }),
+    ).rejects.toThrow(/cannot prove/i);
+    expect(context.publish).not.toHaveBeenCalled();
+    expect(context.recordEvent).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when recovery sees a later native version even with a stale matching receipt', async () => {
+    const userId = '507f1f77bcf86cd799439011';
+    const recoveryEvents = [
+      {
+        eventId: 'skill-tests:verified:skill:task:call',
+        type: 'VERIFIED',
+        actor: { type: 'host' },
+        data: { payloadDigest: digest, checks: [{ id: 'content', passed: true }] },
+      },
+      {
+        eventId: 'skill-oracle:skill:task:call',
+        type: 'VERIFIED',
+        actor: { type: 'oracle' },
+        data: {
+          payloadDigest: digest,
+          oracleDecision: 'ACCEPT',
+          disposition: 'AUTHORIZATION_REQUIRED',
+        },
+      },
+      {
+        eventId: 'skill-review:skill:task:call',
+        type: 'APPROVED',
+        actor: { id: userId, type: 'human' },
+        data: {
+          payloadDigest: digest,
+          snapshotDigest: 'snapshot-1',
+          skillId: 'skill-1',
+          expectedVersion: 3,
+        },
+      },
+      {
+        eventId: 'skill-authorization:skill:task:call',
+        type: 'AUTHORIZED',
+        actor: { id: 'librechat:native-skill-authorization', type: 'policy' },
+        data: {
+          payloadDigest: digest,
+          snapshotDigest: 'snapshot-1',
+          actorId: userId,
+          skillId: 'skill-1',
+          expectedVersion: 3,
+        },
+      },
+    ];
+    const context = setup({
+      listEvents: jest.fn(async () => recoveryEvents),
+      getSkillById: jest.fn(async () => ({
+        _id: 'skill-1',
+        version: 5,
+        lastImprovementMutation: {
+          candidateId: 'skill:task:call',
+          payloadDigest: digest,
+          expectedVersion: 3,
+        },
+      })),
+    });
+
+    await expect(
+      decideSkillImprovementReview({
+        ...context,
+        decision: 'approve',
+        payloadDigest: digest,
+        snapshotDigest: 'snapshot-1',
+      }),
+    ).rejects.toThrow(/cannot prove/i);
+    expect(context.publish).not.toHaveBeenCalled();
+    expect(context.recordEvent).not.toHaveBeenCalled();
+  });
+
   it('requires a separately bound Oracle verdict and exact durable diff', async () => {
     const noOracle = setup({
       listEvents: jest.fn(async () => [

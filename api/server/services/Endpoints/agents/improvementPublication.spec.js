@@ -74,20 +74,45 @@ describe('controlled improvement skill publication', () => {
       skill: { _id: 'skill-1', version: 8 },
       warnings: [],
     }));
+    const onAuthorized = jest.fn(async () => undefined);
     getSkillToolDeps.mockReturnValue({ updateSkill });
 
-    const result = await publishImprovementSkillUpdateForRequest(input());
+    const result = await publishImprovementSkillUpdateForRequest(input({ onAuthorized }));
 
     expect(authorizeImprovementPublicationForRequest).toHaveBeenCalledWith(
       expect.objectContaining({ payloadDigest: DEFAULT_PAYLOAD_DIGEST }),
+    );
+    expect(onAuthorized).toHaveBeenCalledWith(authorization());
+    expect(onAuthorized.mock.invocationCallOrder[0]).toBeLessThan(
+      updateSkill.mock.invocationCallOrder[0],
     );
     expect(updateSkill).toHaveBeenCalledTimes(1);
     expect(updateSkill).toHaveBeenCalledWith({
       id: 'skill-1',
       expectedVersion: 7,
       update: DEFAULT_UPDATE,
+      improvementMutation: {
+        candidateId: 'candidate-skill',
+        payloadDigest: DEFAULT_PAYLOAD_DIGEST,
+        expectedVersion: 7,
+      },
     });
     expect(result.status).toBe('updated');
+  });
+
+  it('fails closed before native mutation when the durable authorization receipt cannot be recorded', async () => {
+    authorizeImprovementPublicationForRequest.mockResolvedValue(authorization());
+    const updateSkill = jest.fn();
+    const onAuthorized = jest.fn(async () => {
+      throw new Error('authorization journal unavailable');
+    });
+    getSkillToolDeps.mockReturnValue({ updateSkill });
+
+    await expect(publishImprovementSkillUpdateForRequest(input({ onAuthorized }))).rejects.toThrow(
+      /journal unavailable/i,
+    );
+    expect(onAuthorized).toHaveBeenCalledTimes(1);
+    expect(updateSkill).not.toHaveBeenCalled();
   });
 
   it.each([

@@ -22,6 +22,7 @@ async function publishImprovementSkillUpdateForRequest({
   skillId,
   expectedVersion,
   update,
+  onAuthorized,
 }) {
   if (operation !== 'update') {
     throw new Error('Controlled improvement publication only supports skill updates');
@@ -86,6 +87,10 @@ async function publishImprovementSkillUpdateForRequest({
     throw new Error('Improvement publication content policy blocked the skill update');
   }
 
+  if (typeof onAuthorized === 'function') {
+    await onAuthorized(authorization);
+  }
+
   const { updateSkill } = getSkillToolDeps();
   if (typeof updateSkill !== 'function') {
     throw new Error('Native skill update primitive is unavailable');
@@ -95,6 +100,11 @@ async function publishImprovementSkillUpdateForRequest({
     id: authorization.skillId,
     expectedVersion: authorization.expectedVersion,
     update,
+    improvementMutation: {
+      candidateId: authorization.candidateId,
+      payloadDigest: authorization.payloadDigest,
+      expectedVersion: authorization.expectedVersion,
+    },
   });
 }
 

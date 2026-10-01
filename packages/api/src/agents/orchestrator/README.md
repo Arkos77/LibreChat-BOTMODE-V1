@@ -300,9 +300,9 @@ This is deliberate. The top-level candidate seam does not currently expose a pro
 6. Evaluate native policy/capability/resource authorization.
 7. Apply the exact authorized payload through the native mutation primitive with optimistic versioning.
 8. Record bounded lifecycle/MTO evidence of the effect without using those records to manufacture authority.
-9. Preserve native recovery, idempotence, checkpoint, and settlement semantics when runtime activation is introduced.
+9. Preserve native recovery, idempotence, checkpoint, and settlement semantics when runtime activation is introduced. Skill improvement publication now proves the native recovery/idempotence slice: the optimistic native Skill update stores an internal `lastImprovementMutation` receipt atomically with the version bump, bound to `candidateId`, `payloadDigest`, and `expectedVersion`. If the native mutation succeeds but durable `COMMITTED` observation fails, replay requires the exact prior human `APPROVED` event, exact durable `AUTHORIZED` receipt, and native Skill version exactly `expectedVersion + 1` with the matching mutation receipt; it then repairs only the missing `COMMITTED` observation and does not invoke the native mutation again. A missing or mismatched receipt, a later Skill version, missing native Skill, or authorization mismatch fails closed. The `AUTHORIZED` receipt is persisted before mutation, so failure to persist authorization cannot mutate the Skill. MTO remains best-effort observation only.
 
-Until steps 3 through 9 have production call sites with proofs, P10 remains a governed dormant capability rather than an autonomous improvement loop.
+Steps 3 through 9 now have bounded production call paths and proof for the governed Skill-improvement publication slice. This does not make P10 an autonomous self-improvement loop: candidate generation remains bounded, Oracle acceptance is not authorization, human review and native policy remain authoritative, and broader runtime checkpoint/settlement recovery semantics remain owned by their native subsystems.
 
 ## P11 — Decision record boundary
 
