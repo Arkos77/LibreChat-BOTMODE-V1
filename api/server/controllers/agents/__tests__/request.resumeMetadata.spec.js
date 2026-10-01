@@ -1031,9 +1031,11 @@ describe('ResumableAgentController resume metadata', () => {
 
   it('persists and verifies an exact authorized orchestrator plan before sendMessage', async () => {
     const sendMessage = jest.fn(() => new Promise(() => {}));
+    const publicationBarrier = { activate: jest.fn() };
     const client = {
       options: { agent: { id: 'agent-primary' } },
       agentConfigs: new Map([['agent-specialist', { id: 'agent-specialist' }]]),
+      publicationBarrier,
       sendMessage,
     };
     const initializeClient = jest.fn().mockResolvedValue({ client });
@@ -1116,7 +1118,11 @@ describe('ResumableAgentController resume metadata', () => {
     expect(mockGenerationJobManager.updateMetadata.mock.invocationCallOrder.at(-1)).toBeLessThan(
       sendMessage.mock.invocationCallOrder[0],
     );
+    expect(publicationBarrier.activate).toHaveBeenCalledTimes(1);
     expect(mockGenerationJobManager.getJob.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      publicationBarrier.activate.mock.invocationCallOrder[0],
+    );
+    expect(publicationBarrier.activate.mock.invocationCallOrder[0]).toBeLessThan(
       sendMessage.mock.invocationCallOrder[0],
     );
   });

@@ -329,6 +329,7 @@ describe('RedisJobStore', () => {
       },
       responseMessageId: 'response-1',
       mtoTraceId: 'mto-trace-redis-123',
+      missionCandidateContent: [{ type: 'text', text: 'private mission candidate' }],
       orchestratorPlan: {
         planId: 'mission-p6:v1',
         planVersion: 1,
@@ -437,6 +438,7 @@ describe('RedisJobStore', () => {
       },
       responseMessageId: 'response-1',
       mtoTraceId: 'mto-trace-redis-123',
+      missionCandidateContent: [{ type: 'text', text: 'private mission candidate' }],
       orchestratorPlan: {
         planId: 'mission-p6:v1',
         planVersion: 1,
@@ -511,6 +513,9 @@ describe('RedisJobStore', () => {
       conversationId: 'conversation-1',
       responseMessageId: 'response-1',
       mtoTraceId: 'mto-trace-redis-123',
+      missionCandidateContent: JSON.stringify([
+        { type: 'text', text: 'private mission candidate' },
+      ]),
       orchestratorPlan: JSON.stringify({
         planId: 'mission-p6:v1',
         planVersion: 1,

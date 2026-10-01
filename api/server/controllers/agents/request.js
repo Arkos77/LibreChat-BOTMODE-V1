@@ -1843,6 +1843,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         throw new Error('Orchestrator plan persistence verification failed');
       }
       client.orchestratorPlan = persistedPlanJob.metadata.orchestratorPlan;
+      client.publicationBarrier?.activate?.();
 
       const evidenceDeclarations = orchestratorMission?.evidenceDeclarations;
       if (evidenceDeclarations != null) {
@@ -2670,6 +2671,31 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
               if (!response?.messageId) {
                 throw new Error('Response message was unavailable before HITL pause');
               }
+              const isOrchestratedMission = client.orchestratorPlan != null;
+              if (isOrchestratedMission) {
+                const missionCandidateContent = Array.isArray(response?.content)
+                  ? response.content
+                  : [];
+                const missionCandidateAttachments = Array.isArray(response?.attachments)
+                  ? response.attachments
+                  : [];
+                await GenerationJobManager.updateMetadata(
+                  streamId,
+                  { missionCandidateContent, missionCandidateAttachments },
+                  pauseCreatedAt,
+                );
+                const persistedCandidateJob = await GenerationJobManager.getJob(streamId);
+                if (
+                  persistedCandidateJob?.createdAt !== pauseCreatedAt ||
+                  JSON.stringify(persistedCandidateJob.metadata?.missionCandidateContent ?? []) !==
+                    JSON.stringify(missionCandidateContent) ||
+                  JSON.stringify(
+                    persistedCandidateJob.metadata?.missionCandidateAttachments ?? [],
+                  ) !== JSON.stringify(missionCandidateAttachments)
+                ) {
+                  throw new Error('Paused mission candidate persistence verification failed');
+                }
+              }
               const savedResponseMessage = await saveMessage(
                 {
                   userId,
@@ -2680,6 +2706,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
                 },
                 {
                   ...response,
+                  ...(isOrchestratedMission && { content: [], text: '', attachments: [] }),
                   endpoint: endpointOption.endpoint,
                   unfinished: true,
                   user: userId,

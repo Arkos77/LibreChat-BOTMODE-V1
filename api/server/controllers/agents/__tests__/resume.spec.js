@@ -2952,6 +2952,63 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
       );
     });
 
+    it('activates the publication barrier before resuming a durable orchestrator mission', async () => {
+      const publicationBarrier = { activate: jest.fn() };
+      mockGenerationJobManager.getJob.mockResolvedValue(
+        makeToolApprovalJob({
+          metadata: {
+            orchestratorPlan: {
+              planId: 'mission-plan-1',
+              tasks: [],
+            },
+          },
+        }),
+      );
+      mockInitializeClient.mockResolvedValue({
+        client: makeClient({ publicationBarrier }),
+        userMCPAuthMap: {},
+      });
+
+      await post(approveBody());
+      await settled;
+      await flush();
+
+      const client = await mockInitializeClient.mock.results[0].value.then((r) => r.client);
+      expect(publicationBarrier.activate).toHaveBeenCalledTimes(1);
+      expect(publicationBarrier.activate.mock.invocationCallOrder[0]).toBeLessThan(
+        client.resumeCompletion.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('restores durable paused mission content before resume when hidden deltas are absent from Redis', async () => {
+      const durableContent = [{ type: 'text', text: 'durable hidden candidate' }];
+      mockGenerationJobManager.getJob.mockResolvedValue(
+        makeToolApprovalJob({
+          metadata: {
+            orchestratorPlan: {
+              planId: 'mission-plan-restore',
+              tasks: [],
+            },
+            missionCandidateContent: durableContent,
+          },
+        }),
+      );
+      mockGenerationJobManager.getResumeState.mockResolvedValue({
+        aggregatedContent: [],
+        runSteps: [],
+      });
+      await post(approveBody());
+      await settled;
+      await flush();
+
+      const client = await mockInitializeClient.mock.results[0].value.then((r) => r.client);
+      expect(client.resumeCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          seedContent: durableContent,
+        }),
+      );
+    });
+
     it('passes persisted run steps into the rebuilt run for tool-result correlation', async () => {
       const runSteps = [
         {
@@ -3969,6 +4026,55 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
         }),
       );
       expect(mockGenerationJobManager.publishTerminalClaim).not.toHaveBeenCalled();
+    });
+
+    it('re-pause: keeps orchestrated mission content private while persisting the durable candidate', async () => {
+      const durableContent = [{ type: 'text', text: 'hidden mission segment' }];
+      const missionJob = makeToolApprovalJob({
+        metadata: {
+          orchestratorPlan: {
+            planId: 'mission-plan-repause',
+            tasks: [],
+          },
+        },
+      });
+      mockGenerationJobManager.getJob.mockResolvedValueOnce(missionJob).mockResolvedValue({
+        ...missionJob,
+        metadata: {
+          ...missionJob.metadata,
+          missionCandidateContent: durableContent,
+        },
+      });
+      mockInitializeClient.mockResolvedValue({
+        client: makeClient({
+          pendingApproval: { actionId: NEXT_ACTION_ID },
+          contentParts: durableContent,
+          artifactPromises: [],
+          orchestratorPlan: missionJob.metadata.orchestratorPlan,
+        }),
+        userMCPAuthMap: {},
+      });
+
+      const res = await post(approveBody());
+      expect(res.status).toBe(200);
+      await settled;
+      await flush();
+
+      expect(mockGenerationJobManager.updateMetadata).toHaveBeenCalledWith(
+        CONVO_ID,
+        { missionCandidateContent: durableContent, missionCandidateAttachments: [] },
+        1000,
+      );
+      expect(mockSaveMessage).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          content: [],
+          unfinished: true,
+        }),
+        expect.objectContaining({
+          context: 'api/server/controllers/agents/resume.js - re-pause progress persist',
+        }),
+      );
     });
 
     it('re-pause: preserves HITL response provenance on the unfinished row', async () => {

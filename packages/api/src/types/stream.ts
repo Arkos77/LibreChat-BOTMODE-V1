@@ -37,6 +37,11 @@ export interface GenerationJobMetadata {
   orchestratorPlan?: MissionPlan;
   /** Durable Mission Oracle QA state for this exact generation. */
   missionOracleState?: MissionOracleState;
+  /** Private, generation-fenced assistant candidate withheld from client-visible
+   * stream/history until terminal Mission Oracle acceptance. */
+  missionCandidateContent?: unknown[];
+  /** Private, generation-fenced generated artifacts withheld until terminal acceptance. */
+  missionCandidateAttachments?: unknown[];
   /** Whether this generation replaces an existing assistant branch. */
   isRegenerate?: boolean;
   /** Exact normalized MCP placeholder identity for this turn. Persisted so HITL

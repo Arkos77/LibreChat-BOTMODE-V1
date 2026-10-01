@@ -1801,6 +1801,14 @@ const initializeClient = async ({
         }
       : null;
 
+  let publicationBarrierActive = false;
+  const publicationBarrier = {
+    activate: () => {
+      publicationBarrierActive = true;
+    },
+    hold: () => publicationBarrierActive,
+  };
+
   const eventHandlers = getDefaultHandlers({
     res,
     contentParts,
@@ -1823,6 +1831,7 @@ const initializeClient = async ({
     usageEmitSink,
     eventChildActivity,
     resolveMcpServerName,
+    publicationBarrier,
   });
 
   const client = new AgentClient({
@@ -1872,6 +1881,7 @@ const initializeClient = async ({
     mtoEventSink,
     mcpRequestBody: runtimeRequestBody,
   });
+  client.publicationBarrier = publicationBarrier;
 
   if (streamId) {
     GenerationJobManager.setCollectedUsage(streamId, collectedUsage, jobCreatedAt);

@@ -15,6 +15,12 @@ export function sanitizeJobMetadata(metadata: Partial<GenerationJobMetadata>): J
   if (metadata.missionOracleState) {
     patch.missionOracleState = structuredClone(metadata.missionOracleState);
   }
+  if (metadata.missionCandidateContent) {
+    patch.missionCandidateContent = structuredClone(metadata.missionCandidateContent);
+  }
+  if (metadata.missionCandidateAttachments) {
+    patch.missionCandidateAttachments = structuredClone(metadata.missionCandidateAttachments);
+  }
   if (metadata.isRegenerate !== undefined) {
     patch.isRegenerate = metadata.isRegenerate;
   }

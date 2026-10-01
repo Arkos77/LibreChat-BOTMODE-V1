@@ -386,6 +386,8 @@ function feedSubagentAggregator(aggregator, event) {
  * @param {string} [options.eventActorTaskId] Event actor delivery identity, separate from Task Engine.
  * @param {string} [options.mtoTraceId] Host-owned MTO trace identity.
  * @param {(event: import('@librechat/api').MtoEvent) => void | Promise<void>} [options.mtoEventSink] Optional observational MTO event sink.
+ * @param {{ hold?: (eventData: Object) => boolean | Promise<boolean> }} [options.publicationBarrier]
+ *   Optional host-owned publication gate for user-visible candidate output.
  * @returns {Record<string, t.EventHandler>} The default handlers.
  * @throws {Error} If the request is not found.
  */
@@ -411,6 +413,7 @@ function getDefaultHandlers({
   eventActorTaskId = null,
   mtoTraceId = null,
   mtoEventSink = null,
+  publicationBarrier = null,
 }) {
   if (!res || !aggregateContent) {
     throw new Error(
@@ -681,11 +684,17 @@ function getDefaultHandlers({
        */
       handle: async (event, data, metadata) => {
         aggregateContent({ event, data });
-        if (checkIfLastAgent(metadata?.last_agent_id, metadata?.langgraph_node)) {
-          await emitForJob({ event, data });
-        } else if (!metadata?.hide_sequential_outputs) {
-          await emitForJob({ event, data });
+        const visible =
+          checkIfLastAgent(metadata?.last_agent_id, metadata?.langgraph_node) ||
+          !metadata?.hide_sequential_outputs;
+        if (!visible) {
+          return;
         }
+        const eventData = { event, data };
+        if (publicationBarrier?.hold && (await publicationBarrier.hold(eventData)) === true) {
+          return;
+        }
+        await emitForJob(eventData);
       },
     },
     [GraphEvents.ON_REASONING_DELTA]: {
@@ -697,11 +706,17 @@ function getDefaultHandlers({
        */
       handle: async (event, data, metadata) => {
         aggregateContent({ event, data });
-        if (checkIfLastAgent(metadata?.last_agent_id, metadata?.langgraph_node)) {
-          await emitForJob({ event, data });
-        } else if (!metadata?.hide_sequential_outputs) {
-          await emitForJob({ event, data });
+        const visible =
+          checkIfLastAgent(metadata?.last_agent_id, metadata?.langgraph_node) ||
+          !metadata?.hide_sequential_outputs;
+        if (!visible) {
+          return;
         }
+        const eventData = { event, data };
+        if (publicationBarrier?.hold && (await publicationBarrier.hold(eventData)) === true) {
+          return;
+        }
+        await emitForJob(eventData);
       },
     },
   };
@@ -794,7 +809,11 @@ function getDefaultHandlers({
           );
         }
       }
-      await emitForJob({ event, data });
+      const eventData = { event, data };
+      if (publicationBarrier?.hold && (await publicationBarrier.hold(eventData)) === true) {
+        return;
+      }
+      await emitForJob(eventData);
     },
   };
 

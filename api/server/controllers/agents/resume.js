@@ -252,11 +252,16 @@ function mergeAttachments(existing, incoming) {
  * otherwise OVERWRITE the row's attachments with only the last segment's. Reading
  * the persisted row and merging keeps every segment's artifacts on the saved message.
  */
-async function resolveAccumulatedAttachments({ client, conversationId, responseMessageId }) {
+async function resolveAccumulatedAttachments({
+  client,
+  conversationId,
+  responseMessageId,
+  privateExisting,
+}) {
   const promises = Array.isArray(client?.artifactPromises) ? client.artifactPromises : [];
   const resolved = promises.length > 0 ? (await Promise.all(promises)).filter(Boolean) : [];
-  let existing = [];
-  if (responseMessageId) {
+  let existing = Array.isArray(privateExisting) ? privateExisting : [];
+  if (privateExisting == null && responseMessageId) {
     try {
       const [row] = await getMessages(
         { conversationId, messageId: responseMessageId },
@@ -307,13 +312,35 @@ async function persistRePauseProgress({ req, client, job, streamId, conversation
     existingPaths: meta.userSubmittedPaths,
     existingMessageFieldPaths: meta.userSubmittedMessageFieldPaths,
   });
+  const isOrchestratedMission = client?.orchestratorPlan != null || meta.orchestratorPlan != null;
   const attachments = await resolveAccumulatedAttachments({
     client,
     conversationId,
     responseMessageId,
+    ...(isOrchestratedMission ? { privateExisting: meta.missionCandidateAttachments ?? [] } : {}),
   });
   if (content.length === 0 && attachments.length === 0) {
     return;
+  }
+  if (isOrchestratedMission) {
+    await GenerationJobManager.updateMetadata(
+      streamId,
+      {
+        missionCandidateContent: content,
+        missionCandidateAttachments: attachments,
+      },
+      job.createdAt,
+    );
+    const persistedCandidateJob = await GenerationJobManager.getJob(streamId);
+    if (
+      persistedCandidateJob?.createdAt !== job.createdAt ||
+      JSON.stringify(persistedCandidateJob.metadata?.missionCandidateContent ?? []) !==
+        JSON.stringify(content) ||
+      JSON.stringify(persistedCandidateJob.metadata?.missionCandidateAttachments ?? []) !==
+        JSON.stringify(attachments)
+    ) {
+      throw new Error('Re-pause mission candidate persistence verification failed');
+    }
   }
   const savedResponseMessage = await saveMessage(
     {
@@ -325,8 +352,9 @@ async function persistRePauseProgress({ req, client, job, streamId, conversation
     {
       messageId: responseMessageId,
       conversationId,
-      ...(content.length > 0 && { content }),
-      ...(attachments.length > 0 && { attachments }),
+      ...(isOrchestratedMission && { content: [] }),
+      ...(!isOrchestratedMission && content.length > 0 && { content }),
+      ...(!isOrchestratedMission && attachments.length > 0 && { attachments }),
       ...(userSubmittedPaths.length > 0 && { userSubmittedPaths }),
       ...(userSubmittedMessageFieldPaths.length > 0 && { userSubmittedMessageFieldPaths }),
       unfinished: true,
@@ -489,6 +517,9 @@ async function finalizeResumedTurn({
     client,
     conversationId,
     responseMessageId,
+    ...(job.metadata?.orchestratorPlan != null
+      ? { privateExisting: job.metadata?.missionCandidateAttachments ?? [] }
+      : {}),
   });
   if (attachments.length > 0) {
     responseMessage.attachments = attachments;
@@ -1073,7 +1104,11 @@ const ResumeAgentController = async (req, res, next, initializeClient, addTitle)
         ? mapped.resumeValue
         : { ...mapped.resumeValue, answer: batchedAnswer };
     const retainedAskAnswers = job.metadata.resolvedAskUserQuestions;
-    const initialSeedContent = resumeState?.aggregatedContent ?? [];
+    const durableMissionCandidate =
+      job.metadata?.orchestratorPlan != null && Array.isArray(job.metadata?.missionCandidateContent)
+        ? job.metadata.missionCandidateContent
+        : null;
+    const initialSeedContent = durableMissionCandidate ?? resumeState?.aggregatedContent ?? [];
     const preflightResumeState =
       Array.isArray(retainedAskAnswers) && retainedAskAnswers.length > 0
         ? {
@@ -1827,6 +1862,9 @@ const ResumeAgentController = async (req, res, next, initializeClient, addTitle)
     client.jobCreatedAt = job.createdAt;
     client.checkpointNamespace = checkpointNamespace;
     client.orchestratorPlan = job.metadata?.orchestratorPlan;
+    if (client.orchestratorPlan != null) {
+      client.publicationBarrier?.activate?.();
+    }
     client.missionOracleState =
       job.metadata?.missionOracleState == null
         ? undefined
@@ -1843,7 +1881,11 @@ const ResumeAgentController = async (req, res, next, initializeClient, addTitle)
     const resumeClient = () =>
       client.resumeCompletion({
         resumeValue: mapped.resumeValue,
-        seedContent,
+        seedContent:
+          job.metadata?.orchestratorPlan != null &&
+          Array.isArray(job.metadata?.missionCandidateContent)
+            ? job.metadata.missionCandidateContent
+            : seedContent,
         runSteps: resumeState?.runSteps ?? [],
         storedMessages,
         abortController: job.abortController,

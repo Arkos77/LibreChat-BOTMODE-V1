@@ -540,6 +540,110 @@ describe('resumable event generation fencing', () => {
     expect(resumedPublish.mock.calls[0][0].activityEventId).not.toBe(firstUpdate.activityEventId);
   });
 
+  it('buffers visible message deltas behind a publication barrier while progress remains live', async () => {
+    const { GenerationJobManager } = require('@librechat/api');
+    const { GraphEvents } = jest.requireActual('@librechat/agents');
+    const { getDefaultHandlers } = require('~/server/controllers/agents/callbacks');
+    const buffered = [];
+    const publicationBarrier = {
+      hold: jest.fn((eventData) => {
+        buffered.push(eventData);
+        return true;
+      }),
+      flush: jest.fn(async () => {
+        for (const eventData of buffered.splice(0)) {
+          await GenerationJobManager.emitChunk('conversation-barrier', eventData, {
+            expectedCreatedAt: 1234,
+          });
+        }
+      }),
+    };
+    const aggregateContent = jest.fn();
+    const handlers = getDefaultHandlers({
+      res: { write: jest.fn() },
+      aggregateContent,
+      toolEndCallback: jest.fn(),
+      collectedUsage: [],
+      streamId: 'conversation-barrier',
+      jobCreatedAt: 1234,
+      publicationBarrier,
+    });
+    const delta = { delta: { content: { type: 'text', text: 'verified later' } } };
+    const progress = {
+      id: 'step-live',
+      index: 0,
+      stepDetails: { type: 'tool_calls', tool_calls: [] },
+    };
+    const visible = { hide_sequential_outputs: false };
+
+    await handlers[GraphEvents.ON_MESSAGE_DELTA].handle(
+      GraphEvents.ON_MESSAGE_DELTA,
+      delta,
+      visible,
+    );
+    await handlers[GraphEvents.ON_RUN_STEP].handle(GraphEvents.ON_RUN_STEP, progress, visible);
+
+    expect(aggregateContent).toHaveBeenCalledWith({
+      event: GraphEvents.ON_MESSAGE_DELTA,
+      data: delta,
+    });
+    expect(publicationBarrier.hold).toHaveBeenCalledWith({
+      event: GraphEvents.ON_MESSAGE_DELTA,
+      data: delta,
+    });
+    expect(GenerationJobManager.emitChunk).toHaveBeenCalledTimes(1);
+    expect(GenerationJobManager.emitChunk).toHaveBeenCalledWith(
+      'conversation-barrier',
+      { event: GraphEvents.ON_RUN_STEP, data: progress },
+      { expectedCreatedAt: 1234 },
+    );
+
+    await publicationBarrier.flush();
+
+    expect(GenerationJobManager.emitChunk).toHaveBeenCalledTimes(2);
+    expect(GenerationJobManager.emitChunk).toHaveBeenLastCalledWith(
+      'conversation-barrier',
+      { event: GraphEvents.ON_MESSAGE_DELTA, data: delta },
+      { expectedCreatedAt: 1234 },
+    );
+  });
+
+  it('buffers visible reasoning deltas behind an active publication barrier', async () => {
+    const { GenerationJobManager } = require('@librechat/api');
+    const { GraphEvents } = jest.requireActual('@librechat/agents');
+    const { getDefaultHandlers } = require('~/server/controllers/agents/callbacks');
+    const publicationBarrier = {
+      hold: jest.fn().mockReturnValue(true),
+    };
+    const aggregateContent = jest.fn();
+    const handlers = getDefaultHandlers({
+      res: { write: jest.fn() },
+      aggregateContent,
+      toolEndCallback: jest.fn(),
+      collectedUsage: [],
+      streamId: 'conversation-reasoning-barrier',
+      jobCreatedAt: 4321,
+      publicationBarrier,
+    });
+    const reasoning = { text: 'private reasoning candidate' };
+
+    await handlers[GraphEvents.ON_REASONING_DELTA].handle(
+      GraphEvents.ON_REASONING_DELTA,
+      reasoning,
+      { hide_sequential_outputs: false },
+    );
+
+    expect(aggregateContent).toHaveBeenCalledWith({
+      event: GraphEvents.ON_REASONING_DELTA,
+      data: reasoning,
+    });
+    expect(publicationBarrier.hold).toHaveBeenCalledWith({
+      event: GraphEvents.ON_REASONING_DELTA,
+      data: reasoning,
+    });
+    expect(GenerationJobManager.emitChunk).not.toHaveBeenCalled();
+  });
+
   it('forwards the originating job epoch with deferred attachments', () => {
     const { GenerationJobManager } = require('@librechat/api');
     const { createAttachmentEmitter } = require('../callbacks');

@@ -160,6 +160,10 @@ export interface SerializableJobData {
   /** Durable Mission Oracle evidence/verdict state carried across HITL resume.
    * QA state only; never authorization or task settlement authority. */
   missionOracleState?: MissionOracleState;
+  /** Private durable candidate content for BOT MODE missions. */
+  missionCandidateContent?: unknown[];
+  /** Private durable candidate artifacts for BOT MODE missions. */
+  missionCandidateAttachments?: unknown[];
 
   /** Whether this generation replaces an existing assistant branch. */
   isRegenerate?: boolean;
@@ -442,6 +446,8 @@ export type JobMetadataPatch = Partial<
     | 'mtoTraceId'
     | 'orchestratorPlan'
     | 'missionOracleState'
+    | 'missionCandidateContent'
+    | 'missionCandidateAttachments'
     | 'isRegenerate'
     | 'mcpRequestBody'
     | 'userSubmittedPaths'
