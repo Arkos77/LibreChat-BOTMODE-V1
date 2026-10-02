@@ -14,6 +14,104 @@ const { getSkillToolDeps } = require('./skillDeps');
  * This function intentionally preserves native updateSkill results
  * (`updated`, `conflict`, `not_found`) and owns no persistence semantics.
  */
+async function publishImprovementSkillCreateForRequest({
+  req,
+  candidateId,
+  payloadDigest,
+  skillId,
+  create,
+}) {
+  const allowedFields = new Set([
+    'name',
+    'displayTitle',
+    'description',
+    'body',
+    'frontmatter',
+    'category',
+    'alwaysApply',
+  ]);
+  if (
+    create == null ||
+    typeof create !== 'object' ||
+    Array.isArray(create) ||
+    Object.getPrototypeOf(create) !== Object.prototype ||
+    Reflect.ownKeys(create).length === 0 ||
+    Reflect.ownKeys(create).some((key) => typeof key !== 'string' || !allowedFields.has(key))
+  ) {
+    throw new Error('Improvement publication skill create fields are invalid');
+  }
+  if (
+    typeof candidateId !== 'string' ||
+    candidateId.trim() === '' ||
+    candidateId.length > 512 ||
+    typeof payloadDigest !== 'string' ||
+    !/^[a-f0-9]{64}$/i.test(payloadDigest) ||
+    typeof skillId !== 'string' ||
+    !/^[a-f0-9]{24}$/i.test(skillId)
+  ) {
+    throw new Error('Improvement skill create publication identity is invalid');
+  }
+  if (
+    createImprovementPayloadDigest(create) !== payloadDigest ||
+    !verifyImprovementPayloadDigest(create, payloadDigest)
+  ) {
+    throw new Error('Improvement skill create publication payload does not match allocation');
+  }
+
+  const { finding, traversalError } = inspectSkillContentPolicy(req?.config?.filters, create);
+  if (finding != null || traversalError != null) {
+    throw new Error('Improvement publication content policy blocked the skill create');
+  }
+
+  const user = req?.user;
+  const author = user?._id ?? user?.id;
+  if (!user?.id || !author) {
+    throw new Error('Improvement skill create publication requires an authenticated owner');
+  }
+
+  const { createSkill, grantSkillOwner, hasSkillOwner } = getSkillToolDeps();
+  if (
+    typeof createSkill !== 'function' ||
+    typeof grantSkillOwner !== 'function' ||
+    typeof hasSkillOwner !== 'function'
+  ) {
+    throw new Error('Native skill create publication primitives are unavailable');
+  }
+
+  const result = await createSkill(
+    {
+      ...create,
+      author,
+      authorName: user.name ?? user.username ?? 'Unknown',
+      ...(user.tenantId ? { tenantId: user.tenantId } : {}),
+    },
+    {
+      skillId,
+      improvementMutation: {
+        operation: 'create',
+        candidateId: candidateId.trim(),
+        payloadDigest: payloadDigest.toLowerCase(),
+      },
+    },
+  );
+
+  if (result?.skill?._id?.toString?.() !== skillId || result.skill.version !== 1) {
+    throw new Error('Native skill create publication identity mismatch');
+  }
+
+  await grantSkillOwner({ req, skillId });
+  if ((await hasSkillOwner({ req, skillId })) !== true) {
+    throw new Error('Native skill create publication owner ACL is not proven');
+  }
+
+  return {
+    status: 'created',
+    skillId,
+    skill: result.skill,
+    warnings: result.warnings ?? [],
+  };
+}
+
 async function publishImprovementSkillUpdateForRequest({
   req,
   disposition,
@@ -111,5 +209,6 @@ async function publishImprovementSkillUpdateForRequest({
 }
 
 module.exports = {
+  publishImprovementSkillCreateForRequest,
   publishImprovementSkillUpdateForRequest,
 };

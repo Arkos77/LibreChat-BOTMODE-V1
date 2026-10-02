@@ -1,5 +1,8 @@
 const { createImprovementPayloadDigest } = require('@librechat/api');
-const { publishImprovementSkillUpdateForRequest } = require('./improvementPublication');
+const {
+  publishImprovementSkillCreateForRequest,
+  publishImprovementSkillUpdateForRequest,
+} = require('./improvementPublication');
 const { authorizeImprovementPublicationForRequest } = require('./improvementAuthorization');
 const { getSkillToolDeps } = require('./skillDeps');
 
@@ -243,5 +246,105 @@ describe('controlled improvement skill publication', () => {
     expect(authorizeImprovementPublicationForRequest).not.toHaveBeenCalled();
     expect(getSkillToolDeps).not.toHaveBeenCalled();
     expect(updateSkill).not.toHaveBeenCalled();
+  });
+});
+
+describe('controlled improvement skill create publication', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('creates the exact authorized payload at the preallocated id and proves owner ACL', async () => {
+    const create = {
+      name: 'new-skill',
+      description: 'New governed skill.',
+      body: '# New skill',
+    };
+    const payloadDigest = createImprovementPayloadDigest(create);
+    const skillId = '68df12a7d43d9b79b2b5a001';
+    const createSkill = jest.fn(async (_data, options) => ({
+      skill: { _id: options.skillId, version: 1 },
+      warnings: [],
+    }));
+    const grantSkillOwner = jest.fn(async () => ({}));
+    const hasSkillOwner = jest.fn(async () => true);
+    getSkillToolDeps.mockReturnValue({ createSkill, grantSkillOwner, hasSkillOwner });
+
+    const result = await publishImprovementSkillCreateForRequest({
+      req: {
+        user: {
+          id: '68df12a7d43d9b79b2b5a010',
+          _id: '68df12a7d43d9b79b2b5a010',
+          name: 'Owner',
+          tenantId: 'tenant-1',
+        },
+        config: {},
+      },
+      candidateId: 'candidate-skill',
+      payloadDigest,
+      skillId,
+      create,
+    });
+
+    expect(createSkill).toHaveBeenCalledTimes(1);
+    expect(createSkill.mock.calls[0][0]).toEqual({
+      ...create,
+      author: '68df12a7d43d9b79b2b5a010',
+      authorName: 'Owner',
+      tenantId: 'tenant-1',
+    });
+    expect(createSkill.mock.calls[0][1].skillId.toString()).toBe(skillId);
+    expect(createSkill.mock.calls[0][1].improvementMutation).toEqual({
+      operation: 'create',
+      candidateId: 'candidate-skill',
+      payloadDigest,
+    });
+    expect(grantSkillOwner).toHaveBeenCalledWith({
+      req: expect.any(Object),
+      skillId,
+    });
+    expect(hasSkillOwner).toHaveBeenCalledWith({
+      req: expect.any(Object),
+      skillId,
+    });
+    expect(result).toMatchObject({ status: 'created', skillId });
+  });
+
+  it('leaves a receipt-bearing created skill recoverable when owner grant fails', async () => {
+    const create = {
+      name: 'new-skill',
+      description: 'New governed skill.',
+      body: '# New skill',
+    };
+    const skillId = '68df12a7d43d9b79b2b5a001';
+    const createSkill = jest.fn(async (_data, options) => ({
+      skill: { _id: options.skillId, version: 1 },
+      warnings: [],
+    }));
+    const grantSkillOwner = jest.fn(async () => {
+      throw new Error('owner acl unavailable');
+    });
+    const hasSkillOwner = jest.fn();
+    getSkillToolDeps.mockReturnValue({ createSkill, grantSkillOwner, hasSkillOwner });
+
+    await expect(
+      publishImprovementSkillCreateForRequest({
+        req: {
+          user: {
+            id: '68df12a7d43d9b79b2b5a010',
+            _id: '68df12a7d43d9b79b2b5a010',
+            name: 'Owner',
+          },
+          config: {},
+        },
+        candidateId: 'candidate-skill',
+        payloadDigest: createImprovementPayloadDigest(create),
+        skillId,
+        create,
+      }),
+    ).rejects.toThrow('owner acl unavailable');
+
+    expect(createSkill).toHaveBeenCalledTimes(1);
+    expect(hasSkillOwner).not.toHaveBeenCalled();
   });
 });
