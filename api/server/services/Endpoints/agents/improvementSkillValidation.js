@@ -27,12 +27,13 @@ async function validateSkillImprovementCandidate({
   ) {
     throw new Error('Skill tests candidate and proposal binding is invalid');
   }
+  const payload = proposal.operation === 'create' ? proposal.create : proposal.update;
   const result = runSkillContentTests({
     candidateId: candidate.candidateId,
     producerAgentId: proposal.producerAgentId,
     checkerAgentId: CHECKER_ID,
     payloadDigest: candidate.payloadDigest,
-    update: proposal.update,
+    payload,
     tests,
   });
   const scope = { user, ...(tenantId ? { tenantId } : {}) };

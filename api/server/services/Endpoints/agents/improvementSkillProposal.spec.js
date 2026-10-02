@@ -24,6 +24,7 @@ function input(overrides = {}) {
     persistCandidate: jest.fn(async () => ({ replayed: false })),
     persistLifecycleEvent: jest.fn(async () => ({})),
     getHostTests: jest.fn(() => undefined),
+    getHostCreateTests: jest.fn(() => undefined),
     mtoEventSink: jest.fn(async () => undefined),
     ...overrides,
   };
@@ -84,6 +85,7 @@ describe('native child skill proposal capture', () => {
     expect(stored).not.toHaveProperty('skillId');
     expect(stored).not.toHaveProperty('expectedVersion');
     expect(request.getHostTests).not.toHaveBeenCalled();
+    expect(request.getHostCreateTests).toHaveBeenCalledWith('governed-new-skill');
     expect(request.persistLifecycleEvent).not.toHaveBeenCalled();
     expect(request.persistCandidate.mock.calls[0][0].candidate).toMatchObject({
       candidateId: 'skill:task-native:call-create',
@@ -91,6 +93,38 @@ describe('native child skill proposal capture', () => {
       payloadDigest: stored.payloadDigest,
       publication: { requiresHumanReview: true },
     });
+  });
+
+  it('runs a configured create host plan only after durable candidate capture', async () => {
+    const create = {
+      name: 'governed-new-skill',
+      body: '# Governed new skill\nEvidence required',
+      description: 'A governed skill proposed by a native child.',
+    };
+    const request = input({
+      proposal: {
+        operation: 'create',
+        toolCallId: 'call-create-validated',
+        create,
+        diff: '+governed new skill',
+      },
+      getHostCreateTests: jest.fn(() => [
+        { id: 'evidence', field: 'body', operator: 'includes', expected: 'Evidence' },
+      ]),
+    });
+
+    await recordSkillImprovementProposal(request);
+
+    expect(request.getHostTests).not.toHaveBeenCalled();
+    expect(request.getHostCreateTests).toHaveBeenCalledWith('governed-new-skill');
+    expect(request.persistLifecycleEvent.mock.calls.map(([arg]) => arg.event.type)).toEqual([
+      'VALIDATING',
+      'VERIFIED',
+      'VERIFIED',
+    ]);
+    expect(request.persistLifecycleEvent.mock.invocationCallOrder[0]).toBeGreaterThan(
+      request.persistCandidate.mock.invocationCallOrder[0],
+    );
   });
 
   it('reuses the durable candidate when a second tool call repeats the exact edit', async () => {

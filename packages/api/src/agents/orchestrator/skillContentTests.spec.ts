@@ -34,6 +34,33 @@ describe('host-declared independent skill content tests', () => {
       }),
     ).toMatchObject({ status: 'REJECTED', checks: [{ id: 'missing', passed: false }] });
   });
+  it('validates an exact create payload without requiring an existing skill identity', () => {
+    const create = {
+      name: 'new-skill',
+      body: '# New skill\nMust include provenance.\n',
+      description: 'New research skill.',
+    };
+    const input = {
+      candidateId: 'skill:task-1:create-1',
+      producerAgentId: 'agent-producer',
+      checkerAgentId: 'librechat:host-skill-tests',
+      payloadDigest: createImprovementPayloadDigest(create),
+      payload: create,
+      tests: [
+        {
+          id: 'provenance',
+          field: 'body' as const,
+          operator: 'includes' as const,
+          expected: 'provenance',
+        },
+      ],
+    };
+    expect(runSkillContentTests(input)).toMatchObject({
+      status: 'VERIFIED',
+      payloadDigest: input.payloadDigest,
+    });
+  });
+
   it('fails closed on absent tests, same producer, or a stale payload digest', () => {
     expect(() => runSkillContentTests({ ...base, tests: [] })).toThrow(/test/i);
     expect(() => runSkillContentTests({ ...base, checkerAgentId: 'agent-producer' })).toThrow(

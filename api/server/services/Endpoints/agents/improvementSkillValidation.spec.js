@@ -49,6 +49,28 @@ describe('independent skill content validation', () => {
     });
     expect(JSON.stringify(request.persistLifecycleEvent.mock.calls)).not.toContain('# New');
   });
+  it('validates a create proposal against its exact payload digest', async () => {
+    const create = {
+      name: 'new-skill',
+      body: '# New skill\nEvidence required',
+      description: 'A new governed skill.',
+    };
+    const createDigest = createImprovementPayloadDigest(create);
+    const request = input({
+      candidate: { ...input().candidate, payloadDigest: createDigest },
+      proposal: {
+        ...input().proposal,
+        operation: 'create',
+        payloadDigest: createDigest,
+        create,
+        update: undefined,
+      },
+      tests: [{ id: 'evidence', field: 'body', operator: 'includes', expected: 'Evidence' }],
+    });
+    const result = await validateSkillImprovementCandidate(request);
+    expect(result).toMatchObject({ status: 'VERIFIED', payloadDigest: createDigest });
+  });
+
   it('records a rejected host assertion without an Oracle acceptance', async () => {
     const request = input({
       tests: [{ id: 'absent', field: 'body', operator: 'includes', expected: 'Absent claim' }],

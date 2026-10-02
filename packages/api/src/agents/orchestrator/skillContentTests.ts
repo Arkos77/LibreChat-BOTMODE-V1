@@ -11,7 +11,9 @@ export interface SkillContentTestInput {
   producerAgentId: string;
   checkerAgentId: string;
   payloadDigest: string;
-  update: { body: string; description: string; [key: string]: unknown };
+  /** Exact immutable skill payload. `update` remains accepted for backward compatibility. */
+  payload?: { body: string; description: string; [key: string]: unknown };
+  update?: { body: string; description: string; [key: string]: unknown };
   tests: readonly HostSkillContentTest[];
 }
 export interface SkillContentTestResult {
@@ -27,7 +29,7 @@ function required(value: string, name: string): string {
   return value.trim();
 }
 
-/** Runs bounded, host-owned assertions over the exact immutable update. */
+/** Runs bounded, host-owned assertions over the exact immutable skill payload. */
 export function runSkillContentTests(input: SkillContentTestInput): SkillContentTestResult {
   const candidateId = required(input.candidateId, 'candidateId');
   const producerAgentId = required(input.producerAgentId, 'producerAgentId');
@@ -35,7 +37,8 @@ export function runSkillContentTests(input: SkillContentTestInput): SkillContent
   const payloadDigest = required(input.payloadDigest, 'payloadDigest');
   if (producerAgentId === checkerAgentId)
     throw new Error('Skill tests require an independent checker');
-  if (createImprovementPayloadDigest(input.update) !== payloadDigest)
+  const payload = input.payload ?? input.update;
+  if (createImprovementPayloadDigest(payload) !== payloadDigest)
     throw new Error('Skill tests payload digest mismatch');
   if (!Array.isArray(input.tests) || input.tests.length < 1 || input.tests.length > 32)
     throw new Error('Skill tests require a bounded host plan');
@@ -52,7 +55,7 @@ export function runSkillContentTests(input: SkillContentTestInput): SkillContent
       test.expected.length > 1024
     )
       throw new Error('Skill test declaration is invalid');
-    const actual = input.update[test.field];
+    const actual = payload[test.field];
     if (typeof actual !== 'string') throw new Error('Skill test content field is invalid');
     let passed: boolean;
     if (test.operator === 'includes') {

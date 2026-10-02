@@ -1,4 +1,7 @@
-const { getHostSkillTestsForSkill } = require('./improvementSkillTestPlan');
+const {
+  getHostSkillTestsForSkill,
+  getHostSkillTestsForCreate,
+} = require('./improvementSkillTestPlan');
 const { validateSkillImprovementCandidate } = require('./improvementSkillValidation');
 const {
   createImprovementCandidate,
@@ -25,6 +28,7 @@ async function recordSkillImprovementProposal({
   persistCandidate,
   persistLifecycleEvent,
   getHostTests = getHostSkillTestsForSkill,
+  getHostCreateTests = getHostSkillTestsForCreate,
   mtoEventSink,
 }) {
   const user = req?.user?._id ?? req?.user?.id;
@@ -109,7 +113,7 @@ async function recordSkillImprovementProposal({
   await persistCandidate({ user, tenantId, conversationId: normalizedConversationId, candidate });
   const tests =
     saved.record.proposal.operation === 'create'
-      ? undefined
+      ? getHostCreateTests(saved.record.proposal.create.name)
       : getHostTests(saved.record.proposal.skillId);
   if (tests !== undefined) {
     await validateSkillImprovementCandidate({
