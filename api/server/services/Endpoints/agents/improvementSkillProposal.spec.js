@@ -53,6 +53,46 @@ describe('native child skill proposal capture', () => {
     expect(JSON.stringify(candidate)).not.toContain('# Improved skill');
     expect(JSON.stringify(request.mtoEventSink.mock.calls)).not.toContain('# Improved skill');
   });
+  it('persists a governed create proposal without inventing an existing skill identity', async () => {
+    const create = {
+      name: 'governed-new-skill',
+      body: '# Governed new skill',
+      description: 'A governed skill proposed by a native child.',
+    };
+    const request = input({
+      proposal: {
+        operation: 'create',
+        toolCallId: 'call-create',
+        create,
+        diff: '+governed new skill',
+      },
+    });
+
+    const result = await recordSkillImprovementProposal(request);
+
+    expect(result).toEqual({ candidateId: 'skill:task-native:call-create' });
+    expect(request.persistProposal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        proposal: expect.objectContaining({
+          operation: 'create',
+          create,
+          payloadDigest: createImprovementPayloadDigest(create),
+        }),
+      }),
+    );
+    const stored = request.persistProposal.mock.calls[0][0].proposal;
+    expect(stored).not.toHaveProperty('skillId');
+    expect(stored).not.toHaveProperty('expectedVersion');
+    expect(request.getHostTests).not.toHaveBeenCalled();
+    expect(request.persistLifecycleEvent).not.toHaveBeenCalled();
+    expect(request.persistCandidate.mock.calls[0][0].candidate).toMatchObject({
+      candidateId: 'skill:task-native:call-create',
+      target: 'skill',
+      payloadDigest: stored.payloadDigest,
+      publication: { requiresHumanReview: true },
+    });
+  });
+
   it('reuses the durable candidate when a second tool call repeats the exact edit', async () => {
     const request = input({
       persistProposal: jest.fn(async (arg) => ({

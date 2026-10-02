@@ -552,7 +552,7 @@ const initializeClient = async ({
       }
     },
     ...skillToolDeps,
-    onSkillUpdateProposed: (proposal) => {
+    onSkillProposed: (proposal) => {
       const taskId = getDetachedSubagentTaskId();
       if (taskId == null) return undefined;
       return recordSkillImprovementProposal({

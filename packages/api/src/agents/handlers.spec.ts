@@ -2499,6 +2499,52 @@ describe('createToolExecuteHandler', () => {
       expect(grantSkillOwner).toHaveBeenCalledWith({ req, skillId: SKILL_ID });
     });
 
+    it('captures an exact skill create proposal before native mutation', async () => {
+      const createSkill = jest.fn();
+      const grantSkillOwner = jest.fn();
+      const onSkillProposed = jest.fn(async () => ({
+        candidateId: 'candidate-native-skill-create',
+      }));
+      const handler = makeAuthoringHandler({
+        getSkillByName: jest.fn(async () => null),
+        createSkill: createSkill as unknown as ToolExecuteOptions['createSkill'],
+        grantSkillOwner,
+        onSkillProposed,
+      });
+
+      const [result] = await invokeHandler(handler, [
+        {
+          id: 'call_propose_create_skill',
+          name: 'create_file',
+          args: {
+            path: 'skills/proposed-new-skill/SKILL.md',
+            content:
+              '---\nname: proposed-new-skill\ndescription: Use for governed create tests\n---\n# Proposed new skill\n',
+          },
+        },
+      ]);
+
+      expect(onSkillProposed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          operation: 'create',
+          toolCallId: 'call_propose_create_skill',
+          create: expect.objectContaining({
+            name: 'proposed-new-skill',
+            description: 'Use for governed create tests',
+            body: expect.stringContaining('# Proposed new skill'),
+          }),
+          diff: expect.stringContaining('Proposed new skill'),
+        }),
+      );
+      expect(createSkill).not.toHaveBeenCalled();
+      expect(grantSkillOwner).not.toHaveBeenCalled();
+      expect(result.status).toBe('success');
+      expect(result.artifact).toMatchObject({
+        proposed: true,
+        candidateId: 'candidate-native-skill-create',
+      });
+    });
+
     it('rejects case-colliding recognized frontmatter keys in create_file', async () => {
       const createSkill = jest.fn();
       const handler = makeAuthoringHandler({
@@ -3364,13 +3410,13 @@ describe('createToolExecuteHandler', () => {
         fileCount: 0,
       };
       const updateSkill = jest.fn();
-      const onSkillUpdateProposed = jest.fn(async () => ({
+      const onSkillProposed = jest.fn(async () => ({
         candidateId: 'candidate-native-skill',
       }));
       const handler = makeAuthoringHandler({
         getSkillByName: jest.fn(async () => skill),
         updateSkill: updateSkill as unknown as ToolExecuteOptions['updateSkill'],
-        onSkillUpdateProposed,
+        onSkillProposed,
       });
       const [result] = await invokeHandler(handler, [
         {
@@ -3383,7 +3429,7 @@ describe('createToolExecuteHandler', () => {
           },
         },
       ]);
-      expect(onSkillUpdateProposed).toHaveBeenCalledWith(
+      expect(onSkillProposed).toHaveBeenCalledWith(
         expect.objectContaining({
           toolCallId: 'call_propose_skill',
           skillId: SKILL_ID.toString(),
@@ -3415,7 +3461,7 @@ describe('createToolExecuteHandler', () => {
           fileCount: 0,
         })),
         updateSkill: updateSkill as unknown as ToolExecuteOptions['updateSkill'],
-        onSkillUpdateProposed: jest.fn(async () => undefined),
+        onSkillProposed: jest.fn(async () => undefined),
       });
       const [result] = await invokeHandler(handler, [
         {
@@ -3443,7 +3489,7 @@ describe('createToolExecuteHandler', () => {
           fileCount: 0,
         })),
         updateSkill: updateSkill as unknown as ToolExecuteOptions['updateSkill'],
-        onSkillUpdateProposed: jest.fn(async () => ({ candidateId: '' })),
+        onSkillProposed: jest.fn(async () => ({ candidateId: '' })),
       });
       const [result] = await invokeHandler(handler, [
         {

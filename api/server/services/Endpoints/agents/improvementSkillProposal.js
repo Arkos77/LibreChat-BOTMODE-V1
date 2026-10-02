@@ -41,23 +41,40 @@ async function recordSkillImprovementProposal({
   if (typeof proposal.diff !== 'string' || proposal.diff.trim() === '') {
     throw new Error('Skill proposal requires an exact reviewable diff');
   }
-  const payloadDigest = createImprovementPayloadDigest(proposal.update);
+  const operation = proposal.operation === 'create' ? 'create' : 'update';
+  const payload = operation === 'create' ? proposal.create : proposal.update;
+  const payloadDigest = createImprovementPayloadDigest(payload);
+  const persistedProposal =
+    operation === 'create'
+      ? {
+          candidateId,
+          traceId: normalizedTraceId,
+          taskId: nativeTaskId,
+          producerAgentId: nativeProducer,
+          toolCallId,
+          operation: 'create',
+          payloadDigest,
+          diff: proposal.diff,
+          create: proposal.create,
+        }
+      : {
+          candidateId,
+          traceId: normalizedTraceId,
+          taskId: nativeTaskId,
+          producerAgentId: nativeProducer,
+          toolCallId,
+          operation: 'update',
+          skillId: required(proposal.skillId, 'skillId'),
+          expectedVersion: proposal.expectedVersion,
+          payloadDigest,
+          diff: proposal.diff,
+          update: proposal.update,
+        };
   const saved = await persistProposal({
     user,
     tenantId,
     conversationId: normalizedConversationId,
-    proposal: {
-      candidateId,
-      traceId: normalizedTraceId,
-      taskId: nativeTaskId,
-      producerAgentId: nativeProducer,
-      toolCallId,
-      skillId: required(proposal.skillId, 'skillId'),
-      expectedVersion: proposal.expectedVersion,
-      payloadDigest,
-      diff: proposal.diff,
-      update: proposal.update,
-    },
+    proposal: persistedProposal,
   });
   // The durable store may have coalesced this tool call into an earlier exact edit.
   const canonicalCandidateId = saved.record.proposal.candidateId;
@@ -77,8 +94,12 @@ async function recordSkillImprovementProposal({
   const candidate = createImprovementCandidate({
     candidateId: canonicalCandidateId,
     target: 'skill',
-    title: 'Review proposed skill update',
-    summary: 'A native child proposed a skill edit for independent tests and exact diff review.',
+    title:
+      operation === 'create' ? 'Review proposed skill creation' : 'Review proposed skill update',
+    summary:
+      operation === 'create'
+        ? 'A native child proposed a new skill for exact diff review.'
+        : 'A native child proposed a skill edit for independent tests and exact diff review.',
     traceId: normalizedTraceId,
     observations: [observation],
     payloadDigest,
@@ -86,7 +107,10 @@ async function recordSkillImprovementProposal({
     createdAt: timestamp,
   });
   await persistCandidate({ user, tenantId, conversationId: normalizedConversationId, candidate });
-  const tests = getHostTests(saved.record.proposal.skillId);
+  const tests =
+    saved.record.proposal.operation === 'create'
+      ? undefined
+      : getHostTests(saved.record.proposal.skillId);
   if (tests !== undefined) {
     await validateSkillImprovementCandidate({
       candidate,

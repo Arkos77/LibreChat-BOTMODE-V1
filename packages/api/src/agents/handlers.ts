@@ -352,19 +352,35 @@ export interface ToolExecuteOptions {
     | { status: 'conflict'; current: { _id: Types.ObjectId; name: string; version: number } }
     | { status: 'not_found' }
   >;
-  /** Captures an exact skill update before mutation for governed child proposals. */
-  onSkillUpdateProposed?: (proposal: {
-    toolCallId: string;
-    skillId: string;
-    expectedVersion: number;
-    update: {
-      body: string;
-      description: string;
-      frontmatter?: Record<string, unknown>;
-      alwaysApply?: boolean;
-    };
-    diff: string;
-  }) => Promise<{ candidateId: string } | undefined>;
+  /** Captures an exact skill create/update before mutation for governed child proposals. */
+  onSkillProposed?: (
+    proposal:
+      | {
+          operation: 'create';
+          toolCallId: string;
+          create: {
+            name: string;
+            description: string;
+            body: string;
+            frontmatter?: Record<string, unknown>;
+            alwaysApply?: boolean;
+          };
+          diff: string;
+        }
+      | {
+          operation: 'update';
+          toolCallId: string;
+          skillId: string;
+          expectedVersion: number;
+          update: {
+            body: string;
+            description: string;
+            frontmatter?: Record<string, unknown>;
+            alwaysApply?: boolean;
+          };
+          diff: string;
+        },
+  ) => Promise<{ candidateId: string } | undefined>;
   /** Checks role-level skill creation permission for the current user. */
   canCreateSkill?: (params: { req: ServerRequest }) => Promise<boolean>;
   /** Checks resource-level edit permission for an existing skill. */
@@ -2979,20 +2995,49 @@ async function writeSkillMd({
     if (!author) {
       return errorResult(tc, 'Authentication required to create a skill.');
     }
+    const create = {
+      name: skillName,
+      description: parsedContent.description,
+      body: content,
+      ...(parsedContent.frontmatter !== undefined
+        ? { frontmatter: parsedContent.frontmatter }
+        : {}),
+      ...(parsedContent.alwaysApply !== undefined
+        ? { alwaysApply: parsedContent.alwaysApply }
+        : {}),
+    };
+    if (options.onSkillProposed) {
+      const proposal = await options.onSkillProposed({
+        operation: 'create',
+        toolCallId: tc.id,
+        create,
+        diff: createUnifiedDiff(`${SKILL_FILE_PREFIX}${skillName}/${SKILL_MD}`, '', content),
+      });
+      if (
+        proposal != null &&
+        (typeof proposal.candidateId !== 'string' || proposal.candidateId.trim() === '')
+      ) {
+        return errorResult(tc, 'Skill proposal was not recorded.');
+      }
+      if (proposal != null) {
+        return successResult(
+          tc,
+          `Proposed ${SKILL_FILE_PREFIX}${skillName}/${SKILL_MD} for independent tests and review. Open /skills/improvements/${encodeURIComponent(proposal.candidateId)} to review the exact diff.`,
+          {
+            path: `${SKILL_FILE_PREFIX}${skillName}/${SKILL_MD}`,
+            proposed: true,
+            candidateId: proposal.candidateId,
+            reviewPath: `/skills/improvements/${encodeURIComponent(proposal.candidateId)}`,
+          },
+        );
+      }
+    }
     let result: Awaited<ReturnType<NonNullable<ToolExecuteOptions['createSkill']>>>;
     try {
       result = await options.createSkill({
-        name: skillName,
-        description: parsedContent.description,
-        body: content,
-        ...(parsedContent.frontmatter !== undefined
-          ? { frontmatter: parsedContent.frontmatter }
-          : {}),
+        ...create,
         author: author.author,
         authorName: author.authorName,
-        ...(parsedContent.alwaysApply !== undefined
-          ? { alwaysApply: parsedContent.alwaysApply }
-          : {}),
         ...(author.tenantId ? { tenantId: author.tenantId } : {}),
       });
     } catch (error) {
@@ -3062,8 +3107,9 @@ async function writeSkillMd({
     ...(parsedContent.alwaysApply !== undefined ? { alwaysApply: parsedContent.alwaysApply } : {}),
   };
   const skillId = skill._id.toString();
-  if (options.onSkillUpdateProposed) {
-    const proposal = await options.onSkillUpdateProposed({
+  if (options.onSkillProposed) {
+    const proposal = await options.onSkillProposed({
+      operation: 'update',
       toolCallId: tc.id,
       skillId,
       expectedVersion: skill.version,
