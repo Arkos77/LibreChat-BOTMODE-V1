@@ -47,16 +47,27 @@ export function createImprovementSkillProposalMethods(
     required(proposal.taskId, 'taskId');
     required(proposal.producerAgentId, 'producerAgentId');
     required(proposal.toolCallId, 'toolCallId');
-    required(proposal.skillId, 'skillId');
     required(proposal.payloadDigest, 'payloadDigest');
-    if (!Number.isSafeInteger(proposal.expectedVersion) || proposal.expectedVersion < 1)
-      throw new Error('Skill proposal requires a positive expectedVersion');
-    if (
-      typeof proposal.diff !== 'string' ||
-      typeof proposal.update?.body !== 'string' ||
-      typeof proposal.update?.description !== 'string'
-    )
-      throw new Error('Skill proposal content is invalid');
+    if (proposal.operation === 'create') {
+      if (
+        typeof proposal.create?.name !== 'string' ||
+        proposal.create.name.trim() === '' ||
+        typeof proposal.create.body !== 'string' ||
+        typeof proposal.create.description !== 'string'
+      ) {
+        throw new Error('Skill proposal create content is invalid');
+      }
+    } else {
+      required(proposal.skillId, 'skillId');
+      if (!Number.isSafeInteger(proposal.expectedVersion) || proposal.expectedVersion < 1)
+        throw new Error('Skill proposal requires a positive expectedVersion');
+      if (
+        typeof proposal.update?.body !== 'string' ||
+        typeof proposal.update?.description !== 'string'
+      )
+        throw new Error('Skill proposal content is invalid');
+    }
+    if (typeof proposal.diff !== 'string') throw new Error('Skill proposal content is invalid');
     const serialized = JSON.stringify({ conversationId, proposal });
     if (Buffer.byteLength(serialized, 'utf8') > 512 * 1024)
       throw new Error('Skill proposal exceeds content limit');
@@ -64,17 +75,30 @@ export function createImprovementSkillProposalMethods(
     /** Repeated native tool calls with exactly the same edit share one review. */
     const dedupeKey = createHash('sha256')
       .update(
-        JSON.stringify({
-          conversationId,
-          traceId: proposal.traceId,
-          taskId: proposal.taskId,
-          producerAgentId: proposal.producerAgentId,
-          skillId: proposal.skillId,
-          expectedVersion: proposal.expectedVersion,
-          payloadDigest: proposal.payloadDigest,
-          diff: proposal.diff,
-          update: proposal.update,
-        }),
+        JSON.stringify(
+          proposal.operation === 'create'
+            ? {
+                conversationId,
+                traceId: proposal.traceId,
+                taskId: proposal.taskId,
+                producerAgentId: proposal.producerAgentId,
+                operation: 'create',
+                payloadDigest: proposal.payloadDigest,
+                diff: proposal.diff,
+                create: proposal.create,
+              }
+            : {
+                conversationId,
+                traceId: proposal.traceId,
+                taskId: proposal.taskId,
+                producerAgentId: proposal.producerAgentId,
+                skillId: proposal.skillId,
+                expectedVersion: proposal.expectedVersion,
+                payloadDigest: proposal.payloadDigest,
+                diff: proposal.diff,
+                update: proposal.update,
+              },
+        ),
       )
       .digest('hex');
     const scope = { user, tenantKey, 'proposal.candidateId': candidateId };

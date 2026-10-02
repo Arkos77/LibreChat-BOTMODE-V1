@@ -35,6 +35,41 @@ describe('durable skill improvement proposal', () => {
     await mongo.stop();
   });
 
+  it('persists a governed create proposal without existing skill identity or version', async () => {
+    const createProposal = {
+      candidateId: 'skill:task-create:call-1',
+      traceId: 'trace-create',
+      taskId: 'task-create',
+      producerAgentId: 'agent-native-child',
+      toolCallId: 'call-1',
+      operation: 'create' as const,
+      payloadDigest: 'digest-create',
+      diff: '+new skill',
+      create: {
+        name: 'governed-new-skill',
+        body: '# New skill',
+        description: 'A newly proposed governed skill.',
+      },
+    };
+
+    const saved = await methods.recordImprovementSkillProposal({
+      user: owner,
+      tenantId: 'tenant-a',
+      conversationId: 'conversation-create',
+      proposal: createProposal,
+    });
+
+    expect(saved.replayed).toBe(false);
+    expect(saved.record.proposal).toEqual(createProposal);
+    await expect(
+      methods.getImprovementSkillProposal({
+        user: owner,
+        tenantId: 'tenant-a',
+        candidateId: createProposal.candidateId,
+      }),
+    ).resolves.toMatchObject({ proposal: createProposal });
+  });
+
   it('persists and reads an owner-scoped proposal without a tenant ID', async () => {
     const input = { user: owner, conversationId: 'conversation-1', proposal };
     const saved = await methods.recordImprovementSkillProposal(input);
