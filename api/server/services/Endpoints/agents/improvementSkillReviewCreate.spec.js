@@ -57,10 +57,8 @@ function setupCreate(extraEvents = []) {
     canView: jest.fn(async () => {
       throw new Error('create must not require existing skill ACL');
     }),
-    getSkillById: jest.fn(async () => {
-      throw new Error('create review must not inspect native skill state yet');
-    }),
-    recordEvent: jest.fn(async () => ({ replayed: false })),
+    getSkillById: jest.fn(async () => null),
+    recordEvent: jest.fn(async ({ event }) => ({ record: event, replayed: false })),
     authorize: jest.fn(async (input) => ({
       candidateId,
       traceId,
@@ -73,8 +71,24 @@ function setupCreate(extraEvents = []) {
       publishable: true,
     })),
     publish: jest.fn(async () => {
-      throw new Error('create review must not publish yet');
+      throw new Error('update publisher must not handle create');
     }),
+    publishCreate: jest.fn(async ({ skillId }) => ({
+      status: 'created',
+      skillId,
+      skill: {
+        _id: skillId,
+        version: 1,
+        lastImprovementMutation: {
+          operation: 'create',
+          candidateId,
+          payloadDigest,
+        },
+      },
+      warnings: [],
+    })),
+    hasSkillOwner: jest.fn(async () => true),
+    grantSkillOwner: jest.fn(async () => ({})),
   };
   return { context, proposal, payloadDigest, snapshotDigest, candidateId, traceId, userId };
 }
@@ -93,7 +107,7 @@ test('loads verified create review without existing skill ACL', async () => {
   expect(context.canView).not.toHaveBeenCalled();
 });
 
-test('approves and durably authorizes create without publishing', async () => {
+test('approves, authorizes, allocates, publishes, and commits create in order', async () => {
   const { context, payloadDigest, snapshotDigest, userId } = setupCreate();
   const result = await decideSkillImprovementReview({
     ...context,
@@ -101,10 +115,13 @@ test('approves and durably authorizes create without publishing', async () => {
     payloadDigest,
     snapshotDigest,
   });
-  expect(result).toEqual({ status: 'authorized', operation: 'create' });
+
+  expect(result).toMatchObject({ status: 'created' });
   expect(context.recordEvent.mock.calls.map(([arg]) => arg.event.type)).toEqual([
     'APPROVED',
     'AUTHORIZED',
+    'ALLOCATED',
+    'COMMITTED',
   ]);
   expect(context.recordEvent.mock.calls[0][0].event.data).toEqual({
     operation: 'create',
@@ -117,12 +134,113 @@ test('approves and durably authorizes create without publishing', async () => {
     snapshotDigest,
     actorId: userId,
   });
+  const allocation = context.recordEvent.mock.calls[2][0].event;
+  expect(allocation.actor).toEqual({ id: 'librechat:native-skill-create', type: 'host' });
+  expect(allocation.data).toEqual(
+    expect.objectContaining({
+      operation: 'create',
+      payloadDigest,
+      snapshotDigest,
+      skillId: expect.stringMatching(/^[a-f0-9]{24}$/),
+    }),
+  );
+  expect(context.publishCreate).toHaveBeenCalledWith({
+    req: context.req,
+    candidateId: context.candidateId,
+    payloadDigest,
+    skillId: allocation.data.skillId,
+    create: expect.any(Object),
+  });
+  expect(context.recordEvent.mock.calls[3][0].event.data).toEqual({
+    operation: 'create',
+    payloadDigest,
+    snapshotDigest,
+    skillId: allocation.data.skillId,
+  });
   expect(context.authorize).toHaveBeenCalledWith(
     expect.objectContaining({ operation: 'create', actorId: userId, payloadDigest }),
   );
   expect(context.authorize.mock.calls[0][0]).not.toHaveProperty('skillId');
   expect(context.authorize.mock.calls[0][0]).not.toHaveProperty('expectedVersion');
+  expect(context.getSkillById).toHaveBeenCalledWith(allocation.data.skillId);
   expect(context.publish).not.toHaveBeenCalled();
+});
+
+test('uses the durable authorization timestamp for a replay-convergent create allocation', async () => {
+  const base = setupCreate();
+  const occurredAt = '2026-10-02T17:00:00.000Z';
+  const approval = {
+    eventId: 'skill-review:' + base.candidateId,
+    candidateId: base.candidateId,
+    traceId: base.traceId,
+    type: 'APPROVED',
+    actor: { id: base.userId, type: 'human' },
+    data: {
+      operation: 'create',
+      payloadDigest: base.payloadDigest,
+      snapshotDigest: base.snapshotDigest,
+    },
+    occurredAt,
+  };
+  const authorization = {
+    eventId: 'skill-authorization:' + base.candidateId,
+    candidateId: base.candidateId,
+    traceId: base.traceId,
+    type: 'AUTHORIZED',
+    actor: { id: 'librechat:native-skill-authorization', type: 'policy' },
+    data: {
+      operation: 'create',
+      payloadDigest: base.payloadDigest,
+      snapshotDigest: base.snapshotDigest,
+      actorId: base.userId,
+    },
+    occurredAt,
+  };
+  const { context, payloadDigest, snapshotDigest } = setupCreate([approval, authorization]);
+
+  await decideSkillImprovementReview({
+    ...context,
+    decision: 'approve',
+    payloadDigest,
+    snapshotDigest,
+  });
+
+  const allocation = context.recordEvent.mock.calls[0][0].event;
+  expect(allocation.type).toBe('ALLOCATED');
+  expect(allocation.occurredAt).toBe(occurredAt);
+});
+
+test('does not commit create when publication cannot prove the exact native create receipt', async () => {
+  const { context, payloadDigest, snapshotDigest, candidateId } = setupCreate();
+  context.publishCreate.mockImplementation(async ({ skillId }) => ({
+    status: 'created',
+    skillId,
+    skill: {
+      _id: skillId,
+      version: 1,
+      lastImprovementMutation: {
+        operation: 'create',
+        candidateId: candidateId + ':conflict',
+        payloadDigest,
+      },
+    },
+    warnings: [],
+  }));
+
+  await expect(
+    decideSkillImprovementReview({
+      ...context,
+      decision: 'approve',
+      payloadDigest,
+      snapshotDigest,
+    }),
+  ).rejects.toThrow(/receipt|prove|publication/i);
+
+  expect(context.recordEvent.mock.calls.map(([arg]) => arg.event.type)).toEqual([
+    'APPROVED',
+    'AUTHORIZED',
+    'ALLOCATED',
+  ]);
 });
 
 test('rejects create without authorization or publication', async () => {
@@ -139,7 +257,7 @@ test('rejects create without authorization or publication', async () => {
   expect(context.publish).not.toHaveBeenCalled();
 });
 
-test('recovers exact approved and authorized create without mutation', async () => {
+test('recovers exact approved and authorized create by allocating before publication', async () => {
   const base = setupCreate();
   const approval = {
     eventId: 'skill-review:' + base.candidateId,
@@ -173,11 +291,228 @@ test('recovers exact approved and authorized create without mutation', async () 
     payloadDigest,
     snapshotDigest,
   });
-  expect(result).toEqual({ status: 'authorized', operation: 'create', recovered: true });
-  expect(context.recordEvent).not.toHaveBeenCalled();
-  expect(context.authorize).not.toHaveBeenCalled();
-  expect(context.getSkillById).not.toHaveBeenCalled();
+
+  expect(result).toMatchObject({ status: 'created' });
+  expect(context.recordEvent.mock.calls.map(([arg]) => arg.event.type)).toEqual([
+    'ALLOCATED',
+    'COMMITTED',
+  ]);
+  expect(context.publishCreate).toHaveBeenCalledTimes(1);
   expect(context.publish).not.toHaveBeenCalled();
+});
+
+test('repairs missing owner ACL for an exact receipt-bearing allocated create without recreating skill', async () => {
+  const base = setupCreate();
+  const skillId = '68df12a7d43d9b79b2b5a001';
+  const approval = {
+    eventId: 'skill-review:' + base.candidateId,
+    candidateId: base.candidateId,
+    traceId: base.traceId,
+    type: 'APPROVED',
+    actor: { id: base.userId, type: 'human' },
+    data: {
+      operation: 'create',
+      payloadDigest: base.payloadDigest,
+      snapshotDigest: base.snapshotDigest,
+    },
+  };
+  const authorization = {
+    eventId: 'skill-authorization:' + base.candidateId,
+    candidateId: base.candidateId,
+    traceId: base.traceId,
+    type: 'AUTHORIZED',
+    actor: { id: 'librechat:native-skill-authorization', type: 'policy' },
+    data: {
+      operation: 'create',
+      payloadDigest: base.payloadDigest,
+      snapshotDigest: base.snapshotDigest,
+      actorId: base.userId,
+    },
+  };
+  const allocation = {
+    eventId: 'skill-allocation:' + base.candidateId,
+    candidateId: base.candidateId,
+    traceId: base.traceId,
+    type: 'ALLOCATED',
+    actor: { id: 'librechat:native-skill-create', type: 'host' },
+    data: {
+      operation: 'create',
+      payloadDigest: base.payloadDigest,
+      snapshotDigest: base.snapshotDigest,
+      skillId,
+    },
+  };
+  const { context, payloadDigest, snapshotDigest } = setupCreate([
+    approval,
+    authorization,
+    allocation,
+  ]);
+  context.getSkillById.mockResolvedValue({
+    _id: skillId,
+    version: 1,
+    updatedAt: '2026-10-02T17:00:00.000Z',
+    lastImprovementMutation: {
+      operation: 'create',
+      candidateId: base.candidateId,
+      payloadDigest,
+    },
+  });
+  context.hasSkillOwner.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+  const result = await decideSkillImprovementReview({
+    ...context,
+    decision: 'approve',
+    payloadDigest,
+    snapshotDigest,
+  });
+
+  expect(result).toEqual({ status: 'created', skillId, recovered: true });
+  expect(context.publishCreate).not.toHaveBeenCalled();
+  expect(context.grantSkillOwner).toHaveBeenCalledWith({ req: context.req, skillId });
+  expect(context.hasSkillOwner).toHaveBeenCalledTimes(2);
+  expect(context.recordEvent.mock.calls.map(([arg]) => arg.event.type)).toEqual(['COMMITTED']);
+});
+
+test('replays exact allocated create with existing owner by repairing COMMITTED without mutation', async () => {
+  const base = setupCreate();
+  const skillId = '68df12a7d43d9b79b2b5a001';
+  const approval = {
+    eventId: 'skill-review:' + base.candidateId,
+    candidateId: base.candidateId,
+    traceId: base.traceId,
+    type: 'APPROVED',
+    actor: { id: base.userId, type: 'human' },
+    data: {
+      operation: 'create',
+      payloadDigest: base.payloadDigest,
+      snapshotDigest: base.snapshotDigest,
+    },
+  };
+  const authorization = {
+    eventId: 'skill-authorization:' + base.candidateId,
+    candidateId: base.candidateId,
+    traceId: base.traceId,
+    type: 'AUTHORIZED',
+    actor: { id: 'librechat:native-skill-authorization', type: 'policy' },
+    data: {
+      operation: 'create',
+      payloadDigest: base.payloadDigest,
+      snapshotDigest: base.snapshotDigest,
+      actorId: base.userId,
+    },
+  };
+  const allocation = {
+    eventId: 'skill-allocation:' + base.candidateId,
+    candidateId: base.candidateId,
+    traceId: base.traceId,
+    type: 'ALLOCATED',
+    actor: { id: 'librechat:native-skill-create', type: 'host' },
+    data: {
+      operation: 'create',
+      payloadDigest: base.payloadDigest,
+      snapshotDigest: base.snapshotDigest,
+      skillId,
+    },
+  };
+  const { context, payloadDigest, snapshotDigest } = setupCreate([
+    approval,
+    authorization,
+    allocation,
+  ]);
+  context.getSkillById.mockResolvedValue({
+    _id: skillId,
+    version: 1,
+    updatedAt: '2026-10-02T17:00:00.000Z',
+    lastImprovementMutation: {
+      operation: 'create',
+      candidateId: base.candidateId,
+      payloadDigest,
+    },
+  });
+  context.hasSkillOwner.mockResolvedValue(true);
+
+  const result = await decideSkillImprovementReview({
+    ...context,
+    decision: 'approve',
+    payloadDigest,
+    snapshotDigest,
+  });
+
+  expect(result).toEqual({ status: 'created', skillId, recovered: true });
+  expect(context.publishCreate).not.toHaveBeenCalled();
+  expect(context.grantSkillOwner).not.toHaveBeenCalled();
+  expect(context.hasSkillOwner).toHaveBeenCalledTimes(1);
+  expect(context.recordEvent.mock.calls.map(([arg]) => arg.event.type)).toEqual(['COMMITTED']);
+});
+
+test('fails closed on conflicting native state at the durable create allocation', async () => {
+  const base = setupCreate();
+  const skillId = '68df12a7d43d9b79b2b5a001';
+  const approval = {
+    eventId: 'skill-review:' + base.candidateId,
+    candidateId: base.candidateId,
+    traceId: base.traceId,
+    type: 'APPROVED',
+    actor: { id: base.userId, type: 'human' },
+    data: {
+      operation: 'create',
+      payloadDigest: base.payloadDigest,
+      snapshotDigest: base.snapshotDigest,
+    },
+  };
+  const authorization = {
+    eventId: 'skill-authorization:' + base.candidateId,
+    candidateId: base.candidateId,
+    traceId: base.traceId,
+    type: 'AUTHORIZED',
+    actor: { id: 'librechat:native-skill-authorization', type: 'policy' },
+    data: {
+      operation: 'create',
+      payloadDigest: base.payloadDigest,
+      snapshotDigest: base.snapshotDigest,
+      actorId: base.userId,
+    },
+  };
+  const allocation = {
+    eventId: 'skill-allocation:' + base.candidateId,
+    candidateId: base.candidateId,
+    traceId: base.traceId,
+    type: 'ALLOCATED',
+    actor: { id: 'librechat:native-skill-create', type: 'host' },
+    data: {
+      operation: 'create',
+      payloadDigest: base.payloadDigest,
+      snapshotDigest: base.snapshotDigest,
+      skillId,
+    },
+  };
+  const { context, payloadDigest, snapshotDigest } = setupCreate([
+    approval,
+    authorization,
+    allocation,
+  ]);
+  context.getSkillById.mockResolvedValue({
+    _id: skillId,
+    version: 1,
+    lastImprovementMutation: {
+      operation: 'create',
+      candidateId: 'another-candidate',
+      payloadDigest,
+    },
+  });
+
+  await expect(
+    decideSkillImprovementReview({
+      ...context,
+      decision: 'approve',
+      payloadDigest,
+      snapshotDigest,
+    }),
+  ).rejects.toThrow(/cannot prove|conflict/i);
+
+  expect(context.publishCreate).not.toHaveBeenCalled();
+  expect(context.grantSkillOwner).not.toHaveBeenCalled();
+  expect(context.recordEvent).not.toHaveBeenCalled();
 });
 
 test('fails closed when durable create authorization invents update identity', async () => {
@@ -237,4 +572,25 @@ test('fails closed when create proposal invents update identity', async () => {
     'Skill create review proposal identity is invalid',
   );
   expect(context.canView).not.toHaveBeenCalled();
+});
+
+test('returns observationPending when CREATE commit persistence fails after native success', async () => {
+  const { context, payloadDigest, snapshotDigest } = setupCreate();
+  context.recordEvent.mockImplementation(async ({ event }) => {
+    if (event.type === 'COMMITTED') throw new Error('commit-store-down');
+    return { record: event, replayed: false };
+  });
+
+  const result = await decideSkillImprovementReview({
+    ...context,
+    decision: 'approve',
+    payloadDigest,
+    snapshotDigest,
+  });
+
+  expect(result).toMatchObject({
+    status: 'created',
+    observationPending: true,
+  });
+  expect(context.publishCreate).toHaveBeenCalledTimes(1);
 });
