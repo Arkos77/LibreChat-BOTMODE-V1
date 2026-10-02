@@ -2,7 +2,7 @@ import type { AgentInputs } from '@librechat/agents';
 import { createDecisionRecord, fromDecisionRecord, type DecisionRecord } from './decision';
 import { routeAuthorizedModelBindings, type AuthorizedModelCandidate } from './routing';
 
-type Input = {
+type LegacyInput = {
   agentId: string;
   provider: string;
   currentModel: string;
@@ -17,24 +17,91 @@ type Input = {
   traceEventId: string;
 };
 
-/** A host-authorized OpenRouter pool; selection never grants access or schedules an SDK fallback. */
-export async function decideHostModel(input: Input): Promise<{
-  selectedModel: string;
-  modelParameters: Record<string, unknown>;
-  record: DecisionRecord;
-  event: ReturnType<typeof fromDecisionRecord>;
-}> {
-  const { authorizedModels, currentModel, resolvedOptions, preferredModel } = input;
-  if (input.provider.toLowerCase() !== 'openrouter') {
-    throw new Error('Host model selection supports only an OpenRouter endpoint');
+type BindingInput = {
+  agentId: string;
+  bindings: ReadonlyArray<{
+    id: string;
+    provider: string;
+    model: string;
+    options: Record<string, unknown>;
+  }>;
+  preferredBindingId?: string;
+  traceId: string;
+  timestamp: string;
+  decisionId: string;
+  traceEventId: string;
+};
+
+type Input = LegacyInput | BindingInput;
+
+type NormalizedBinding = {
+  id: string;
+  provider: string;
+  model: string;
+  options: Record<string, unknown>;
+};
+
+function hasBindingInput(input: Input): input is BindingInput {
+  return 'bindings' in input;
+}
+
+function normalizeBindings(input: Input): {
+  bindings: NormalizedBinding[];
+  preferredBindingId: string;
+} {
+  if (hasBindingInput(input)) {
+    const bindings = input.bindings.map((binding) => ({
+      id: binding.id,
+      provider: binding.provider,
+      model: binding.model,
+      options: binding.options,
+    }));
+    if (
+      bindings.length < 2 ||
+      bindings.length > 4 ||
+      bindings.some(
+        (binding) =>
+          !binding.id ||
+          !binding.provider ||
+          !binding.model ||
+          binding.options?.model !== binding.model,
+      )
+    ) {
+      throw new Error('Host model decision requires two to four resolved bindings');
+    }
+    if (new Set(bindings.map((binding) => binding.id)).size !== bindings.length) {
+      throw new Error('Host model decision contains duplicate binding ids');
+    }
+    if (
+      bindings.some(
+        (binding) =>
+          Array.isArray(binding.options.fallbacks) && binding.options.fallbacks.length > 0,
+      )
+    ) {
+      throw new Error('Host model decision rejects hidden native fallbacks');
+    }
+    const preferredBindingId = input.preferredBindingId ?? bindings[0].id;
+    if (!bindings.some((binding) => binding.id === preferredBindingId)) {
+      throw new Error('Preferred binding is not authorized');
+    }
+    return { bindings, preferredBindingId };
   }
-  if (!input.agentId || !input.traceId || !input.decisionId || !input.traceEventId) {
-    throw new Error('Host model decision requires agent, trace and decision identities');
+
+  const {
+    authorizedModels,
+    currentModel,
+    resolvedOptions,
+    preferredModel,
+    provider,
+    availableModels,
+  } = input;
+  if (provider.toLowerCase() !== 'openrouter') {
+    throw new Error('Host model selection supports only an OpenRouter endpoint');
   }
   if (
     authorizedModels.length < 2 ||
     authorizedModels.length > 4 ||
-    authorizedModels.some((m) => !m)
+    authorizedModels.some((model) => !model)
   ) {
     throw new Error('Host model decision requires two to four authorized models');
   }
@@ -47,7 +114,7 @@ export async function decideHostModel(input: Input): Promise<{
   if (!authorizedModels.includes(preferredModel ?? currentModel)) {
     throw new Error('Preferred model is not authorized');
   }
-  if (authorizedModels.some((model) => !input.availableModels.includes(model))) {
+  if (authorizedModels.some((model) => !availableModels.includes(model))) {
     throw new Error('Authorized model is not available');
   }
   if (input.resolvedAlternatives.length !== authorizedModels.length - 1) {
@@ -66,40 +133,66 @@ export async function decideHostModel(input: Input): Promise<{
   ) {
     throw new Error('Alternative model binding mismatch');
   }
+  const bindings = authorizedModels.map((model) => ({
+    id: model,
+    provider,
+    model,
+    options: optionsByModel.get(model)!,
+  }));
   if (
-    [...optionsByModel.values()].some(
-      (options) => Array.isArray(options.fallbacks) && options.fallbacks.length > 0,
+    bindings.some(
+      (binding) => Array.isArray(binding.options.fallbacks) && binding.options.fallbacks.length > 0,
     )
   ) {
     throw new Error('Host model decision rejects hidden native fallbacks');
   }
-  const candidates: AuthorizedModelCandidate[] = authorizedModels.map((model) => ({
-    id: model,
+  return { bindings, preferredBindingId: preferredModel ?? currentModel };
+}
+
+/** A host-authorized model pool; selection never grants access or schedules an SDK fallback. */
+export async function decideHostModel(input: Input): Promise<{
+  selectedBindingId: string;
+  selectedProvider: string;
+  selectedModel: string;
+  modelParameters: Record<string, unknown>;
+  record: DecisionRecord;
+  event: ReturnType<typeof fromDecisionRecord>;
+}> {
+  if (!input.agentId || !input.traceId || !input.decisionId || !input.traceEventId) {
+    throw new Error('Host model decision requires agent, trace and decision identities');
+  }
+
+  const { bindings, preferredBindingId } = normalizeBindings(input);
+  const candidates: AuthorizedModelCandidate[] = bindings.map((binding) => ({
+    id: binding.id,
     executionMode: 'model',
-    providerId: input.provider,
-    modelId: model,
+    providerId: binding.provider,
+    modelId: binding.model,
     signals: { available: true },
     binding: {
       agentId: input.agentId,
-      provider: 'openrouter',
-      clientOptions: optionsByModel.get(model),
+      provider: binding.provider,
+      clientOptions: binding.options,
     } as unknown as AgentInputs,
   }));
-  const selected = preferredModel ?? currentModel;
   const routing = await routeAuthorizedModelBindings(
     candidates,
     {},
     {
       id: 'RuleDecisionProvider',
-      decide: () => [selected],
+      decide: () => [preferredBindingId],
     },
   );
+  const selected = bindings.find((binding) => binding.id === routing.selectedCandidateId);
+  if (!selected) {
+    throw new Error('Selected host model binding is unavailable');
+  }
   const record = createDecisionRecord({
     decisionId: input.decisionId,
-    question: 'Which authorized model should this agent use?',
-    options: authorizedModels.map((model) => ({
-      id: model,
-      description: 'Host-authorized OpenRouter model',
+    question: 'Which authorized model binding should this agent use?',
+    options: bindings.map((binding) => ({
+      id: binding.id,
+      description: 'Host-authorized model binding',
     })),
     selectedOption: routing.selectedCandidateId,
     provider: 'RuleDecisionProvider',
@@ -110,8 +203,10 @@ export async function decideHostModel(input: Input): Promise<{
   // Do not install the router's native fallbacks: each later model invocation
   // needs its own budget/authorization check before it may execute.
   return {
-    selectedModel: routing.selectedCandidateId,
-    modelParameters: { ...optionsByModel.get(routing.selectedCandidateId) },
+    selectedBindingId: selected.id,
+    selectedProvider: selected.provider,
+    selectedModel: selected.model,
+    modelParameters: { ...selected.options },
     record,
     event,
   };

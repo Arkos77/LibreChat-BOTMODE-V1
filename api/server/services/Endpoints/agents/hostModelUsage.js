@@ -9,6 +9,7 @@ function projectHostModelUsage(decision, usageEvents) {
   const traceId = boundedText(decision?.traceId);
   const decisionId = boundedText(decision?.decisionId);
   const selectedModel = boundedText(decision?.selectedModel);
+  const selectedProvider = boundedText(decision?.selectedProvider) ?? 'openrouter';
   const agentId = boundedText(decision?.agentId);
   if (!traceId || !decisionId || !selectedModel || !agentId || !Array.isArray(usageEvents))
     return undefined;
@@ -19,7 +20,7 @@ function projectHostModelUsage(decision, usageEvents) {
       event?.usage_type != null ||
       event?.agentId !== agentId ||
       typeof event?.provider !== 'string' ||
-      event.provider.toLowerCase() !== 'openrouter'
+      event.provider.toLowerCase() !== selectedProvider.toLowerCase()
     )
       continue;
     const usageModel = boundedText(event.model);
@@ -30,7 +31,7 @@ function projectHostModelUsage(decision, usageEvents) {
     if (inputTokens == null && outputTokens == null) continue;
     modelCalls.push({
       usageModel,
-      provider: 'openrouter',
+      provider: event.provider.toLowerCase(),
       ...(inputTokens == null ? {} : { inputTokens }),
       ...(outputTokens == null ? {} : { outputTokens }),
       ...(costUsd == null ? {} : { costUsd }),

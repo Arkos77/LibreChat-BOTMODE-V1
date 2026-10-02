@@ -1119,16 +1119,38 @@ export const agentsEndpointSchema = baseEndpointSchema
         .optional()
         .default(MAX_SUBAGENTS),
       allowedProviders: z.array(z.union([z.string(), eModelEndpointSchema])).optional(),
-      /** Operator-authorized OpenRouter models for one saved agent. Rechecked on every run and resume. */
+      /** Operator-authorized model bindings for one saved agent. Rechecked on every run and resume.
+       *  The legacy OpenRouter `models` form remains supported; `bindings` enables explicit
+       *  provider/model identities without carrying credentials or runtime client options. */
       hostModelRouting: z
         .array(
-          z
-            .object({
-              agentId: z.string().min(1).max(128),
-              models: z.array(z.string().min(1).max(256)).min(2).max(4),
-              preferredModel: z.string().min(1).max(256).optional(),
-            })
-            .strict(),
+          z.union([
+            z
+              .object({
+                agentId: z.string().min(1).max(128),
+                models: z.array(z.string().min(1).max(256)).min(2).max(4),
+                preferredModel: z.string().min(1).max(256).optional(),
+              })
+              .strict(),
+            z
+              .object({
+                agentId: z.string().min(1).max(128),
+                bindings: z
+                  .array(
+                    z
+                      .object({
+                        id: z.string().min(1).max(256),
+                        provider: z.string().min(1).max(256),
+                        model: z.string().min(1).max(256),
+                      })
+                      .strict(),
+                  )
+                  .min(2)
+                  .max(4),
+                preferredBindingId: z.string().min(1).max(256).optional(),
+              })
+              .strict(),
+          ]),
         )
         .max(32)
         .optional(),

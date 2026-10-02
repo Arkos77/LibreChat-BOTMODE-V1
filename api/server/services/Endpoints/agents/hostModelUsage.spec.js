@@ -34,6 +34,46 @@ describe('P11 model invocation evidence', () => {
       ],
     });
   });
+  it('attributes explicit cross-provider usage to the selected provider', () => {
+    const result = projectHostModelUsage(
+      {
+        ...decision,
+        selectedModel: 'claude-sonnet',
+        selectedProvider: 'anthropic',
+      },
+      [
+        {
+          agentId: 'agent-primary',
+          model: 'claude-sonnet',
+          provider: 'anthropic',
+          input_tokens: 21,
+          output_tokens: 5,
+          cost: 0.0026,
+        },
+        {
+          agentId: 'agent-primary',
+          model: 'claude-sonnet',
+          provider: 'openrouter',
+          input_tokens: 999,
+        },
+      ],
+    );
+    expect(result).toEqual({
+      traceId: 'trace-1',
+      decisionId: 'decision-1',
+      selectedModel: 'claude-sonnet',
+      modelCalls: [
+        {
+          usageModel: 'claude-sonnet',
+          provider: 'anthropic',
+          inputTokens: 21,
+          outputTokens: 5,
+          costUsd: 0.0026,
+        },
+      ],
+    });
+  });
+
   it('attributes only primary calls from the selected agent', () => {
     const observed = projectHostModelUsage({ ...decision, agentId: 'agent-primary' }, [
       { agentId: 'agent-connected', model: 'other', provider: 'openrouter', input_tokens: 99 },

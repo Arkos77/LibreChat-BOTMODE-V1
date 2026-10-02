@@ -57,6 +57,81 @@ describe('host model routing', () => {
     expect(request.persist).toHaveBeenCalledTimes(1);
     expect(request.sink).toHaveBeenCalledTimes(1);
   });
+  it('resolves an explicitly authorized cross-provider binding without inheriting the primary provider', async () => {
+    const request = base();
+    request.config = [
+      {
+        agentId: 'agent-one',
+        bindings: [
+          { id: 'primary', provider: 'OpenRouter', model: 'a:free' },
+          { id: 'anthropic-b', provider: 'anthropic', model: 'shared-model' },
+        ],
+        preferredBindingId: 'anthropic-b',
+      },
+    ];
+    request.validate.mockImplementation(async (agent) => ({
+      isValid: agent.provider === 'anthropic',
+    }));
+    request.initialize.mockImplementation(async (agent) => ({
+      id: agent.id,
+      model: agent.model,
+      provider: agent.provider,
+      model_parameters: { model: agent.model, providerMarker: agent.provider },
+      endpointTokenConfig: { selectedFor: `${agent.provider}:${agent.model}` },
+    }));
+    request.decide.mockImplementation(async ({ bindings, preferredBindingId }) => ({
+      selectedBindingId: preferredBindingId,
+      selectedProvider: 'anthropic',
+      selectedModel: 'shared-model',
+      event: {
+        type: 'DECIDED',
+        identity: { traceId: 'trace', traceEventId: 'event' },
+        source: 'host',
+        timestamp: '2026-10-02T12:00:00.000Z',
+        payload: {
+          decisionId: 'decision',
+          selectedOption: preferredBindingId,
+          provider: 'RuleDecisionProvider',
+        },
+      },
+      bindings,
+    }));
+
+    const result = await resolveHostModelRouting(request);
+
+    expect(request.validate).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'anthropic', model: 'shared-model' }),
+    );
+    expect(request.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'anthropic', model: 'shared-model' }),
+    );
+    expect(request.decide).toHaveBeenCalledWith(
+      expect.objectContaining({
+        preferredBindingId: 'anthropic-b',
+        bindings: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'anthropic-b',
+            provider: 'anthropic',
+            model: 'shared-model',
+          }),
+        ]),
+      }),
+    );
+    expect(result).toMatchObject({
+      provider: 'anthropic',
+      model: 'shared-model',
+      endpointTokenConfig: { selectedFor: 'anthropic:shared-model' },
+      hostModelDecision: {
+        traceId: 'trace',
+        decisionId: 'decision',
+        selectedBindingId: 'anthropic-b',
+        selectedProvider: 'anthropic',
+        selectedModel: 'shared-model',
+        agentId: 'agent-one',
+      },
+    });
+  });
+
   it('blocks a model switch if durable provenance fails', async () => {
     const request = base();
     request.persist.mockRejectedValue(new Error('store unavailable'));

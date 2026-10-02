@@ -38,6 +38,40 @@ describe('host P11 model decision', () => {
     expect(result.modelParameters).not.toHaveProperty('fallbacks');
   });
 
+  it('selects an explicitly authorized cross-provider binding by stable non-secret binding id', async () => {
+    const result = await decideHostModel({
+      agentId: 'agent-one',
+      bindings: [
+        {
+          id: 'primary',
+          provider: 'OpenRouter',
+          model: 'shared-model',
+          options: { model: 'shared-model', apiKey: 'primary-secret' },
+        },
+        {
+          id: 'alternate',
+          provider: 'anthropic',
+          model: 'shared-model',
+          options: { model: 'shared-model', apiKey: 'alternate-secret' },
+        },
+      ],
+      preferredBindingId: 'alternate',
+      traceId: 'trace-multi-provider',
+      timestamp: '2026-10-02T12:00:00.000Z',
+      decisionId: 'decision-multi-provider',
+      traceEventId: 'event-multi-provider',
+    });
+
+    expect(result).toMatchObject({
+      selectedBindingId: 'alternate',
+      selectedProvider: 'anthropic',
+      selectedModel: 'shared-model',
+    });
+    expect(result.event.payload.selectedOption).toBe('alternate');
+    expect(JSON.stringify(result.event)).not.toContain('secret');
+    expect(JSON.stringify(result.record)).not.toContain('secret');
+  });
+
   it('fails closed on unavailable, duplicate or unauthorized alternatives', async () => {
     await expect(decideHostModel({ ...input, availableModels: ['model-a:free'] })).rejects.toThrow(
       /available/i,

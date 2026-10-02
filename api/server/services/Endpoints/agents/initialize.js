@@ -813,7 +813,10 @@ const initializeClient = async ({
           agent,
           endpointOption: {
             ...endpointOption,
-            model_parameters: { ...(endpointOption.model_parameters ?? {}), model: agent.model },
+            model_parameters:
+              agent.provider?.toLowerCase() === originalPrimaryAgent.provider?.toLowerCase()
+                ? { ...(endpointOption.model_parameters ?? {}), model: agent.model }
+                : { model: agent.model },
           },
           allowedProviders,
           isInitialAgent: true,

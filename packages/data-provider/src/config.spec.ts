@@ -1021,6 +1021,42 @@ describe('host model routing configuration', () => {
       },
     };
     expect(configSchema.safeParse(valid).success).toBe(true);
+    const multiProvider = {
+      version: '1.0',
+      endpoints: {
+        agents: {
+          hostModelRouting: [
+            {
+              agentId: 'agent-one',
+              bindings: [
+                { id: 'primary', provider: 'OpenRouter', model: 'model-a:free' },
+                { id: 'anthropic-b', provider: 'anthropic', model: 'claude-sonnet' },
+              ],
+              preferredBindingId: 'anthropic-b',
+            },
+          ],
+        },
+      },
+    };
+    expect(configSchema.safeParse(multiProvider).success).toBe(true);
+    expect(
+      configSchema.safeParse({
+        ...multiProvider,
+        endpoints: {
+          agents: {
+            hostModelRouting: [
+              {
+                agentId: 'agent-one',
+                bindings: [
+                  { id: 'primary', provider: 'OpenRouter', model: 'a' },
+                  { id: 'b', provider: 'anthropic', model: 'b', apiKey: 'secret' },
+                ],
+              },
+            ],
+          },
+        },
+      }).success,
+    ).toBe(false);
     expect(
       configSchema.safeParse({
         ...valid,
