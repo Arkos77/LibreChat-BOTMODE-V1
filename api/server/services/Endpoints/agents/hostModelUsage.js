@@ -1,6 +1,8 @@
 const boundedText = (value) =>
   typeof value === 'string' && value.trim() !== '' && value.length <= 256 ? value : undefined;
 const tokenCount = (value) => (Number.isSafeInteger(value) && value >= 0 ? value : undefined);
+const usdCost = (value) =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
 
 /** Persist a small projection of actual primary model-end usage for an opted-in P11 decision. */
 function projectHostModelUsage(decision, usageEvents) {
@@ -24,12 +26,14 @@ function projectHostModelUsage(decision, usageEvents) {
     if (!usageModel) continue;
     const inputTokens = tokenCount(event.input_tokens);
     const outputTokens = tokenCount(event.output_tokens);
+    const costUsd = usdCost(event.cost);
     if (inputTokens == null && outputTokens == null) continue;
     modelCalls.push({
       usageModel,
       provider: 'openrouter',
       ...(inputTokens == null ? {} : { inputTokens }),
       ...(outputTokens == null ? {} : { outputTokens }),
+      ...(costUsd == null ? {} : { costUsd }),
     });
   }
   return modelCalls.length ? { traceId, decisionId, selectedModel, modelCalls } : undefined;

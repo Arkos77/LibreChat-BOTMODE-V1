@@ -15,6 +15,7 @@ describe('P11 model invocation evidence', () => {
         provider: 'openrouter',
         input_tokens: 14,
         output_tokens: 3,
+        cost: 0.0017,
       },
       { model: 'other', provider: 'openrouter', usage_type: 'subagent', input_tokens: 80 },
     ]);
@@ -23,7 +24,13 @@ describe('P11 model invocation evidence', () => {
       decisionId: 'decision-1',
       selectedModel: 'b:free',
       modelCalls: [
-        { usageModel: 'b:free', provider: 'openrouter', inputTokens: 14, outputTokens: 3 },
+        {
+          usageModel: 'b:free',
+          provider: 'openrouter',
+          inputTokens: 14,
+          outputTokens: 3,
+          costUsd: 0.0017,
+        },
       ],
     });
   });
