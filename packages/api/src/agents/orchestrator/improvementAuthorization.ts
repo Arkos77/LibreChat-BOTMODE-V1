@@ -72,10 +72,14 @@ export function createImprovementAuthorizationRequest(
     };
   }
 
-  if (skillId !== undefined || expectedVersion !== undefined || payloadDigest !== undefined) {
-    throw new Error(
-      'Skill create authorization cannot carry skill identity, expectedVersion or payloadDigest',
-    );
+  if (skillId !== undefined || expectedVersion !== undefined) {
+    throw new Error('Skill create authorization cannot carry skill identity or expectedVersion');
+  }
+  if (!payloadDigest) {
+    throw new Error('Skill create authorization requires payloadDigest');
+  }
+  if (disposition.payloadDigest !== payloadDigest) {
+    throw new Error('Skill create payload digest must match the Oracle-verified disposition');
   }
 
   return {
@@ -84,6 +88,7 @@ export function createImprovementAuthorizationRequest(
     target: 'skill',
     operation,
     actorId,
+    payloadDigest,
     publicationPath: 'native-skill-authoring-required',
     requiresNativeAuthorization: true,
     authorized: false,

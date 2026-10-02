@@ -68,18 +68,25 @@ describe('Native skill update policy boundary', () => {
     expect(result.allowed).toBe(false);
   });
 
-  it('keeps create closed because this boundary is update-only', async () => {
+  it('authorizes create through the native capability gate without resource EDIT', async () => {
     const request = { ...updateRequest(), operation: 'create' as const };
     delete request.skillId;
     delete request.expectedVersion;
+    const checkPermission = jest.fn(async () => true);
 
-    await expect(
-      evaluateNativeSkillUpdatePolicy({
-        request,
-        checkSkillCapability: async () => true,
-        checkPermission: async () => true,
-      }),
-    ).rejects.toThrow('update');
+    const result = await evaluateNativeSkillUpdatePolicy({
+      request,
+      checkSkillCapability: async () => true,
+      checkPermission,
+    });
+
+    expect(result).toEqual({
+      allowed: true,
+      permission: 'CREATE',
+      resourceType: 'skill',
+      actorId: 'user-1',
+    });
+    expect(checkPermission).not.toHaveBeenCalled();
   });
 
   it('exposes authorization evidence only and no mutation surface', async () => {

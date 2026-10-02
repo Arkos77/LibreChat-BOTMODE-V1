@@ -104,22 +104,36 @@ describe('Improvement authorization chain', () => {
     expect(checkPermission).not.toHaveBeenCalled();
   });
 
-  it('keeps create closed until the native create-policy seam is proven', async () => {
+  it('authorizes create only through the native create capability and exact payload digest', async () => {
     const checkSkillCapability = jest.fn(async () => true);
     const checkPermission = jest.fn(async () => true);
 
-    await expect(
-      authorizeImprovementPublication({
-        disposition: acceptedDisposition(),
-        operation: 'create',
-        actorId: 'user-1',
-        checkSkillCapability,
-        checkPermission,
-      }),
-    ).rejects.toThrow('update');
+    const result = await authorizeImprovementPublication({
+      disposition: acceptedDisposition(),
+      operation: 'create',
+      actorId: 'user-1',
+      payloadDigest: 'digest-abc',
+      checkSkillCapability,
+      checkPermission,
+    });
 
-    expect(checkSkillCapability).not.toHaveBeenCalled();
+    expect(checkSkillCapability).toHaveBeenCalledWith({
+      actorId: 'user-1',
+      permissionType: 'SKILLS',
+      permissions: ['USE', 'CREATE'],
+    });
     expect(checkPermission).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      candidateId: 'candidate-skill',
+      traceId: 'trace-1',
+      target: 'skill',
+      payloadDigest: 'digest-abc',
+      operation: 'create',
+      actorId: 'user-1',
+      publicationPath: 'native-skill-authoring-required',
+      authorized: true,
+      publishable: true,
+    });
   });
 
   it('is only composition of the bounded request, full native update policy, and result resolver', async () => {

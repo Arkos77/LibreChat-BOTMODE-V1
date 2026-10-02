@@ -63,6 +63,7 @@ describe('Improvement authorization boundary', () => {
         disposition: disposition({ oracleDecision: 'REJECT' }),
         operation: 'create',
         actorId: 'user-1',
+        payloadDigest: 'digest-abc',
       }),
     ).toThrow();
   });
@@ -93,6 +94,7 @@ describe('Improvement authorization boundary', () => {
       disposition: disposition(),
       operation: 'create',
       actorId: 'user-1',
+      payloadDigest: 'digest-abc',
     });
 
     expect(result.authorized).toBe(false);

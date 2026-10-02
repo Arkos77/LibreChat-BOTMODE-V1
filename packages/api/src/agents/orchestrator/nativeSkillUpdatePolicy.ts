@@ -22,12 +22,18 @@ export async function evaluateNativeSkillUpdatePolicy(input: {
 }): Promise<NativeSkillAuthorizationEvidence> {
   const { request, checkSkillCapability, checkPermission } = input;
 
-  if (request.operation !== 'update') {
-    throw new Error('Native skill update policy only authorizes update operations');
+  if (!request.actorId) {
+    throw new Error('Native skill policy requires actor identity');
   }
 
-  if (!request.actorId || !request.skillId || request.expectedVersion === undefined) {
+  if (
+    request.operation === 'update' &&
+    (!request.skillId || request.expectedVersion === undefined)
+  ) {
     throw new Error('Native skill update policy requires complete update identity');
+  }
+  if (request.operation === 'create' && !request.payloadDigest) {
+    throw new Error('Native skill create policy requires payloadDigest');
   }
 
   const capabilityAllowed = await checkSkillCapability({
@@ -35,6 +41,15 @@ export async function evaluateNativeSkillUpdatePolicy(input: {
     permissionType: 'SKILLS',
     permissions: ['USE', 'CREATE'],
   });
+
+  if (request.operation === 'create') {
+    return {
+      allowed: capabilityAllowed === true,
+      permission: 'CREATE',
+      resourceType: 'skill',
+      actorId: request.actorId,
+    };
+  }
 
   if (capabilityAllowed !== true) {
     return {

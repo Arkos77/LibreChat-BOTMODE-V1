@@ -14,13 +14,13 @@ function resolveRequestActorId(req) {
 }
 
 /**
- * Request-backed adapter for the bounded P10 skill-update authorization chain.
+ * Request-backed adapter for the bounded P10 native skill authorization chain.
  *
  * Native LibreChat authority remains in skillDeps:
- * - canCreateSkill({ req }) -> SKILLS USE + CREATE role capability gate
- * - canEditSkill({ req, skillId }) -> SKILL EDIT resource ACL
+ * - create -> canCreateSkill({ req }) only (SKILLS USE + CREATE role capability gate)
+ * - update -> canCreateSkill({ req }) plus canEditSkill({ req, skillId }) resource ACL
  *
- * This adapter performs no skill mutation and deliberately keeps create closed.
+ * This adapter performs no skill mutation.
  */
 async function authorizeImprovementPublicationForRequest({
   req,
@@ -36,12 +36,15 @@ async function authorizeImprovementPublicationForRequest({
   if (!actorId || String(actorId) !== requestActorId) {
     throw new Error('Improvement authorization actor does not match the authenticated request');
   }
-  if (operation !== 'update') {
-    throw new Error('Request-backed improvement authorization only supports skill updates');
+  if (operation !== 'create' && operation !== 'update') {
+    throw new Error('Request-backed improvement authorization operation is invalid');
   }
 
   const { canCreateSkill, canEditSkill } = getSkillToolDeps();
-  if (typeof canCreateSkill !== 'function' || typeof canEditSkill !== 'function') {
+  if (
+    typeof canCreateSkill !== 'function' ||
+    (operation === 'update' && typeof canEditSkill !== 'function')
+  ) {
     throw new Error('Native skill authorization helpers are unavailable');
   }
 
@@ -54,14 +57,17 @@ async function authorizeImprovementPublicationForRequest({
     sink: observation.sink,
     tenantId: observation.tenantId,
   });
-  const observedEdit = createObservedSkillEditCheck({
-    req,
-    traceId: disposition?.traceId,
-    nativeCheck: canEditSkill,
-    persist: observation.persist,
-    sink: observation.sink,
-    tenantId: observation.tenantId,
-  });
+  const observedEdit =
+    operation === 'update'
+      ? createObservedSkillEditCheck({
+          req,
+          traceId: disposition?.traceId,
+          nativeCheck: canEditSkill,
+          persist: observation.persist,
+          sink: observation.sink,
+          tenantId: observation.tenantId,
+        })
+      : null;
 
   return authorizeImprovementPublication({
     disposition,
@@ -71,7 +77,12 @@ async function authorizeImprovementPublicationForRequest({
     expectedVersion,
     payloadDigest,
     checkSkillCapability: async () => observedCreate({ req }),
-    checkPermission: async ({ resourceId }) => observedEdit({ req, skillId: resourceId }),
+    checkPermission: async ({ resourceId }) => {
+      if (observedEdit == null) {
+        throw new Error('Native skill EDIT authorization is unavailable for create');
+      }
+      return observedEdit({ req, skillId: resourceId });
+    },
   });
 }
 

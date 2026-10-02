@@ -2,9 +2,9 @@ import type { ImprovementAuthorizationRequest } from './improvementAuthorization
 
 export interface NativeSkillAuthorizationEvidence {
   allowed: boolean;
-  permission: 'VIEW' | 'EDIT';
+  permission: 'VIEW' | 'EDIT' | 'CREATE';
   resourceType: 'skill';
-  resourceId: string;
+  resourceId?: string;
   actorId: string;
 }
 
@@ -57,7 +57,15 @@ export function resolveImprovementAuthorization(input: {
       throw new Error('Skill update requires native EDIT authorization');
     }
   } else {
-    throw new Error('Skill create authorization requires the native create-policy seam');
+    if (!request.payloadDigest) {
+      throw new Error('Skill create authorization request is incomplete');
+    }
+    if (nativeAuthorization.permission !== 'CREATE') {
+      throw new Error('Skill create requires native CREATE authorization');
+    }
+    if (nativeAuthorization.resourceId !== undefined) {
+      throw new Error('Skill create authorization must not bind a nonexistent resource');
+    }
   }
 
   return {

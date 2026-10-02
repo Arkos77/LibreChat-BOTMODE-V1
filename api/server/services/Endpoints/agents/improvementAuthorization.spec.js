@@ -190,22 +190,28 @@ describe('request-backed improvement authorization binding', () => {
     expect(canEditSkill).not.toHaveBeenCalled();
   });
 
-  it('keeps create closed at this binding', async () => {
+  it('binds create to the request actor and native create capability without EDIT', async () => {
     const req = { user: { id: 'user-1', role: 'user' } };
     const canCreateSkill = jest.fn(async () => true);
     const canEditSkill = jest.fn(async () => true);
     getSkillToolDeps.mockReturnValue({ canCreateSkill, canEditSkill });
 
-    await expect(
-      authorizeImprovementPublicationForRequest({
-        req,
-        disposition: acceptedDisposition(),
-        operation: 'create',
-        actorId: 'user-1',
-      }),
-    ).rejects.toThrow();
+    const result = await authorizeImprovementPublicationForRequest({
+      req,
+      disposition: acceptedDisposition(),
+      operation: 'create',
+      actorId: 'user-1',
+      payloadDigest: 'digest-abc',
+    });
 
-    expect(canCreateSkill).not.toHaveBeenCalled();
+    expect(canCreateSkill).toHaveBeenCalledWith({ req });
     expect(canEditSkill).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      operation: 'create',
+      actorId: 'user-1',
+      payloadDigest: 'digest-abc',
+      authorized: true,
+      publishable: true,
+    });
   });
 });
