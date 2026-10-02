@@ -8,6 +8,7 @@ const base = () => ({
     model: 'a:free',
     provider: 'openrouter',
     model_parameters: { model: 'a:free', apiKey: 'secret' },
+    maxContextTokens: 8192,
   },
   validate: jest.fn(async () => ({ isValid: true })),
   initialize: jest.fn(async (agent) => ({
@@ -15,6 +16,7 @@ const base = () => ({
     model: agent.model,
     provider: 'openrouter',
     model_parameters: { model: agent.model, apiKey: 'secret' },
+    maxContextTokens: 16384,
   })),
   decide: jest.fn(async ({ resolvedAlternatives }) => ({
     selectedModel: 'b:free',
@@ -53,7 +55,12 @@ describe('host model routing', () => {
     });
     expect(request.validate).toHaveBeenCalledWith(expect.objectContaining({ model: 'b:free' }));
     expect(request.initialize).toHaveBeenCalledWith(expect.objectContaining({ model: 'b:free' }));
-    expect(request.decide.mock.calls[0][0].resolvedAlternatives[0].options.model).toBe('b:free');
+    expect(request.decide.mock.calls[0][0].resolvedContextWindow).toBe(8192);
+    expect(request.decide.mock.calls[0][0].resolvedAlternatives[0]).toMatchObject({
+      model: 'b:free',
+      contextWindow: 16384,
+      options: { model: 'b:free' },
+    });
     expect(request.persist).toHaveBeenCalledTimes(1);
     expect(request.sink).toHaveBeenCalledTimes(1);
   });
@@ -78,6 +85,7 @@ describe('host model routing', () => {
       provider: agent.provider,
       model_parameters: { model: agent.model, providerMarker: agent.provider },
       endpointTokenConfig: { selectedFor: `${agent.provider}:${agent.model}` },
+      maxContextTokens: 32768,
     }));
     request.decide.mockImplementation(async ({ bindings, preferredBindingId }) => ({
       selectedBindingId: preferredBindingId,
@@ -113,6 +121,7 @@ describe('host model routing', () => {
             id: 'anthropic-b',
             provider: 'anthropic',
             model: 'shared-model',
+            contextWindow: 32768,
           }),
         ]),
       }),

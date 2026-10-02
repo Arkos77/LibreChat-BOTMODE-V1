@@ -7,7 +7,12 @@ type LegacyInput = {
   provider: string;
   currentModel: string;
   resolvedOptions: Record<string, unknown>;
-  resolvedAlternatives: ReadonlyArray<{ model: string; options: Record<string, unknown> }>;
+  resolvedContextWindow?: number;
+  resolvedAlternatives: ReadonlyArray<{
+    model: string;
+    options: Record<string, unknown>;
+    contextWindow?: number;
+  }>;
   authorizedModels: readonly string[];
   availableModels: readonly string[];
   preferredModel?: string;
@@ -24,6 +29,7 @@ type BindingInput = {
     provider: string;
     model: string;
     options: Record<string, unknown>;
+    contextWindow?: number;
   }>;
   preferredBindingId?: string;
   traceId: string;
@@ -39,6 +45,7 @@ type NormalizedBinding = {
   provider: string;
   model: string;
   options: Record<string, unknown>;
+  contextWindow?: number;
 };
 
 function hasBindingInput(input: Input): input is BindingInput {
@@ -55,6 +62,7 @@ function normalizeBindings(input: Input): {
       provider: binding.provider,
       model: binding.model,
       options: binding.options,
+      contextWindow: binding.contextWindow,
     }));
     if (
       bindings.length < 2 ||
@@ -133,11 +141,18 @@ function normalizeBindings(input: Input): {
   ) {
     throw new Error('Alternative model binding mismatch');
   }
+  const contextByModel = new Map<string, number | undefined>([
+    [currentModel, input.resolvedContextWindow],
+    ...input.resolvedAlternatives.map(
+      ({ model, contextWindow }) => [model, contextWindow] as const,
+    ),
+  ]);
   const bindings = authorizedModels.map((model) => ({
     id: model,
     provider,
     model,
     options: optionsByModel.get(model)!,
+    contextWindow: contextByModel.get(model),
   }));
   if (
     bindings.some(
@@ -168,7 +183,14 @@ export async function decideHostModel(input: Input): Promise<{
     executionMode: 'model',
     providerId: binding.provider,
     modelId: binding.model,
-    signals: { available: true },
+    signals: {
+      available: true,
+      ...(binding.contextWindow != null &&
+      Number.isFinite(binding.contextWindow) &&
+      binding.contextWindow > 0
+        ? { contextWindow: binding.contextWindow }
+        : {}),
+    },
     binding: {
       agentId: input.agentId,
       provider: binding.provider,

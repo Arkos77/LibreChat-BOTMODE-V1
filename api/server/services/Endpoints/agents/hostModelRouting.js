@@ -97,6 +97,7 @@ async function resolveHostModelRouting({
       provider: bindings[0].provider,
       model: bindings[0].model,
       options: primaryConfig.model_parameters,
+      contextWindow: primaryConfig.maxContextTokens,
     },
   ];
   const configurations = new Map([[bindings[0].id, primaryConfig]]);
@@ -130,6 +131,7 @@ async function resolveHostModelRouting({
       provider: binding.provider,
       model: binding.model,
       options: resolved.model_parameters,
+      contextWindow: resolved.maxContextTokens,
     });
   }
 
@@ -148,10 +150,14 @@ async function resolveHostModelRouting({
         provider: originalAgent.provider,
         currentModel: originalAgent.model,
         resolvedOptions: primaryConfig.model_parameters,
-        resolvedAlternatives: resolvedBindings.slice(1).map(({ model, options }) => ({
-          model,
-          options,
-        })),
+        resolvedContextWindow: primaryConfig.maxContextTokens,
+        resolvedAlternatives: resolvedBindings
+          .slice(1)
+          .map(({ model, options, contextWindow }) => ({
+            model,
+            options,
+            contextWindow,
+          })),
         authorizedModels: bindings.map((binding) => binding.model),
         availableModels: resolvedBindings.map((binding) => binding.model),
         preferredModel: policy.preferredModel,
