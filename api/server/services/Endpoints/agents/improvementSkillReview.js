@@ -168,6 +168,9 @@ function createSkillAllocationId(review, user, tenantId) {
 
 function exactCreateAllocationReceipt(review, event) {
   return (
+    event?.eventId === `skill-allocation:${review.candidateId}` &&
+    event?.candidateId === review.candidateId &&
+    event?.traceId === review.traceId &&
     event?.type === 'ALLOCATED' &&
     event?.actor?.type === 'host' &&
     event?.actor?.id === 'librechat:native-skill-create' &&

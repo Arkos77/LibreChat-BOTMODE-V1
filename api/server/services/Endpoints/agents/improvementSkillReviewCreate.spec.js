@@ -594,3 +594,65 @@ test('returns observationPending when CREATE commit persistence fails after nati
   });
   expect(context.publishCreate).toHaveBeenCalledTimes(1);
 });
+
+test('fails closed when durable create allocation trace identity mismatches review', async () => {
+  const base = setupCreate();
+  const skillId = '68df12a7d43d9b79b2b5a001';
+  const approval = {
+    eventId: 'skill-review:' + base.candidateId,
+    candidateId: base.candidateId,
+    traceId: base.traceId,
+    type: 'APPROVED',
+    actor: { id: base.userId, type: 'human' },
+    data: {
+      operation: 'create',
+      payloadDigest: base.payloadDigest,
+      snapshotDigest: base.snapshotDigest,
+    },
+  };
+  const authorization = {
+    eventId: 'skill-authorization:' + base.candidateId,
+    candidateId: base.candidateId,
+    traceId: base.traceId,
+    type: 'AUTHORIZED',
+    actor: { id: 'librechat:native-skill-authorization', type: 'policy' },
+    data: {
+      operation: 'create',
+      payloadDigest: base.payloadDigest,
+      snapshotDigest: base.snapshotDigest,
+      actorId: base.userId,
+    },
+  };
+  const allocation = {
+    eventId: 'skill-allocation:' + base.candidateId,
+    candidateId: base.candidateId,
+    traceId: 'trace-tampered',
+    type: 'ALLOCATED',
+    actor: { id: 'librechat:native-skill-create', type: 'host' },
+    data: {
+      operation: 'create',
+      payloadDigest: base.payloadDigest,
+      snapshotDigest: base.snapshotDigest,
+      skillId,
+    },
+  };
+  const { context, payloadDigest, snapshotDigest } = setupCreate([
+    approval,
+    authorization,
+    allocation,
+  ]);
+
+  await expect(
+    decideSkillImprovementReview({
+      ...context,
+      decision: 'approve',
+      payloadDigest,
+      snapshotDigest,
+    }),
+  ).rejects.toThrow(/allocation receipt is invalid/i);
+
+  expect(context.getSkillById).not.toHaveBeenCalled();
+  expect(context.publishCreate).not.toHaveBeenCalled();
+  expect(context.grantSkillOwner).not.toHaveBeenCalled();
+  expect(context.recordEvent).not.toHaveBeenCalled();
+});
