@@ -11,6 +11,7 @@ const {
   createRun,
   isEnabled,
   checkAccess,
+  checkBalance,
   buildRunToolSet,
   logToolError,
   sanitizeTitle,
@@ -160,6 +161,7 @@ const {
   Run,
   Callback,
   Providers,
+  encodingForModel,
   TitleMethod,
   formatMessage,
   formatAgentMessages,
@@ -193,6 +195,7 @@ const { getAccessibleMCPServers } = require('~/server/services/MCP');
 const BaseClient = require('~/app/clients/BaseClient');
 const { getMCPManager } = require('~/config');
 const db = require('~/models');
+const { logViolation } = require('~/cache');
 
 const loadAgent = (params) =>
   loadAgentFn(params, {
@@ -202,6 +205,66 @@ const loadAgent = (params) =>
   });
 
 const MEMORY_INPUT_CHARS_PER_TOKEN = 8;
+
+function createModelBoundBudgetAdmissionFactory(client, balanceConfig) {
+  if (!balanceConfig?.enabled) {
+    return undefined;
+  }
+
+  return (binding) => [
+    {
+      name: 'librechat-model-bound-budget-admission',
+      raiseError: true,
+      awaitHandlers: true,
+      handleChatModelStart: async (_llm, messageBatches) => {
+        const user = client.options.req?.user?.id ?? client.user;
+        if (!user) {
+          throw new Error('Missing user for model-bound balance admission');
+        }
+
+        const encoding = binding.model ? encodingForModel(binding.model) : client.getEncoding();
+        const countMessage = await createCachedTokenCounter(encoding);
+        let amount = 0;
+        for (const batch of Array.isArray(messageBatches) ? messageBatches : []) {
+          if (!Array.isArray(batch)) {
+            continue;
+          }
+          for (const message of batch) {
+            amount += countMessage(message);
+          }
+        }
+
+        const endpointTokenConfig = resolveAgentTokenConfig({
+          agentId: binding.agentId,
+          byAgentId: client.options.endpointTokenConfigByAgentId,
+          fallback: client.options.endpointTokenConfig,
+        });
+
+        await checkBalance(
+          {
+            req: client.options.req,
+            res: client.options.res,
+            txData: {
+              model: binding.model,
+              user,
+              tokenType: 'prompt',
+              amount,
+              endpointTokenConfig,
+            },
+          },
+          {
+            findBalanceByUser: db.findBalanceByUser,
+            getMultiplier: db.getMultiplier,
+            createAutoRefillTransaction: db.createAutoRefillTransaction,
+            logViolation,
+            balanceConfig,
+            upsertBalanceFields: db.upsertBalanceFields,
+          },
+        );
+      },
+    },
+  ];
+}
 
 function normalizeEventActorSummary(summary) {
   if (summary == null) {
@@ -4431,6 +4494,7 @@ class AgentClient extends BaseClient {
           discoveredToolNames:
             this.eventActorContinuation === 'warm' ? this.eventActorDiscoveredToolNames : undefined,
           modelCallbacks: [modelBoundCallback],
+          modelCallbackFactory: createModelBoundBudgetAdmissionFactory(this, balanceConfig),
           // This controller implements the full HITL pause/resume lifecycle (handleRunInterrupt
           // persists the pending action; the /resume route rebuilds + continues the run), so it
           // opts into the tool-approval wiring. Non-resumable callers (OpenAI-compat, Responses)
@@ -5119,6 +5183,7 @@ class AgentClient extends BaseClient {
             }),
         conversationId: this.conversationId,
         modelCallbacks: [modelBoundCallback],
+        modelCallbackFactory: createModelBoundBudgetAdmissionFactory(this, balanceConfig),
         // State (messages, tool calls) is rehydrated from the checkpoint by
         // run.resume; createRun only needs the agents to rebuild the graph.
         messages: [],

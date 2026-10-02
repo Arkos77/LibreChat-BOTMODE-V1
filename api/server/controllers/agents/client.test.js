@@ -55,6 +55,7 @@ jest.mock('@librechat/api', () => ({
   ...jest.requireActual('@librechat/api'),
   buildAgentScopedContext: (...args) => mockBuildAgentScopedContext(...args),
   checkAccess: jest.fn(),
+  checkBalance: jest.fn(),
   createRun: (...args) => mockCreateRun(...args),
   countFormattedMessageTokens: jest.fn(() => 42),
   countTokens: jest.fn((text) => Math.ceil(String(text ?? '').length / 4)),
@@ -2996,6 +2997,7 @@ describe('AgentClient - startup telemetry', () => {
         user: { id: 'user-123', tenantId: 'stale-user-tenant' },
         body: {},
         config: {
+          balance: { enabled: true },
           endpoints: { [EModelEndpoint.agents]: { toolApproval: { enabled: true } } },
         },
         _resumableStreamId: 'conversation-123',
@@ -3029,6 +3031,7 @@ describe('AgentClient - startup telemetry', () => {
     expect(mockCreateRun.mock.calls[0][0]).toEqual(
       expect.objectContaining({
         tenantId: 'request-tenant',
+        modelCallbackFactory: expect.any(Function),
         modelCallbacks: [
           expect.objectContaining({
             name: 'librechat-model-bound-content-filter',
@@ -8388,6 +8391,60 @@ describe('AgentClient - resumeCompletion content protection', () => {
         },
       ]);
     require('~/models').getFiles.mockReset().mockResolvedValue([]);
+  });
+
+  it('wires binding-specific balance admission to the final model payload on resume', async () => {
+    const api = require('@librechat/api');
+    const endpointTokenConfig = { prompt: 0.25, completion: 0.5 };
+    api.checkBalance.mockResolvedValue(undefined);
+    api.createCachedTokenCounter.mockResolvedValue(jest.fn(() => 11));
+    const resume = jest.fn().mockResolvedValue(undefined);
+    mockCreateRun.mockResolvedValue({ resume, getCalibrationRatio: jest.fn(() => 0) });
+    const context = makeContext(undefined);
+    context.options.req.config.balance = { enabled: true };
+    context.options.endpointTokenConfigByAgentId = new Map([['agent-child', endpointTokenConfig]]);
+
+    await AgentClient.prototype.resumeCompletion.call(context, { resumeValue: {} });
+
+    expect(mockCreateRun).toHaveBeenCalledTimes(1);
+    const factory = mockCreateRun.mock.calls[0][0].modelCallbackFactory;
+    expect(factory).toEqual(expect.any(Function));
+
+    const callbacks = factory({
+      agentId: 'agent-child',
+      provider: 'openAI',
+      model: 'gpt-4o-mini',
+    });
+    expect(callbacks).toHaveLength(1);
+    await callbacks[0].handleChatModelStart(null, [[{}, {}]]);
+
+    expect(api.checkBalance).toHaveBeenCalledWith(
+      {
+        req: context.options.req,
+        res: context.options.res,
+        txData: {
+          model: 'gpt-4o-mini',
+          user: 'user-123',
+          tokenType: 'prompt',
+          amount: 22,
+          endpointTokenConfig,
+        },
+      },
+      expect.objectContaining({
+        balanceConfig: expect.objectContaining({ enabled: true }),
+      }),
+    );
+  });
+
+  it('does not install model budget admission when balance is disabled', async () => {
+    const resume = jest.fn().mockResolvedValue(undefined);
+    mockCreateRun.mockResolvedValue({ resume, getCalibrationRatio: jest.fn(() => 0) });
+    const context = makeContext(undefined);
+
+    await AgentClient.prototype.resumeCompletion.call(context, { resumeValue: {} });
+
+    expect(mockCreateRun).toHaveBeenCalledTimes(1);
+    expect(mockCreateRun.mock.calls[0][0].modelCallbackFactory).toBeUndefined();
   });
 
   it('blocks checkpoint user content before rebuilding the run', async () => {
