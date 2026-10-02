@@ -189,6 +189,11 @@ async function callAndCapture(
     compactionSemanticIndex?: CompactionSemanticIndex;
     subagentTasks?: SubagentTaskConfig;
     modelCallbacks?: readonly ModelBoundChatModelCallback[];
+    modelCallbackFactory?: (binding: {
+      agentId?: string;
+      provider?: string;
+      model?: string;
+    }) => readonly ModelBoundChatModelCallback[];
     user?: IUser;
     tenantId?: string;
   } = {},
@@ -207,6 +212,7 @@ async function callAndCapture(
     compactionSemanticIndex: opts.compactionSemanticIndex,
     subagentTasks: opts.subagentTasks,
     modelCallbacks: opts.modelCallbacks,
+    modelCallbackFactory: opts.modelCallbackFactory,
     user: opts.user,
     tenantId: opts.tenantId,
     streaming: true,
@@ -458,6 +464,133 @@ describe('model-level callbacks', () => {
     const graph = configs.find((config) => config.type === 'guarded_team');
     const [member] = graph?.agents as Array<Record<string, unknown>>;
     expect((member.clientOptions as Record<string, unknown>).callbacks).toEqual([modelCallback]);
+  });
+
+  it('creates binding-specific callbacks for root and fallback model clients', async () => {
+    const rootCallback = {
+      name: 'librechat-model-bound-content-filter',
+      raiseError: true,
+      awaitHandlers: true,
+      handleChatModelStart: jest.fn(),
+    } as ModelBoundChatModelCallback;
+    const fallbackCallback = {
+      name: 'librechat-model-bound-content-filter',
+      raiseError: true,
+      awaitHandlers: true,
+      handleChatModelStart: jest.fn(),
+    } as ModelBoundChatModelCallback;
+    const factory = jest.fn((binding: { agentId?: string; provider?: string; model?: string }) =>
+      binding.provider === 'anthropic' ? [fallbackCallback] : [rootCallback],
+    );
+
+    const agents = await callAndCapture({
+      modelCallbackFactory: factory,
+      agents: [
+        makeAgent({
+          id: 'agent-root',
+          provider: 'openAI',
+          model_parameters: {
+            model: 'gpt-4o',
+            fallbacks: [
+              {
+                provider: 'anthropic',
+                clientOptions: { model: 'claude-fallback', temperature: 0 },
+              },
+            ],
+          },
+        }),
+      ],
+    });
+
+    const rootOptions = agents[0].clientOptions as Record<string, unknown>;
+    expect(rootOptions.callbacks).toEqual([rootCallback]);
+    const fallback = (rootOptions.fallbacks as Array<Record<string, unknown>>)[0];
+    expect((fallback.clientOptions as Record<string, unknown>).callbacks).toEqual([
+      fallbackCallback,
+    ]);
+    expect(factory).toHaveBeenCalledWith({
+      agentId: 'agent-root',
+      provider: 'openAI',
+      model: 'gpt-4o',
+    });
+    expect(factory).toHaveBeenCalledWith({
+      agentId: 'agent-root',
+      provider: 'anthropic',
+      model: 'claude-fallback',
+    });
+  });
+
+  it('identifies summary and subagent bindings independently', async () => {
+    const factory = jest.fn(() => []);
+    const eagerChild = makeAgent({
+      id: 'agent-eager-binding',
+      provider: 'anthropic',
+      model_parameters: { model: 'claude-child' },
+    });
+    const lazyResolve = jest.fn().mockResolvedValue(
+      makeAgent({
+        id: 'agent-lazy-binding',
+        provider: 'google',
+        model_parameters: { model: 'gemini-child' },
+      }),
+    );
+
+    const agents = await callAndCapture({
+      modelCallbackFactory: factory,
+      summarizationConfig: {
+        provider: 'anthropic',
+        model: 'claude-summary',
+      },
+      agents: [
+        makeAgent({
+          id: 'agent-root-binding',
+          provider: 'openAI',
+          model_parameters: { model: 'gpt-4o' },
+          subagents: {
+            enabled: true,
+            allowSelf: false,
+            agent_ids: [eagerChild.id, 'agent-lazy-binding'],
+          },
+          subagentAgentConfigs: [eagerChild],
+          lazySubagentConfigs: [
+            {
+              id: 'agent-lazy-binding',
+              name: 'Lazy binding child',
+              description: 'Resolves binding identity lazily',
+              configId: 'agent-lazy-binding:1:fingerprint',
+              resolve: lazyResolve,
+            },
+          ],
+        }),
+      ],
+    });
+
+    const configs = agents[0].subagentConfigs as Array<Record<string, unknown>>;
+    const lazy = configs.find((config) => config.type === 'agent-lazy-binding');
+    await (lazy?.resolveAgentInputs as (context: never) => Promise<Record<string, unknown>>)({
+      signal: new AbortController().signal,
+    } as never);
+
+    expect(factory).toHaveBeenCalledWith({
+      agentId: 'agent-root-binding',
+      provider: 'openAI',
+      model: 'gpt-4o',
+    });
+    expect(factory).toHaveBeenCalledWith({
+      agentId: 'agent-root-binding',
+      provider: 'anthropic',
+      model: 'claude-summary',
+    });
+    expect(factory).toHaveBeenCalledWith({
+      agentId: 'agent-eager-binding',
+      provider: 'anthropic',
+      model: 'claude-child',
+    });
+    expect(factory).toHaveBeenCalledWith({
+      agentId: 'agent-lazy-binding',
+      provider: 'google',
+      model: 'gemini-child',
+    });
   });
 
   it('preserves a pre-existing callback manager when installing model guards', async () => {

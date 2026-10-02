@@ -855,48 +855,87 @@ type CallbackClientOptions = {
   fallbacks?: FallbackConfig[];
 };
 
+export type ModelBindingIdentity = Readonly<{
+  agentId: string;
+  provider?: string;
+  model?: string;
+}>;
+
+export type ModelBindingCallbackFactory = (
+  binding: ModelBindingIdentity,
+) => readonly CallbackHandlerMethods[];
+
+function resolveBindingModel(clientOptions: unknown): string | undefined {
+  if (clientOptions == null || typeof clientOptions !== 'object') {
+    return undefined;
+  }
+  const options = clientOptions as Record<string, unknown>;
+  const model = options.model ?? options.modelName;
+  return typeof model === 'string' && model !== '' ? model : undefined;
+}
+
 /**
  * Installs run-stable callbacks on the model client itself. Subagent child
  * graphs intentionally replace invocation callbacks with their own event
  * forwarders, while intrinsic client callbacks survive root, child, detached,
- * and summarization calls.
+ * and summarization calls. Binding callbacks use host-known identity rather
+ * than inferring provider/model from LangChain's opaque callback payload.
  */
 function withModelCallbacks<T extends object>(
   options: T,
   modelCallbacks: readonly ModelBoundChatModelCallback[] | undefined,
+  modelCallbackFactory?: ModelBindingCallbackFactory,
+  binding?: ModelBindingIdentity,
 ): T {
-  if (!modelCallbacks?.length) {
-    return options;
-  }
-
   const callbackOptions = options as T & CallbackClientOptions;
-  const existingCallbacks = callbackOptions.callbacks;
-  /** The domain callback consumes only the model-bound message prefix of
-   *  LangChain's callback arguments; the trailing run metadata is ignored. */
-  const modelHandlers = modelCallbacks as unknown as readonly CallbackHandlerMethods[];
-  let callbacks: CallbackClientOptions['callbacks'];
-  if (existingCallbacks == null || Array.isArray(existingCallbacks)) {
-    callbacks = [...(existingCallbacks ?? []), ...modelHandlers];
-  } else {
-    const manager = existingCallbacks.copy();
-    for (const callback of modelHandlers) {
-      manager.addHandler(ensureHandler(callback), true);
+  const bindingCallbacks =
+    modelCallbackFactory != null && binding != null ? modelCallbackFactory(binding) : undefined;
+  const installedCallbacks: readonly CallbackHandlerMethods[] = [
+    ...((modelCallbacks ?? []) as unknown as readonly CallbackHandlerMethods[]),
+    ...(bindingCallbacks ?? []),
+  ];
+
+  let withCallbacks = callbackOptions as T & CallbackClientOptions;
+  if (installedCallbacks.length > 0) {
+    const existingCallbacks = callbackOptions.callbacks;
+    let callbacks: CallbackClientOptions['callbacks'];
+    if (existingCallbacks == null || Array.isArray(existingCallbacks)) {
+      callbacks = [...(existingCallbacks ?? []), ...installedCallbacks];
+    } else {
+      const manager = existingCallbacks.copy();
+      for (const callback of installedCallbacks) {
+        manager.addHandler(ensureHandler(callback), true);
+      }
+      callbacks = manager;
     }
-    callbacks = manager;
+    withCallbacks = {
+      ...callbackOptions,
+      callbacks,
+    } as T & CallbackClientOptions;
   }
-  const withCallbacks = {
-    ...callbackOptions,
-    callbacks,
-  } as T & CallbackClientOptions;
 
   if (Array.isArray(callbackOptions.fallbacks)) {
-    withCallbacks.fallbacks = callbackOptions.fallbacks.map((fallback) => ({
-      ...fallback,
-      clientOptions: withModelCallbacks({ ...(fallback.clientOptions ?? {}) }, modelCallbacks),
-    }));
+    withCallbacks = {
+      ...withCallbacks,
+      fallbacks: callbackOptions.fallbacks.map((fallback) => ({
+        ...fallback,
+        clientOptions: withModelCallbacks(
+          { ...(fallback.clientOptions ?? {}) },
+          modelCallbacks,
+          modelCallbackFactory,
+          binding == null
+            ? undefined
+            : {
+                agentId: binding.agentId,
+                provider: fallback.provider,
+                model: resolveBindingModel(fallback.clientOptions),
+              },
+        ),
+      })),
+    } as T & CallbackClientOptions;
   }
 
-  return withCallbacks;
+  return withCallbacks as T;
 }
 
 /** Identifier for the self-spawn subagent (reuses parent's AgentInputs in an isolated child graph). */
@@ -1421,6 +1460,7 @@ export async function createRun({
   compactionSemanticIndex,
   initialSummary,
   modelCallbacks,
+  modelCallbackFactory,
   calibrationRatio,
   fadingTier,
   fadingTiers,
@@ -1478,6 +1518,8 @@ export async function createRun({
   initialSummary?: { text: string; tokenCount: number };
   /** Model-level guards inherited by root, summary, fallback, and subagent clients. */
   modelCallbacks?: readonly ModelBoundChatModelCallback[];
+  /** Binding-specific callbacks keyed by exact host-known model identity. */
+  modelCallbackFactory?: ModelBindingCallbackFactory;
   /** Calibration ratio from previous run's contextMeta, seeds the pruner EMA */
   calibrationRatio?: number;
   /**
@@ -1636,18 +1678,25 @@ export async function createRun({
       agent.endpoint ?? undefined,
       { user, tenantId, requestBody },
     );
-    const summarization = modelCallbacks?.length
-      ? {
-          ...shapedSummarization,
-          config: {
-            ...shapedSummarization.config,
-            parameters: withModelCallbacks(
-              { ...(shapedSummarization.config.parameters ?? {}) },
-              modelCallbacks,
-            ),
-          },
-        }
-      : shapedSummarization;
+    const summarization =
+      modelCallbacks?.length || modelCallbackFactory != null
+        ? {
+            ...shapedSummarization,
+            config: {
+              ...shapedSummarization.config,
+              parameters: withModelCallbacks(
+                { ...(shapedSummarization.config.parameters ?? {}) },
+                modelCallbacks,
+                modelCallbackFactory,
+                {
+                  agentId: agent.id,
+                  provider: shapedSummarization.config.provider,
+                  model: shapedSummarization.config.model,
+                },
+              ),
+            },
+          }
+        : shapedSummarization;
 
     const modelParameters = normalizeAgentModelParameters(agent.model_parameters);
     const hasExplicitStreamUsage = Object.prototype.hasOwnProperty.call(
@@ -1664,6 +1713,12 @@ export async function createRun({
         modelParameters,
       ) as t.RunLLMConfig,
       modelCallbacks,
+      modelCallbackFactory,
+      {
+        agentId: agent.id,
+        provider: provider as string,
+        model: selfModel,
+      },
     );
 
     const joinInstructionMap = (map?: Record<string, unknown>) =>
@@ -2091,7 +2146,8 @@ export async function createRun({
   const durableSubagentCheckpointRecovery =
     (
       subagentTasks?.store as
-        (typeof subagentTasks.store & { supportsDurableCheckpointRecovery?: boolean }) | undefined
+        | (typeof subagentTasks.store & { supportsDurableCheckpointRecovery?: boolean })
+        | undefined
     )?.supportsDurableCheckpointRecovery === true;
   if (hitl || asksUserQuestions || eventActorCheckpointing || durableSubagentCheckpointRecovery) {
     const checkpointer = await getAgentCheckpointer(agentsEndpointConfig?.checkpointer);
