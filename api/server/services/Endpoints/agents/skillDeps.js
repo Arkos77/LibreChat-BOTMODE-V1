@@ -206,6 +206,23 @@ function grantSkillOwner({ req, skillId }) {
   });
 }
 
+async function hasSkillOwner({ req, skillId }) {
+  const userId = req?.user?.id ?? req?.user?._id?.toString?.();
+  if (!userId) return false;
+  const [ownerRole, entries] = await Promise.all([
+    db.findRoleByIdentifier(AccessRoleIds.SKILL_OWNER),
+    db.findEntriesByResource(ResourceType.SKILL, skillId),
+  ]);
+  if (!ownerRole?._id || !Array.isArray(entries)) return false;
+  const ownerRoleId = ownerRole._id.toString();
+  return entries.some(
+    (entry) =>
+      entry.principalType === PrincipalType.USER &&
+      entry.principalId?.toString?.() === String(userId) &&
+      entry.roleId?.toString?.() === ownerRoleId,
+  );
+}
+
 function getAuthorSkillByName({ req, name }) {
   const author = req.user?._id ?? req.user?.id;
   if (!author) {
@@ -371,6 +388,7 @@ const skillToolDeps = {
   canCreateSkill,
   canEditSkill,
   grantSkillOwner,
+  hasSkillOwner,
   saveSkillFileContent,
   listSkillFiles: deploymentSkillMethods.listSkillFiles,
   getStrategyFunctions: getSkillStrategyFunctions,

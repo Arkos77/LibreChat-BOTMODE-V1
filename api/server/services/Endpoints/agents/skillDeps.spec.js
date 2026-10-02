@@ -55,6 +55,8 @@ jest.mock('~/server/utils/getFileStrategy', () => ({
 const mockDb = {
   getSkillFileByPath: jest.fn(),
   upsertSkillFile: jest.fn(),
+  findRoleByIdentifier: jest.fn(),
+  findEntriesByResource: jest.fn(),
 };
 
 jest.mock('~/models', () => mockDb);
@@ -103,5 +105,51 @@ describe('skillDeps saveSkillFileContent', () => {
         tenantId: 'tenant-1',
       },
     );
+  });
+});
+
+describe('skillDeps governed skill ownership proof', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('proves the exact current-user SKILL_OWNER ACL entry', async () => {
+    mockDb.findRoleByIdentifier.mockResolvedValue({ _id: 'role-owner' });
+    mockDb.findEntriesByResource.mockResolvedValue([
+      {
+        principalType: 'USER',
+        principalId: 'user-1',
+        resourceType: 'SKILL',
+        resourceId: 'skill-1',
+        roleId: 'role-owner',
+      },
+    ]);
+
+    await expect(
+      getSkillToolDeps().hasSkillOwner({
+        req: { user: { id: 'user-1' } },
+        skillId: 'skill-1',
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it('does not treat a non-owner ACL entry as SKILL_OWNER', async () => {
+    mockDb.findRoleByIdentifier.mockResolvedValue({ _id: 'role-owner' });
+    mockDb.findEntriesByResource.mockResolvedValue([
+      {
+        principalType: 'USER',
+        principalId: 'user-1',
+        resourceType: 'SKILL',
+        resourceId: 'skill-1',
+        roleId: 'role-editor',
+      },
+    ]);
+
+    await expect(
+      getSkillToolDeps().hasSkillOwner({
+        req: { user: { id: 'user-1' } },
+        skillId: 'skill-1',
+      }),
+    ).resolves.toBe(false);
   });
 });
