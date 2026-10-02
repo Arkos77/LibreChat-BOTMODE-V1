@@ -30,6 +30,24 @@ function makeDeps() {
         isCreatedByUser: false,
         metadata: {
           mtoTraceId: 'trace-a',
+          botModePlan: {
+            planId: 'plan-a',
+            planVersion: 2,
+            strategy: 'PARALLEL',
+            objective: 'Deliver project A',
+            tasks: [
+              {
+                taskId: 'root-a/research',
+                parentTaskId: 'root-a',
+                objective: 'Research sources',
+                requiredCapabilities: ['research'],
+                dependsOn: [],
+                canRunInParallel: true,
+                agentId: 'private-agent-id',
+                nodeId: 'private-node-id',
+              },
+            ],
+          },
           usage: { input: 10, output: 4, cacheWrite: 1, cacheRead: 2, cost: 0.25 },
         },
       },
@@ -100,6 +118,27 @@ describe('createBotModeProjectProjection', () => {
                   payload: { decision: 'ALLOW' },
                 },
               ],
+            },
+          ],
+          plans: [
+            {
+              messageId: 'msg-a',
+              plan: {
+                planId: 'plan-a',
+                planVersion: 2,
+                strategy: 'PARALLEL',
+                objective: 'Deliver project A',
+                tasks: [
+                  {
+                    taskId: 'root-a/research',
+                    parentTaskId: 'root-a',
+                    objective: 'Research sources',
+                    requiredCapabilities: ['research'],
+                    dependsOn: [],
+                    canRunInParallel: true,
+                  },
+                ],
+              },
             },
           ],
         },

@@ -54,6 +54,32 @@ function publicObservation(record) {
   return observation;
 }
 
+function publicPlan(value) {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  return {
+    planId: value.planId,
+    planVersion: value.planVersion,
+    supersedesPlanId: value.supersedesPlanId,
+    strategy: value.strategy,
+    objective: value.objective,
+    tasks: Array.isArray(value.tasks)
+      ? value.tasks.map((task) => ({
+          taskId: task?.taskId,
+          parentTaskId: task?.parentTaskId,
+          objective: task?.objective,
+          requiredCapabilities: Array.isArray(task?.requiredCapabilities)
+            ? task.requiredCapabilities
+            : [],
+          dependsOn: Array.isArray(task?.dependsOn) ? task.dependsOn : [],
+          canRunInParallel: task?.canRunInParallel === true,
+        }))
+      : [],
+  };
+}
+
 async function createBotModeProjectProjection({ userId, tenantId, projectId, deps }) {
   const project = await deps.getChatProject(userId, projectId);
   if (!project) {
@@ -82,6 +108,7 @@ async function createBotModeProjectProjection({ userId, tenantId, projectId, dep
 
     const usage = { ...EMPTY_USAGE };
     const traces = [];
+    const plans = [];
 
     for (const message of messages) {
       if (message?.isCreatedByUser === true) {
@@ -90,6 +117,14 @@ async function createBotModeProjectProjection({ userId, tenantId, projectId, dep
 
       const messageUsage = publicUsage(message?.metadata?.usage);
       addUsage(usage, messageUsage);
+
+      const plan = publicPlan(message?.metadata?.botModePlan);
+      if (plan) {
+        plans.push({
+          messageId: message.messageId,
+          plan,
+        });
+      }
 
       const traceId = message?.metadata?.mtoTraceId;
       if (typeof traceId !== 'string' || traceId.trim() === '') {
@@ -115,6 +150,7 @@ async function createBotModeProjectProjection({ userId, tenantId, projectId, dep
       conversationId,
       usage,
       traces,
+      plans,
     });
   }
 

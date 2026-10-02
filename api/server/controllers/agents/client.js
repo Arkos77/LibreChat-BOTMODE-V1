@@ -3228,6 +3228,28 @@ class AgentClient extends BaseClient {
     if (typeof mtoTraceId === 'string' && mtoTraceId.trim() !== '') {
       metadata.mtoTraceId = mtoTraceId.trim();
     }
+    const plan = this.orchestratorPlan;
+    if (plan && typeof plan === 'object') {
+      metadata.botModePlan = {
+        planId: plan.planId,
+        planVersion: plan.planVersion,
+        supersedesPlanId: plan.supersedesPlanId,
+        strategy: plan.strategy,
+        objective: plan.mission?.objective,
+        tasks: Array.isArray(plan.tasks)
+          ? plan.tasks.map((task) => ({
+              taskId: task?.taskId,
+              parentTaskId: task?.parentTaskId,
+              objective: task?.objective,
+              requiredCapabilities: Array.isArray(task?.requiredCapabilities)
+                ? task.requiredCapabilities
+                : [],
+              dependsOn: Array.isArray(task?.dependsOn) ? task.dependsOn : [],
+              canRunInParallel: task?.canRunInParallel === true,
+            }))
+          : [],
+      };
+    }
     const signatures = this.collectedThoughtSignatures;
     if (signatures && Object.keys(signatures).length > 0) {
       metadata.thoughtSignatures = signatures;

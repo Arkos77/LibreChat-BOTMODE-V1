@@ -114,6 +114,27 @@ describe('BotModeProjectPanel', () => {
                 ],
               },
             ],
+            plans: [
+              {
+                messageId: 'message-a',
+                plan: {
+                  planId: 'plan-a',
+                  planVersion: 2,
+                  strategy: 'PARALLEL',
+                  objective: 'Deliver project A',
+                  tasks: [
+                    {
+                      taskId: 'root-a/research',
+                      parentTaskId: 'root-a',
+                      objective: 'Research sources',
+                      requiredCapabilities: ['research'],
+                      dependsOn: [],
+                      canRunInParallel: true,
+                    },
+                  ],
+                },
+              },
+            ],
           },
         ],
         totals: {
@@ -144,6 +165,9 @@ describe('BotModeProjectPanel', () => {
     expect(screen.getByText('$0.25')).toBeInTheDocument();
     expect(screen.getByText('AUTHORIZED')).toBeInTheDocument();
     expect(screen.getByText('trace-a')).toBeInTheDocument();
+    expect(screen.getByText('Deliver project A')).toBeInTheDocument();
+    expect(screen.getByText('PARALLEL')).toBeInTheDocument();
+    expect(screen.getByText('Research sources')).toBeInTheDocument();
 
     expect(mockUseParentSubagentsQuery).toHaveBeenCalledTimes(2);
     expect(mockUseParentSubagentsQuery).toHaveBeenNthCalledWith(

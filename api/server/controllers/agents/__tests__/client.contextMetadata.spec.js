@@ -34,7 +34,47 @@ const primaryFor = (runId, output_tokens) => ({
   runId,
 });
 
-function buildMeta({ snap, latestUsageIndex, usageEvents, mtoTraceId }) {
+const orchestratorPlan = {
+  planId: 'plan-a',
+  planVersion: 2,
+  supersedesPlanId: 'plan-a-v1',
+  mission: {
+    missionId: 'mission-a',
+    taskId: 'root-a',
+    objective: 'Deliver project A',
+    constraints: ['private-mission-constraint'],
+    requiredCapabilities: ['research'],
+  },
+  strategy: 'PARALLEL',
+  tasks: [
+    {
+      key: 'research',
+      objective: 'Research sources',
+      requiredCapabilities: ['research'],
+      dependsOn: [],
+      taskId: 'root-a/research',
+      parentTaskId: 'root-a',
+      nodeId: 'private-node-id',
+      agentId: 'private-agent-id',
+      specialistId: 'private-specialist-id',
+      constraints: ['private-task-constraint'],
+      validation: [{ criteria: [{ description: 'private-criterion' }] }],
+      canRunInParallel: true,
+    },
+  ],
+  specialists: [
+    {
+      id: 'private-specialist-id',
+      agentId: 'private-agent-id',
+      role: 'researcher',
+      capabilities: ['research'],
+      constraints: ['private-specialist-constraint'],
+    },
+  ],
+  reasons: [{ code: 'PARALLEL_OPPORTUNITY' }],
+};
+
+function buildMeta({ snap, latestUsageIndex, usageEvents, mtoTraceId, orchestratorPlan }) {
   const self = {
     collectedThoughtSignatures: null,
     usageEmitSink: usageEvents,
@@ -45,6 +85,7 @@ function buildMeta({ snap, latestUsageIndex, usageEvents, mtoTraceId }) {
       agent: {},
       ...(mtoTraceId == null ? {} : { mtoTraceId }),
     },
+    ...(orchestratorPlan == null ? {} : { orchestratorPlan }),
   };
   return AgentClient.prototype.buildResponseMetadata.call(self);
 }
@@ -58,6 +99,35 @@ describe('AgentClient.buildResponseMetadata — snapshot persistence + summary m
       mtoTraceId: 'mto-trace-project-1',
     });
     expect(meta).toEqual({ mtoTraceId: 'mto-trace-project-1' });
+  });
+
+  it('persists only the public mission plan projection for project history', () => {
+    const meta = buildMeta({
+      snap: null,
+      latestUsageIndex: 0,
+      usageEvents: [],
+      orchestratorPlan,
+    });
+    expect(meta).toEqual({
+      botModePlan: {
+        planId: 'plan-a',
+        planVersion: 2,
+        supersedesPlanId: 'plan-a-v1',
+        strategy: 'PARALLEL',
+        objective: 'Deliver project A',
+        tasks: [
+          {
+            taskId: 'root-a/research',
+            parentTaskId: 'root-a',
+            objective: 'Research sources',
+            requiredCapabilities: ['research'],
+            dependsOn: [],
+            canRunInParallel: true,
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(meta)).not.toContain('private-');
   });
 
   it('persists the snapshot when a primary usage follows it (normal turn)', () => {

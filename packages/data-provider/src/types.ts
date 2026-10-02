@@ -409,10 +409,34 @@ export type TBotModeProjectTrace = {
   observations: TBotModeProjectObservation[];
 };
 
+export type TBotModeProjectPlanTask = {
+  taskId?: string;
+  parentTaskId?: string;
+  objective?: string;
+  requiredCapabilities: string[];
+  dependsOn: string[];
+  canRunInParallel: boolean;
+};
+
+export type TBotModeProjectPlan = {
+  planId?: string;
+  planVersion?: number;
+  supersedesPlanId?: string;
+  strategy?: string;
+  objective?: string;
+  tasks: TBotModeProjectPlanTask[];
+};
+
+export type TBotModeProjectPlanEntry = {
+  messageId?: string;
+  plan: TBotModeProjectPlan;
+};
+
 export type TBotModeProjectConversation = {
   conversationId: string;
   usage: TBotModeProjectUsage;
   traces: TBotModeProjectTrace[];
+  plans: TBotModeProjectPlanEntry[];
 };
 
 export type TBotModeProjectProjection = {

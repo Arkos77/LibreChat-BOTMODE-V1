@@ -109,6 +109,10 @@ export default function BotModeProjectPanel({
         trace.observations.map((observation) => ({ traceId: trace.traceId, observation })),
       ),
     ) ?? [];
+  const plans =
+    projection?.conversations.flatMap((conversation) =>
+      conversation.plans.map((entry) => entry.plan),
+    ) ?? [];
 
   if (projectConversations.length === 0) {
     return null;
@@ -123,6 +127,34 @@ export default function BotModeProjectPanel({
       </div>
       {projection?.totals.costKnown && (
         <div className="mb-3 text-sm text-text-secondary">${projection.totals.cost.toFixed(2)}</div>
+      )}
+      {plans.length > 0 && (
+        <div className="mb-3 space-y-2">
+          {plans.map((plan, planIndex) => (
+            <section
+              key={plan.planId ?? `plan-${planIndex}`}
+              className="rounded-xl border border-border-light bg-surface-secondary/60 p-3"
+            >
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                {plan.objective && (
+                  <span className="font-medium text-text-primary">{plan.objective}</span>
+                )}
+                {plan.strategy && (
+                  <span className="text-xs text-text-secondary">{plan.strategy}</span>
+                )}
+              </div>
+              {plan.tasks.length > 0 && (
+                <div className="mt-2 space-y-1 text-xs text-text-secondary">
+                  {plan.tasks.map((task, taskIndex) => (
+                    <div key={task.taskId ?? `${plan.planId ?? planIndex}:task-${taskIndex}`}>
+                      {task.objective ?? task.taskId}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          ))}
+        </div>
       )}
       {evidence.length > 0 && (
         <div className="mb-3 space-y-1 text-xs text-text-secondary">
