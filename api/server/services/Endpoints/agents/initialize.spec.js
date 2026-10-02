@@ -511,8 +511,15 @@ describe('initializeClient — processAgent ACL gate', () => {
       model_parameters: { model: 'a:free', openRouterOnly: 'primary-value' },
       endpoint: 'agents',
     });
+    let anthropicValidations = 0;
+    let anthropicInitializations = 0;
+    mockValidateAgentModel.mockImplementation(async ({ agent }) => {
+      if (agent.provider === 'anthropic') anthropicValidations++;
+      return { isValid: true };
+    });
     mockInitializeAgent.mockImplementation(async ({ agent, endpointOption }) => {
       if (agent.provider === 'anthropic') {
+        anthropicInitializations++;
         expect(endpointOption.endpoint).toBe('agents');
         expect(endpointOption.model_parameters).toEqual({ model: 'claude-sonnet' });
         return {
@@ -532,38 +539,43 @@ describe('initializeClient — processAgent ACL gate', () => {
       };
     });
 
-    const req = makeReq();
-    req.config.endpoints.agents = {
-      allowedProviders: ['OpenRouter', 'anthropic'],
-      hostModelRouting: [
-        {
-          agentId: PRIMARY_ID,
-          bindings: [
-            { id: 'primary', provider: 'OpenRouter', model: 'a:free' },
-            { id: 'anthropic-b', provider: 'anthropic', model: 'claude-sonnet' },
-          ],
-          preferredBindingId: 'anthropic-b',
-        },
-      ],
-    };
+    for (let index = 0; index < 2; index++) {
+      const req = makeReq();
+      if (index === 1) req._resumableStreamId = 'resume-cross-provider-job';
+      req.config.endpoints.agents = {
+        allowedProviders: ['OpenRouter', 'anthropic'],
+        hostModelRouting: [
+          {
+            agentId: PRIMARY_ID,
+            bindings: [
+              { id: 'primary', provider: 'OpenRouter', model: 'a:free' },
+              { id: 'anthropic-b', provider: 'anthropic', model: 'claude-sonnet' },
+            ],
+            preferredBindingId: 'anthropic-b',
+          },
+        ],
+      };
 
-    await initializeClient({
-      req,
-      res: {},
-      signal: new AbortController().signal,
-      endpointOption: makeOption(),
-      mtoTraceId: 'trace-cross-provider-choice',
-    });
+      await initializeClient({
+        req,
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption: makeOption(),
+        mtoTraceId: 'trace-cross-provider-choice',
+      });
 
-    expect(agentClientArgs.agent.provider).toBe('anthropic');
-    expect(agentClientArgs.agent.model).toBe('claude-sonnet');
-    expect(agentClientArgs.agent.model_parameters).toEqual({
-      model: 'claude-sonnet',
-      providerMarker: 'anthropic',
-    });
-    expect(agentClientArgs.endpointTokenConfig).toEqual({
-      selectedFor: 'anthropic:claude-sonnet',
-    });
+      expect(agentClientArgs.agent.provider).toBe('anthropic');
+      expect(agentClientArgs.agent.model).toBe('claude-sonnet');
+      expect(agentClientArgs.agent.model_parameters).toEqual({
+        model: 'claude-sonnet',
+        providerMarker: 'anthropic',
+      });
+      expect(agentClientArgs.endpointTokenConfig).toEqual({
+        selectedFor: 'anthropic:claude-sonnet',
+      });
+    }
+    expect(anthropicValidations).toBe(2);
+    expect(anthropicInitializations).toBe(2);
   });
 
   it('threads the optional MTO event sink into AgentClient unchanged', async () => {
