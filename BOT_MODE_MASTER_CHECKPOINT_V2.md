@@ -718,3 +718,22 @@ Preuve fraîche : schedules/project.spec.ts 29/29 PASS ; LibreChat dispose de co
 ## P14 — release et restauration encore ouvertes (29 septembre 2026)
 
 Des suites ciblées P0–P13 et un montage RAG réel ont été exécutés ; aucune installation propre suivie de backup, restauration vérifiée, rollback et mission globale de bout en bout n est attestée par cette campagne. Statut : P14 OPEN. P3 et P5 sont désormais fermés par preuves dédiées. Prochaine preuve : image et configuration reproductibles, doctor/health, sauvegarde Mongo et vecteurs, restauration isolée, panne simulée, audit des secrets et coûts, puis décision de release fondée sur les gates encore ouvertes P6/P8/P9/P10/P11/P12/P13.
+
+## Réconciliation P9 — 2 octobre 2026
+
+Statut global : P9 PARTIEL, gate V3 global OPEN.
+
+Sous-gates FERMÉS :
+- sélection hôte OpenRouter parmi 2 à 4 modèles explicitement autorisés et résolus pour un même agent logique ; DECIDED durable avant exécution ;
+- revalidation à chaque initialisation et reprise : initialize.spec.js, test exact revalidates configured OpenRouter choices and persists a DECIDED event on each initialization, 1/1 PASS le 02/10/2026 ;
+- attribution usage par modèle primaire avec traceId, decisionId, selectedModel, usageModel et jetons ;
+- attribution du coût USD réel par appel modèle depuis l'événement natif event.cost : commit 7c5792c feat(botmode): retain routed model cost evidence ; hostModelUsage.spec.js + hostModelRouting.spec.js 6/6 PASS ; preuve P11 client ciblée PASS ;
+- aucun fallback SDK opaque installé ; les bindings alternatifs restent séparément validés.
+
+Sous-gates OUVERTS :
+- choix dynamique pré-run alimenté par des signaux hôte fiables de qualité, coût estimé, latence et besoin réel de contexte. Le runtime expose maxContextTokens résolu, mais aucun coût, latence ou qualité prospectifs fiables n'ont été trouvés. Le coût historique post-run n'est pas réinterprété comme estimatedCost ;
+- budget/admission par invocation modèle. Le chemin AgentClient facture après usage via recordCollectedUsage ; aucun checkBalance ni hook de budget/autorisation par appel modèle n'est actuellement branché sur le runtime agent ;
+- failover contrôlé sur erreur fournisseur. Une erreur de run.processStream peut survenir après streaming ou effets outils ; rejouer le run au catch global risquerait de dupliquer des effets. Aucun failover n'est donc activé tant qu'un seam pré-effet ou une admission par invocation ne garantit pas une nouvelle autorisation et un replay sûr ;
+- multi-provider contrôlé. Le hostModelRouting de production reste volontairement OpenRouter-only.
+
+Décision : ne pas fabriquer de métriques prospectives, ne pas activer les fallbacks SDK natifs et ne pas relancer un run après erreur sans preuve de non-effet. Prochaine tranche P9 : étudier le callback modèle natif déjà injecté sur les bindings et fallbacks pour déterminer si une admission par invocation peut être ajoutée sans second système d'autorité ; seulement ensuite reconsidérer un failover borné.
