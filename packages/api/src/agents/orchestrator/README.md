@@ -83,13 +83,19 @@ to SDK `FallbackConfig` entries. Retry/fallback execution remains owned by
 `@librechat/agents`; P9 does not duplicate it.
 
 The production host-model path is intentionally stricter than that generic
-adapter. Its opt-in OpenRouter routing validates two to four explicit models,
-persists the selected `DECIDED` provenance before execution, installs only the
-selected binding, and rejects hidden/native fallbacks. Binding-specific
-pre-invocation balance admission is now wired through `modelCallbackFactory`
-for initial and resume runs, using the exact host-known `agentId`/provider/model,
-the final provider-bound message batches, and that agent's resolved token
-pricing configuration. This closes per-invocation balance admission; it does
+adapter. Its opt-in routing supports either the legacy OpenRouter model list or
+two to four explicit host-authorized provider/model bindings identified by
+stable non-secret binding IDs. Every alternative is revalidated and separately
+initialized through the native provider path on both initial run and resume;
+cross-provider alternatives do not inherit primary-provider model parameters.
+The host persists the selected `DECIDED` provenance before execution, installs
+only the selected binding, rejects hidden/native fallbacks, and attributes
+primary model-end usage to the selected provider/model identity.
+Binding-specific pre-invocation balance admission is wired through
+`modelCallbackFactory` for initial and resume runs, using the exact host-known
+`agentId`/provider/model, the final provider-bound message batches, and that
+agent's resolved token pricing configuration. Explicit multi-provider host
+routing and per-invocation balance admission are therefore closed. This does
 not provide an atomic reservation or hard concurrent spending cap for metered
 provider calls.
 
@@ -102,8 +108,8 @@ alternatives were previously validated. A future controlled failover must prove
 a zero-effect/pre-provider boundary, then revalidate/re-authorize the alternate,
 apply budget admission, and persist fresh provenance before that alternate may
 execute; it must not replay the whole graph/run after partial execution.
-Dynamic pre-run quality/cost/latency signals and multi-provider host routing also
-remain open rather than being synthesized from unproven metrics.
+Dynamic pre-run quality/cost/latency signals remain open rather than being
+synthesized from unproven metrics.
 
 A generic tool, workflow or local runtime is therefore not disguised as an
 `AgentInputs` fallback. Those resources remain in the capability/resource layer
@@ -402,9 +408,9 @@ usage contains only nonnegative token counters, and Oracle validator, reason
 codes and uncertainty are reduced to bounded scalar metadata. Unexpected
 nested values are omitted before logging.
 
-### Host P11 OpenRouter model selection
+### Host P11 model selection
 
-An operator may set `endpoints.agents.hostModelRouting` in `librechat.yaml` for a saved agent. Example:
+An operator may set `endpoints.agents.hostModelRouting` in `librechat.yaml` for a saved agent. The legacy OpenRouter form remains supported:
 
 ```yaml
 endpoints:
@@ -415,8 +421,25 @@ endpoints:
         preferredModel: alternate-model:free
 ```
 
-The first model must be the agent's saved model. The native host validates and separately initializes every alternative for the same OpenRouter agent, then selects the configured preferred model (or the saved model). It records a bounded `DECIDED` observation under the authenticated owner before the run uses the selected configuration. A failed validation or durable observation stops the configured run. The same initialization path runs on resume, so model access is checked again. A selected model's resolved context, token pricing and tool configuration travel together; no SDK fallback is installed. This opt-in does not provide dynamic quality or cost estimates, authorize other providers, or perform an automatic failover. Without this configuration, agent initialization is unchanged.
+Explicit multi-provider routing uses bounded non-secret bindings:
 
-For an opted-in P11 response, `message.metadata.hostModelUsage` links the durable `decisionId` and `traceId` to up to 16 primary OpenRouter model-end usage events. Each event records only the model name reported by LibreChat's model-end context, provider, and nonnegative token counts; subagent, summary and label usage are excluded. The selected model and usage model remain separate so mismatches are visible. This trace proves what the native run reported for the invoked model and its usage, not an independent attestation by OpenRouter.
+```yaml
+endpoints:
+  agents:
+    hostModelRouting:
+      - agentId: agent_example
+        bindings:
+          - id: primary
+            provider: OpenRouter
+            model: current-model:free
+          - id: anthropic-alt
+            provider: anthropic
+            model: claude-sonnet
+        preferredBindingId: anthropic-alt
+```
+
+The first binding must match the saved agent provider/model. Configuration carries only binding ID, provider and model; credentials and resolved runtime client options are not accepted there. The native host validates and separately initializes every alternative before selection. Cross-provider alternatives receive provider-specific model parameters instead of inheriting primary-provider parameters. Failed native validation or failed durable provenance stops the configured run. The same authorization, validation and initialization path runs again on resume, and tests prove the explicit cross-provider alternative is revalidated and reinitialized there. A selected binding's resolved context, token pricing and tool configuration travel together; no SDK fallback is installed. This opt-in does not provide dynamic quality/cost/latency estimates or automatic failover. Without this configuration, agent initialization is unchanged.
+
+For an opted-in P11 response, `message.metadata.hostModelUsage` links the durable `decisionId` and `traceId` to up to 16 primary model-end usage events for the selected provider/model. Each event records only the model name reported by LibreChat's model-end context, provider, and nonnegative token counts; subagent, summary and label usage are excluded. The selected model and usage model remain separate so mismatches are visible. This trace proves what the native run reported for the invoked model and its usage, not an independent provider attestation.
 
 The P11 projection also matches each primary usage event to the selected agent ID. The model-end handler carries that ID into the server-side usage collector; the SSE payload does not expose it. Calls from connected agents are excluded even if they have the same provider and an untagged primary usage type. Missing producer identity yields no P11 model-call evidence.
