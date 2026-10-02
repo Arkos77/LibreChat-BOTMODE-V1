@@ -11,6 +11,7 @@ export type ImprovementLifecycleEventType =
   | 'DENIED'
   | 'PROPOSAL_ONLY'
   | 'APPROVED'
+  | 'ALLOCATED'
   | 'COMMITTED';
 
 export type ImprovementLifecycleActorType = 'host' | 'agent' | 'oracle' | 'policy' | 'human';

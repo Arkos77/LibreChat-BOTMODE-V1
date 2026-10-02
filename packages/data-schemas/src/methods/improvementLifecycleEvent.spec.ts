@@ -241,4 +241,44 @@ describe('ImprovementLifecycleEvent durable append-only store', () => {
     ).rejects.toThrow(/immutable|append-only/i);
     await expect(Model.deleteOne({ eventId: 'event-1' })).rejects.toThrow(/immutable|append-only/i);
   });
+
+  it('persists one immutable skill allocation before create mutation', async () => {
+    const allocation = event({
+      eventId: 'skill-allocation:candidate-1',
+      type: 'ALLOCATED',
+      actor: { id: 'librechat:native-skill-create', type: 'host' },
+      data: {
+        operation: 'create',
+        skillId: new mongoose.Types.ObjectId().toString(),
+        payloadDigest: 'digest-create',
+        snapshotDigest: 'snapshot-create',
+      },
+    });
+
+    const first = await methods.recordImprovementLifecycleEvent({
+      user: USER_A,
+      tenantId: TENANT,
+      event: allocation,
+    });
+    const replay = await methods.recordImprovementLifecycleEvent({
+      user: USER_A,
+      tenantId: TENANT,
+      event: allocation,
+    });
+
+    expect(first.record.type).toBe('ALLOCATED');
+    expect(replay.replayed).toBe(true);
+    expect(replay.record.data).toEqual(allocation.data);
+
+    await expect(
+      methods.recordImprovementLifecycleEvent({
+        user: USER_A,
+        tenantId: TENANT,
+        event: {
+          ...allocation,
+          data: { ...allocation.data, skillId: new mongoose.Types.ObjectId().toString() },
+        },
+      }),
+    ).rejects.toBeInstanceOf(ImprovementLifecycleEventConflictError);
+  });
 });
