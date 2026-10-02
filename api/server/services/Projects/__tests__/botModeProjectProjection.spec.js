@@ -77,7 +77,14 @@ describe('createBotModeProjectProjection', () => {
       conversations: [
         {
           conversationId: 'conv-a',
-          usage: { input: 10, output: 4, cacheWrite: 1, cacheRead: 2, cost: 0.25 },
+          usage: {
+            input: 10,
+            output: 4,
+            cacheWrite: 1,
+            cacheRead: 2,
+            cost: 0.25,
+            costKnown: true,
+          },
           traces: [
             {
               messageId: 'msg-a',
@@ -97,7 +104,14 @@ describe('createBotModeProjectProjection', () => {
           ],
         },
       ],
-      totals: { input: 10, output: 4, cacheWrite: 1, cacheRead: 2, cost: 0.25 },
+      totals: {
+        input: 10,
+        output: 4,
+        cacheWrite: 1,
+        cacheRead: 2,
+        cost: 0.25,
+        costKnown: true,
+      },
       nextCursor: null,
     });
     expect(JSON.stringify(projection)).not.toContain('private');
@@ -116,7 +130,47 @@ describe('createBotModeProjectProjection', () => {
     expect(a.conversations.map((c) => c.conversationId)).toEqual(['conv-a']);
     expect(b.conversations.map((c) => c.conversationId)).toEqual(['conv-b']);
     expect(a.totals.cost).toBe(0.25);
+    expect(a.totals.costKnown).toBe(true);
     expect(b.totals.cost).toBe(0.5);
+    expect(b.totals.costKnown).toBe(true);
+  });
+
+  it('marks project cost unknown when any projected assistant usage omits authoritative cost', async () => {
+    const deps = makeDeps();
+    deps.getMessages.mockResolvedValueOnce([
+      {
+        messageId: 'msg-a-unknown-cost',
+        conversationId: 'conv-a',
+        isCreatedByUser: false,
+        metadata: {
+          mtoTraceId: 'trace-a',
+          usage: { input: 3, output: 2, cacheWrite: 0, cacheRead: 1 },
+        },
+      },
+    ]);
+
+    const projection = await createBotModeProjectProjection({
+      userId: 'owner',
+      projectId: projectA,
+      deps,
+    });
+
+    expect(projection.conversations[0].usage).toEqual({
+      input: 3,
+      output: 2,
+      cacheWrite: 0,
+      cacheRead: 1,
+      cost: 0,
+      costKnown: false,
+    });
+    expect(projection.totals).toEqual({
+      input: 3,
+      output: 2,
+      cacheWrite: 0,
+      cacheRead: 1,
+      cost: 0,
+      costKnown: false,
+    });
   });
 
   it('returns null when the project is not owned by the requesting user', async () => {

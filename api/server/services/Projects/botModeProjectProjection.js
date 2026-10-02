@@ -8,6 +8,7 @@ const EMPTY_USAGE = Object.freeze({
   cacheWrite: 0,
   cacheRead: 0,
   cost: 0,
+  costKnown: true,
 });
 
 function finite(value) {
@@ -22,6 +23,7 @@ function publicUsage(value) {
     cacheWrite: finite(usage.cacheWrite),
     cacheRead: finite(usage.cacheRead),
     cost: finite(usage.cost),
+    costKnown: typeof usage.cost === 'number',
   };
 }
 
@@ -31,6 +33,7 @@ function addUsage(target, usage) {
   target.cacheWrite += usage.cacheWrite;
   target.cacheRead += usage.cacheRead;
   target.cost += usage.cost;
+  target.costKnown = target.costKnown && usage.costKnown;
 }
 
 function publicObservation(record) {
