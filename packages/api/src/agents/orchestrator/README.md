@@ -82,6 +82,29 @@ The adapter selects the primary binding and maps the remaining authorized order
 to SDK `FallbackConfig` entries. Retry/fallback execution remains owned by
 `@librechat/agents`; P9 does not duplicate it.
 
+The production host-model path is intentionally stricter than that generic
+adapter. Its opt-in OpenRouter routing validates two to four explicit models,
+persists the selected `DECIDED` provenance before execution, installs only the
+selected binding, and rejects hidden/native fallbacks. Binding-specific
+pre-invocation balance admission is now wired through `modelCallbackFactory`
+for initial and resume runs, using the exact host-known `agentId`/provider/model,
+the final provider-bound message batches, and that agent's resolved token
+pricing configuration. This closes per-invocation balance admission; it does
+not provide an atomic reservation or hard concurrent spending cap for metered
+provider calls.
+
+Controlled production failover therefore remains open. The native SDK
+`tryFallbackProviders(...)` path can run after a primary invocation error that
+occurs after streaming has already started, and the current graph seam exposes
+no proven fail-closed marker that the provider never started and produced no
+external effect. The host must not enable that fallback path merely because the
+alternatives were previously validated. A future controlled failover must prove
+a zero-effect/pre-provider boundary, then revalidate/re-authorize the alternate,
+apply budget admission, and persist fresh provenance before that alternate may
+execute; it must not replay the whole graph/run after partial execution.
+Dynamic pre-run quality/cost/latency signals and multi-provider host routing also
+remain open rather than being synthesized from unproven metrics.
+
 A generic tool, workflow or local runtime is therefore not disguised as an
 `AgentInputs` fallback. Those resources remain in the capability/resource layer
 and require the appropriate host/executor adapter after selection. This preserves
