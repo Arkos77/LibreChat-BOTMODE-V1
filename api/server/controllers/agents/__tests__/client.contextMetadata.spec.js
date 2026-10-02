@@ -34,18 +34,32 @@ const primaryFor = (runId, output_tokens) => ({
   runId,
 });
 
-function buildMeta({ snap, latestUsageIndex, usageEvents }) {
+function buildMeta({ snap, latestUsageIndex, usageEvents, mtoTraceId }) {
   const self = {
     collectedThoughtSignatures: null,
     usageEmitSink: usageEvents,
     contextUsageSink: snap
       ? { latest: snap, count: 1, latestUsageIndex }
       : { latest: null, count: 0 },
+    options: {
+      agent: {},
+      ...(mtoTraceId == null ? {} : { mtoTraceId }),
+    },
   };
   return AgentClient.prototype.buildResponseMetadata.call(self);
 }
 
 describe('AgentClient.buildResponseMetadata — snapshot persistence + summary marker', () => {
+  it('persists the generation MTO trace identity for durable project correlation', () => {
+    const meta = buildMeta({
+      snap: null,
+      latestUsageIndex: 0,
+      usageEvents: [],
+      mtoTraceId: 'mto-trace-project-1',
+    });
+    expect(meta).toEqual({ mtoTraceId: 'mto-trace-project-1' });
+  });
+
   it('persists the snapshot when a primary usage follows it (normal turn)', () => {
     const meta = buildMeta({ snap: snapshot(0), latestUsageIndex: 0, usageEvents: [primary] });
     expect(meta.contextUsage).toBeDefined();

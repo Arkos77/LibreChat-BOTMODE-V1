@@ -3224,6 +3224,10 @@ class AgentClient extends BaseClient {
      *   usage?: import('librechat-data-provider').TResponseUsage,
      * }} */
     const metadata = {};
+    const mtoTraceId = this.options?.mtoTraceId;
+    if (typeof mtoTraceId === 'string' && mtoTraceId.trim() !== '') {
+      metadata.mtoTraceId = mtoTraceId.trim();
+    }
     const signatures = this.collectedThoughtSignatures;
     if (signatures && Object.keys(signatures).length > 0) {
       metadata.thoughtSignatures = signatures;
