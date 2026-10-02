@@ -4030,12 +4030,16 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
 
     it('re-pause: keeps orchestrated mission content private while persisting the durable candidate', async () => {
       const durableContent = [{ type: 'text', text: 'hidden mission segment' }];
+      const priorAttachment = { type: 'image', file_id: 'mission-prior' };
+      const newAttachment = { type: 'image', file_id: 'mission-new' };
+      const durableAttachments = [priorAttachment, newAttachment];
       const missionJob = makeToolApprovalJob({
         metadata: {
           orchestratorPlan: {
             planId: 'mission-plan-repause',
             tasks: [],
           },
+          missionCandidateAttachments: [priorAttachment],
         },
       });
       mockGenerationJobManager.getJob.mockResolvedValueOnce(missionJob).mockResolvedValue({
@@ -4043,13 +4047,14 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
         metadata: {
           ...missionJob.metadata,
           missionCandidateContent: durableContent,
+          missionCandidateAttachments: durableAttachments,
         },
       });
       mockInitializeClient.mockResolvedValue({
         client: makeClient({
           pendingApproval: { actionId: NEXT_ACTION_ID },
           contentParts: durableContent,
-          artifactPromises: [],
+          artifactPromises: [Promise.resolve(newAttachment)],
           orchestratorPlan: missionJob.metadata.orchestratorPlan,
         }),
         userMCPAuthMap: {},
@@ -4062,7 +4067,10 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
 
       expect(mockGenerationJobManager.updateMetadata).toHaveBeenCalledWith(
         CONVO_ID,
-        { missionCandidateContent: durableContent, missionCandidateAttachments: [] },
+        {
+          missionCandidateContent: durableContent,
+          missionCandidateAttachments: durableAttachments,
+        },
         1000,
       );
       expect(mockSaveMessage).toHaveBeenCalledWith(
@@ -4075,6 +4083,13 @@ describe('ResumeAgentController (POST /agents/chat/resume)', () => {
           context: 'api/server/controllers/agents/resume.js - re-pause progress persist',
         }),
       );
+      const rePauseSave = mockSaveMessage.mock.calls.find(
+        ([, , options]) =>
+          options?.context ===
+          'api/server/controllers/agents/resume.js - re-pause progress persist',
+      );
+      expect(rePauseSave).toBeDefined();
+      expect(rePauseSave[1]).not.toHaveProperty('attachments');
     });
 
     it('re-pause: preserves HITL response provenance on the unfinished row', async () => {

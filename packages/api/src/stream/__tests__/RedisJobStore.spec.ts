@@ -330,6 +330,7 @@ describe('RedisJobStore', () => {
       responseMessageId: 'response-1',
       mtoTraceId: 'mto-trace-redis-123',
       missionCandidateContent: [{ type: 'text', text: 'private mission candidate' }],
+      missionCandidateAttachments: [{ type: 'image', file_id: 'private-mission-attachment' }],
       orchestratorPlan: {
         planId: 'mission-p6:v1',
         planVersion: 1,
@@ -439,6 +440,7 @@ describe('RedisJobStore', () => {
       responseMessageId: 'response-1',
       mtoTraceId: 'mto-trace-redis-123',
       missionCandidateContent: [{ type: 'text', text: 'private mission candidate' }],
+      missionCandidateAttachments: [{ type: 'image', file_id: 'private-mission-attachment' }],
       orchestratorPlan: {
         planId: 'mission-p6:v1',
         planVersion: 1,
@@ -515,6 +517,9 @@ describe('RedisJobStore', () => {
       mtoTraceId: 'mto-trace-redis-123',
       missionCandidateContent: JSON.stringify([
         { type: 'text', text: 'private mission candidate' },
+      ]),
+      missionCandidateAttachments: JSON.stringify([
+        { type: 'image', file_id: 'private-mission-attachment' },
       ]),
       orchestratorPlan: JSON.stringify({
         planId: 'mission-p6:v1',
