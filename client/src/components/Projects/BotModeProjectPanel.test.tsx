@@ -4,10 +4,13 @@ import type { ParentSubagentIndex, TConversation } from 'librechat-data-provider
 import BotModeProjectPanel from './BotModeProjectPanel';
 
 const mockUseParentSubagentsQuery = jest.fn();
+const mockUseBotModeProjectProjectionQuery = jest.fn();
 const mockControlMutate = jest.fn();
 
 jest.mock('~/data-provider', () => ({
   useParentSubagentsQuery: (...args: unknown[]) => mockUseParentSubagentsQuery(...args),
+  useBotModeProjectProjectionQuery: (...args: unknown[]) =>
+    mockUseBotModeProjectProjectionQuery(...args),
   useSubagentControlMutation: () => ({
     mutate: (variables: unknown) => mockControlMutate(variables),
     isLoading: false,
@@ -81,10 +84,66 @@ describe('BotModeProjectPanel', () => {
     mockUseParentSubagentsQuery.mockImplementation((conversationId: string) => ({
       data: indexes[conversationId],
     }));
+    mockUseBotModeProjectProjectionQuery.mockReturnValue({
+      data: {
+        projectId: 'project-a',
+        conversations: [
+          {
+            conversationId: 'conversation-a',
+            usage: {
+              input: 10,
+              output: 4,
+              cacheWrite: 1,
+              cacheRead: 2,
+              cost: 0.25,
+              costKnown: true,
+            },
+            traces: [
+              {
+                messageId: 'message-a',
+                traceId: 'trace-a',
+                observations: [
+                  {
+                    traceId: 'trace-a',
+                    traceEventId: 'trace-a-authorized',
+                    type: 'AUTHORIZED',
+                    source: 'host',
+                    timestamp: '2026-10-02T19:00:00.000Z',
+                    payload: { decision: 'ALLOW' },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        totals: {
+          input: 10,
+          output: 4,
+          cacheWrite: 1,
+          cacheRead: 2,
+          cost: 0.25,
+          costKnown: true,
+        },
+        nextCursor: null,
+      },
+    });
   });
 
   it('keeps project task queries isolated and controls the addressed durable task', () => {
-    render(<BotModeProjectPanel conversations={[conversationA, conversationB, withoutId]} />);
+    render(
+      <BotModeProjectPanel
+        projectId="project-a"
+        conversations={[conversationA, conversationB, withoutId]}
+      />,
+    );
+
+    expect(mockUseBotModeProjectProjectionQuery).toHaveBeenCalledWith(
+      'project-a',
+      expect.objectContaining({ enabled: true }),
+    );
+    expect(screen.getByText('$0.25')).toBeInTheDocument();
+    expect(screen.getByText('AUTHORIZED')).toBeInTheDocument();
+    expect(screen.getByText('trace-a')).toBeInTheDocument();
 
     expect(mockUseParentSubagentsQuery).toHaveBeenCalledTimes(2);
     expect(mockUseParentSubagentsQuery).toHaveBeenNthCalledWith(

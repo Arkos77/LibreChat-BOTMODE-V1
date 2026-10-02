@@ -384,6 +384,44 @@ export type TChatProject = {
   updatedAt: string;
 };
 
+export type TBotModeProjectUsage = {
+  input: number;
+  output: number;
+  cacheWrite: number;
+  cacheRead: number;
+  cost: number;
+  costKnown: boolean;
+};
+
+export type TBotModeProjectObservation = {
+  traceId?: string;
+  traceEventId?: string;
+  type?: string;
+  source?: string;
+  timestamp?: string;
+  identity?: Record<string, unknown>;
+  payload?: Record<string, unknown>;
+};
+
+export type TBotModeProjectTrace = {
+  messageId?: string;
+  traceId: string;
+  observations: TBotModeProjectObservation[];
+};
+
+export type TBotModeProjectConversation = {
+  conversationId: string;
+  usage: TBotModeProjectUsage;
+  traces: TBotModeProjectTrace[];
+};
+
+export type TBotModeProjectProjection = {
+  projectId: string;
+  conversations: TBotModeProjectConversation[];
+  totals: TBotModeProjectUsage;
+  nextCursor: string | null;
+};
+
 export type TCreateChatProjectRequest = {
   name: string;
   description?: string;

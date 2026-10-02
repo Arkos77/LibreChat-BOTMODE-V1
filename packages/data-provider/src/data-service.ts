@@ -966,6 +966,12 @@ export function getProjectById(projectId: string): Promise<t.TChatProject> {
   return request.get(endpoints.projectById(projectId));
 }
 
+export function getBotModeProjectProjection(
+  projectId: string,
+): Promise<t.TBotModeProjectProjection> {
+  return request.get(endpoints.projectBotMode(projectId));
+}
+
 export function updateProject(payload: t.TUpdateChatProjectRequest): Promise<t.TChatProject> {
   const { projectId, ...data } = payload;
   return request.patch(endpoints.projectById(projectId), data);

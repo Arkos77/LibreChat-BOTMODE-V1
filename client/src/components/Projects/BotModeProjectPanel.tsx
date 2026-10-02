@@ -1,8 +1,12 @@
 import { v4 } from 'uuid';
 import { Button } from '@librechat/client';
 import type { ParentSubagentSummary, TConversation } from 'librechat-data-provider';
+import {
+  useBotModeProjectProjectionQuery,
+  useParentSubagentsQuery,
+  useSubagentControlMutation,
+} from '~/data-provider';
 import { subagentStatusDotClass, subagentStatusLabelKey } from '~/components/Chat/Subagents/status';
-import { useParentSubagentsQuery, useSubagentControlMutation } from '~/data-provider';
 import { useLocalize } from '~/hooks';
 
 function ConversationTasks({ conversation }: { conversation: TConversation }) {
@@ -87,9 +91,24 @@ function ConversationTasks({ conversation }: { conversation: TConversation }) {
   );
 }
 
-export default function BotModeProjectPanel({ conversations }: { conversations: TConversation[] }) {
+export default function BotModeProjectPanel({
+  projectId,
+  conversations,
+}: {
+  projectId: string;
+  conversations: TConversation[];
+}) {
   const localize = useLocalize();
+  const { data: projection } = useBotModeProjectProjectionQuery(projectId, {
+    enabled: projectId !== '',
+  });
   const projectConversations = conversations.filter((conversation) => conversation.conversationId);
+  const evidence =
+    projection?.conversations.flatMap((conversation) =>
+      conversation.traces.flatMap((trace) =>
+        trace.observations.map((observation) => ({ traceId: trace.traceId, observation })),
+      ),
+    ) ?? [];
 
   if (projectConversations.length === 0) {
     return null;
@@ -102,6 +121,18 @@ export default function BotModeProjectPanel({ conversations }: { conversations: 
           {localize('com_ui_bot_mode_project_activity')}
         </h2>
       </div>
+      {projection?.totals.costKnown && (
+        <div className="mb-3 text-sm text-text-secondary">${projection.totals.cost.toFixed(2)}</div>
+      )}
+      {evidence.length > 0 && (
+        <div className="mb-3 space-y-1 text-xs text-text-secondary">
+          {evidence.map(({ traceId, observation }, index) => (
+            <div key={`${traceId}:${observation.traceEventId ?? index}`}>
+              <span>{observation.type}</span> <span>{traceId}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="grid gap-3 md:grid-cols-2">
         {projectConversations.map((conversation) => (
           <ConversationTasks key={conversation.conversationId} conversation={conversation} />

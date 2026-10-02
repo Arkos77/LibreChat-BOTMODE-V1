@@ -232,7 +232,7 @@ export default function ProjectWorkspace() {
           </span>
         </button>
 
-        <BotModeProjectPanel conversations={conversations} />
+        <BotModeProjectPanel projectId={activeProjectId ?? ''} conversations={conversations} />
 
         <section className="mt-8 flex min-h-0 flex-1 flex-col">
           <div className="mb-3 flex items-center justify-between gap-3">
