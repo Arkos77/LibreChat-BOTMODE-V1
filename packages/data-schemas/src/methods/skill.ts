@@ -7,8 +7,8 @@ import {
   SKILL_BODY_MAX_LENGTH,
   SKILL_NAME_PATTERN as SKILL_NAME_PATTERN_SHARED,
 } from 'librechat-data-provider';
+import type { ClientSession, Model, Types, FilterQuery } from 'mongoose';
 import type { CodeEnvRef } from 'librechat-data-provider';
-import type { Model, Types, FilterQuery } from 'mongoose';
 import type {
   ISkill,
   ISkillDocument,
@@ -602,6 +602,16 @@ export type CreateSkillInput = {
   tenantId?: string;
 };
 
+export type CreateSkillOptions = {
+  skillId?: Types.ObjectId;
+  session?: ClientSession;
+  improvementMutation?: {
+    operation: 'create';
+    candidateId: string;
+    payloadDigest: string;
+  };
+};
+
 export type UpdateSkillInput = {
   name?: string;
   displayTitle?: string;
@@ -812,7 +822,9 @@ export type CreateSkillResult = {
 };
 
 type BodyAlwaysApplyResult =
-  { status: 'absent' } | { status: 'valid'; value: boolean } | { status: 'invalid' };
+  | { status: 'absent' }
+  | { status: 'valid'; value: boolean }
+  | { status: 'invalid' };
 
 /**
  * Extractor for the `always-apply` / `alwaysApply` flag sitting inside a SKILL.md body's
@@ -1010,7 +1022,7 @@ export function createSkillMethods(
   mongoose: typeof import('mongoose'),
   deps: SkillDeps,
 ): {
-  createSkill: (data: CreateSkillInput) => Promise<CreateSkillResult>;
+  createSkill: (data: CreateSkillInput, options?: CreateSkillOptions) => Promise<CreateSkillResult>;
   getSkillById: (id: string | Types.ObjectId) => Promise<(ISkill & { _id: Types.ObjectId }) | null>;
   getSkillByName: (
     name: string,
@@ -1050,6 +1062,11 @@ export function createSkillMethods(
     id: string;
     expectedVersion: number;
     update: UpdateSkillInput;
+    improvementMutation?: {
+      candidateId: string;
+      payloadDigest: string;
+      expectedVersion: number;
+    };
   }) => Promise<UpdateSkillResult>;
   deleteSkill: (id: string) => Promise<{ deleted: boolean }>;
   deleteUserSkills: (userId: Types.ObjectId | string) => Promise<number>;
@@ -1137,7 +1154,10 @@ export function createSkillMethods(
     ).toString('base64');
   }
 
-  async function createSkill(data: CreateSkillInput): Promise<CreateSkillResult> {
+  async function createSkill(
+    data: CreateSkillInput,
+    options: CreateSkillOptions = {},
+  ): Promise<CreateSkillResult> {
     const normalizedFrontmatter = isPlainObject(data.frontmatter)
       ? normalizeSkillFrontmatterKeys(data.frontmatter)
       : undefined;
@@ -1185,19 +1205,36 @@ export function createSkillMethods(
       throw error;
     }
 
+    if (options.improvementMutation !== undefined) {
+      const receipt = options.improvementMutation;
+      if (
+        receipt.operation !== 'create' ||
+        typeof receipt.candidateId !== 'string' ||
+        receipt.candidateId.trim() === '' ||
+        receipt.candidateId.length > 512 ||
+        typeof receipt.payloadDigest !== 'string' ||
+        !/^[a-f0-9]{64}$/i.test(receipt.payloadDigest) ||
+        options.skillId === undefined
+      ) {
+        throw new Error('Skill improvement create receipt is invalid');
+      }
+    }
+
     const Skill = mongoose.models.Skill as Model<ISkillDocument>;
 
     // Application-level uniqueness check on (name, author, tenantId).
     // The unique index in the schema is the persistent guarantee, but Mongoose
     // creates indexes asynchronously and tests can race ahead of index creation,
     // so we also enforce it here for deterministic behavior and a clean error.
-    const existing = await Skill.findOne({
+    let existingQuery = Skill.findOne({
       name: data.name,
       author: data.author,
       tenantId: data.tenantId ?? null,
-    })
-      .select('_id')
-      .lean();
+    }).select('_id');
+    if (options.session) {
+      existingQuery = existingQuery.session(options.session);
+    }
+    const existing = await existingQuery.lean();
     if (existing) {
       const error = new Error(`A skill with name "${data.name}" already exists for this author`);
       (error as Error & { code?: string | number }).code = 11000;
@@ -1205,7 +1242,8 @@ export function createSkillMethods(
     }
 
     const derived = deriveStructuredFrontmatterFields(frontmatter);
-    const doc = await Skill.create({
+    const doc = new Skill({
+      ...(options.skillId ? { _id: options.skillId } : {}),
       name: data.name,
       displayTitle: data.displayTitle,
       description: data.description,
@@ -1226,8 +1264,18 @@ export function createSkillMethods(
         bodyAlwaysApply,
       ),
       tenantId: data.tenantId,
+      ...(options.improvementMutation
+        ? {
+            lastImprovementMutation: {
+              operation: 'create',
+              candidateId: options.improvementMutation.candidateId.trim(),
+              payloadDigest: options.improvementMutation.payloadDigest.toLowerCase(),
+            },
+          }
+        : {}),
       ...derived,
     });
+    await doc.save(options.session ? { session: options.session } : undefined);
     return {
       skill: doc.toObject() as unknown as ISkill & { _id: Types.ObjectId },
       warnings,

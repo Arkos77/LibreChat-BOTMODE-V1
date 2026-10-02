@@ -184,6 +184,7 @@ const skillSchema: Schema<ISkillDocument> = new Schema(
      * corresponding optimistic skill mutation.
      */
     lastImprovementMutation: {
+      operation: { type: String, enum: ['create', 'update'] },
       candidateId: { type: String, maxlength: 512 },
       payloadDigest: { type: String, maxlength: 128 },
       expectedVersion: { type: Number, min: 1 },

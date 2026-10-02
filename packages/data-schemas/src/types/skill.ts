@@ -72,11 +72,18 @@ export interface ISkill {
    * Internal BOT MODE idempotency receipt written atomically with an authorized
    * improvement mutation. Not serialized by the public Skill API.
    */
-  lastImprovementMutation?: {
-    candidateId: string;
-    payloadDigest: string;
-    expectedVersion: number;
-  };
+  lastImprovementMutation?:
+    | {
+        operation: 'create';
+        candidateId: string;
+        payloadDigest: string;
+      }
+    | {
+        operation?: 'update';
+        candidateId: string;
+        payloadDigest: string;
+        expectedVersion: number;
+      };
   /**
    * Provenance of this skill's canonical definition.
    * - `inline` — authored inside LibreChat.

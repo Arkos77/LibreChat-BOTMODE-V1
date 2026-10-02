@@ -749,6 +749,36 @@ describe('Skill CRUD methods', () => {
     }
   });
 
+  it('writes a governed create receipt on the preallocated native skill identity', async () => {
+    const skillId = new mongoose.Types.ObjectId();
+    const candidateId = 'skill:create-task-1:tool-call-1';
+    const payloadDigest = 'c'.repeat(64);
+
+    const { skill } = await methods.createSkill(makeSkillInput({ name: 'bot-create-receipt' }), {
+      skillId,
+      improvementMutation: {
+        operation: 'create',
+        candidateId,
+        payloadDigest,
+      },
+    });
+
+    expect(skill._id.toString()).toBe(skillId.toString());
+    expect(skill.version).toBe(1);
+    expect(skill.lastImprovementMutation).toEqual({
+      operation: 'create',
+      candidateId,
+      payloadDigest,
+    });
+
+    const reloaded = await methods.getSkillById(skillId);
+    expect(reloaded?.lastImprovementMutation).toEqual({
+      operation: 'create',
+      candidateId,
+      payloadDigest,
+    });
+  });
+
   it('writes the BOT MODE improvement mutation receipt atomically with the version bump', async () => {
     const { skill } = await methods.createSkill(makeSkillInput({ name: 'bot-receipt' }));
     const candidateId = 'skill:native-task-1:tool-call-1';
