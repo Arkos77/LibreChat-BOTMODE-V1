@@ -1415,7 +1415,8 @@ describe('initializeClient — subagent loading', () => {
       endpointOption: makeEndpointOption(),
     });
     const existingConfig = agentClientArgs.subagentTasks;
-    const hasTasksSpy = jest.spyOn(existingConfig.store, 'hasTasks').mockResolvedValueOnce(true);
+    const durableStore = require('./subagentThreadStore');
+    const hasTasksSpy = jest.spyOn(durableStore, 'hasTasks').mockResolvedValueOnce(true);
     mockInitializeAgent.mockResolvedValue(makePrimaryConfig({}));
     const changedReq = makeSubagentReq();
     changedReq.config.endpoints.agents.capabilities.push('run_in_background');
@@ -1427,8 +1428,11 @@ describe('initializeClient — subagent loading', () => {
       endpointOption: makeEndpointOption(),
     });
 
-    expect(agentClientArgs.subagentTasks).toEqual(existingConfig);
-    expect(capturedToolExecuteOptions.subagentTasks).toEqual(existingConfig);
+    expect(hasTasksSpy).toHaveBeenCalledWith(existingConfig.scopeId);
+    expect(agentClientArgs.subagentTasks).toBeDefined();
+    expect(agentClientArgs.subagentTasks.scopeId).toBe(existingConfig.scopeId);
+    expect(agentClientArgs.subagentTasks.store.controlTask).toEqual(expect.any(Function));
+    expect(capturedToolExecuteOptions.subagentTasks).toBe(agentClientArgs.subagentTasks);
     expect(agentClientArgs.agent.subagents).toBeUndefined();
     hasTasksSpy.mockRestore();
   });
