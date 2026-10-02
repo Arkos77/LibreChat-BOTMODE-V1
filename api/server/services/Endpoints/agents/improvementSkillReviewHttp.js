@@ -2,6 +2,7 @@ const { resolveRequestTenantId } = require('@librechat/api');
 const db = require('~/models');
 const { getSkillToolDeps, getSkillDbMethods } = require('./skillDeps');
 const { publishImprovementSkillUpdateForRequest } = require('./improvementPublication');
+const { authorizeImprovementPublicationForRequest } = require('./improvementAuthorization');
 const { observeMtoEvent } = require('./mtoObservation');
 const {
   loadSkillImprovementReview,
@@ -19,6 +20,7 @@ function dependencies(req) {
     recordEvent: db.recordImprovementLifecycleEvent,
     canView: getSkillToolDeps().canEditSkill,
     getSkillById: getSkillDbMethods().getSkillById,
+    authorize: authorizeImprovementPublicationForRequest,
     publish: publishImprovementSkillUpdateForRequest,
     mtoEventSink: observeMtoEvent,
     authorizationObservation: {
@@ -38,8 +40,10 @@ async function getSkillImprovementReview(req, res) {
     const review = await loadSkillImprovementReview(dependencies(req));
     return res.json({
       candidateId: review.candidateId,
-      skillId: review.skillId,
-      expectedVersion: review.expectedVersion,
+      operation: review.operation,
+      ...(review.operation === 'update'
+        ? { skillId: review.skillId, expectedVersion: review.expectedVersion }
+        : {}),
       diff: review.diff,
       payloadDigest: review.payloadDigest,
       snapshotDigest: review.snapshotDigest,

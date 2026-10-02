@@ -40,13 +40,20 @@ async function loadSkillImprovementReview({
     candidate.publication?.requiresHumanReview !== true
   )
     fail('Skill review candidate binding is invalid');
+  const operation = proposal.operation === 'create' ? 'create' : 'update';
   if (
-    createImprovementPayloadDigest(proposal.update) !== proposal.payloadDigest ||
+    operation === 'create' &&
+    (proposal.skillId !== undefined || proposal.expectedVersion !== undefined)
+  )
+    fail('Skill create review proposal identity is invalid');
+  const payload = operation === 'create' ? proposal.create : proposal.update;
+  if (
+    createImprovementPayloadDigest(payload) !== proposal.payloadDigest ||
     typeof proposal.diff !== 'string' ||
     !proposal.diff
   )
     fail('Skill review payload digest or diff is invalid');
-  if ((await canView({ req, skillId: proposal.skillId })) !== true)
+  if (operation === 'update' && (await canView({ req, skillId: proposal.skillId })) !== true)
     fail('Skill review access denied');
   const events = await listEvents(scope);
   const test = events.find(
@@ -78,8 +85,10 @@ async function loadSkillImprovementReview({
   return {
     candidateId,
     traceId: candidate.traceId,
-    skillId: proposal.skillId,
-    expectedVersion: proposal.expectedVersion,
+    operation,
+    ...(operation === 'update'
+      ? { skillId: proposal.skillId, expectedVersion: proposal.expectedVersion }
+      : {}),
     diff: proposal.diff,
     payloadDigest: proposal.payloadDigest,
     snapshotDigest: record.snapshotDigest,
@@ -95,27 +104,43 @@ async function loadSkillImprovementReview({
 }
 
 function exactReviewApproval(review, event, user) {
-  return (
+  const exact =
     event?.type === 'APPROVED' &&
     event?.actor?.type === 'human' &&
     event?.actor?.id === String(user) &&
     event?.data?.payloadDigest === review.payloadDigest &&
-    event?.data?.snapshotDigest === review.snapshotDigest &&
-    event?.data?.skillId === review.skillId &&
-    event?.data?.expectedVersion === review.expectedVersion
+    event?.data?.snapshotDigest === review.snapshotDigest;
+  if (!exact) return false;
+  if (review.operation === 'create') {
+    return (
+      event.data?.operation === 'create' &&
+      event.data?.skillId === undefined &&
+      event.data?.expectedVersion === undefined
+    );
+  }
+  return (
+    event.data?.skillId === review.skillId && event.data?.expectedVersion === review.expectedVersion
   );
 }
 
 function exactAuthorizationReceipt(review, event, user) {
-  return (
+  const exact =
     event?.type === 'AUTHORIZED' &&
     event?.actor?.type === 'policy' &&
     event?.actor?.id === 'librechat:native-skill-authorization' &&
     event?.data?.payloadDigest === review.payloadDigest &&
     event?.data?.snapshotDigest === review.snapshotDigest &&
-    event?.data?.actorId === String(user) &&
-    event?.data?.skillId === review.skillId &&
-    event?.data?.expectedVersion === review.expectedVersion
+    event?.data?.actorId === String(user);
+  if (!exact) return false;
+  if (review.operation === 'create') {
+    return (
+      event.data?.operation === 'create' &&
+      event.data?.skillId === undefined &&
+      event.data?.expectedVersion === undefined
+    );
+  }
+  return (
+    event.data?.skillId === review.skillId && event.data?.expectedVersion === review.expectedVersion
   );
 }
 
@@ -215,6 +240,9 @@ async function decideSkillImprovementReview({
     if (!exactAuthorizationReceipt(review, review.authorizationEvent, user)) {
       fail('Skill review durable authorization receipt is invalid');
     }
+    if (review.operation === 'create') {
+      return { status: 'authorized', operation: 'create', recovered: true };
+    }
     if (typeof context.getSkillById !== 'function') {
       fail('Skill review recovery requires native skill state');
     }
@@ -259,12 +287,15 @@ async function decideSkillImprovementReview({
           traceId: review.traceId,
           type: decision === 'approve' ? 'APPROVED' : 'REJECTED',
           actor: { id: String(user), type: 'human' },
-          data: {
-            payloadDigest,
-            snapshotDigest,
-            skillId: review.skillId,
-            expectedVersion: review.expectedVersion,
-          },
+          data:
+            review.operation === 'create'
+              ? { operation: 'create', payloadDigest, snapshotDigest }
+              : {
+                  payloadDigest,
+                  snapshotDigest,
+                  skillId: review.skillId,
+                  expectedVersion: review.expectedVersion,
+                },
           occurredAt: new Date().toISOString(),
         },
       });
@@ -282,6 +313,52 @@ async function decideSkillImprovementReview({
     publishable: false,
     requiresHumanReview: true,
   };
+  if (review.operation === 'create') {
+    if (typeof context.authorize !== 'function') {
+      fail('Skill create review requires native authorization');
+    }
+    const authorization = await context.authorize({
+      req: context.req,
+      disposition,
+      operation: 'create',
+      actorId: String(user),
+      payloadDigest: review.payloadDigest,
+      authorizationObservation: context.authorizationObservation,
+    });
+    if (
+      authorization?.candidateId !== review.candidateId ||
+      authorization?.traceId !== review.traceId ||
+      authorization?.target !== 'skill' ||
+      authorization?.operation !== 'create' ||
+      authorization?.actorId !== String(user) ||
+      authorization?.payloadDigest !== review.payloadDigest ||
+      authorization?.skillId !== undefined ||
+      authorization?.expectedVersion !== undefined ||
+      authorization?.authorized !== true ||
+      authorization?.publishable !== true
+    ) {
+      fail('Skill create review native authorization is invalid');
+    }
+    await recordEvent({
+      ...scope,
+      event: {
+        eventId: `skill-authorization:${review.candidateId}`,
+        candidateId: review.candidateId,
+        traceId: review.traceId,
+        type: 'AUTHORIZED',
+        actor: { id: 'librechat:native-skill-authorization', type: 'policy' },
+        data: {
+          operation: 'create',
+          payloadDigest,
+          snapshotDigest,
+          actorId: authorization.actorId,
+        },
+        occurredAt: new Date().toISOString(),
+      },
+    });
+    return { status: 'authorized', operation: 'create' };
+  }
+
   const result = await publish({
     req: context.req,
     disposition,
