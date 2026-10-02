@@ -445,3 +445,29 @@ The first binding must match the saved agent provider/model. Configuration carri
 For an opted-in P11 response, `message.metadata.hostModelUsage` links the durable `decisionId` and `traceId` to up to 16 primary model-end usage events for the selected provider/model. Each event records only the model name reported by LibreChat's model-end context, provider, and nonnegative token counts; subagent, summary and label usage are excluded. The selected model and usage model remain separate so mismatches are visible. This trace proves what the native run reported for the invoked model and its usage, not an independent provider attestation.
 
 The P11 projection also matches each primary usage event to the selected agent ID. The model-end handler carries that ID into the server-side usage collector; the SSE payload does not expose it. Calls from connected agents are excluded even if they have the same provider and an untagged primary usage type. Missing producer identity yields no P11 model-call evidence.
+
+## P13 — Project subagent task control panel
+
+Status: **CLOSED**.
+
+P13 exposes the existing durable subagent task-control path in the Project workspace without
+introducing a second runtime, scheduler, task store, or authorization boundary. The project panel
+queries each conversation through the existing parent-subagent index and addresses pause/resume
+commands with the existing durable `taskId`, `threadId`, parent conversation identity, and a fresh
+invocation identity. Terminal children do not gain new controls, and a project conversation without
+an identity is not queried.
+
+The UI implementation is split deliberately: `BotModeProjectPanel.tsx` owns only project-level
+projection and invocation of the existing control mutation, while `ProjectWorkspace.tsx` mounts that
+panel in the native Project surface. Existing subagent status labels and pause/resume controls are
+reused rather than duplicated into a new control authority.
+
+Closure proof:
+- `ab821dd` adds the project subagent task control panel and its isolated-addressing test.
+- `e2c3f4c` mounts the panel in the Project workspace and adds the BOT MODE activity label.
+- targeted Jest sentinel passes with coverage disabled:
+  `npx jest src/components/Projects/BotModeProjectPanel.test.tsx --runInBand --coverage=false`.
+- targeted ESLint passes for the panel, its test, and `ProjectWorkspace.tsx`.
+
+P13 is therefore closed. Reopen it only on regression evidence affecting project-level subagent task
+visibility, addressing, or use of the existing durable control path.
