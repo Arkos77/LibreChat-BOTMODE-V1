@@ -2316,6 +2316,7 @@
   "com_ui_subagent_thread_history_truncated": "Some earlier activity is unavailable.",
   "com_ui_subagent_thread_load_error": "The agent activity could not be loaded.",
   "com_ui_subagent_thread_panel": "Child agent activity",
+  "com_ui_bot_mode_project_activity": "BOT MODE activity",
   "com_ui_subagent_depth": "Level {{0}} child",
   "com_ui_subagent_thread_read_only": "This child thread is view-only here. Its parent agent owns this execution and can continue it with the saved thread history.",
   "com_ui_subagent_thread_status_cancelled": "Cancelled",

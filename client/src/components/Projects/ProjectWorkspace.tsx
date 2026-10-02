@@ -11,6 +11,7 @@ import type { MenuItemProps, RenderProp } from '~/common';
 import { useConversationsInfiniteQuery, useProjectQuery } from '~/data-provider';
 import OpenSidebar from '~/components/Chat/Menus/OpenSidebar';
 import ProjectDeleteDialog from './ProjectDeleteDialog';
+import BotModeProjectPanel from './BotModeProjectPanel';
 import ProjectEditDialog from './ProjectEditDialog';
 import { useLocalize, useNewConvo } from '~/hooks';
 import { cn, clearMessagesCache } from '~/utils';
@@ -230,6 +231,8 @@ export default function ProjectWorkspace() {
             {localize('com_ui_new_chat_in_project', { name: project.name })}
           </span>
         </button>
+
+        <BotModeProjectPanel conversations={conversations} />
 
         <section className="mt-8 flex min-h-0 flex-1 flex-col">
           <div className="mb-3 flex items-center justify-between gap-3">
