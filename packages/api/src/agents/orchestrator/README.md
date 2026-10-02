@@ -108,8 +108,10 @@ alternatives were previously validated. A future controlled failover must prove
 a zero-effect/pre-provider boundary, then revalidate/re-authorize the alternate,
 apply budget admission, and persist fresh provenance before that alternate may
 execute; it must not replay the whole graph/run after partial execution.
-Dynamic pre-run quality/cost/latency signals remain open rather than being
-synthesized from unproven metrics.
+The host now carries each natively resolved maxContextTokens value into the
+routing candidate as the truthful contextWindow signal. Dynamic pre-run
+quality/cost/latency signals remain open rather than being synthesized from
+unproven metrics.
 
 A generic tool, workflow or local runtime is therefore not disguised as an
 `AgentInputs` fallback. Those resources remain in the capability/resource layer
@@ -438,7 +440,7 @@ endpoints:
         preferredBindingId: anthropic-alt
 ```
 
-The first binding must match the saved agent provider/model. Configuration carries only binding ID, provider and model; credentials and resolved runtime client options are not accepted there. The native host validates and separately initializes every alternative before selection. Cross-provider alternatives receive provider-specific model parameters instead of inheriting primary-provider parameters. Failed native validation or failed durable provenance stops the configured run. The same authorization, validation and initialization path runs again on resume, and tests prove the explicit cross-provider alternative is revalidated and reinitialized there. A selected binding's resolved context, token pricing and tool configuration travel together; no SDK fallback is installed. This opt-in does not provide dynamic quality/cost/latency estimates or automatic failover. Without this configuration, agent initialization is unchanged.
+The first binding must match the saved agent provider/model. Configuration carries only binding ID, provider and model; credentials and resolved runtime client options are not accepted there. The native host validates and separately initializes every alternative before selection. Cross-provider alternatives receive provider-specific model parameters instead of inheriting primary-provider parameters. Failed native validation or failed durable provenance stops the configured run. The same authorization, validation and initialization path runs again on resume, and tests prove the explicit cross-provider alternative is revalidated and reinitialized there. A selected binding's resolved context, token pricing and tool configuration travel together; the resolved maxContextTokens value is also exposed to the routing layer as contextWindow. No SDK fallback is installed. This opt-in does not provide dynamic quality/cost/latency estimates or automatic failover. Without this configuration, agent initialization is unchanged.
 
 For an opted-in P11 response, `message.metadata.hostModelUsage` links the durable `decisionId` and `traceId` to up to 16 primary model-end usage events for the selected provider/model. Each event records only the model name reported by LibreChat's model-end context, provider, and nonnegative token counts; subagent, summary and label usage are excluded. The selected model and usage model remain separate so mismatches are visible. This trace proves what the native run reported for the invoked model and its usage, not an independent provider attestation.
 
