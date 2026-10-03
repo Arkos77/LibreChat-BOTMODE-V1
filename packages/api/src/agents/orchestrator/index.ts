@@ -46,3 +46,4 @@ export * from './controlPlane';
 export * from './agentAdapter';
 export * from './controlPlanePlannerBridge';
 export * from './capabilityEvaluation';
+export * from './capabilityEvolution';
