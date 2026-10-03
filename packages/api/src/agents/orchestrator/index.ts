@@ -38,3 +38,4 @@ export * from './hostModelDecision';
 export * from './synthesisReadiness';
 
 export * from './missionOracle';
+export * from './mediaGeneration';

@@ -848,3 +848,42 @@ Limitation restante, hors gate P10 : le parcours navigateur connecté n'est pas 
 Décision : **P10 CLOSED**. Le système d'amélioration reste gouverné : un modèle ou un sous-agent peut proposer, mais n'acquiert ni permission de mutation, ni droit de publication, ni autorité de définir son propre vérificateur. Les cibles `agent`, `workflow` et `specialist` restent `proposal-only`; la voie de mutation prouvée est le skill natif sous le contrat exact ci-dessus.
 
 Prochaine phase : **P11 V3 — pipeline média**, sans rouvrir P0–P10 fermés.
+
+## Clôture P11 V3 — pipeline média gouverné (3 octobre 2026)
+
+Statut : **P11 V3 PASS/CLOSED**. P0–P10 restent fermés et ne sont pas rouverts.
+
+Gate V3 : une demande média structurée doit traverser un seul pipeline `brief → routing → admission → provider → post-process → QA → artifact`. Les providers sont des capacités interchangeables déjà autorisées par l’hôte ; le pipeline ne leur donne aucune permission. Chaque tentative possède la même identité native `taskId/traceId` mais un `attemptId` distinct. Un échec provider peut sélectionner le prochain provider autorisé sans rejouer le `Run`. Aucun artefact n'est persisté avant un verdict QA `VERIFIED`, et tout artefact persistant conserve provenance, provider, type média et digest.
+
+Preuves de contrat et d’implémentation :
+- `packages/api/src/agents/orchestrator/mediaGeneration.ts` introduit le contrat unique `GenerationProvider` pour `image`, `audio` et `video`, séparé des SDK fournisseurs ;
+- `createMediaProviderCandidate` réutilise `rankAuthorizedResources` de la Decision Layer existante : contraintes et signaux restent host-owned, le provider ne peut ni s'autoriser ni s'ordonner lui-même ;
+- `createToolGenerationProvider` adapte les outils de génération déjà présents dans le registre LibreChat, notamment `image_gen_oai` et `gemini_image_gen`, sans coupler BOT MODE à un SDK fournisseur particulier ;
+- `MediaGenerationAdmission` impose une nouvelle admission à chaque tentative et reçoit `taskId`, `traceId`, provider, type média et coût estimé du binding ;
+- `MediaPostProcessor` et `MediaQualityGate` sont des seams séparés ; une sortie `REJECTED`, `UNKNOWN` ou `HUMAN_REVIEW` n'atteint jamais `artifactStore` ;
+- le fallback est borné à la liste des providers compatibles et autorisés fournie au pipeline ; il ne crée ni nouveau run, ni nouveau scheduler, ni nouveau durable owner ;
+- `MediaGenerationArtifact` porte `artifactId`, `mimeType`, `providerId`, URI, digest et provenance exacte (`traceId`, `taskId`, inputs) ;
+- les événements MTO `REQUESTED`, `DECIDED`, `AUTHORIZED`, `STARTED`, `FALLBACK_SELECTED`, `FAILED`, `VERIFIED` et `ARTIFACT_CREATED` sont des observations uniquement ; ils n'accordent aucune permission.
+
+Preuves fraîches :
+- `mediaGeneration.spec.ts` + `routing.spec.ts` : **17/17 PASS** ;
+- régressions média existantes (`steering/media.spec.ts`, `files/audio.spec.ts`, `images/session.spec.ts`, `images/authorization.spec.ts`) : **66/66 PASS** ;
+- scénario provider interchangeable : les adaptateurs des outils réels `image_gen_oai` et `gemini_image_gen` passent le même contrat `GenerationProvider` ;
+- scénario fallback vidéo : provider primaire en erreur, réadmission du second provider, même `taskId`, `attemptId` distincts, aucun artefact avant QA ;
+- scénario QA négatif audio : aucun artefact persisté lorsque la qualité est rejetée ;
+- scénario contraintes dures : signal coût absent + `maxEstimatedCost` entraîne un rejet sans invocation ;
+- `@librechat/api` build : **PASS** ; `@librechat/data-schemas` build : **PASS** ; `git diff --check` : **PASS**.
+
+Compatibilité architecture V6.1 :
+- pas de second Task Engine, scheduler, durable owner ou source of truth ;
+- routage média s'appuie sur la Decision Layer existante ;
+- admission reste sous Policy/Auth/Control hôte ;
+- QA reste sous Oracle/evidence et n'acquiert aucune autorité d'exécution ;
+- artifact reste une sortie durable du pipeline, pas un nouveau mécanisme de publication ;
+- les providers peuvent être image, audio, vidéo, outil, runtime local ou external-provider tant que leur capacité est déclarée et autorisée ; leur rôle est choisi par le Capability/Provider Router, pas fixé architecturalement.
+
+Portée de preuve : cette fermeture démontre le pipeline gouverné et son interchangeabilité au niveau du runtime BOT MODE, ainsi que l'adaptation des outils image existants. Aucune génération fournisseur externe coûteuse ou publication média réelle n'a été déclenchée pendant cette tranche ; cette preuve live dépendra d'une configuration fournisseur/budget opérationnelle et relève de la validation de déploiement/release P14. Ce manque de trafic fournisseur réel n'ouvre pas le contrat P11.
+
+Décision : **P11 V3 CLOSED**. Le BOT MODE dispose désormais d'un seam média commun pour image/audio/vidéo avec routing, admission, fallback, QA, provenance et artefact, sans céder l'autorité aux modèles ou providers.
+
+Prochaine phase : **P12 V3 — production YouTube**, sans rouvrir P0–P11 fermés.
