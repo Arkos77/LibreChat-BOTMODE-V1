@@ -28,13 +28,18 @@ const providers: LiveProvider[] = [
     model: process.env.GRAPH_SUBAGENT_ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001',
     apiKey: process.env.ANTHROPIC_API_KEY,
   },
+  {
+    provider: Providers.OPENROUTER,
+    model: process.env.GRAPH_SUBAGENT_OPENROUTER_MODEL ?? 'openai/gpt-5.6',
+    apiKey: process.env.OPENROUTER_API_KEY,
+  },
 ];
 const requestedProvider = process.env.GRAPH_SUBAGENT_LIVE_PROVIDER;
 const selectedProviders = requestedProvider
   ? providers.filter(({ provider }) => provider === requestedProvider)
   : providers;
 
-function makeAgent(provider: string, model: string, id: string, instructions: string) {
+function makeAgent(provider: string, model: string, id: string, instructions: string, apiKey?: string) {
   return {
     id,
     name: id,
@@ -49,6 +54,14 @@ function makeAgent(provider: string, model: string, id: string, instructions: st
       temperature: 0,
       max_tokens: 64,
       streaming: false,
+      ...(provider === Providers.OPENROUTER
+        ? {
+            apiKey: process.env.OPENROUTER_API_KEY,
+            configuration: {
+              baseURL: 'https://openrouter.ai/api/v1',
+            },
+          }
+        : {}),
     },
   };
 }
