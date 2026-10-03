@@ -1616,3 +1616,39 @@ ou d’un scheduler de consolidation est une étape distincte, à évaluer aprè
 preuve.
 
 ==================================================
+
+==================================================
+QUATRIÈME MICRO-LOT POST-P14 — MEMORY PERSISTED ADAPTER
+==================================================
+
+Date : 3 octobre 2026
+Statut : MICRO-LOT IMPLEMENTÉ / PROUVÉ
+
+Objectif :
+Raccorder le contrat Memory Lifecycle aux MemoryEntry persistées existantes
+sans modifier le schéma, les partitions, l'autorité durable ou les écritures.
+
+Implémentation :
+- toMemoryLifecycleEntry : mapping déterministe d'une ligne persistée vers le contrat lifecycle ;
+- recallPersistedMemories : lecture via getUserMemories puis rappel lifecycle ;
+- reflectPersistedMemories : lecture via getUserMemories puis réflexion ;
+- consolidatePersistedMemories : lecture via getUserMemories puis consolidation ;
+- aucune écriture ou mutation automatique de MemoryEntry ;
+- agentId/projectId/userId conservés sur la lecture ;
+- aucun vector store ou provider externe obligatoire.
+
+Preuves :
+- memoryLifecycle.spec.ts : 4/4 PASS ;
+- memoryLifecycleAdapter.spec.ts : tests de mapping, partition et absence d'écriture ;
+- typecheck API : PASS ;
+- git diff --check : PASS ;
+- export Agents vérifié ;
+- aucun fichier P0–P14 modifié.
+
+Limite :
+Le raccord sémantique persiste une seule source de lecture existante et ne
+déclenche pas encore automatiquement de retain/reflect/consolidation en
+background. Toute automatisation future devra être soumise à Task Engine,
+Policy/Auth, Durable et Oracle existants.
+
+==================================================

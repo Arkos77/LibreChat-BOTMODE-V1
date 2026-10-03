@@ -28,6 +28,7 @@ export * from './lazySubagents';
 export * from './lazyHistory';
 export * from './memory';
 export * from './memoryLifecycle';
+export * from './memoryLifecycleAdapter';
 export * from './mcpIdentity';
 export * from './orphans';
 export * from './migration';
