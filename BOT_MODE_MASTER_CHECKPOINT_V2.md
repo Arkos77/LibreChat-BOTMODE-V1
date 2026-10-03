@@ -1982,3 +1982,40 @@ Conclusion : le noyau BOT MODE satisfait les preuves locales et live nécessaire
 externe reste une opération d'exploitation distincte, hors du code source.
 
 ==================================================
+
+==================================================
+RELEASE FINAL — BOTMODE-FINAL-20261003
+==================================================
+
+Tag : botmode-final-20261003
+HEAD : 3fc07fa
+
+Artefacts :
+- bundle Git : ~/backups/librechat-p14-20261003/BOTMODE-final-20261003.bundle
+- archive source : ~/backups/librechat-p14-20261003/BOTMODE-final-20261003-source.tar.gz
+- SHA-256 archive : bb2753b1e0b2d1dabb67b731bc5e5ed6258b0891b60a5341bdae82b93bf2b63e
+- git bundle verify : PASS ; ref botmode-final-20261003 présente et bundle déclaré
+  comme contenant une histoire complète.
+
+Restauration :
+- L'archive source représente le release HEAD exact.
+- Un clone historique du bundle n'a pas pu traverser un ancêtre Git manquant
+  préexistant (`90cdcb...`, déjà documenté plus haut). Cette limitation ne remet
+  pas en cause le release HEAD, le bundle verification ni l'archive source ; elle
+  interdit seulement de présenter une restauration historique complète du dépôt
+  comme PASS absolu.
+
+État :
+- P0–P14 CLOSED ; aucune phase rouverte.
+- Live E2E OpenRouter PASS.
+- Durable recovery PASS.
+- Policy/Auth PASS.
+- Mission Oracle / synthesis PASS.
+- Build API final PASS.
+- Working tree tracked CLEAN.
+
+Conclusion : BOT MODE est techniquement finalisé au niveau du noyau et tagué.
+La publication externe/déploiement réel reste une opération d'exploitation
+séparée ; aucun secret n'est inclus dans le release.
+
+==================================================
