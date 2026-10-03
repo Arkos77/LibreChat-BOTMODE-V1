@@ -84,4 +84,5 @@ export * from './queuedTurns';
 export * from './queuedTurnHttp';
 export * from './opportunity';
 export * from './chinaSourcing';
+export * from './opportunitySources';
 export * from './extensions';
