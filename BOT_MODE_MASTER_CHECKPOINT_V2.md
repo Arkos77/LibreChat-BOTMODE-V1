@@ -1777,3 +1777,40 @@ Task Engine et n'effectue aucun run, aucune réservation de budget, aucune
 autorisation ni écriture durable supplémentaire.
 
 ==================================================
+
+==================================================
+HUITIÈME MICRO-LOT POST-P14 — CAPABILITY EVALUATION GATE
+==================================================
+
+Date : 3 octobre 2026
+Statut : MICRO-LOT IMPLÉMENTÉ / PROUVÉ
+
+Objectif :
+Transformer la règle des mémos « vérifier disponibilité, API, licence, prix,
+sécurité, compatibilité, maturité avant adoption » en contrat testable, sans
+transformer l'évaluation en autorisation.
+
+Implémentation :
+- CapabilityEvaluation avec statut REFERENCE/CANDIDATE/EVALUATED/APPROVED/
+  REJECTED/RETIRED ;
+- axes disponibilité, API, licence, pricing, sécurité, privacy,
+  compatibilité, maturité ;
+- evidenceRefs obligatoires pour les évaluations ;
+- APPROVED fail-closed tant que disponibilité, compatibilité et sécurité ne
+  sont pas explicitement prouvées ;
+- aucun credential, budget ou exécution dans le contrat ;
+- export orchestrator.
+
+Preuves :
+- capabilityEvaluation.spec.ts : 4/4 PASS ;
+- compilation TypeScript ciblée : PASS ;
+- git diff --check : PASS ;
+- aucun changement P0–P14.
+
+Règle :
+Evaluation = état de preuve.
+Policy/Auth = autorisation réelle.
+Le statut APPROVED du registry ne doit jamais être interprété comme un grant
+d'exécution sans passage par Policy/Auth.
+
+==================================================

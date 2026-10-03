@@ -45,3 +45,4 @@ export * from './capabilityRegistryRouting';
 export * from './controlPlane';
 export * from './agentAdapter';
 export * from './controlPlanePlannerBridge';
+export * from './capabilityEvaluation';
