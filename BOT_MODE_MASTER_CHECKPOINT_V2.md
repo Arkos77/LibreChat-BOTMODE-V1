@@ -2019,3 +2019,39 @@ La publication externe/déploiement réel reste une opération d'exploitation
 séparée ; aucun secret n'est inclus dans le release.
 
 ==================================================
+
+==================================================
+EXTENSIONS RELEASE — 3 OCTOBRE 2026
+==================================================
+
+Statut : EXTENSIONS INTÉGRÉES / TESTÉES / DÉSACTIVÉES PAR DÉFAUT
+
+Familles ajoutées :
+- Memory Knowledge : retain/recall/reflect avec observations, provenance et
+  knowledge pages dérivées de l'existant ;
+- QA Artifact Drift : contrôles déterministes de digest/champs et disposition
+  HUMAN_REVIEW, sans correction ni autorité d'exécution ;
+- Media/Voice : pack audio/voice/transcription/dubbing branché conceptuellement
+  sur le media router existant ; l'implémentation mediaGeneration existante
+  reste l'exécuteur gouverné ;
+- Economic Enablement : pack jobs/product-testing/hospitality/sourcing adossé
+  au contrat Opportunity existant ;
+- Vertical Capability Packs : Finance, Immobilier, Achats PME, Conciergerie,
+  Automobile et Hospitality Intelligence ; tous disabled-by-default.
+
+Registre : ExtensionPackRegistry + BUILTIN_EXTENSION_PACKS.
+Tous les packs exigent une provenance et restent descriptifs tant que leur
+capacité externe n'a pas été effectivement évaluée/admis par Registry +
+Capability Evaluation + Policy/Auth.
+
+Preuves :
+- extensions tests : 11/11 PASS ;
+- typecheck API : PASS ;
+- build API après extension : PASS ;
+- API runtime : HTTP 200 + readiness PASS ;
+- Scheduler : started ;
+- aucune phase P0–P14 rouverte.
+
+Release extension : à taguer séparément du noyau.
+
+==================================================
