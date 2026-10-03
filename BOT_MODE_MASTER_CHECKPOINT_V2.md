@@ -1698,3 +1698,49 @@ Oracle vérifie.
 Aucun composant externe ne remplace ces autorités.
 
 ==================================================
+
+==================================================
+SIXIÈME MICRO-LOT POST-P14 — AGENT ADAPTER / HARNESS CONTRACT
+==================================================
+
+Date : 3 octobre 2026
+Statut : MICRO-LOT IMPLÉMENTÉ / PROUVÉ
+
+Objectif :
+Absorber le pattern CLI-Anything de harness/adapters agent-native sans
+importer son runtime, son exécuteur ou une nouvelle autorité.
+
+Implémentation :
+- AgentAdapterDescriptor : cible, capabilities, transport, JSON, interaction,
+  cancellation, inspection et trust metadata ;
+- AgentAdapterRequest / AgentAdapterResult ;
+- AgentAdapter avec inspect/execute/cancel optionnel ;
+- AgentAdapterFactory séparée de l'exécution ;
+- AdapterHarnessManifest versionné ;
+- validation de la sortie machine-readable pour les adapters process ;
+- baseline discover + inspect obligatoire ;
+- contract version explicite ;
+- export orchestrator.
+
+Preuves :
+- agentAdapter.spec.ts : 5/5 PASS ;
+- compilation TypeScript ciblée : PASS ;
+- git diff --check : PASS ;
+- aucune modification P0–P14.
+
+Invariants :
+Adapter Factory crée une capacité potentielle.
+Registry la décrit.
+Resolver/Policy/Auth décide de son admission.
+Task Engine exécute.
+Durable conserve l'état d'exécution.
+Oracle vérifie les résultats/artefacts.
+Un adapter externe ne devient jamais scheduler, durable owner ou policy owner.
+
+Limite :
+Aucun adapter réel Codex/Roo/CLI-Anything n'est activé par ce micro-lot.
+L'étape d'implémentation d'un adapter concret devra prouver discovery,
+inspection, invocation bornée, JSON structuré, cancellation, artefacts,
+provenance et sécurité avant adoption.
+
+==================================================
