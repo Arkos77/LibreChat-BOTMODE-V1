@@ -1911,3 +1911,74 @@ Après un PASS live :
 5. créer le release tag final de BOT MODE.
 
 ==================================================
+
+==================================================
+GATE LIVE E2E — PASS — 3 OCTOBRE 2026
+==================================================
+
+Provider live : OpenRouter
+Modèle live : nvidia/nemotron-3-ultra-550b-a55b:free
+Résultat : PASS
+
+Preuve observée :
+- outputHas42 = true
+- envelopeMembers = live_entry, live_worker, live_result
+- payloadMembers = live_entry, live_worker, live_result
+- billedMembers = live_entry, live_worker, live_result
+- usageCount = 3
+- updatePhases couvrant start, run_step, reasoning_delta,
+  run_step_closed, message_delta et stop
+- Test : graph-subagent.e2e.test.ts
+- 1 test / 1 passé
+- durée d'exécution : ~12,1 s
+- coût fournisseur observé dans le test direct OpenRouter : 0
+
+Cette preuve établit que le chemin live BOT MODE atteint réellement le provider,
+exécute le graphe multi-membre et conserve la télémétrie/usage par membre.
+Elle ne remplace pas les preuves indépendantes de recovery, Policy/Auth et
+Mission Oracle, qui restent évaluées séparément.
+
+==================================================
+
+==================================================
+FINAL BOT MODE ACCEPTANCE — 3 OCTOBRE 2026
+==================================================
+
+Statut : FINALISATION TECHNIQUE PASS — RELEASE CANDIDATE
+
+Gates prouvés :
+- Live provider E2E OpenRouter : PASS ; 1/1 test, 3 membres telemetry/usage,
+  output validé, coût fournisseur du test direct = 0.
+- Durable recovery : PASS ; interruption → reprise, SubagentExecutor reconstruit
+  sans réexécuter le researcher, checkpoint enfant exact vérifié.
+- Policy/Auth child-thread guard : PASS ; 9/9.
+- Subagent control/authority receipts : PASS ; 19/19.
+- Mission Oracle : PASS ; 19/19.
+- Synthesis readiness integration : PASS ; 1/1.
+- Combined final control/oracle campaign : 48/48 tests PASS.
+- API build après les changements post-P14 : PASS (exit 0).
+- git diff --check : PASS.
+- P0–P14 : aucune réouverture.
+
+DoD assemblé :
+Objectif → plan → multi-agent execution → provider live → member telemetry /
+usage → evidence/Oracle gate → durable recovery proof → security/control
+proof → synthesis gate → production build.
+
+Reste hors du noyau final :
+- extensions Opportunity/Capability Discovery externes non activées en tant
+  que providers réels ;
+- nouvelles verticales et seeds de veille ;
+- toute activation publique nécessitant secrets/credentials d'infrastructure.
+Ces éléments ne bloquent pas le noyau BOT MODE finalisé techniquement.
+
+Provenance release :
+- commit de clôture technique à créer après ce checkpoint ;
+- snapshot Git final à créer hors dépôt ;
+- aucun secret ou credential ne doit être commité.
+
+Conclusion : le noyau BOT MODE satisfait les preuves locales et live nécessaires
+à sa finalisation technique. La publication/activation dans une infrastructure
+externe reste une opération d'exploitation distincte, hors du code source.
+
+==================================================
