@@ -772,3 +772,44 @@ Décision : **P8 PASS/CLOSED** pour le contrat V3 Gateway + Execution Grant + sa
 La disponibilité d’un daemon Docker depuis le processus de production déployé reste une précondition d’environnement pour activer ce backend ; le stack LibreChat n’étant pas démarré sur ce poste au moment de cette clôture, aucune preuve d’E2E depuis un conteneur de déploiement n’est revendiquée. Ce point relève du gate de release P14, pas d’une ouverture de l’autorité P8.
 
 Prochaine phase : **P9 — routage multi-modèle**, sans rouvrir P0–P8 fermés.
+
+## Clôture P9 — routage multi-modèle, admission par invocation et failover contrôlé (3 octobre 2026)
+
+Statut : **P9 PASS/CLOSED**. P0–P8 restent fermés et ne sont pas rouverts.
+
+Gate : le routage doit sélectionner uniquement parmi des bindings explicitement autorisés et séparément résolus ; les contraintes dures doivent être appliquées avant sélection ; toute invocation modèle doit rester soumise à l’admission/budget du binding ; un failover ne doit jamais rejouer le `Run` ni réexécuter des effets déjà produits ; l’usage/coût doit rester traçable par modèle et provider.
+
+Preuves de sélection et routage :
+- `decideHostModel` accepte des signaux host explicites (`qualityScore`, `estimatedCost`, `latencyMs`, `oracleScore`, `benchmarkScore`, `contextWindow`, `privacy`) et des `RoutingConstraints` ; aucune estimation n’est fabriquée quand le host ne fournit pas de signal ;
+- préférence de modèle/binding désormais facultative ; en absence de préférence, `routeAuthorizedModelBindings` classe les candidats admissibles de façon déterministe selon les signaux réels disponibles ;
+- contraintes d’admission (`requiredContextTokens`, `maxEstimatedCost`, `maxLatencyMs`, `allowedPrivacy`, `requiredCapabilities`, `allowedExecutionModes`) sont appliquées dans la Decision Layer avant sélection ;
+- format legacy `models[]` reste volontairement OpenRouter-only ; le multi-provider passe par `bindings[]`, avec provider/modèle séparément validés et résolus ;
+- chaque binding est vérifié contre le modèle/provider sauvegardé pour le primaire et contre la résolution native pour les alternatives ; provenance durable `DECIDED` conservée avant exécution.
+
+Preuves budget/admission :
+- `createModelBoundBudgetAdmissionFactory` reste l’unique mécanisme d’admission modèle ; `handleChatModelStart` exécute le contrôle de solde/budget à chaque invocation ;
+- `withModelCallbacks` propage le callback d’admission au modèle primaire, aux fallbacks, aux résumés et aux sous-agents, avec identité `{agentId, provider, model}` ;
+- tests AgentClient de budget et de binding-specific callbacks : PASS ; le modèle de fallback ne contourne pas l’admission du binding.
+
+Preuves failover :
+- `allowFailover` est opt-in ; seuls les bindings déjà autorisés/résolus sont transformés en `fallbacks` ; les fallback natifs cachés présents dans une configuration entrante sont refusés ;
+- le fallback s’exécute au niveau de la tentative modèle (`tryFallbackProviders` / `attemptInvoke`), jamais par relance globale de `Run.processStream` ;
+- le fallback réutilise la projection de requête préparée sans double projection ; succès d’un fallback n’invoque pas les suivants ; une erreur d’un fallback gelée/figée n’empêche pas les suivants ;
+- suite SDK `fallbackOverflow.test.ts` : **14/14 PASS**, couvrant préparation exacte, overflow, attribution provider et first-success short-circuit.
+
+Preuves multi-provider et attribution :
+- binding cross-provider explicitement résolu et testé ; aucun héritage silencieux du provider primaire ;
+- `hostModelDecision` porte `authorizedBindings` (`bindingId/provider/model`) afin de délimiter les appels attribuables ;
+- `hostModelUsage` inclut les appels du primaire et des fallbacks cross-provider seulement quand ils appartiennent à ces bindings autorisés ; les appels du même agent mais hors pool restent exclus ;
+- tests `hostModelRouting`, `hostModelUsage`, `hostModelDecision`, `routing`, `initialize` : verts.
+
+Preuves fraîches finales :
+- host P9 (`initialize.spec.js`, `hostModelRouting.spec.js`, `hostModelUsage.spec.js`, `client.test.js`) : **12/12 tests ciblés PASS** ;
+- package API (`hostModelDecision.spec.ts`, `routing.spec.ts`, `run-summarization.test.ts`) : **28/28 tests ciblés PASS** ;
+- `@librechat/api` build : **PASS** ;
+- SDK fallback : **14/14 PASS** ;
+- `git diff --check` : **PASS** avant commit.
+
+Décision : **P9 est fermé** pour le contrat V3 de routage/admission/failover. Aucun modèle, provider ou fallback n’acquiert d’autorité simplement parce qu’il est techniquement disponible. Les signaux manquants restent manquants et ne sont pas transformés en estimations fictives. L’observabilité post-run existante (usage/coût réel) reste la source de vérité pour les performances réellement mesurées ; elle n’est pas réinterprétée comme une prédiction non justifiée.
+
+Prochaine phase : **P10 — amélioration gouvernée**, sans rouvrir P0–P9 fermés.

@@ -47,12 +47,14 @@ describe('host model routing', () => {
     const request = base();
     const result = await resolveHostModelRouting(request);
     expect(result.model_parameters.model).toBe('b:free');
-    expect(result.hostModelDecision).toEqual({
-      traceId: 'trace',
-      decisionId: 'decision',
-      selectedModel: 'b:free',
-      agentId: 'agent-one',
-    });
+    expect(result.hostModelDecision).toEqual(
+      expect.objectContaining({
+        traceId: 'trace',
+        decisionId: 'decision',
+        selectedModel: 'b:free',
+        agentId: 'agent-one',
+      }),
+    );
     expect(request.validate).toHaveBeenCalledWith(expect.objectContaining({ model: 'b:free' }));
     expect(request.initialize).toHaveBeenCalledWith(expect.objectContaining({ model: 'b:free' }));
     expect(request.decide.mock.calls[0][0].resolvedContextWindow).toBe(8192);
@@ -139,6 +141,90 @@ describe('host model routing', () => {
         agentId: 'agent-one',
       },
     });
+  });
+
+  it('passes host routing signals and hard constraints into the decision layer', async () => {
+    const request = base();
+    request.config = [
+      {
+        agentId: 'agent-one',
+        models: ['a:free', 'b:free'],
+        preferredModel: undefined,
+        routingSignals: {
+          'a:free': { qualityScore: 0.4, estimatedCost: 1, latencyMs: 90 },
+          'b:free': { qualityScore: 0.9, estimatedCost: 2, latencyMs: 80 },
+        },
+        routingConstraints: { maxEstimatedCost: 3, maxLatencyMs: 100 },
+      },
+    ];
+    request.decide.mockImplementation(async (input) => ({
+      selectedModel: 'b:free',
+      event: {
+        type: 'DECIDED',
+        identity: { traceId: 'trace', traceEventId: 'event' },
+        source: 'host',
+        timestamp: '2026-10-03T12:00:00.000Z',
+        payload: {
+          decisionId: 'decision',
+          selectedOption: 'b:free',
+          provider: 'RuleDecisionProvider',
+        },
+      },
+      input,
+    }));
+
+    const result = await resolveHostModelRouting(request);
+
+    expect(request.decide).toHaveBeenCalledWith(
+      expect.objectContaining({
+        preferredModel: undefined,
+        routingConstraints: { maxEstimatedCost: 3, maxLatencyMs: 100 },
+        routingSignals: {
+          'a:free': { qualityScore: 0.4, estimatedCost: 1, latencyMs: 90 },
+          'b:free': { qualityScore: 0.9, estimatedCost: 2, latencyMs: 80 },
+        },
+      }),
+    );
+    expect(result.model).toBe('b:free');
+  });
+
+  it('returns controlled native fallbacks only when host failover is explicitly enabled', async () => {
+    const request = base();
+    request.config = [
+      {
+        agentId: 'agent-one',
+        models: ['a:free', 'b:free'],
+        preferredModel: 'a:free',
+        allowFailover: true,
+      },
+    ];
+    request.decide.mockImplementation(async () => ({
+      selectedModel: 'a:free',
+      modelParameters: {
+        model: 'a:free',
+        fallbacks: [
+          { provider: 'openrouter', clientOptions: { model: 'b:free', apiKey: 'secret' } },
+        ],
+      },
+      event: {
+        type: 'DECIDED',
+        identity: { traceId: 'trace', traceEventId: 'event' },
+        source: 'host',
+        timestamp: '2026-10-03T12:00:00.000Z',
+        payload: {
+          decisionId: 'decision',
+          selectedOption: 'a:free',
+          provider: 'RuleDecisionProvider',
+        },
+      },
+    }));
+    const result = await resolveHostModelRouting(request);
+    expect(result.model_parameters.fallbacks).toEqual([
+      {
+        provider: 'openrouter',
+        clientOptions: { model: 'b:free', apiKey: 'secret' },
+      },
+    ]);
   });
 
   it('blocks a model switch if durable provenance fails', async () => {

@@ -84,6 +84,39 @@ describe('host P11 model decision', () => {
     );
   });
 
+  it('uses explicit host signals for deterministic pre-run selection when no preference is supplied', async () => {
+    const result = await decideHostModel({
+      ...input,
+      preferredModel: undefined,
+      routingSignals: {
+        'model-a:free': { qualityScore: 0.4, estimatedCost: 0.5, latencyMs: 120 },
+        'model-b:free': { qualityScore: 0.9, estimatedCost: 2, latencyMs: 250 },
+      },
+      routingConstraints: { maxEstimatedCost: 3, maxLatencyMs: 500 },
+    });
+
+    expect(result.selectedModel).toBe('model-b:free');
+    expect(result.event.payload.selectedOption).toBe('model-b:free');
+  });
+
+  it('installs only host-authorized resolved fallbacks when controlled failover is enabled', async () => {
+    const result = await decideHostModel({
+      ...input,
+      preferredModel: 'model-a:free',
+      allowFailover: true,
+    });
+
+    expect(result.modelParameters).toMatchObject({
+      model: 'model-a:free',
+      fallbacks: [
+        {
+          provider: 'OpenRouter',
+          clientOptions: { model: 'model-b:free' },
+        },
+      ],
+    });
+  });
+
   it('requires a trace and rejects a hidden native fallback', async () => {
     await expect(decideHostModel({ ...input, traceId: '' })).rejects.toThrow(/trace/i);
     await expect(

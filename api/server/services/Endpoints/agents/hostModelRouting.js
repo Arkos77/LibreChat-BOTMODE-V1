@@ -12,6 +12,7 @@ function normalizePolicy(policy, originalAgent) {
       id: binding?.id,
       provider: binding?.provider,
       model: binding?.model,
+      signals: binding?.signals,
     }));
     if (
       bindings.length < 2 ||
@@ -30,11 +31,20 @@ function normalizePolicy(policy, originalAgent) {
     ) {
       throw new Error('Host model routing must start with the saved provider/model binding');
     }
-    const preferredBindingId = policy.preferredBindingId ?? primary.id;
-    if (!bindings.some((binding) => binding.id === preferredBindingId)) {
+    const preferredBindingId = policy.preferredBindingId;
+    if (
+      preferredBindingId != null &&
+      !bindings.some((binding) => binding.id === preferredBindingId)
+    ) {
       throw new Error('Preferred host model binding is not authorized');
     }
-    return { bindings, preferredBindingId, explicitBindings: true };
+    return {
+      bindings,
+      preferredBindingId,
+      explicitBindings: true,
+      routingConstraints: policy.routingConstraints,
+      allowFailover: policy.allowFailover === true,
+    };
   }
 
   if (originalAgent.provider?.toLowerCase() !== 'openrouter') {
@@ -47,11 +57,14 @@ function normalizePolicy(policy, originalAgent) {
     id: model,
     provider: originalAgent.provider,
     model,
+    signals: policy.routingSignals?.[model],
   }));
   return {
     bindings,
     preferredBindingId: policy.preferredModel ?? originalAgent.model,
     explicitBindings: false,
+    routingConstraints: policy.routingConstraints,
+    allowFailover: policy.allowFailover === true,
   };
 }
 
@@ -80,7 +93,8 @@ async function resolveHostModelRouting({
     throw new Error('Host model routing requires durable decision provenance');
   }
 
-  const { bindings, preferredBindingId, explicitBindings } = normalizePolicy(policy, originalAgent);
+  const { bindings, preferredBindingId, explicitBindings, routingConstraints, allowFailover } =
+    normalizePolicy(policy, originalAgent);
   if (
     bindings.length < 2 ||
     bindings.length > 4 ||
@@ -98,6 +112,7 @@ async function resolveHostModelRouting({
       model: bindings[0].model,
       options: primaryConfig.model_parameters,
       contextWindow: primaryConfig.maxContextTokens,
+      ...(bindings[0].signals ? { signals: bindings[0].signals } : {}),
     },
   ];
   const configurations = new Map([[bindings[0].id, primaryConfig]]);
@@ -132,6 +147,7 @@ async function resolveHostModelRouting({
       model: binding.model,
       options: resolved.model_parameters,
       contextWindow: resolved.maxContextTokens,
+      ...(binding.signals ? { signals: binding.signals } : {}),
     });
   }
 
@@ -140,6 +156,8 @@ async function resolveHostModelRouting({
         agentId: originalAgent.id,
         bindings: resolvedBindings,
         preferredBindingId,
+        routingConstraints,
+        allowFailover,
         traceId,
         timestamp,
         decisionId,
@@ -161,6 +179,11 @@ async function resolveHostModelRouting({
         authorizedModels: bindings.map((binding) => binding.model),
         availableModels: resolvedBindings.map((binding) => binding.model),
         preferredModel: policy.preferredModel,
+        routingSignals: Object.fromEntries(
+          resolvedBindings.map((binding) => [binding.id, binding.signals ?? {}]),
+        ),
+        routingConstraints,
+        allowFailover,
         traceId,
         timestamp,
         decisionId,
@@ -216,24 +239,31 @@ async function resolveHostModelRouting({
     }
   }
 
-  const hostModelDecision = explicitBindings
-    ? {
-        traceId,
-        decisionId,
-        selectedBindingId,
-        selectedProvider: selectedBinding.provider,
-        selectedModel: selectedBinding.model,
-        agentId: originalAgent.id,
-      }
-    : {
-        traceId,
-        decisionId,
-        selectedModel: selectedBinding.model,
-        agentId: originalAgent.id,
-      };
+  const authorizedBindings = resolvedBindings.map((binding) => ({
+    bindingId: binding.id,
+    provider: binding.provider,
+    model: binding.model,
+  }));
+  const hostModelDecision = {
+    traceId,
+    decisionId,
+    selectedBindingId,
+    selectedProvider: selectedBinding.provider,
+    selectedModel: selectedBinding.model,
+    agentId: originalAgent.id,
+    authorizedBindings,
+  };
 
   return {
     ...selected,
+    ...(decision.modelParameters
+      ? {
+          model_parameters: {
+            ...(selected.model_parameters ?? {}),
+            ...decision.modelParameters,
+          },
+        }
+      : {}),
     hostModelDecision,
   };
 }

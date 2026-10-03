@@ -11,6 +11,15 @@ function projectHostModelUsage(decision, usageEvents) {
   const selectedModel = boundedText(decision?.selectedModel);
   const selectedProvider = boundedText(decision?.selectedProvider) ?? 'openrouter';
   const agentId = boundedText(decision?.agentId);
+  const authorizedBindings = Array.isArray(decision?.authorizedBindings)
+    ? decision.authorizedBindings
+        .map((binding) => ({
+          provider: boundedText(binding?.provider),
+          model: boundedText(binding?.model),
+        }))
+        .filter((binding) => binding.provider && binding.model)
+    : [{ provider: selectedProvider, model: selectedModel }];
+  if (authorizedBindings.length === 0) return undefined;
   if (!traceId || !decisionId || !selectedModel || !agentId || !Array.isArray(usageEvents))
     return undefined;
   const modelCalls = [];
@@ -19,12 +28,19 @@ function projectHostModelUsage(decision, usageEvents) {
     if (
       event?.usage_type != null ||
       event?.agentId !== agentId ||
-      typeof event?.provider !== 'string' ||
-      event.provider.toLowerCase() !== selectedProvider.toLowerCase()
+      typeof event?.provider !== 'string'
     )
       continue;
     const usageModel = boundedText(event.model);
-    if (!usageModel) continue;
+    const normalizedProvider = event.provider.toLowerCase();
+    if (
+      !usageModel ||
+      !authorizedBindings.some(
+        (binding) =>
+          binding.provider.toLowerCase() === normalizedProvider && binding.model === usageModel,
+      )
+    )
+      continue;
     const inputTokens = tokenCount(event.input_tokens);
     const outputTokens = tokenCount(event.output_tokens);
     const costUsd = usdCost(event.cost);

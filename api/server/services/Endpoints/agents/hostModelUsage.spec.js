@@ -40,6 +40,10 @@ describe('P11 model invocation evidence', () => {
         ...decision,
         selectedModel: 'claude-sonnet',
         selectedProvider: 'anthropic',
+        authorizedBindings: [
+          { bindingId: 'primary', provider: 'anthropic', model: 'claude-sonnet' },
+          { bindingId: 'fallback', provider: 'openrouter', model: 'claude-sonnet' },
+        ],
       },
       [
         {
@@ -70,6 +74,11 @@ describe('P11 model invocation evidence', () => {
           outputTokens: 5,
           costUsd: 0.0026,
         },
+        {
+          usageModel: 'claude-sonnet',
+          provider: 'openrouter',
+          inputTokens: 999,
+        },
       ],
     });
   });
@@ -84,16 +93,24 @@ describe('P11 model invocation evidence', () => {
     ]);
   });
   it('keeps a mismatch visible and excludes secrets and unbounded values', () => {
-    const result = projectHostModelUsage(decision, [
+    const result = projectHostModelUsage(
       {
-        agentId: 'agent-primary',
-        model: 'provider-alias',
-        provider: 'openrouter',
-        input_tokens: 2,
-        apiKey: 'secret',
+        ...decision,
+        authorizedBindings: [
+          { bindingId: 'selected', provider: 'openrouter', model: 'provider-alias' },
+        ],
       },
-      { model: 'x'.repeat(300), provider: 'openrouter', input_tokens: 9 },
-    ]);
+      [
+        {
+          agentId: 'agent-primary',
+          model: 'provider-alias',
+          provider: 'openrouter',
+          input_tokens: 2,
+          apiKey: 'secret',
+        },
+        { model: 'x'.repeat(300), provider: 'openrouter', input_tokens: 9 },
+      ],
+    );
     expect(result.modelCalls).toEqual([
       { usageModel: 'provider-alias', provider: 'openrouter', inputTokens: 2 },
     ]);

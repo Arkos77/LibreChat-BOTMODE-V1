@@ -501,6 +501,67 @@ describe('initializeClient — processAgent ACL gate', () => {
     expect(JSON.stringify(records)).not.toContain('fixture-secret');
   });
 
+  it('applies host routing signals and controlled failover from initialization policy', async () => {
+    mockValidateAgentModel.mockResolvedValue({ isValid: true });
+    mockInitializeAgent.mockImplementation(async ({ agent }) => ({
+      ...makePrimaryConfig([]),
+      provider: 'openai',
+      model: agent.model,
+      model_parameters: { model: agent.model, apiKey: 'fixture-secret' },
+      endpointTokenConfig: { selectedFor: agent.model },
+      maxContextTokens: agent.model === 'b:free' ? 16384 : 8192,
+    }));
+    const req = makeReq();
+    req.config.endpoints.agents = {
+      hostModelRouting: [
+        {
+          agentId: PRIMARY_ID,
+          bindings: [
+            {
+              id: 'primary',
+              provider: 'openai',
+              model: 'gpt-4',
+              signals: { qualityScore: 0.3, estimatedCost: 1.5, latencyMs: 200 },
+            },
+            {
+              id: 'alternate',
+              provider: 'openai',
+              model: 'b:free',
+              signals: { qualityScore: 0.9, estimatedCost: 2, latencyMs: 100 },
+            },
+          ],
+          routingConstraints: { maxEstimatedCost: 3, maxLatencyMs: 300 },
+          allowFailover: true,
+        },
+      ],
+    };
+
+    await initializeClient({
+      req,
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption: makeEndpointOption(),
+      mtoTraceId: 'trace-routing-signals',
+    });
+
+    expect(agentClientArgs.agent.model).toBe('b:free');
+    expect(agentClientArgs.agent.model_parameters).toMatchObject({
+      model: 'b:free',
+      fallbacks: [
+        {
+          provider: 'openai',
+          clientOptions: { model: 'gpt-4' },
+        },
+      ],
+    });
+    const records = await db.listMtoObservations({
+      user: testUser._id.toString(),
+      traceId: 'trace-routing-signals',
+    });
+    expect(records).toHaveLength(1);
+    expect(records[0].payload.selectedOption).toBe('alternate');
+  });
+
   it('resolves an explicit cross-provider host binding without inheriting primary endpoint model parameters', async () => {
     const makeOption = () => ({
       agent: Promise.resolve({

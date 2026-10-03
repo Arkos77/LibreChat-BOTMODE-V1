@@ -16,6 +16,9 @@ type LegacyInput = {
   authorizedModels: readonly string[];
   availableModels: readonly string[];
   preferredModel?: string;
+  routingConstraints?: import('./routing').RoutingConstraints;
+  routingSignals?: Record<string, import('./routing').AuthorizedResourceSignals>;
+  allowFailover?: boolean;
   traceId: string;
   timestamp: string;
   decisionId: string;
@@ -30,8 +33,11 @@ type BindingInput = {
     model: string;
     options: Record<string, unknown>;
     contextWindow?: number;
+    signals?: import('./routing').AuthorizedResourceSignals;
   }>;
   preferredBindingId?: string;
+  routingConstraints?: import('./routing').RoutingConstraints;
+  allowFailover?: boolean;
   traceId: string;
   timestamp: string;
   decisionId: string;
@@ -54,7 +60,9 @@ function hasBindingInput(input: Input): input is BindingInput {
 
 function normalizeBindings(input: Input): {
   bindings: NormalizedBinding[];
-  preferredBindingId: string;
+  preferredBindingId?: string;
+  routingConstraints?: import('./routing').RoutingConstraints;
+  allowFailover: boolean;
 } {
   if (hasBindingInput(input)) {
     const bindings = input.bindings.map((binding) => ({
@@ -63,6 +71,7 @@ function normalizeBindings(input: Input): {
       model: binding.model,
       options: binding.options,
       contextWindow: binding.contextWindow,
+      signals: binding.signals,
     }));
     if (
       bindings.length < 2 ||
@@ -88,11 +97,19 @@ function normalizeBindings(input: Input): {
     ) {
       throw new Error('Host model decision rejects hidden native fallbacks');
     }
-    const preferredBindingId = input.preferredBindingId ?? bindings[0].id;
-    if (!bindings.some((binding) => binding.id === preferredBindingId)) {
+    const preferredBindingId = input.preferredBindingId;
+    if (
+      preferredBindingId != null &&
+      !bindings.some((binding) => binding.id === preferredBindingId)
+    ) {
       throw new Error('Preferred binding is not authorized');
     }
-    return { bindings, preferredBindingId };
+    return {
+      bindings,
+      preferredBindingId,
+      routingConstraints: input.routingConstraints,
+      allowFailover: input.allowFailover === true,
+    };
   }
 
   const {
@@ -102,6 +119,8 @@ function normalizeBindings(input: Input): {
     preferredModel,
     provider,
     availableModels,
+    routingConstraints,
+    allowFailover = false,
   } = input;
   if (provider.toLowerCase() !== 'openrouter') {
     throw new Error('Host model selection supports only an OpenRouter endpoint');
@@ -119,7 +138,7 @@ function normalizeBindings(input: Input): {
   if (authorizedModels[0] !== currentModel || resolvedOptions.model !== currentModel) {
     throw new Error('Host model decision must include the resolved current model first');
   }
-  if (!authorizedModels.includes(preferredModel ?? currentModel)) {
+  if (preferredModel != null && !authorizedModels.includes(preferredModel)) {
     throw new Error('Preferred model is not authorized');
   }
   if (authorizedModels.some((model) => !availableModels.includes(model))) {
@@ -161,10 +180,10 @@ function normalizeBindings(input: Input): {
   ) {
     throw new Error('Host model decision rejects hidden native fallbacks');
   }
-  return { bindings, preferredBindingId: preferredModel ?? currentModel };
+  return { bindings, preferredBindingId: preferredModel, routingConstraints, allowFailover };
 }
 
-/** A host-authorized model pool; selection never grants access or schedules an SDK fallback. */
+/** A host-authorized model pool; selection never grants access. Controlled SDK failover is opt-in and binding-scoped. */
 export async function decideHostModel(input: Input): Promise<{
   selectedBindingId: string;
   selectedProvider: string;
@@ -177,7 +196,8 @@ export async function decideHostModel(input: Input): Promise<{
     throw new Error('Host model decision requires agent, trace and decision identities');
   }
 
-  const { bindings, preferredBindingId } = normalizeBindings(input);
+  const { bindings, preferredBindingId, routingConstraints, allowFailover } =
+    normalizeBindings(input);
   const candidates: AuthorizedModelCandidate[] = bindings.map((binding) => ({
     id: binding.id,
     executionMode: 'model',
@@ -185,6 +205,7 @@ export async function decideHostModel(input: Input): Promise<{
     modelId: binding.model,
     signals: {
       available: true,
+      ...(binding.signals ?? (hasBindingInput(input) ? {} : input.routingSignals?.[binding.id])),
       ...(binding.contextWindow != null &&
       Number.isFinite(binding.contextWindow) &&
       binding.contextWindow > 0
@@ -199,10 +220,10 @@ export async function decideHostModel(input: Input): Promise<{
   }));
   const routing = await routeAuthorizedModelBindings(
     candidates,
-    {},
+    { constraints: routingConstraints },
     {
       id: 'RuleDecisionProvider',
-      decide: () => [preferredBindingId],
+      decide: () => (preferredBindingId == null ? [] : [preferredBindingId]),
     },
   );
   const selected = bindings.find((binding) => binding.id === routing.selectedCandidateId);
@@ -222,13 +243,31 @@ export async function decideHostModel(input: Input): Promise<{
     timestamp: input.timestamp,
   });
   const event = fromDecisionRecord(record, input.traceEventId);
-  // Do not install the router's native fallbacks: each later model invocation
-  // needs its own budget/authorization check before it may execute.
+  // Native fallbacks are installed only when the host explicitly enables controlled failover.
+  // Every fallback is already resolved/authorized and inherits binding-specific admission callbacks.
   return {
     selectedBindingId: selected.id,
     selectedProvider: selected.provider,
     selectedModel: selected.model,
-    modelParameters: { ...selected.options },
+    modelParameters: {
+      ...selected.options,
+      ...(allowFailover
+        ? {
+            fallbacks: routing.orderedCandidateIds
+              .filter((id) => id !== selected.id)
+              .map((id) => {
+                const binding = bindings.find((item) => item.id === id)!;
+                return {
+                  provider: binding.provider,
+                  clientOptions: { ...binding.options },
+                  ...(binding.contextWindow != null
+                    ? { maxContextTokens: binding.contextWindow }
+                    : {}),
+                };
+              }),
+          }
+        : {}),
+    },
     record,
     event,
   };
