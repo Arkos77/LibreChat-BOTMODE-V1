@@ -48,3 +48,4 @@ export * from './controlPlanePlannerBridge';
 export * from './capabilityEvaluation';
 export * from './capabilityEvolution';
 export * from './browserSecurity';
+export * from './a2a';
