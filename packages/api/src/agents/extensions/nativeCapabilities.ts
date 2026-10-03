@@ -36,6 +36,17 @@ export const VERIFIED_EXTERNAL_CAPABILITIES: readonly CapabilityResourceDescript
   },
 ];
 
+export const PENDING_E2E_PROVIDER_CAPABILITIES: readonly CapabilityResourceDescriptor[] = [
+  {
+    id: 'provider:anthropic',
+    kind: 'external-provider', name: 'Anthropic',
+    capabilities: ['model-routing', 'cloud-llm', 'native-anthropic'], executionMode: 'external-provider',
+    providerId: 'anthropic', accessMethod: 'anthropic-api', networkRequirement: 'internet',
+    permission: 'host-policy', trustLevel: 'configured-provider', legalUsage: 'provider-terms-review',
+    enabled: false, provenance: { source: 'env:ANTHROPIC_API_KEY', verifiedAt: new Date().toISOString() },
+  },
+];
+
 export const ACTIVE_PROVIDER_CAPABILITIES: readonly CapabilityResourceDescriptor[] = [
   {
     id: 'provider:openrouter',

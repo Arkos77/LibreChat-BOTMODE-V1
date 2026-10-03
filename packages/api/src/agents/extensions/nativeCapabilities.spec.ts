@@ -1,9 +1,12 @@
-import { ACTIVE_PROVIDER_CAPABILITIES, VERIFIED_EXTERNAL_CAPABILITIES, createActivatedCapabilityRegistry, createRuntimeCapabilityCatalog, NATIVE_BOTMODE_CAPABILITIES } from './nativeCapabilities';
+import { ACTIVE_PROVIDER_CAPABILITIES, PENDING_E2E_PROVIDER_CAPABILITIES, VERIFIED_EXTERNAL_CAPABILITIES, createActivatedCapabilityRegistry, createRuntimeCapabilityCatalog, NATIVE_BOTMODE_CAPABILITIES } from './nativeCapabilities';
 
 describe('native capability activation', () => {
   it('registers only capabilities already exposed by the current LibreChat runtime', () => {
     expect(NATIVE_BOTMODE_CAPABILITIES).toHaveLength(7);
     expect(ACTIVE_PROVIDER_CAPABILITIES).toHaveLength(1);
+    expect(PENDING_E2E_PROVIDER_CAPABILITIES).toHaveLength(1);
+    expect(PENDING_E2E_PROVIDER_CAPABILITIES[0].providerId).toBe('anthropic');
+    expect(PENDING_E2E_PROVIDER_CAPABILITIES[0].enabled).toBe(false);
     expect(VERIFIED_EXTERNAL_CAPABILITIES).toHaveLength(4);
     expect(ACTIVE_PROVIDER_CAPABILITIES[0].providerId).toBe('openrouter');
     expect(NATIVE_BOTMODE_CAPABILITIES.every((resource) => resource.enabled)).toBe(true);
