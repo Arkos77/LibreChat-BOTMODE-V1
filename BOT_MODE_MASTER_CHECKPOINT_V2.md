@@ -1744,3 +1744,36 @@ inspection, invocation bornée, JSON structuré, cancellation, artefacts,
 provenance et sécurité avant adoption.
 
 ==================================================
+
+==================================================
+SEPTIÈME MICRO-LOT POST-P14 — MISSION PLAN → CONTROL PLANE BRIDGE
+==================================================
+
+Date : 3 octobre 2026
+Statut : MICRO-LOT IMPLÉMENTÉ / PROUVÉ
+
+Objectif :
+Faire converger le planner BOT MODE existant avec le contrat Control Plane
+sans créer de second DAG, Task Engine ou scheduler.
+
+Implémentation :
+- projectMissionPlanToControlPlane ;
+- réutilise les missionId/taskId/parentTaskId/dependencies du MissionPlan ;
+- projette l'objectif en Goal et le contexte en Project ;
+- conserve les requiredCapabilities des tâches ;
+- délégation et budget restent host-supplied ou dérivés descriptivement du plan ;
+- aucun nouveau graphe d'exécution n'est construit ;
+- export orchestrator.
+
+Preuves :
+- controlPlanePlannerBridge.spec.ts : 2/2 PASS ;
+- compilation TypeScript ciblée : PASS ;
+- git diff --check : PASS ;
+- aucune modification P0–P14.
+
+Limite :
+Le bridge est une projection de configuration. Il ne soumet pas les tâches au
+Task Engine et n'effectue aucun run, aucune réservation de budget, aucune
+autorisation ni écriture durable supplémentaire.
+
+==================================================
