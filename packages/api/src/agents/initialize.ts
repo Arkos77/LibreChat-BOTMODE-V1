@@ -50,6 +50,8 @@ import type { TextContentFragment } from '../protection/types';
 import type { TFilterFilesByAgentAccess } from './resources';
 import type { MCPToolAlias } from '~/tools/classification';
 import type { AgentExecutionContext } from './runtime';
+import { createExtensionCapabilityRegistry } from './extensions';
+import type { CapabilityResourceRegistry } from './orchestrator/capabilityRegistry';
 import {
   injectSkillCatalog,
   resolveSkillCatalog,
@@ -518,6 +520,8 @@ export type InitializedAgent = Agent & {
    * context limits with the same numbers the UI shows — not default rates.
    */
   endpointTokenConfig?: EndpointTokenConfig;
+  /** Descriptive extension registry; packs remain disabled until host admission. */
+  extensionCapabilityRegistry?: CapabilityResourceRegistry;
 };
 
 export const DEFAULT_MAX_CONTEXT_TOKENS = 32000;
@@ -1832,6 +1836,7 @@ export async function initializeAgent(
         : Math.max(1024, Math.round(baseContextTokens * (1 - DEFAULT_RESERVE_RATIO))),
     primedCodeFiles,
     endpointTokenConfig: options.endpointTokenConfig,
+    extensionCapabilityRegistry: createExtensionCapabilityRegistry(),
   };
 
   return initializedAgent;
