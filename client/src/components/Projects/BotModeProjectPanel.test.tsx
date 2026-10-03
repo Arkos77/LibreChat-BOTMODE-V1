@@ -137,6 +137,22 @@ describe('BotModeProjectPanel', () => {
             ],
           },
         ],
+        memories: [
+          {
+            id: 'memory-a',
+            key: 'project-focus',
+            value: 'Only Project A',
+            updatedAt: '2026-10-02T00:00:00.000Z',
+          },
+        ],
+        sources: [
+          {
+            fileId: 'file-a',
+            filename: 'research-a.pdf',
+            type: 'application/pdf',
+            size: 1234,
+          },
+        ],
         totals: {
           input: 10,
           output: 4,
@@ -168,6 +184,10 @@ describe('BotModeProjectPanel', () => {
     expect(screen.getByText('Deliver project A')).toBeInTheDocument();
     expect(screen.getByText('PARALLEL')).toBeInTheDocument();
     expect(screen.getByText('Research sources')).toBeInTheDocument();
+    expect(screen.getByText('project-focus')).toBeInTheDocument();
+    expect(screen.getByText(/Only Project A/)).toBeInTheDocument();
+    expect(screen.getByText('research-a.pdf')).toBeInTheDocument();
+    expect(screen.getByText('application/pdf')).toBeInTheDocument();
 
     expect(mockUseParentSubagentsQuery).toHaveBeenCalledTimes(2);
     expect(mockUseParentSubagentsQuery).toHaveBeenNthCalledWith(

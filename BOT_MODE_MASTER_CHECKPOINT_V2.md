@@ -918,3 +918,36 @@ Limite explicite : aucune vidéo réelle n'a été envoyée vers une chaîne pen
 Décision : **P12 V3 CLOSED**. Le système sait désormais préparer, vérifier et publier une production YouTube sous mandat exact sans créer d'autorité parallèle. Toute évolution future de chaîne/analytics sera traitée dans les phases suivantes ou release gates, sans rouvrir P0–P12.
 
 Prochaine phase : **P13 — rooms et interface BOT MODE**, sans rouvrir P0–P12 fermés.
+
+## Clôture P13 V3 — rooms / interface BOT MODE projet (3 octobre 2026)
+
+Statut : **P13 V3 PASS/CLOSED**. P0–P12 restent fermés et ne sont pas rouverts.
+
+Gate : un projet BOT MODE doit fournir une projection UI isolée par `projectId`, afficher ses plans, progression/observations, coûts, mémoire et sources, et contrôler uniquement les tâches durables appartenant aux conversations du projet. Deux projets concurrents doivent rester séparés ; une commande pause/reprise doit continuer à utiliser le seam durable existant `taskId + threadId + parentConversationId + invocationId`.
+
+Preuves backend :
+- `createBotModeProjectProjection` récupère d'abord le projet sous le propriétaire courant puis projette uniquement ses conversations ; `getConvosByCursor` reste scoped au `projectId` ;
+- deux projections concurrentes A/B ont été testées avec leurs conversations distinctes ; mémoires distinctes via la partition native `projectId`; sources distinctes via `conversation.files` puis résolution `getFiles({ file_id: { $in: ... }, user })`; aucun identifiant de l'autre projet n'est mélangé ;
+- mémoire projet réutilise le store natif `MemoryEntry(projectId)` ; aucun nouveau stockage mémoire P13 ;
+- les sources UI réutilisent les fichiers déjà liés aux conversations et l'ACL propriétaire existante ; aucun catalogue de sources parallèle ;
+- le routeur `/api/projects/:projectId/bot-mode` transmet `getConvoFiles`, `getFiles`, `getUserMemories` et `listMtoObservations` au même propriétaire/durable path ;
+- projection bornée : max 100 projets-conversations, 200 messages par conversation, 100 observations par trace, 100 mémoires projet, 200 sources projet.
+
+Preuves UI :
+- `BotModeProjectPanel.tsx` reste monté dans `ProjectWorkspace.tsx` et consomme uniquement la projection projet + l'index parent-subagent durable ;
+- affiche désormais plan, coût, observations, mémoire projet et sources projet ;
+- pause/reprise continue d'utiliser l'existant `useSubagentControlMutation` avec `latestTaskId`, `threadId`, `parentConversationId` et une nouvelle `invocationId` ;
+- aucun contrôle n'est exposé pour une conversation sans identité et aucun nouveau contrôle n'est créé pour les états terminaux ;
+- les nouvelles traductions BOT MODE mémoire/sources existent en EN/FR ; les autres locales continuent de bénéficier du fallback i18n existant.
+
+Preuves fraîches :
+- `botModeProjectProjection.spec.js` + `projects.botmode.test.js` : **6/6 PASS** ;
+- `BotModeProjectPanel.test.tsx` : **1/1 PASS**, incluant affichage mémoire/source et pause/reprise de deux conversations ;
+- `Translation.spec.ts` : **12/12 PASS** ;
+- `routing.spec.ts` voisin : **12/12 PASS** ; aucune modification de ses invariants P9 ;
+- mémoire/conversation ciblés : **30/30 PASS** ; une suite de fichiers ACL ciblée a été skipée uniquement par le filtre de sélection et n'a pas été interprétée comme un succès ;
+- `@librechat/api` build : **PASS** ; client Vite production build + PWA post-build : **PASS** ; `git diff --check` : **PASS** avant commit.
+
+Décision : **P13 V3 CLOSED**. Le Project Workspace est maintenant une surface BOT MODE complète de projection/contrôle sans seconde autorité : les plans, coûts, observations, mémoire et sources sont dérivés des stores natifs ; pause/reprise reste le control path durable existant ; deux projets concurrents sont isolés par leurs identités projet/conversation/propriétaire.
+
+Prochaine phase : **P14 — release / restauration**, sans rouvrir P0–P13 fermés.

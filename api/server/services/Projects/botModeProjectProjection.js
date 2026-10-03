@@ -1,6 +1,8 @@
 const MAX_PROJECT_CONVERSATIONS = 100;
 const MAX_MESSAGES_PER_CONVERSATION = 200;
 const MAX_MTO_OBSERVATIONS_PER_TRACE = 100;
+const MAX_PROJECT_MEMORIES = 100;
+const MAX_PROJECT_SOURCES = 200;
 
 const EMPTY_USAGE = Object.freeze({
   input: 0,
@@ -62,7 +64,7 @@ function publicPlan(value) {
   return {
     planId: value.planId,
     planVersion: value.planVersion,
-    supersedesPlanId: value.supersedesPlanId,
+    ...(value.supersedesPlanId == null ? {} : { supersedesPlanId: value.supersedesPlanId }),
     strategy: value.strategy,
     objective: value.objective,
     tasks: Array.isArray(value.tasks)
@@ -93,6 +95,40 @@ async function createBotModeProjectProjection({ userId, tenantId, projectId, dep
 
   const projectedConversations = [];
   const totals = { ...EMPTY_USAGE };
+  const [memories, sourceIdsByConversation] = await Promise.all([
+    typeof deps.getUserMemories === 'function' ? deps.getUserMemories({ userId, projectId }) : [],
+    Promise.all(
+      (conversations ?? []).map(async (conversation) => [
+        conversation?.conversationId,
+        typeof deps.getConvoFiles === 'function' && conversation?.conversationId
+          ? await deps.getConvoFiles(conversation.conversationId)
+          : [],
+      ]),
+    ),
+  ]);
+  const projectSourceIds = [
+    ...new Set(
+      sourceIdsByConversation.flatMap(([, fileIds]) =>
+        Array.isArray(fileIds) ? fileIds.filter((id) => typeof id === 'string') : [],
+      ),
+    ),
+  ].slice(0, MAX_PROJECT_SOURCES);
+  const sources =
+    projectSourceIds.length > 0 && typeof deps.getFiles === 'function'
+      ? await deps.getFiles(
+          { file_id: { $in: projectSourceIds }, user: userId },
+          {},
+          'file_id filename type size bytes',
+        )
+      : [];
+  const memoryProjection = Array.isArray(memories)
+    ? memories.slice(0, MAX_PROJECT_MEMORIES).map((memory) => ({
+        id: memory?._id?.toString?.() ?? memory?._id,
+        key: memory?.key,
+        value: memory?.value,
+        updatedAt: memory?.updated_at ?? null,
+      }))
+    : [];
 
   for (const conversation of conversations) {
     const conversationId = conversation?.conversationId;
@@ -157,6 +193,15 @@ async function createBotModeProjectProjection({ userId, tenantId, projectId, dep
   return {
     projectId,
     conversations: projectedConversations,
+    memories: memoryProjection,
+    sources: Array.isArray(sources)
+      ? sources.map((source) => ({
+          fileId: source?.file_id,
+          filename: source?.filename,
+          type: source?.type,
+          size: finite(source?.size ?? source?.bytes),
+        }))
+      : [],
     totals,
     nextCursor,
   };

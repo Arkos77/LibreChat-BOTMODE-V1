@@ -74,6 +74,30 @@ function makeDeps() {
       nextCursor: null,
     })),
     getMessages: jest.fn(async (filter) => messagesByConvo[filter.conversationId] ?? []),
+    getConvoFiles: jest.fn(async (conversationId) =>
+      conversationId === 'conv-a' ? ['file-a'] : ['file-b'],
+    ),
+    getFiles: jest.fn(async ({ file_id, user }) => {
+      if (user !== 'owner') return [];
+      const ids = file_id?.$in ?? [];
+      return ids.map((id) =>
+        id === 'file-a'
+          ? { file_id: 'file-a', filename: 'research-a.pdf', type: 'application/pdf', size: 1234 }
+          : { file_id: 'file-b', filename: 'research-b.pdf', type: 'application/pdf', size: 2345 },
+      );
+    }),
+    getUserMemories: jest.fn(async ({ userId, projectId }) =>
+      userId === 'owner' && projectId === projectA
+        ? [
+            {
+              _id: { toString: () => 'memory-a' },
+              key: 'project-focus',
+              value: 'Project A only',
+              updated_at: new Date('2026-10-02'),
+            },
+          ]
+        : [],
+    ),
     listMtoObservations: jest.fn(async ({ traceId }) => [
       observation(traceId, `${traceId}-event`, 'AUTHORIZED'),
     ]),
@@ -143,6 +167,17 @@ describe('createBotModeProjectProjection', () => {
           ],
         },
       ],
+      memories: [
+        {
+          id: 'memory-a',
+          key: 'project-focus',
+          value: 'Project A only',
+          updatedAt: new Date('2026-10-02'),
+        },
+      ],
+      sources: [
+        { fileId: 'file-a', filename: 'research-a.pdf', type: 'application/pdf', size: 1234 },
+      ],
       totals: {
         input: 10,
         output: 4,
@@ -154,6 +189,12 @@ describe('createBotModeProjectProjection', () => {
       nextCursor: null,
     });
     expect(JSON.stringify(projection)).not.toContain('private');
+    expect(projection.memories).toEqual([
+      expect.objectContaining({ id: 'memory-a', key: 'project-focus', value: 'Project A only' }),
+    ]);
+    expect(projection.sources).toEqual([
+      expect.objectContaining({ fileId: 'file-a', filename: 'research-a.pdf' }),
+    ]);
     expect(deps.getConvosByCursor).toHaveBeenCalledWith(
       'owner',
       expect.objectContaining({ projectId: projectA }),
@@ -168,6 +209,10 @@ describe('createBotModeProjectProjection', () => {
     ]);
     expect(a.conversations.map((c) => c.conversationId)).toEqual(['conv-a']);
     expect(b.conversations.map((c) => c.conversationId)).toEqual(['conv-b']);
+    expect(a.memories).toHaveLength(1);
+    expect(a.sources.map((s) => s.fileId)).toEqual(['file-a']);
+    expect(b.memories).toHaveLength(0);
+    expect(b.sources.map((s) => s.fileId)).toEqual(['file-b']);
     expect(a.totals.cost).toBe(0.25);
     expect(a.totals.costKnown).toBe(true);
     expect(b.totals.cost).toBe(0.5);

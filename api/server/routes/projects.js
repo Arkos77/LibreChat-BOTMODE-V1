@@ -31,6 +31,9 @@ router.get('/:projectId/bot-mode', async (req, res) => {
         getChatProject: db.getChatProject,
         getConvosByCursor: db.getConvosByCursor,
         getMessages: db.getMessages,
+        getConvoFiles: db.getConvoFiles,
+        getFiles: db.getFiles,
+        getUserMemories: db.getUserMemories,
         listMtoObservations: db.listMtoObservations,
       },
     });

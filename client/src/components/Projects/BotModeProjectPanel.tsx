@@ -165,6 +165,37 @@ export default function BotModeProjectPanel({
           ))}
         </div>
       )}
+      {projection?.memories?.length > 0 && (
+        <section className="mb-3 rounded-xl border border-border-light bg-surface-secondary/60 p-3">
+          <div className="mb-2 text-sm font-medium text-text-primary">
+            {localize('com_ui_bot_mode_project_memory')}
+          </div>
+          <div className="space-y-1 text-xs text-text-secondary">
+            {projection.memories.map((memory) => (
+              <div key={memory.id ?? memory.key}>
+                <span className="font-medium text-text-primary">{memory.key}</span>: {memory.value}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      {projection?.sources?.length > 0 && (
+        <section className="mb-3 rounded-xl border border-border-light bg-surface-secondary/60 p-3">
+          <div className="mb-2 text-sm font-medium text-text-primary">
+            {localize('com_ui_bot_mode_project_sources')}
+          </div>
+          <div className="space-y-1 text-xs text-text-secondary">
+            {projection.sources.map((source) => (
+              <div key={source.fileId} className="flex items-center justify-between gap-3">
+                <span className="min-w-0 truncate text-text-primary">
+                  {source.filename ?? source.fileId}
+                </span>
+                <span className="shrink-0">{source.type ?? ''}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       <div className="grid gap-3 md:grid-cols-2">
         {projectConversations.map((conversation) => (
           <ConversationTasks key={conversation.conversationId} conversation={conversation} />
