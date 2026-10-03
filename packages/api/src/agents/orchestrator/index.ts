@@ -47,5 +47,6 @@ export * from './agentAdapter';
 export * from './controlPlanePlannerBridge';
 export * from './capabilityEvaluation';
 export * from './capabilityEvolution';
+export * from './improvementFeedback';
 export * from './browserSecurity';
 export * from './a2a';
