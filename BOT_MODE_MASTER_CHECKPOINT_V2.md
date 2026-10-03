@@ -887,3 +887,34 @@ Portée de preuve : cette fermeture démontre le pipeline gouverné et son inter
 Décision : **P11 V3 CLOSED**. Le BOT MODE dispose désormais d'un seam média commun pour image/audio/vidéo avec routing, admission, fallback, QA, provenance et artefact, sans céder l'autorité aux modèles ou providers.
 
 Prochaine phase : **P12 V3 — production YouTube**, sans rouvrir P0–P11 fermés.
+
+## Clôture P12 V3 — production YouTube gouvernée (3 octobre 2026)
+
+Statut : **P12 V3 PASS/CLOSED**. P0–P11 restent fermés et ne sont pas rouverts.
+
+Gate V3 : la production YouTube suit `claims sourcés → script → média/miniature → SEO → QA → readiness → AuthorizationRecord → publication`. La publication réelle reste un effet sensible : elle exige une approbation humaine liée au payload/digest exact et un scope OAuth YouTube valide. Aucun token n'est stocké par le pipeline.
+
+Implémentation finale :
+- `youtubeProduction.ts` fournit le contrat unique P12 pour claims, script, métadonnées SEO, QA, readiness, autorisation et publication ;
+- les claims exigent texte, URL HTTP(S) valide et titre de source ;
+- le script est rejeté s'il n'est pas relié au contenu sourcé ;
+- la présence média, description SEO et miniature est contrôlée avant readiness ;
+- `createYouTubePublicationAuthorization` produit un `AuthorizationRecord` scoped à `channel + videoDigest`, avec `approvalId` humain obligatoire ;
+- `publishYouTubeAfterExactApproval` refuse tout mismatch d'approval ou de digest avant tout appel réseau ;
+- `createYouTubeDataApiPublisher` utilise l'API YouTube Data v3 via HTTP natif, avec un access token déjà résolu par l'autorité d'auth ; il effectue `videos.insert` puis, si fourni, `thumbnails.set` ;
+- `publishYouTubeWithResolvedGoogleAuth` exige un scope OAuth `youtube.upload` ou `youtube` avant émission ; les tokens restent dans le resolver d'auth et ne sont jamais persistés dans le pipeline ;
+- après publication, le callback analytics enregistre `taskId`, `traceId` et `videoId` ; il ne devient pas une source de permission.
+
+Preuves :
+- P12 nouveau pipeline/publisher : **7/7 tests PASS** dans `youtubeProduction.spec.ts`, incluant claims, script, metadata, dry-run, approval fail-closed, publication une fois approval/digest exacts, upload vidéo + miniature et rejet d'un scope OAuth insuffisant ;
+- Google YouTube existant : **66/66 PASS** dans `youtube.spec.ts`, sans rejouer ni modifier ses invariants de parsing/injection ;
+- voisins orchestrator (`mediaGeneration`, `authorization`, `mto`) : PASS ; batterie combinée : **87/87 PASS** ;
+- `@librechat/api` build : **PASS** ; `@librechat/data-schemas` build : **PASS** ; `git diff --check` : **PASS**.
+
+Preuve API externe : le publisher est testé contre des réponses HTTP simulées et vérifie les en-têtes Bearer, le multipart vidéo et l'appel miniature. Les règles officielles YouTube Data API actuelles indiquent que `videos.insert` nécessite une autorisation OAuth avec `youtube.upload` (ou un scope YouTube plus large), et qu'un projet API non vérifié peut être limité aux vidéos privées jusqu'à audit ; le pipeline n'assume donc jamais qu'une vidéo pourra être publique automatiquement. citeturn113348view0turn113348view1
+
+Limite explicite : aucune vidéo réelle n'a été envoyée vers une chaîne pendant cette tranche, car il n'existe pas dans le checkout un payload vidéo concret `artifact + channel + approvalId + digest` que l'utilisateur aurait explicitement approuvé pour publication. Cette absence de trafic réel ne maintient pas le contrat P12 ouvert : le publisher réel, les scopes et les garde-fous de publication sont couverts ; une première publication effective reste une opération de release avec approbation du contenu exact.
+
+Décision : **P12 V3 CLOSED**. Le système sait désormais préparer, vérifier et publier une production YouTube sous mandat exact sans créer d'autorité parallèle. Toute évolution future de chaîne/analytics sera traitée dans les phases suivantes ou release gates, sans rouvrir P0–P12.
+
+Prochaine phase : **P13 — rooms et interface BOT MODE**, sans rouvrir P0–P12 fermés.
