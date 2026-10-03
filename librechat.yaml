@@ -1,0 +1,75 @@
+{
+  "version": "1.3.15",
+  "endpoints": {
+    "agents": {
+      "capabilities": [
+        "deferred_tools",
+        "execute_code",
+        "file_search",
+        "web_search",
+        "artifacts",
+        "subagents",
+        "actions",
+        "context",
+        "skills",
+        "ask_user_question",
+        "tools",
+        "chain",
+        "ocr",
+        "run_in_background"
+      ]
+    },
+    "custom": [
+      {
+        "name": "OpenRouter",
+        "apiKey": "${OPENROUTER_KEY}",
+        "baseURL": "https://openrouter.ai/api/v1",
+        "models": {
+          "default": [
+            "openrouter/free"
+          ],
+          "fetch": false
+        },
+        "titleConvo": false,
+        "dropParams": [
+          "stop"
+        ],
+        "modelDisplayLabel": "OpenRouter"
+      }
+    ]
+  },
+  "webSearch": {
+    "searchProvider": "serper",
+    "scraperProvider": "firecrawl",
+    "serperApiKey": "${SERPER_API_KEY}",
+    "firecrawlApiKey": "${FIRECRAWL_API_KEY}",
+    "tavilyApiKey": "${TAVILY_API_KEY}"
+  },
+  "speech": {
+    "tts": {
+      "allowedAddresses": [],
+      "elevenlabs": {
+        "apiKey": "${ELEVENLABS_API_KEY}",
+        "model": "eleven_multilingual_v2",
+        "voices": [
+          "CwhRBWXzGAHq8TQ4Fs17",
+          "EXAVITQu4vr4xnSDxMaL",
+          "FGY2WhTYpPnrIDTdsKH5",
+          "JBFqnCBsd6RMkjVDRZzb"
+        ]
+      }
+    },
+    "speechTab": {
+      "conversationMode": false,
+      "advancedMode": false,
+      "speechToText": true,
+      "textToSpeech": {
+        "engineTTS": "external",
+        "voice": "CwhRBWXzGAHq8TQ4Fs17",
+        "automaticPlayback": false,
+        "playbackRate": 1.0,
+        "cacheTTS": true
+      }
+    }
+  }
+}
