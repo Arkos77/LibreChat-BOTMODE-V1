@@ -2134,3 +2134,32 @@ availability + api + license + pricing + security + privacy + compatibility +
 maturity + Policy/Auth avant activation.
 
 ==================================================
+
+==================================================
+PROVIDER LIVE VERIFICATION — 3 OCTOBRE 2026
+==================================================
+
+Web/TTS capabilities réellement joignables :
+- Serper search : HTTP 200, résultat réel reçu.
+- Tavily search : HTTP 200, résultat réel reçu.
+- Firecrawl scrape : HTTP 200, contenu markdown réel reçu.
+- ElevenLabs TTS : HTTP 200, fichier audio généré (non publié dans Git).
+
+LLM providers :
+- OpenRouter : live graph-subagent E2E PASS, 3 membres + usage telemetry.
+- Anthropic : API models HTTP 200 / clé + workspace valides, mais graph-subagent
+  E2E REJECTED par l'API pour crédit insuffisant. Provider reste pending/disabled.
+- Gemini : API génération HTTP 200 avec `gemini-3.8-flash`; premier smoke test
+  terminé en MAX_TOKENS/empty content en raison du budget de pensée. Classé
+  CONNECTIVITÉ VALIDÉE / AGENT E2E EN ATTENTE ; ne pas déclarer ACTIVE tant que
+  le chemin agentique n'est pas prouvé.
+- GitHub : API authentifiée HTTP 200 ; traité comme accès configuré mais aucun
+  tool binding runtime dédié n'est déclaré actif tant qu'un MCP/adapter concret
+  n'est pas admis.
+
+Web chain actuelle :
+Serper (primary search) -> Firecrawl (scraper) ; Tavily reste configuré et peut
+être sélectionné explicitement comme provider alternatif. Aucun fallback
+automatique implicite n'a été ajouté.
+
+==================================================
