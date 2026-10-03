@@ -32,10 +32,15 @@ export interface MemoryConsolidationResult {
 }
 
 const tokenize = (value: string): string[] =>
-  value.toLowerCase().split(/[^a-z0-9_-]+/).filter((token) => token.length > 1);
+  value
+    .toLowerCase()
+    .split(/[^a-z0-9_-]+/)
+    .filter((token) => token.length > 1);
 
 function scoreEntry(entry: MemoryLifecycleEntry, queryTerms: Set<string>): MemoryRecallResult {
-  const terms = new Set(tokenize(entry.key + ' ' + entry.value + ' ' + (entry.tags ?? []).join(' ')));
+  const terms = new Set(
+    tokenize(entry.key + ' ' + entry.value + ' ' + (entry.tags ?? []).join(' ')),
+  );
   const matchedTerms = [...queryTerms].filter((term) => terms.has(term));
   const lexicalScore = queryTerms.size === 0 ? 0 : matchedTerms.length / queryTerms.size;
   const confidence = entry.confidence == null ? 1 : Math.max(0, Math.min(1, entry.confidence));
@@ -54,7 +59,10 @@ export function recallMemories(
   const requiredTags = new Set(query.requiredTags ?? []);
   const limit = Math.max(1, Math.min(100, query.limit ?? 10));
   return entries
-    .filter((entry) => requiredTags.size === 0 || [...requiredTags].every((tag) => entry.tags?.includes(tag)))
+    .filter(
+      (entry) =>
+        requiredTags.size === 0 || [...requiredTags].every((tag) => entry.tags?.includes(tag)),
+    )
     .map((entry) => scoreEntry(entry, queryTerms))
     .filter((result) => result.score > 0)
     .sort((left, right) => right.score - left.score || left.entry.id.localeCompare(right.entry.id))
@@ -71,8 +79,12 @@ export function reflectMemories(entries: readonly MemoryLifecycleEntry[]): Memor
   return [...byKey.entries()]
     .filter(([, bucket]) => bucket.length >= 2)
     .map(([key, bucket]) => {
-      const latest = [...bucket].sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))[0];
-      const confidence = bucket.reduce((sum, entry) => sum + (entry.confidence == null ? 1 : entry.confidence), 0) / bucket.length;
+      const latest = [...bucket].sort((a, b) =>
+        String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')),
+      )[0];
+      const confidence =
+        bucket.reduce((sum, entry) => sum + (entry.confidence == null ? 1 : entry.confidence), 0) /
+        bucket.length;
       return {
         statement: key + ': ' + latest.value,
         sourceIds: bucket.flatMap((entry) => entry.sourceIds ?? [entry.id]),
@@ -88,7 +100,11 @@ export function consolidateMemories(
   const latestByKey = new Map<string, MemoryLifecycleEntry>();
   for (const entry of entries) {
     const current = latestByKey.get(entry.key);
-    if (current == null || String(entry.updatedAt ?? '') > String(current.updatedAt ?? '') || (entry.updatedAt == null && current.updatedAt == null && entry.id > current.id)) {
+    if (
+      current == null ||
+      String(entry.updatedAt ?? '') > String(current.updatedAt ?? '') ||
+      (entry.updatedAt == null && current.updatedAt == null && entry.id > current.id)
+    ) {
       latestByKey.set(entry.key, entry);
     }
   }

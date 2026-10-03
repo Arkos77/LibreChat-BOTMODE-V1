@@ -1,8 +1,18 @@
-import { consolidateMemories, recallMemories, reflectMemories } from './memoryLifecycle';
 import type { MemoryLifecycleEntry } from './memoryLifecycle';
+import { consolidateMemories, recallMemories, reflectMemories } from './memoryLifecycle';
 
-const entry = (id: string, key: string, value: string, overrides: Partial<MemoryLifecycleEntry> = {}) => ({
-  id, key, value, updatedAt: '2026-10-03T10:00:00.000Z', confidence: 0.9, ...overrides,
+const entry = (
+  id: string,
+  key: string,
+  value: string,
+  overrides: Partial<MemoryLifecycleEntry> = {},
+) => ({
+  id,
+  key,
+  value,
+  updatedAt: '2026-10-03T10:00:00.000Z',
+  confidence: 0.9,
+  ...overrides,
 });
 
 describe('memory lifecycle', () => {
@@ -19,8 +29,12 @@ describe('memory lifecycle', () => {
       entry('b', 'two', 'alpha', { tags: ['home'] }),
       entry('c', 'three', 'alpha', { tags: ['work'] }),
     ];
-    expect(recallMemories(entries, { query: 'alpha', requiredTags: ['work'], limit: 1 })).toHaveLength(1);
-    expect(recallMemories(entries, { query: 'alpha', requiredTags: ['work'], limit: 1 })[0].entry.id).toBe('a');
+    expect(
+      recallMemories(entries, { query: 'alpha', requiredTags: ['work'], limit: 1 }),
+    ).toHaveLength(1);
+    expect(
+      recallMemories(entries, { query: 'alpha', requiredTags: ['work'], limit: 1 })[0].entry.id,
+    ).toBe('a');
   });
 
   it('reflects repeated keys with source provenance', () => {
@@ -39,6 +53,10 @@ describe('memory lifecycle', () => {
       entry('new', 'plan', 'final', { updatedAt: '2026-10-03T10:00:00.000Z' }),
       entry('other', 'name', 'Jarvis'),
     ];
-    expect(consolidateMemories(entries).retained.map((item) => item.id).sort()).toEqual(['new', 'other']);
+    expect(
+      consolidateMemories(entries)
+        .retained.map((item) => item.id)
+        .sort(),
+    ).toEqual(['new', 'other']);
   });
 });
