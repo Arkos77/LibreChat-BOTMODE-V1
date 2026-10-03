@@ -42,6 +42,8 @@ jest.mock('@librechat/api', () => {
     validateAgentModel: (...args) => mockValidateAgentModel(...args),
     GenerationJobManager: {
       setCollectedUsage: jest.fn(),
+      getJob: (...args) => mockGetGenerationJob(...args),
+      updateMetadata: jest.fn(),
       getJobStore: jest.fn(() => ({
         getJob: (...args) => mockGetGenerationJob(...args),
       })),
@@ -2229,6 +2231,96 @@ describe('initializeClient — subagent loading', () => {
     expect(arg.toolRegistry).toBeInstanceOf(Map);
     expect(arg.tool_resources).toEqual({ file_search: { file_ids: ['file_1'] } });
     expect(arg.actionsEnabled).toBe(true);
+  });
+
+  it('persists per-action execution grants in the generation job and fails closed on stale state', async () => {
+    const req = makeSubagentReq();
+    req._resumableStreamId = 'grant-job';
+    const primaryConfig = {
+      ...makePrimaryConfig({}),
+      codeEnvAvailable: true,
+      toolRegistry: new Map([['execute_code', { name: 'execute_code' }]]),
+    };
+    mockInitializeAgent.mockResolvedValue(primaryConfig);
+
+    let durableJob = {
+      createdAt: 1234,
+      status: 'running',
+      metadata: { executionGrants: {} },
+    };
+    mockGetGenerationJob.mockImplementation(async () => durableJob);
+    const apiMock = require('@librechat/api');
+    apiMock.GenerationJobManager.updateMetadata.mockImplementation(async (_streamId, patch) => {
+      durableJob = {
+        ...durableJob,
+        metadata: { ...durableJob.metadata, ...patch },
+      };
+    });
+
+    await initializeClient({
+      req,
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption: makeEndpointOption(),
+      jobCreatedAt: 1234,
+    });
+
+    const resolver = agentClientArgs.executionGrantResolver;
+    expect(resolver).toBeInstanceOf(Function);
+
+    const input = {
+      jobId: 'grant-job',
+      actionId: 'action-1',
+      toolName: 'execute_code',
+      runId: 'run-1',
+      agentId: PRIMARY_ID,
+    };
+    const first = await resolver(input);
+
+    expect(first).toEqual(
+      expect.objectContaining({
+        jobId: 'grant-job',
+        actionId: 'action-1',
+        toolName: 'execute_code',
+        status: 'ACTIVE',
+        networkMode: 'NONE',
+      }),
+    );
+    expect(first.expiresAt).toBeGreaterThan(first.issuedAt);
+    expect(apiMock.GenerationJobManager.updateMetadata).toHaveBeenCalledTimes(1);
+    expect(durableJob.metadata.executionGrants['action-1']).toEqual(first);
+
+    const second = await resolver(input);
+    expect(second).toEqual(first);
+    expect(apiMock.GenerationJobManager.updateMetadata).toHaveBeenCalledTimes(1);
+
+    await expect(resolver({ ...input, jobId: 'other-job' })).rejects.toThrow(
+      'EXECUTION_GRANT_SCOPE_MISMATCH',
+    );
+
+    durableJob.metadata.executionGrants['action-1'] = {
+      ...first,
+      status: 'REVOKED',
+    };
+    expect(() =>
+      require('@librechat/agents').validateExecutionGrant(
+        durableJob.metadata.executionGrants['action-1'],
+        input,
+        Date.now(),
+      ),
+    ).toThrow('EXECUTION_GRANT_REVOKED');
+
+    durableJob.metadata.executionGrants['action-1'] = {
+      ...first,
+      expiresAt: Date.now() - 1,
+    };
+    expect(() =>
+      require('@librechat/agents').validateExecutionGrant(
+        durableJob.metadata.executionGrants['action-1'],
+        input,
+        Date.now(),
+      ),
+    ).toThrow('EXECUTION_GRANT_EXPIRED');
   });
 
   it('threads run-scoped MCP tool definitions into ON_TOOL_EXECUTE loading', async () => {

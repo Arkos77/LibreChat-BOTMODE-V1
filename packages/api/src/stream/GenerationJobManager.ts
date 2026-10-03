@@ -2795,6 +2795,7 @@ class GenerationJobManagerClass {
         compactionSemanticIndex: jobData.compactionSemanticIndex,
         contextMeta: jobData.contextMeta,
         missionOracleState: jobData.missionOracleState,
+        executionGrants: jobData.executionGrants,
         missionCandidateContent: jobData.missionCandidateContent,
         missionCandidateAttachments: jobData.missionCandidateAttachments,
         // Surface the owning replica's seal capability so the steer route can

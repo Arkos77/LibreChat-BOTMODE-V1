@@ -160,6 +160,8 @@ export interface SerializableJobData {
   /** Durable Mission Oracle evidence/verdict state carried across HITL resume.
    * QA state only; never authorization or task settlement authority. */
   missionOracleState?: MissionOracleState;
+  /** Durable per-action execution grants owned by this generation job. */
+  executionGrants?: GenerationJobMetadata['executionGrants'];
   /** Private durable candidate content for BOT MODE missions. */
   missionCandidateContent?: unknown[];
   /** Private durable candidate artifacts for BOT MODE missions. */
@@ -446,6 +448,7 @@ export type JobMetadataPatch = Partial<
     | 'mtoTraceId'
     | 'orchestratorPlan'
     | 'missionOracleState'
+    | 'executionGrants'
     | 'missionCandidateContent'
     | 'missionCandidateAttachments'
     | 'isRegenerate'
@@ -588,7 +591,8 @@ export interface SteerEnqueueResult {
 }
 
 export type TerminalSteerAdmissionResult =
-  { outcome: 'claimed'; items: SteerQueueItem[] } | { outcome: 'open' | 'sealed' | 'unavailable' };
+  | { outcome: 'claimed'; items: SteerQueueItem[] }
+  | { outcome: 'open' | 'sealed' | 'unavailable' };
 
 export interface TerminalSteerAdmissionPolicy {
   allowClaim: boolean;

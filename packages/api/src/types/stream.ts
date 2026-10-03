@@ -42,6 +42,22 @@ export interface GenerationJobMetadata {
   missionCandidateContent?: unknown[];
   /** Private, generation-fenced generated artifacts withheld until terminal acceptance. */
   missionCandidateAttachments?: unknown[];
+  /** Durable per-action execution grants. The generation job is the sole owner. */
+  executionGrants?: Record<
+    string,
+    {
+      jobId: string;
+      actionId: string;
+      toolName: string;
+      issuedAt: number;
+      expiresAt: number;
+      status: 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+      cpuCores?: number;
+      memoryBytes?: number;
+      diskBytes?: number;
+      networkMode?: 'NONE' | 'LOCAL_LAB' | 'ALLOWLIST' | 'WEB' | 'TOR_ALLOWLIST';
+    }
+  >;
   /** Whether this generation replaces an existing assistant branch. */
   isRegenerate?: boolean;
   /** Exact normalized MCP placeholder identity for this turn. Persisted so HITL

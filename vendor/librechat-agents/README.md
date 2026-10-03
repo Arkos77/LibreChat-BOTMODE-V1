@@ -1,3 +1,14 @@
+# P8 Docker execution gateway SDK — current artifact
+
+- Package: `@librechat/agents` 3.7.17.
+- Source commit: `214fcad2744055315c3d1940e9d4a29c7c5444d6`.
+- Artifact: `librechat-agents-3.7.17-214fcad2744055315c3d1940e9d4a29c7c5444d6.tgz`.
+- SHA-256: `9ca06cace7b03160f308999998a788045aeab958d98dc894e291a396b3e7a472`.
+- npm integrity: `sha512-oLznPxBjUpt25PxsFFZsex0MMpYnjTTbSo8yAUXVA2/lKTf0MBmywrdX4vaW/uMP3Q+3deJrS5sbbpxqvjXxEA==`.
+- Validation: execution-grant/ToolNode/Docker tests 12/12 PASS; SDK TypeScript `--noEmit` PASS; SDK build PASS; live Docker enforcement verified cgroup CPU/RAM, bounded tmpfs disk and network `NONE`.
+- Contract: grants are scoped to job/action/tool and fail closed on missing, revoked, expired, invalid or mismatched state. Docker is execution-only; `NONE`/`LOCAL_LAB`/`WEB` are advertised, while `ALLOWLIST`/`TOR_ALLOWLIST` fail closed without a policy-aware proxy.
+- Host integration: the generation job is the sole durable owner of grants; only `codeEnvAvailable` agents receive the Docker execution profile.
+
 # P8 SDK dependency
 
 This npm archive contains `@librechat/agents` 3.7.17 built from local SDK commit

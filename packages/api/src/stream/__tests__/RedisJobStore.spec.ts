@@ -47,6 +47,40 @@ function jobHashFromCreationCall(call: unknown[]): Record<string, string> {
 }
 
 describe('RedisJobStore', () => {
+  test('round-trips execution grants through the Redis job serialization contract', () => {
+    const redis = {} as unknown as Cluster;
+    const store = new RedisJobStore(redis);
+    const grants = {
+      'action-1': {
+        jobId: 'job-1',
+        actionId: 'action-1',
+        toolName: 'execute_code',
+        issuedAt: 1000,
+        expiresAt: 2000,
+        status: 'ACTIVE' as const,
+        cpuCores: 0.5,
+        memoryBytes: 64 * 1024 * 1024,
+        diskBytes: 8 * 1024 * 1024,
+        networkMode: 'NONE' as const,
+      },
+    };
+    const input = {
+      streamId: 'job-1',
+      userId: 'user-1',
+      status: 'running' as const,
+      createdAt: 1234,
+      executionGrants: grants,
+    };
+    const storeInternals = store as unknown as {
+      serializeJob: (job: typeof input) => Record<string, string>;
+      deserializeJob: (data: Record<string, string>) => { executionGrants?: unknown };
+    };
+    const serialized = storeInternals.serializeJob(input);
+    expect(JSON.parse(serialized.executionGrants)).toEqual(grants);
+    const restored = storeInternals.deserializeJob(serialized);
+    expect(restored.executionGrants).toEqual(grants);
+  });
+
   test('marks only the exact provider segment drained', async () => {
     const evalDrain = jest.fn().mockResolvedValue(1);
     const redis = {

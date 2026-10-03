@@ -3134,6 +3134,42 @@ describe('toolOutputReferences gating', () => {
   });
 });
 
+describe('createRun P8 execution grant wiring', () => {
+  it('passes the Docker execution grant resolver only to code-enabled agent inputs', async () => {
+    const signal = new AbortController().signal;
+    const grantResolver = jest.fn();
+    const toolExecution = {
+      engine: 'docker' as const,
+      executionGrantResolver: grantResolver,
+      executionGrantJobId: 'job-p8',
+      docker: {
+        image: 'librechat_devcontainer-app:latest',
+        cpuCores: 0.5,
+        memoryBytes: 512 * 1024 * 1024,
+        diskBytes: 128 * 1024 * 1024,
+        networkMode: 'NONE' as const,
+      },
+    };
+    await createRun({
+      agents: [
+        makeAgent({ id: 'code-agent', codeEnvAvailable: true }),
+        makeAgent({ id: 'normal-agent', codeEnvAvailable: false }),
+      ] as never,
+      signal,
+      streaming: true,
+      streamUsage: true,
+      toolExecution,
+    });
+
+    const createMock = Run.create as jest.Mock;
+    const runConfig = createMock.mock.calls[0][0] as Record<string, unknown>;
+    const agents = (runConfig.graphConfig as { agents: Array<Record<string, unknown>> }).agents;
+    expect(agents).toHaveLength(2);
+    expect(agents[0].toolExecution).toBe(toolExecution);
+    expect(agents[1].toolExecution).toBeUndefined();
+  });
+});
+
 describe('createRun P6 orchestrator topology', () => {
   it('compiles a deterministic durable plan over already-built authorized agent inputs', async () => {
     const signal = new AbortController().signal;

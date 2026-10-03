@@ -737,3 +737,38 @@ Sous-gates OUVERTS :
 - multi-provider contrôlé. Le hostModelRouting de production reste volontairement OpenRouter-only.
 
 Décision : ne pas fabriquer de métriques prospectives, ne pas activer les fallbacks SDK natifs et ne pas relancer un run après erreur sans preuve de non-effet. Prochaine tranche P9 : étudier le callback modèle natif déjà injecté sur les bindings et fallbacks pour déterminer si une admission par invocation peut être ajoutée sans second système d'autorité ; seulement ensuite reconsidérer un failover borné.
+
+## Clôture P8 — Gateway d’exécution, grants et sandbox générique (3 octobre 2026)
+
+Gate V3 : chaque effet doit être lié à un grant borné par job/action/tool, durablement possédé par le job de génération, revalidé immédiatement avant effet, et appliqué par un backend d’exécution capable d’enforcer ses contraintes. Un backend ne peut jamais dégrader silencieusement une contrainte qu’il ne sait pas appliquer.
+
+Preuves SDK :
+- `@librechat/agents` 3.7.17, commit source `214fcad2744055315c3d1940e9d4a29c7c5444d6` ;
+- artefact vendorisé `librechat-agents-3.7.17-214fcad2744055315c3d1940e9d4a29c7c5444d6.tgz`, SHA-256 `9ca06cace7b03160f308999998a788045aeab958d98dc894e291a396b3e7a472` ;
+- tests execution-grant, ToolNode et Docker : 12/12 PASS ;
+- test Docker réel sur daemon local : CPU cgroup, RAM cgroup, swap nul, tmpfs `/tmp` borné et réseau `NONE` vérifiés ; écriture au-delà du scratch échoue ;
+- TypeScript `--noEmit` PASS ; build SDK PASS ; `git diff --check` PASS ; hooks Git PASS.
+
+Preuves host :
+- `ExecutionGrant` ajouté au durable `GenerationJobMetadata` ; le seul propriétaire durable reste `GenerationJobManager` ;
+- `updateMetadata(..., expectedCreatedAt)` conserve le fencing d’epoch existant ;
+- le resolver host lit le job courant, exige le même `streamId` et `createdAt`, vérifie le statut `running` et la présence de l’outil dans le Tool Registry ;
+- le grant est écrit puis relu avant admission ; un grant est lié à une seule action et un seul outil ;
+- révocation, expiration, statut invalide et mismatch de scope sont fail-closed dans le SDK au dernier effet ;
+- `ToolNode` réinterroge le resolver à l’effet et interdit toute exécution sans grant valide ;
+- `createRun` transmet le contexte Docker/grant uniquement aux agents `codeEnvAvailable` ; P8 sentinel + quatre régressions P6 : 5/5 PASS ;
+- `initialize.spec.js` + `client.test.js` sur grant/Oracle/barrière/attachments : 38/38 PASS ;
+- build officiel `@librechat/api` PASS ; résolution runtime depuis `api/` vers le vendor racine vérifiée ; `createDockerSpawn` et `validateExecutionGrant` réellement exportés.
+
+Backend Docker :
+- `NONE`, `LOCAL_LAB` et `WEB` sont les capacités effectivement annoncées ; `LOCAL_LAB` est configurable via `localLabNetwork` ou `BOTMODE_DOCKER_LOCAL_NETWORK` ;
+- `ALLOWLIST` et `TOR_ALLOWLIST` restent explicitement refusés tant qu’un proxy policy-aware ne garantit pas le filtrage de domaines/route demandé ;
+- CPU et RAM sont imposés par Docker/cgroups ; le quota disque P8 correspond au scratch éphémère `/tmp` via tmpfs borné, et non à une promesse de quota du workspace persistant overlay2/ext4 ;
+- l’UID/GID du serveur est propagé au conteneur pour éviter les fichiers root dans les espaces de travail ;
+- l’échec du daemon/CLI Docker ne bascule jamais vers l’exécution locale non bornée : le backend échoue fermé.
+
+Décision : **P8 PASS/CLOSED** pour le contrat V3 Gateway + Execution Grant + sandbox générique dans le montage validé. Aucune seconde autorité, aucun second scheduler et aucun second durable owner n’a été créé. Les modes réseau non supportés par le backend courant restent des capacités explicitement indisponibles et fail-closed, pas des hypothèses implicites.
+
+La disponibilité d’un daemon Docker depuis le processus de production déployé reste une précondition d’environnement pour activer ce backend ; le stack LibreChat n’étant pas démarré sur ce poste au moment de cette clôture, aucune preuve d’E2E depuis un conteneur de déploiement n’est revendiquée. Ce point relève du gate de release P14, pas d’une ouverture de l’autorité P8.
+
+Prochaine phase : **P9 — routage multi-modèle**, sans rouvrir P0–P8 fermés.

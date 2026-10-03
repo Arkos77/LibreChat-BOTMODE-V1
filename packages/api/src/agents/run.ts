@@ -472,6 +472,8 @@ type RunAgent = Omit<Agent, 'tools'> & {
   }>;
   /** Member-scoped always-apply skills resolved during agent initialization. */
   alwaysApplySkillPrimes?: ResolvedAlwaysApplySkill[];
+  /** Host-supplied per-action execution grant resolver/backend configuration. */
+  toolExecution?: import('@librechat/agents').ToolExecutionConfig;
   /** Source subagent spawning configuration (enabled / allowSelf / agent_ids). */
   subagents?: AgentSubagentsConfig;
 };
@@ -1467,6 +1469,7 @@ export async function createRun({
   appConfig,
   subagentUsageSink,
   subagentTasks,
+  toolExecution,
   oracle,
   orchestratorPlan,
   resolveMissionOracleEvidence,
@@ -1562,6 +1565,8 @@ export async function createRun({
   subagentUsageSink?: (event: SubagentUsageEvent) => void;
   /** Host-owned detached-subagent task store and trusted parent-thread scope. */
   subagentTasks?: SubagentTaskConfig;
+  /** Per-run tool execution backend and durable execution-grant resolver. */
+  toolExecution?: import('@librechat/agents').ToolExecutionConfig;
   /** Host-supplied QA for a single producer; separate from task settlement and authorization. */
   oracle?: OracleRunOptions;
   /**
@@ -1876,6 +1881,7 @@ export async function createRun({
       maxToolResultChars: agent.maxToolResultChars,
       initialSessions: buildAgentInitialToolSessions(agent, initialSessions),
       codeSessionKey: agent.codeSessionKey,
+      ...(toolExecution != null && agent.codeEnvAvailable === true ? { toolExecution } : {}),
     };
     if (askGraphTools) {
       /**

@@ -4923,6 +4923,7 @@ export class RedisJobStore implements IJobStoreV2 {
       mtoTraceId: data.mtoTraceId || undefined,
       orchestratorPlan: data.orchestratorPlan ? JSON.parse(data.orchestratorPlan) : undefined,
       missionOracleState: data.missionOracleState ? JSON.parse(data.missionOracleState) : undefined,
+      executionGrants: data.executionGrants ? JSON.parse(data.executionGrants) : undefined,
       missionCandidateContent: data.missionCandidateContent
         ? JSON.parse(data.missionCandidateContent)
         : undefined,

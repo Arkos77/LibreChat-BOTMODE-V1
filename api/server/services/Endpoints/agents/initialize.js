@@ -414,6 +414,75 @@ const initializeClient = async ({
    * }>}
    */
   const agentToolContexts = new Map();
+  const parsePositiveNumber = (value, fallback) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  };
+  const dockerExecutionProfile = {
+    image: process.env.BOTMODE_DOCKER_IMAGE || 'librechat_devcontainer-app:latest',
+    cpuCores: parsePositiveNumber(process.env.BOTMODE_DOCKER_CPU_CORES, 0.5),
+    memoryBytes: parsePositiveNumber(process.env.BOTMODE_DOCKER_MEMORY_BYTES, 512 * 1024 * 1024),
+    diskBytes: parsePositiveNumber(process.env.BOTMODE_DOCKER_DISK_BYTES, 128 * 1024 * 1024),
+    networkMode: 'NONE',
+    user: `${typeof process.getuid === 'function' ? process.getuid() : 0}:${typeof process.getgid === 'function' ? process.getgid() : 0}`,
+  };
+  const executionGrantResolver = async ({ jobId, actionId, toolName, runId, agentId }) => {
+    if (jobId !== streamId || typeof actionId !== 'string' || actionId.length === 0) {
+      throw new Error('EXECUTION_GRANT_SCOPE_MISMATCH');
+    }
+    const job = await GenerationJobManager.getJob(jobId);
+    if (!job || job.createdAt !== jobCreatedAt) {
+      throw new Error('EXECUTION_GRANT_JOB_EPOCH_MISMATCH');
+    }
+    if (job.status !== 'running') {
+      throw new Error('EXECUTION_GRANT_JOB_NOT_RUNNABLE');
+    }
+    const context = typeof agentId === 'string' ? agentToolContexts.get(agentId) : undefined;
+    if (!context?.toolRegistry?.has?.(toolName)) {
+      throw new Error('EXECUTION_GRANT_TOOL_NOT_REGISTERED');
+    }
+    const current = job.metadata?.executionGrants?.[actionId];
+    if (current) {
+      if (
+        current.jobId !== jobId ||
+        current.actionId !== actionId ||
+        current.toolName !== toolName
+      ) {
+        throw new Error('EXECUTION_GRANT_SCOPE_MISMATCH');
+      }
+      return current;
+    }
+    const now = Date.now();
+    const grant = {
+      jobId,
+      actionId,
+      toolName,
+      issuedAt: now,
+      expiresAt: now + 10 * 60 * 1000,
+      status: 'ACTIVE',
+      cpuCores: dockerExecutionProfile.cpuCores,
+      memoryBytes: dockerExecutionProfile.memoryBytes,
+      diskBytes: dockerExecutionProfile.diskBytes,
+      networkMode: dockerExecutionProfile.networkMode,
+      runId,
+    };
+    const grants = { ...(job.metadata?.executionGrants ?? {}), [actionId]: grant };
+    await GenerationJobManager.updateMetadata(jobId, { executionGrants: grants }, jobCreatedAt);
+    const persisted = await GenerationJobManager.getJob(jobId);
+    const saved = persisted?.metadata?.executionGrants?.[actionId];
+    if (
+      !saved ||
+      persisted.createdAt !== jobCreatedAt ||
+      saved.jobId !== jobId ||
+      saved.actionId !== actionId ||
+      saved.toolName !== toolName ||
+      saved.status !== 'ACTIVE'
+    ) {
+      throw new Error('EXECUTION_GRANT_PERSISTENCE_FAILED');
+    }
+    return saved;
+  };
+
   const resolveMcpServerName = (toolName, agentId) => {
     if (typeof toolName !== 'string' || typeof agentId !== 'string') {
       return undefined;
@@ -476,6 +545,8 @@ const initializeClient = async ({
   const invokedSkillIdentities = new Map();
   const skillToolDeps = getSkillToolDeps();
   const toolExecuteOptions = {
+    executionGrantResolver,
+    executionGrantJobId: streamId,
     loadTools: async (toolNames, agentId, _configurable, callerCapabilityProjection) => {
       const ctx = agentToolContexts.get(agentId) ?? {};
       logger.debug(`[ON_TOOL_EXECUTE] ctx found: ${!!ctx.userMCPAuthMap}, agent: ${ctx.agent?.id}`);
@@ -1917,6 +1988,9 @@ const initializeClient = async ({
     mtoTraceId,
     mtoEventSink,
     mcpRequestBody: runtimeRequestBody,
+    executionGrantResolver,
+    executionGrantJobId: streamId,
+    dockerExecutionProfile,
   });
   client.publicationBarrier = publicationBarrier;
 

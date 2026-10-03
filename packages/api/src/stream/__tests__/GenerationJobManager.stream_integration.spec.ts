@@ -420,6 +420,20 @@ describe('GenerationJobManager Integration Tests', () => {
           specialists: [],
           reasons: [{ code: 'WORKER_CAPABLE' }],
         };
+        const executionGrants = {
+          'action-1': {
+            jobId: streamId,
+            actionId: 'action-1',
+            toolName: 'execute_code',
+            issuedAt: 1000,
+            expiresAt: 2000,
+            status: 'ACTIVE' as const,
+            cpuCores: 0.5,
+            memoryBytes: 64 * 1024 * 1024,
+            diskBytes: 8 * 1024 * 1024,
+            networkMode: 'NONE' as const,
+          },
+        };
 
         await GenerationJobManager.updateMetadata(
           streamId,
@@ -429,6 +443,7 @@ describe('GenerationJobManager Integration Tests', () => {
             iconURL: 'https://example.com/spec-icon.png',
             model: 'gpt-4.1',
             orchestratorPlan,
+            executionGrants,
           },
           job.createdAt,
         );
@@ -439,6 +454,7 @@ describe('GenerationJobManager Integration Tests', () => {
         expect(updated?.metadata?.iconURL).toBe('https://example.com/spec-icon.png');
         expect(updated?.metadata?.model).toBe('gpt-4.1');
         expect(updated?.metadata?.orchestratorPlan).toEqual(orchestratorPlan);
+        expect(updated?.metadata?.executionGrants).toEqual(executionGrants);
 
         await GenerationJobManager.updateMetadata(
           streamId,
@@ -448,12 +464,19 @@ describe('GenerationJobManager Integration Tests', () => {
               planId: 'stale-plan:v2',
               planVersion: 2,
             },
+            executionGrants: {
+              'action-1': {
+                ...executionGrants['action-1'],
+                status: 'REVOKED',
+              },
+            },
           },
           job.createdAt + 1,
         );
 
         const afterStaleUpdate = await GenerationJobManager.getJob(streamId);
         expect(afterStaleUpdate?.metadata?.orchestratorPlan).toEqual(orchestratorPlan);
+        expect(afterStaleUpdate?.metadata?.executionGrants).toEqual(executionGrants);
 
         const resumeState = await GenerationJobManager.getResumeState(streamId);
         expect(resumeState?.sender).toBe('ConsistencyAgent');

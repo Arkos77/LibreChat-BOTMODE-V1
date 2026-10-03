@@ -21,6 +21,9 @@ export function sanitizeJobMetadata(metadata: Partial<GenerationJobMetadata>): J
   if (metadata.missionCandidateAttachments) {
     patch.missionCandidateAttachments = structuredClone(metadata.missionCandidateAttachments);
   }
+  if (metadata.executionGrants) {
+    patch.executionGrants = structuredClone(metadata.executionGrants);
+  }
   if (metadata.isRegenerate !== undefined) {
     patch.isRegenerate = metadata.isRegenerate;
   }

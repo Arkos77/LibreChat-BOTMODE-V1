@@ -4520,6 +4520,14 @@ class AgentClient extends BaseClient {
           discoveredToolNames:
             this.eventActorContinuation === 'warm' ? this.eventActorDiscoveredToolNames : undefined,
           modelCallbacks: [modelBoundCallback],
+          toolExecution: this.options.executionGrantResolver
+            ? {
+                executionGrantResolver: this.options.executionGrantResolver,
+                executionGrantJobId: this.options.executionGrantJobId,
+                engine: 'docker',
+                docker: this.options.dockerExecutionProfile,
+              }
+            : undefined,
           modelCallbackFactory: createModelBoundBudgetAdmissionFactory(this, balanceConfig),
           // This controller implements the full HITL pause/resume lifecycle (handleRunInterrupt
           // persists the pending action; the /resume route rebuilds + continues the run), so it
