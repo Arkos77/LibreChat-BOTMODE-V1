@@ -3450,6 +3450,87 @@ describe('AgentClient - startup telemetry', () => {
     });
   });
 
+  it('fails chatCompletion closed when terminal Mission Oracle returns UNKNOWN', async () => {
+    jest.clearAllMocks();
+    mockIsHITLEnabled.mockReturnValue(false);
+    mockCreateRun.mockResolvedValue({
+      Graph: null,
+      processStream: jest.fn().mockResolvedValue(),
+      getCalibrationRatio: jest.fn(() => 0),
+      getInterrupt: jest.fn(() => undefined),
+      getHaltReason: jest.fn(() => undefined),
+      getAgentOutputs: jest.fn(() => ({
+        'node-terminal-oracle-unknown': { content: '{}' },
+      })),
+    });
+
+    const client = new AgentClient({
+      req: {
+        user: { id: 'user-123' },
+        body: {},
+        config: { endpoints: { [EModelEndpoint.agents]: {} } },
+        _resumableStreamId: 'conversation-terminal-oracle-unknown',
+      },
+      res: {},
+      agent: {
+        id: 'agent-123',
+        endpoint: EModelEndpoint.openAI,
+        provider: EModelEndpoint.openAI,
+        model_parameters: { model: 'gpt-4' },
+        hide_sequential_outputs: false,
+      },
+      endpointTokenConfig: {},
+      eventHandlers: {},
+      contentParts: [],
+      collectedUsage: [],
+      artifactPromises: [],
+    });
+    client.conversationId = 'conversation-terminal-oracle-unknown';
+    client.responseMessageId = 'response-terminal-oracle-unknown';
+    client.parentMessageId = 'parent-terminal-oracle-unknown';
+    client.jobCreatedAt = 1000;
+    client.orchestratorPlan = {
+      planId: 'plan-terminal-oracle-unknown',
+      planVersion: 1,
+      mission: {
+        missionId: 'mission-terminal-oracle-unknown',
+        taskId: 'root',
+        objective: 'Verify terminal output',
+        constraints: [],
+        requiredCapabilities: ['basic'],
+      },
+      strategy: 'DIRECT',
+      tasks: [
+        {
+          key: 'terminal',
+          objective: 'Verify terminal output',
+          requiredCapabilities: ['basic'],
+          dependsOn: [],
+          taskId: 'task-terminal-oracle-unknown',
+          parentTaskId: 'root',
+          nodeId: 'node-terminal-oracle-unknown',
+          agentId: 'agent-123',
+          constraints: [],
+          validation: [
+            {
+              criteria: [{ id: 'ok', field: 'ok', expected: true }],
+              requireIndependentEvidence: true,
+            },
+          ],
+          canRunInParallel: false,
+        },
+      ],
+      specialists: [],
+      reasons: [{ code: 'WORKER_CAPABLE' }],
+    };
+    client.recordCollectedUsage = jest.fn().mockResolvedValue();
+    client.persistMissionOracleResult = jest.fn().mockResolvedValue();
+
+    await expect(client.chatCompletion({ payload: [] })).rejects.toMatchObject({
+      code: 'MISSION_ORACLE_FAILURE',
+    });
+  });
+
   it('propagates final model callback policy errors instead of persisting a generic error part', async () => {
     jest.clearAllMocks();
     let policyError;
