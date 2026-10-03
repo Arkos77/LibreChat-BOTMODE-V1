@@ -813,3 +813,38 @@ Preuves fraîches finales :
 Décision : **P9 est fermé** pour le contrat V3 de routage/admission/failover. Aucun modèle, provider ou fallback n’acquiert d’autorité simplement parce qu’il est techniquement disponible. Les signaux manquants restent manquants et ne sont pas transformés en estimations fictives. L’observabilité post-run existante (usage/coût réel) reste la source de vérité pour les performances réellement mesurées ; elle n’est pas réinterprétée comme une prédiction non justifiée.
 
 Prochaine phase : **P10 — amélioration gouvernée**, sans rouvrir P0–P9 fermés.
+
+## Clôture P10 — amélioration gouvernée (3 octobre 2026)
+
+Statut : **P10 PASS/CLOSED**. P0–P9 restent fermés et ne sont pas rouverts.
+
+Gate V3 : une amélioration proposée par un vrai producteur doit être capturée avant mutation, durablement liée au propriétaire/tenant, à la tâche native, au producteur, au skill/version et au digest exact ; elle doit être vérifiée par des tests indépendants déclarés par l'hôte, passer un Oracle lié au même payload, puis une autorisation native exacte et, lorsqu'elle est requise, une décision humaine sur le diff exact avant l'effet natif. Le rejeu doit converger sans double mutation, et un succès natif doit rester distingué d'une observation de journal manquante.
+
+Preuve de production :
+- `initialize.js` ne branche `onSkillProposed` que lorsqu'un vrai `taskId` de sous-agent est présent dans le contexte asynchrone ; le producteur natif est lu séparément ;
+- `recordSkillImprovementProposal` persiste le payload/diff exact, son digest et les identités sous propriétaire/tenant, avec idempotence et déduplication des éditions identiques ; la mutation native n'est pas appelée pendant cette capture ;
+- `validateSkillImprovementCandidate` exécute uniquement les plans de tests définis par l'hôte sur le payload exact, refuse un vérificateur identique au producteur, persiste `VALIDATING` puis le résultat, et appelle l'Oracle déterministe seulement après réussite des tests ;
+- `createImprovementDisposition` exige l'accord du snapshot candidat/digest/trace pour un verdict Oracle accepté et ne crée aucune autorité d'exécution ;
+- `decideSkillImprovementReview` lie une approbation/rejet humaine au `payloadDigest` et au `snapshotDigest` exacts, puis rejoue l'autorisation native avant publication ; une édition ou un digest décalé exige une nouvelle décision ;
+- `publishImprovementSkillUpdateForRequest` revérifie capacité native, ACL, payload/digest, filtre de contenu et version optimiste, puis appelle le `updateSkill` natif ; seul le résultat `updated` produit `COMMITTED` ;
+- le chemin CREATE possède le même contrat avec allocation durable préalable, preuve de mutation native exacte, réparation de l'ACL propriétaire au rejeu et absence de double création ;
+- une panne du journal après mutation native produit `observationPending` et non un faux rollback : la réconciliation reste descriptive de l'effet déjà commis.
+
+Preuves de tests fraîches :
+- orchestrator P10 : **17 suites / 99 tests PASS** (`improvement`, `evidence`, `distill`, `disposition`, `authorization`, `skillContentTests`, `stepLimitEvidenceContext`, `toolEvidence*`, etc.) ;
+- API P10 principale : **9 suites / 79 tests PASS** sur candidate, proposal, validation, skill validation, authorization, publication, review, test plans et tool evidence ;
+- intégration P10 durable skill review/publication : **2/2 PASS**, dont cycle proposition → tests indépendants → Oracle → décision humaine exacte → publication et récupération d'une mutation déjà commise après panne du journal `COMMITTED` ;
+- création skill gouvernée : **13/13 PASS**, dont allocation durable, publication, conflits, rejeu, réparation d'ACL et absence de double mutation ;
+- publication par digest : **2/2 PASS** ; callback d'évidence : **6/6 PASS** ;
+- reprise : `request.resumeMetadata.spec.js` **141/141 PASS** ; `resume.spec.js` **148/148 PASS**, incluant candidat P10 sur reprise et ré-pause ;
+- stores data : **12/12 PASS** sur candidat et proposition skill ;
+- `run-summarization.test.ts` ciblé : callbacks modèle et chemins `createRun` P8/P6 **9/9 PASS** ;
+- builds `@librechat/api` et `@librechat/data-schemas` : **PASS** ; `git diff --check` : **PASS**.
+
+Preuve live/humaine déjà consignée : le checkpoint rapporte un cycle réel OpenRouter du 28 septembre 2026 avec un vrai sous-agent enfant et un `taskId` natif, une proposition skill durable, des tests hôte `VERIFIED`, un Oracle `VERIFIED`, puis une approbation explicite de l'utilisateur liée au diff/digest exact avant publication native en version 3. Il rapporte également la déduplication réelle de deux `edit_file` identiques d'un même enfant et la conservation d'une seule proposition canonique. Cette preuve historique reste applicable au code actuel car les frontières P10 concernées sont toujours présentes et les campagnes de régression actuelles passent.
+
+Limitation restante, hors gate P10 : le parcours navigateur connecté n'est pas requis pour rouvrir ou modifier la politique P10 ; la preuve live/humaine antérieure et les intégrations backend couvrent le contrat. Une ré-exécution navigateur peut rester une preuve de release P14, mais son absence ne maintient plus P10 ouvert.
+
+Décision : **P10 CLOSED**. Le système d'amélioration reste gouverné : un modèle ou un sous-agent peut proposer, mais n'acquiert ni permission de mutation, ni droit de publication, ni autorité de définir son propre vérificateur. Les cibles `agent`, `workflow` et `specialist` restent `proposal-only`; la voie de mutation prouvée est le skill natif sous le contrat exact ci-dessus.
+
+Prochaine phase : **P11 V3 — pipeline média**, sans rouvrir P0–P10 fermés.
