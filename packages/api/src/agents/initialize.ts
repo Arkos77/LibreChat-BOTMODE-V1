@@ -50,7 +50,7 @@ import type { TextContentFragment } from '../protection/types';
 import type { TFilterFilesByAgentAccess } from './resources';
 import type { MCPToolAlias } from '~/tools/classification';
 import type { AgentExecutionContext } from './runtime';
-import { createExtensionCapabilityRegistry } from './extensions';
+import { createActivatedCapabilityRegistry } from './extensions';
 import type { CapabilityResourceRegistry } from './orchestrator/capabilityRegistry';
 import {
   injectSkillCatalog,
@@ -1836,7 +1836,7 @@ export async function initializeAgent(
         : Math.max(1024, Math.round(baseContextTokens * (1 - DEFAULT_RESERVE_RATIO))),
     primedCodeFiles,
     endpointTokenConfig: options.endpointTokenConfig,
-    extensionCapabilityRegistry: createExtensionCapabilityRegistry(),
+    extensionCapabilityRegistry: createActivatedCapabilityRegistry(),
   };
 
   return initializedAgent;

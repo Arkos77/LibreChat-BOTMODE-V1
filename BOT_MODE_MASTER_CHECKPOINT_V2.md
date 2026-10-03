@@ -2091,3 +2091,46 @@ Preuves :
 - P0–P14 restent fermées.
 
 ==================================================
+
+==================================================
+EXTERNAL / NATIVE CAPABILITY ACTIVATION — 3 OCTOBRE 2026
+==================================================
+
+Statut : NATIVE CAPABILITIES ACTIVE / EXTERNAL PROVIDERS CONDITIONNELS
+
+Actif réellement :
+- LibreChat Web Search
+- LibreChat File Search / RAG
+- LibreChat Execute Code / Sandbox / Artifacts
+- LibreChat Subagents / parallel / nested
+- LibreChat Background Tasks / resume / control
+- LibreChat Skills
+- LibreChat Artifacts
+- OpenRouter provider, déjà configuré dans l'environnement et routable
+  via le endpoint OpenAI-compatible.
+
+Catalogue :
+- ces ressources passent par CapabilityResourceRegistry ;
+- InitializedAgent reçoit un registre descriptif pour chaque run ;
+- les extensions métier restent disabled-by-default jusqu'à admission ;
+- les discovery seeds restent REFERENCE/CANDIDATE et n'accordent aucune autorisation.
+
+Providers externes non activés faute de credentials vérifiables dans l'environnement
+au 03/10/2026 : Anthropic, Tavily, Brave, Firecrawl, Serper, ElevenLabs, etc.
+Aucun secret n'a été inventé ni ajouté pour les activer.
+
+Preuves :
+- extension/native capability suites : 17/17 PASS ;
+- voisinage memory/media/opportunity/capability : 30/30 PASS ;
+- API typecheck : PASS ;
+- API build : PASS ;
+- runtime API HTTP 200 ;
+- Server readiness checks passing ;
+- scheduler started ;
+- live OpenRouter graph E2E précédemment validé : PASS.
+
+Règle opérationnelle : une capacité externe supplémentaire doit passer
+availability + api + license + pricing + security + privacy + compatibility +
+maturity + Policy/Auth avant activation.
+
+==================================================
