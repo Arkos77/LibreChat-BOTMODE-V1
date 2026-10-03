@@ -1814,3 +1814,51 @@ Le statut APPROVED du registry ne doit jamais être interprété comme un grant
 d'exécution sans passage par Policy/Auth.
 
 ==================================================
+
+==================================================
+NEUVIÈME MICRO-LOT POST-P14 — OPPORTUNITY INTELLIGENCE CONTRACT
+==================================================
+
+Date : 3 octobre 2026
+Statut : MICRO-LOT IMPLÉMENTÉ / PROUVÉ
+
+Objectif :
+Faire entrer dans le code la couche Economic Enablement / Opportunity
+Intelligence des mémos, sans créer de moteur de décision ou d'exécution
+parallèle.
+
+Implémentation :
+- OpportunityStatus : signal, qualification, vérification, analyse,
+  execution-ready, expiration, rejet ;
+- OpportunitySource avec provenance et timestamps ;
+- OpportunityValue avec cash/product/service/reimbursement/strategic value,
+  coûts, valeur nette, temps et capital ;
+- Opportunity qualifiée par preuves et contraintes ;
+- validateOpportunity vérifie l'arithmétique économique et la provenance ;
+- qualifyOpportunity impose une réponse d'éligibilité explicite ;
+- aucun score global de type ranking/decision maker ;
+- aucune candidature, réservation, dépense ou action externe ;
+- export Agents.
+
+Preuves :
+- opportunity.spec.ts : 4/4 PASS ;
+- compilation TypeScript ciblée : PASS ;
+- git diff --check : PASS ;
+- aucun changement P0–P14.
+
+Règles business conservées :
+- valeur totale peut combiner cash, produit/service, remboursement et valeur
+  stratégique ;
+- coûts doivent être explicitement déduits ;
+- la géographie est descriptive ;
+- la qualification UNKNOWN reste ouverte ;
+- Opportunity Intelligence prépare et documente, mais Policy/Auth et le
+  Task Engine restent propriétaires de l'engagement et de l'exécution.
+
+Limite :
+Le pipeline complet WATCH → DETECTION → NORMALIZATION → DEDUPLICATION →
+VERIFICATION → ANALYSIS → BUSINESS BLUEPRINT → EXECUTION CONTRACT n'est pas
+encore raccordé à des sources externes. Ce contrat constitue la brique de
+modèle de données et de qualification minimale.
+
+==================================================
