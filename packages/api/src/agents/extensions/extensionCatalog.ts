@@ -1,0 +1,83 @@
+import { CapabilityResourceRegistry, type CapabilityResourceDescriptor } from '../orchestrator/capabilityRegistry';
+import { BUILTIN_EXTENSION_PACKS } from './extensionPacks';
+
+export interface CapabilityDiscoverySeed {
+  id: string;
+  name: string;
+  category: 'api-catalog' | 'provider-router' | 'hosting' | 'software-adapter' | 'vertical-reference';
+  sourceRef: string;
+  status: 'REFERENCE' | 'CANDIDATE';
+  capabilities: readonly string[];
+}
+
+/** Descriptive seeds only: evaluation and authorization remain host-owned. */
+export const CAPABILITY_DISCOVERY_SEEDS: readonly CapabilityDiscoverySeed[] = [
+  {
+    id: 'seed:public-apis',
+    name: 'Public APIs catalog',
+    category: 'api-catalog',
+    sourceRef: 'memo:github:public-apis',
+    status: 'REFERENCE',
+    capabilities: ['capability-discovery', 'api-discovery'],
+  },
+  {
+    id: 'seed:free-provider-proxy',
+    name: 'Multi-provider coding proxy reference',
+    category: 'provider-router',
+    sourceRef: 'memo:github:alksnd-free-claude-code',
+    status: 'REFERENCE',
+    capabilities: ['provider-routing', 'coding-agent', 'fallback'],
+  },
+  {
+    id: 'seed:web-hosting-2026',
+    name: 'Web hosting opportunity catalog',
+    category: 'hosting',
+    sourceRef: 'memo:github:awesome-web-hosting-2026',
+    status: 'REFERENCE',
+    capabilities: ['hosting-discovery', 'deployment-options'],
+  },
+  {
+    id: 'seed:cli-anything',
+    name: 'Agent-native software adapter reference',
+    category: 'software-adapter',
+    sourceRef: 'memo:github:hkuds-cli-anything',
+    status: 'REFERENCE',
+    capabilities: ['software-adapter', 'structured-cli', 'artifact-verification'],
+  },
+  {
+    id: 'seed:financial-services',
+    name: 'Financial services vertical reference',
+    category: 'vertical-reference',
+    sourceRef: 'memo:github:anthropics-financial-services',
+    status: 'REFERENCE',
+    capabilities: ['vertical-pack', 'finance'],
+  },
+];
+
+export function createBuiltinExtensionResources(): CapabilityResourceDescriptor[] {
+  const extensionResources = BUILTIN_EXTENSION_PACKS.map((pack) => ({
+    id: `extension:${pack.id}`,
+    kind: pack.kind === 'vertical' ? 'workflow' : 'tool',
+    name: pack.name,
+    capabilities: [...pack.capabilities],
+    executionMode: 'local-runtime' as const,
+    enabled: pack.enabled,
+    accessMethod: 'governed-extension',
+    permission: 'host-policy',
+    trustLevel: 'declared',
+    legalUsage: 'pending-provider-specific-review',
+    provenance: {
+      source: pack.evidenceRefs[0],
+      verifiedAt: new Date().toISOString(),
+      evidenceRef: pack.evidenceRefs[0],
+    },
+  } satisfies CapabilityResourceDescriptor));
+
+  return extensionResources;
+}
+
+export function createExtensionCapabilityRegistry(): CapabilityResourceRegistry {
+  const registry = new CapabilityResourceRegistry();
+  for (const resource of createBuiltinExtensionResources()) registry.register(resource);
+  return registry;
+}

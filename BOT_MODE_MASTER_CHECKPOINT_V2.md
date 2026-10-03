@@ -2055,3 +2055,39 @@ Preuves :
 Release extension : à taguer séparément du noyau.
 
 ==================================================
+
+==================================================
+EXTENSIONS CAPABILITY ACTIVATION — 3 OCTOBRE 2026
+==================================================
+
+Statut : INTEGRÉES / REGISTRY CONNECTÉ / NON AUTORISÉES PAR DÉFAUT
+
+Ajouts :
+- ExtensionPackRegistry et 10 builtin packs gouvernés ;
+- Memory Knowledge : observations FACT/EXPERIENCE/OBSERVATION, provenance,
+  recall et knowledge pages dérivées de MemoryLifecycle ;
+- QA Artifact Drift : digest/champs + HUMAN_REVIEW, lecture seule ;
+- Media/Voice capability pack : contrat de capacité autour du media router
+  existant ;
+- Economic Enablement pack : jobs, product-testing, hospitality, sourcing ;
+- 6 vertical packs : finance, real-estate, pme-procurement, concierge,
+  automotive, hospitality ;
+- Extension capability catalog branché sur CapabilityResourceRegistry ;
+- Discovery seeds : Public APIs, free-provider-proxy, hosting-2026,
+  CLI-Anything, financial-services.
+
+Règle : les packs et seeds restent descriptifs/désactivés. Aucun ne fournit
+credentials, autorisation, budget, décision, exécution ou durable state.
+L'activation réelle d'une capacité externe passe toujours par Capability
+Evaluation + Policy/Auth + routing + Task Engine.
+
+Preuves :
+- extension suites : 14/14 PASS ;
+- voisins mémoire/media/opportunity/capability : 30/30 PASS ;
+- API typecheck : PASS ;
+- API build : PASS ;
+- runtime API : HTTP 200/readiness PASS ;
+- scheduler : started ;
+- P0–P14 restent fermées.
+
+==================================================
