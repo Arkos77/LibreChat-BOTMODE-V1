@@ -1577,3 +1577,42 @@ Preuves :
 - `git diff --check` : PASS.
 
 Aucun changement P0–P14.
+==================================================
+TROISIÈME MICRO-LOT POST-P14 — MEMORY LIFECYCLE CONTRACT
+==================================================
+
+Date : 3 octobre 2026
+Statut : MICRO-LOT IMPLEMENTÉ / PROUVÉ
+
+Diagnostic :
+La mémoire BOT MODE est déjà partitionnée et sécurisée par utilisateur,
+agent et projet. Le gap restant inspiré de Hindsight concerne la sémantique
+de cycle de vie : recall déterministe, reflection et consolidation, sans
+remplacer MemoryEntry ni introduire un vector store obligatoire.
+
+Implémentation :
+- contrat MemoryLifecycleEntry indépendant du stockage ;
+- recallMemories : rappel lexical borné, filtrage par tags, score déterministe ;
+- reflectMemories : regroupement par clé avec provenance des sources ;
+- consolidateMemories : conservation de la dernière valeur par clé ;
+- aucune écriture automatique dans Mongo ;
+- aucun changement de partition ;
+- aucun fournisseur externe obligatoire ;
+- export via Agents.
+
+Preuves :
+- memoryLifecycle.spec.ts : 4/4 PASS ;
+- export Agents vérifié ;
+- typecheck API : PASS ;
+- build API : PASS ;
+- git diff --check : PASS ;
+- aucun fichier P0–P14 modifié.
+
+Limite :
+Ce contrat est une brique sémantique pure. Le prochain raccord éventuel vers
+MemoryEntry doit rester explicitement gouverné et conserver l’autorité durable
+existante. L’adoption d’un retrieval sémantique/vectoriel, d’un reflector LLM
+ou d’un scheduler de consolidation est une étape distincte, à évaluer après
+preuve.
+
+==================================================
