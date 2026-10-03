@@ -1285,11 +1285,30 @@ function createToolEndCallback({
  * @param {ServerResponse} params.res
  * @param {string | null} [params.streamId]
  * @param {number} [params.jobCreatedAt]
+ * @param {{ hold?: (eventData: Object) => boolean | Promise<boolean> }} [params.publicationBarrier]
  * @returns {(attachment: Object) => void}
  */
-function createAttachmentEmitter({ res, streamId = null, jobCreatedAt }) {
+function createAttachmentEmitter({
+  res,
+  streamId = null,
+  jobCreatedAt,
+  publicationBarrier = null,
+}) {
   return (attachment) => {
     if (!attachment || !isStreamWritable(res, streamId)) {
+      return;
+    }
+    const eventData = { event: 'attachment', data: attachment };
+    if (publicationBarrier?.hold) {
+      Promise.resolve(publicationBarrier.hold(eventData))
+        .then((held) => {
+          if (held !== true) {
+            writeAttachment(res, streamId, attachment, jobCreatedAt);
+          }
+        })
+        .catch(() => {
+          /* keep the attachment private on barrier failure */
+        });
       return;
     }
     writeAttachment(res, streamId, attachment, jobCreatedAt);

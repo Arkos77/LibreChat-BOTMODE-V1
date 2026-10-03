@@ -184,6 +184,13 @@ const initializeClient = async ({
   requestBody,
 }) => {
   const transientEvidenceBuffer = createTransientEvidenceBuffer();
+  let publicationBarrierActive = false;
+  const publicationBarrier = {
+    activate: () => {
+      publicationBarrierActive = true;
+    },
+    hold: () => publicationBarrierActive,
+  };
   let missionEvidenceTraceId;
   const missionEvidenceByNodeId = new Map();
   const missionEvidenceContext = {
@@ -544,7 +551,12 @@ const initializeClient = async ({
           ),
       ),
     },
-    emitAttachment: createAttachmentEmitter({ res, streamId, jobCreatedAt }),
+    emitAttachment: createAttachmentEmitter({
+      res,
+      streamId,
+      jobCreatedAt,
+      publicationBarrier,
+    }),
     emitPtcProgress: createPtcProgressEmitter({ res, streamId, jobCreatedAt }),
     onSkillResolved: (skill, { agentId }) => {
       if (agentId === primaryConfig.id) {
@@ -1833,14 +1845,6 @@ const initializeClient = async ({
             subagentThreadTaskStore.publishTaskActivity(conversationId, eventTaskId, event),
         }
       : null;
-
-  let publicationBarrierActive = false;
-  const publicationBarrier = {
-    activate: () => {
-      publicationBarrierActive = true;
-    },
-    hold: () => publicationBarrierActive,
-  };
 
   const eventHandlers = getDefaultHandlers({
     res,

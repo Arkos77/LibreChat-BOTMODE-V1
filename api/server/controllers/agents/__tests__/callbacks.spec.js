@@ -662,6 +662,31 @@ describe('resumable event generation fencing', () => {
       { expectedCreatedAt: 1234 },
     );
   });
+
+  it('holds attachment events behind an active publication barrier', async () => {
+    const { GenerationJobManager } = require('@librechat/api');
+    const { createAttachmentEmitter } = require('../callbacks');
+    const attachment = { file_id: 'private-file', status: 'ready' };
+    const publicationBarrier = {
+      hold: jest.fn().mockReturnValue(true),
+    };
+    const emitAttachment = createAttachmentEmitter({
+      res: { write: jest.fn() },
+      streamId: 'conversation-private-attachment',
+      jobCreatedAt: 5678,
+      publicationBarrier,
+    });
+
+    emitAttachment(attachment);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(publicationBarrier.hold).toHaveBeenCalledWith({
+      event: 'attachment',
+      data: attachment,
+    });
+    expect(GenerationJobManager.emitChunk).not.toHaveBeenCalled();
+  });
 });
 
 describe('createPtcProgressEmitter', () => {
