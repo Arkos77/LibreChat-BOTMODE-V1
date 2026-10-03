@@ -26,7 +26,10 @@
         "baseURL": "https://openrouter.ai/api/v1",
         "models": {
           "default": [
-            "openrouter/free"
+            "openrouter/free",
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "cognitivecomputations/dolphin-mistral-24b-venice-edition",
+            "thedrummer/cydonia-24b-v4.1"
           ],
           "fetch": false
         },

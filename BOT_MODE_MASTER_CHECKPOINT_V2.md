@@ -2163,3 +2163,34 @@ Serper (primary search) -> Firecrawl (scraper) ; Tavily reste configuré et peut
 automatique implicite n'a été ajouté.
 
 ==================================================
+
+==================================================
+OPEN/UNCENSORED MODEL ROUTING — 3 OCTOBRE 2026
+==================================================
+
+OpenRouter model profiles added:
+- nvidia/nemotron-3-ultra-550b-a55b:free — ACTIVE; tool-capable; preferred for
+  tool/subagent-driven work; real OpenRouter and graph-subagent E2E already PASS.
+- cognitivecomputations/dolphin-mistral-24b-venice-edition — CONDITIONAL;
+  text-only role profile; current OpenRouter account returned HTTP 402 due to
+  insufficient credits; never select when tool calling is required.
+- thedrummer/cydonia-24b-v4.1 — CONDITIONAL; text-only role profile; current
+  OpenRouter account returned HTTP 402 due to insufficient credits; never select
+  when tool calling is required.
+
+Routing rule : need -> capability -> tool requirement -> provider/model. A
+TEXT_ONLY profile cannot satisfy a TOOL_CALLING requirement. Conditional models
+remain visible as choices but are not treated as active on an unfunded account.
+No censorship bypass is made an authority; these are ordinary model profiles
+subject to the same Policy/Auth, budget, safety, provenance and task controls.
+
+Provider configuration : OpenRouter custom endpoint now lists the three concrete
+models plus openrouter/free. `free` remains the generic provider selector.
+
+Validation :
+- model profile suite : 3/3 PASS
+- Nemotron live generation : HTTP 200, content present
+- Nemotron graph-subagent E2E : previously PASS with member telemetry and usage.
+- Venice/Cydonia : HTTP 402 current account; conditional only.
+
+==================================================
