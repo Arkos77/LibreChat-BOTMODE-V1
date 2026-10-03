@@ -41,3 +41,4 @@ export * from './synthesisReadiness';
 export * from './missionOracle';
 export * from './mediaGeneration';
 export * from './youtubeProduction';
+export * from './capabilityRegistryRouting';

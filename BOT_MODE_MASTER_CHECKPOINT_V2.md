@@ -1541,3 +1541,39 @@ Runtime exécute.
 Durable conserve la vérité d'exécution.
 Oracle vérifie.
 Aucun de ces rôles ne doit être fusionné.
+
+==================================================
+SECOND MICRO-LOT POST-P14 — REGISTRY → ROUTING BRIDGE
+==================================================
+
+Date : 3 octobre 2026
+Statut : MICRO-LOT IMPLEMENTÉ / PROUVÉ
+
+Objectif :
+Relier le catalogue descriptif CapabilityResourceRegistry au routage sans
+transférer l'autorité d'autorisation au registry.
+
+Contrat :
+- registry = description/discovery ;
+- host resolver = seule étape qui peut produire un AuthorizedResourceCandidate ;
+- routing = classement de candidats déjà autorisés ;
+- Policy/Auth = autorité d'admission ;
+- runtime = exécution.
+
+Implémentation :
+- `resolveRegisteredResources` ;
+- sélection préalable via ResourceRegistryQuery ;
+- résolution explicite par callback hôte ;
+- omission d'un descripteur lorsque l'hôte n'en produit aucun candidat ;
+- détection fail-closed des collisions d'identité ;
+- aucune copie automatique des champs permission/trustLevel/etc. vers le
+  candidat routable ;
+- export via l'index orchestrator.
+
+Preuves :
+- suite ciblée `capabilityRegistryRouting.spec.ts` : 5/5 PASS ;
+- typecheck API : PASS ;
+- build API : PASS ;
+- `git diff --check` : PASS.
+
+Aucun changement P0–P14.
