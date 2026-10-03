@@ -977,3 +977,500 @@ Intégrité Git : le `git fsck --full --no-reflogs` du dépôt hôte et du clone
 Limite de release : aucune mise en production publique ni publication de contenu externe n'a été déclenchée pendant P14. La configuration de déploiement est valide et les artefacts de production sont construits ; une activation publique reste une opération distincte nécessitant ses credentials, variables d'environnement et autorisations opérationnelles exactes.
 
 Décision : **P14 CLOSED**. Le release point P13 est sauvegardé et restaurable, les builds de production sont passants, la configuration de déploiement est syntaxiquement valide et la provenance du snapshot est figée. Aucun changement P0–P13 n'est requis pour clôturer P14.
+==================================================
+ANNEXE POST-P14 — ÉLÉMENTS CONSOLIDÉS AJOUTÉS / À CONSERVER
+==================================================
+
+Cette annexe ne rouvre aucune phase P0–P14.
+Elle consolide les décisions, références, capacités et pistes ajoutées dans
+les mémos de continuité du 26 septembre au 3 octobre 2026 mais absentes ou
+incomplètement représentées dans le checkpoint maître.
+
+Règle de statut :
+VALIDÉ/PROUVÉ = preuve technique déjà obtenue.
+RÉFÉRENCE = idée externe à exploiter sans l'importer.
+CAPABILITÉ FUTURE = cible de conception, non livrée.
+À ÉVALUER = nécessite recherche/benchmark/revalidation.
+À SURVEILLER = radar.
+PROPOSÉ = idée conservée.
+RETIRÉ = ne pas utiliser.
+UNKNOWN = information insuffisante.
+
+--------------------------------------------------
+A. RÉFÉRENCES GITHUB AJOUTÉES LE 3 OCTOBRE 2026
+--------------------------------------------------
+
+papercliai/paperclip
+Statut : RÉFÉRENCE ARCHITECTURALE FORTE.
+Mapping : Control Plane / objectifs / tâches / délégation / budgets /
+gouvernance / adapters / audit / recovery.
+Patterns à exploiter : Goal → Project/Task → Agent ; hiérarchie de délégation ;
+budgets agent ; heartbeat/wakeup ; adapters runtime/exécuteur ; traçabilité ;
+allow/block/require_approval/rate_limit/trust_rule ; récupération de runs
+orphelins.
+Ne jamais importer Paperclip comme second runtime, scheduler ou source de vérité.
+
+vectorize-io/hindsight
+Statut : RÉFÉRENCE ARCHITECTURALE FORTE.
+Mapping : Memory Layer / mémoire longue durée / consolidation / retrieval /
+connaissance durable.
+Patterns : retain / recall / reflect ; faits/expériences/observations ;
+observations reliées aux preuves ; recherche sémantique + mots-clés + graphe +
+temporel ; consolidation ; mental models / knowledge pages ; traitement
+mémoire séparé du modèle principal ; scoping par memory bank.
+Mapping cible : MemoryEntry → mémoire brute → consolidation → observation
+appuyée par preuve → connaissance durable.
+Ne jamais déplacer l'autorité Durable ou Oracle.
+
+HKUDS/CLI-Anything
+Statut : RÉFÉRENCE ARCHITECTURALE FORTE.
+Mapping : Capability Discovery / Capability Adapter Factory / Tool Registry.
+Patterns : transformer des logiciels réels en interfaces agent-native ;
+harness/adapters au-dessus du logiciel réel ; commandes structurées ;
+JSON machine-readable ; mode interactif/programmatique ; tests unitaires,
+workflow, E2E, subprocess ; vérification des artefacts réellement produits ;
+SOP/HARNESS ; raffinement itératif.
+Ne jamais créer un second moteur d'exécution.
+
+rohitg00/ai-engineering-from-scratch
+Statut : RÉFÉRENCE ENGINEERING.
+Mapping : MCP / Agent Skills / conformance / sécurité / fiabilité.
+Patterns : MCP, authorization/gateways, registry, cancellation/race
+conditions, conformance evidence, coding-agent skills.
+À utiliser pour renforcer les contrats et preuves, sans nouvelle autorité.
+
+debpalash/VoiceStudio
+Statut : RÉFÉRENCE CAPABILITY/MEDIA.
+Mapping : Audio / Voice / Transcription / Dubbing / Workers.
+À surveiller : architecture locale + API/MCP, moteurs interchangeables,
+batch jobs, workers distants, routage selon capacités matérielles.
+Pas de modification du cœur par ce seul dépôt.
+
+pbakaus/impeccable
+Statut : RÉFÉRENCE QA/UI SECONDAIRE.
+Mapping : Oracle / QA / deterministic validation / drift detection.
+Patterns : détecteurs déterministes + critique LLM, audits structurés,
+hooks post-modification, détection de dérive contexte/configuration/artifacts,
+séparation audit/correction.
+Ne devient pas une autorité concurrente.
+
+anthropics/financial-services
+Statut : RÉFÉRENCE DE VERTICALISATION.
+Mapping : Vertical Capability Packs / Skills / MCP / connecteurs métiers.
+Concept : regrouper skills et connecteurs par verticale tout en séparant le
+noyau BOT MODE du savoir-faire métier.
+Verticales possibles : finance, immobilier, achats PME, conciergerie,
+automobile, etc.
+
+vercel/next.js
+Statut : RÉFÉRENCE FRONTEND/RUNTIME.
+Mapping : UI BOT MODE / streaming / server-client boundaries / cache /
+revalidation / instrumentation.
+Décision actuelle : aucune intégration architecturale dans le cœur BOT MODE.
+
+Classement de référence à conserver :
+ARCHITECTURALES FORTES = Paperclip / Hindsight / CLI-Anything.
+ENGINEERING = AI Engineering From Scratch.
+CAPACITÉS FUTURES = VoiceStudio / Impeccable / Financial Services.
+HORS CŒUR = Next.js.
+
+--------------------------------------------------
+B. AUTRES RÉFÉRENCES TECHNIQUES ET PROVIDERS HISTORIQUEMENT CONSOLIDÉS
+--------------------------------------------------
+
+Perplexity
+Statut : RÉFÉRENCE/CAPABILITY À ÉVALUER.
+Usages possibles : agentic web research, citations, provenance, domain filters,
+recency, localisation, Search API, Agent API, embeddings, multi-model routing.
+Pas d'autorité centrale.
+
+Proactor AI
+Statut : RÉFÉRENCE.
+Usages : transcription temps réel, contexte conversationnel, détection
+proactive, insights, actions, owners, deadlines, mémoire/search
+inter-réunions.
+Mapping : voice/web/files → Context Engine → proactive detection →
+Decision Layer → Task Engine → specialists/providers/tools →
+evidence/oracle → action/synthesis.
+
+Roo Code / Codex / MiMo Code / OpenCode / DeepSeek coding
+Statut : RÉFÉRENCES / PROVIDERS / AGENTS EXTERNES BORNÉS.
+Capacités à absorber : tool use, navigation code, planning, delegation,
+self-correction, context handling, IDE integration.
+Le rôle est dynamique : development provider, coding agent, référence ou
+external executor borné.
+
+MiMo
+Statut : RÉFÉRENCE ARCHITECTURALE + PROVIDER POSSIBLE.
+Rôles : modèle, MiMo Code, provider Goal/Judge/Dream/Distill/Compose/context/
+voice/MCP/cron, external executor borné, référence.
+Aucune cession d'autorité.
+
+Freebuff
+Statut : À ÉVALUER.
+Pistes : coding agent, cloud development, free model resource, alternate
+model resource.
+À revalider avant usage : terms, privacy, code retention, private repo
+handling, CLI automation, API, sandbox, ads/business model, quotas, stability.
+
+FreeBuf
+Statut : SOURCE CYBERSÉCURITÉ À SURVEILLER.
+Pistes : CVE, recherche offensive/défensive, outils sécurité, AI security,
+threat intelligence, incident response, guardrails, nouvelles techniques.
+Chaîne : source → signal → relevance → gap → sandbox → Oracle → proposal.
+Ne pas dépendre d'un seul écosystème linguistique.
+
+Pliny / Elder Plinius
+Statut : RÉFÉRENCE RED-TEAM / ADVERSARIAL.
+Usage : corpus adversarial, prompt-injection tests, jailbreak robustness,
+guardrail/policy resistance, compromised-agent scenarios, regression security.
+Propriété 1 à tester : modèle compromis ne contourne pas Policy.
+Propriété 2 : comportement particulier d'un modèle ne devient pas la Policy
+centrale par accident.
+Priorité de sécurité : contrôler les EFFETS, pas supprimer arbitrairement
+l'utilité exploratoire.
+
+Yiaho
+Statut : RÉFÉRENCE UX/CATALOGUE.
+Leçon : l'utilisateur choisit plutôt besoin/spécialité que modèle.
+Mapping : USER NEED → INTENT → SPECIALIST DISCOVERY → CAPABILITY →
+MODEL/PROVIDER → EXECUTION.
+API M2M non prouvée ; pas provider validé.
+
+Obscura
+Statut : À ÉVALUER / CANDIDAT BROWSER.
+Rôle possible : headless browser / rendering / MCP provider.
+Points à benchmarker : Rust/V8, screenshots, PDF raster, screencast, CDP,
+Playwright connectOverCDP, Puppeteer compatibility, native MCP, stdio/HTTP,
+snapshot/markdown/links/extraction/forms/click/fill/type/key/select/scroll/
+wait/evaluate/network/console/cookies/storage/tabs.
+Sécurité annoncée à vérifier : bearer token, non-loopback restrictions,
+origin allowlist, bounded resources, SSRF/private-network protections.
+Invariant : Obscura n'est PAS une sandbox OS ; contenu hostile → container/VM/
+restricted network.
+Combinaison à benchmarker sur machine limitée : Playwright → CDP → Obscura.
+
+Firecrawl
+Statut : PROVIDER DE RECHERCHE/EXTRACTION.
+Playwright
+Statut : PROVIDER D'AUTOMATISATION NAVIGATEUR.
+Orgo Cloud
+Statut : PROVIDER GUI/REMOTE COMPUTER À ÉVALUER.
+E2B
+Statut : PROVIDER SANDBOX CODE/SHELL.
+Composio
+Statut : PROVIDER SAAS/API/OAUTH.
+AgentMail
+Statut : PROVIDER INFRASTRUCTURE EMAIL/AGENT COMMUNICATION.
+Tous restent sous Capability Router + Policy/Auth.
+
+n8n / Replit / ComfyUI / Coolify
+Statut : RÉFÉRENCES / OUTILS OU PROVIDERS OPTIONNELS.
+Aucun ne remplace Task Engine, scheduler, runtime ou source de vérité.
+Coolify peut entourer Docker/Compose côté exploitation/déploiement.
+
+OpenRouter / TokenRouter / FreeOpenRouter / OrcaRouter / Hugging Face /
+Ollama
+Statut : SOURCES/PROVIDERS À REVALIDER AU MOMENT D'USAGE.
+Critères : disponibilité, quota, prix, API, licence, sécurité, compatibilité.
+Préférence : ressources gratuites/open-source sans sacrifier inutilement la
+qualité ; cloud LLM acceptable ; pas de dépendance unique.
+
+--------------------------------------------------
+C. WEB / BROWSER / OSINT / SECURITY LAB
+--------------------------------------------------
+
+Source/Resource Registry
+Statut : CAPACITÉ ARCHITECTURALE À CONSERVER.
+Le registre décrit : identité/source, type, capability, trustLevel,
+accessMethod, networkRequirement, permission, refreshPolicy, provenance,
+legalUsage, enabled, toolBinding.
+Invariant : URL enregistrée != tool autorisé.
+
+Modes réseau :
+NONE / LOCAL_LAB / ALLOWLIST / WEB / TOR_ALLOWLIST.
+Tor est scoped par job, destination, durée, logging, limites et révocation.
+
+Navigateur :
+état → décision → action candidate → Policy → exécuteur →
+observation → vérification.
+Sessions/comptes sous mandat ; credential vault/credentialRef ;
+accès minimal et révocable ; secrets hors mémoire/log/MTO.
+
+Sources de veille/recherche à conserver :
+Reddit, Discord, YouTube, Instagram, Telegram, TGSTAT, fmhy.net.
+OSINT tools à conserver comme sources/références : Google Dorks, Sherlock,
+Maltego, Shodan, OSINT Framework, Unredacted OSINT Tool.
+Une source connue ne devient jamais automatiquement un outil autorisé.
+
+Security Lab
+Statut : CAPACITÉ FUTURE / USAGE CONTRÔLÉ.
+Sources/labs : Root-Me, Hack The Box, OWASP Juice Shop, PortSwigger,
+Hacksplaining, CVE/advisories, documentation officielle et labs locaux.
+Chaque exercice doit conserver TARGET/CHALLENGE SCOPE + OUTILS AUTORISÉS +
+DURÉE MAX + CONCURRENCE MAX + JOURNALISATION + STOP/REVOCATION → LAB →
+RESULTAT → ORACLE.
+Une expérience de lab ne devient pas automatiquement un skill permanent.
+
+TryHackMe
+Statut : SOURCE D'ENTRAÎNEMENT/SKILL À SURVEILLER.
+Hack The Box
+Statut : SOURCE D'ENTRAÎNEMENT/SKILL À SURVEILLER.
+Web Security Academy / PortSwigger
+Statut : SOURCE D'ENTRAÎNEMENT/SKILL À SURVEILLER.
+
+--------------------------------------------------
+D. MEDIA / CREATIVE CAPABILITY
+--------------------------------------------------
+
+Pipeline cible :
+brief → plan → provider → génération → validation → post-traitement →
+QA → artefact durable/provenance.
+
+Providers/capacités à conserver comme radar :
+ComfyUI, WorldSculpt, UniMate, YuE/YuE2, MiniCPM5, FishAudio, ACE Studio,
+Nano Banana, MiniMax, LTX, TripoAI, Higgsfield, HyperFrames, Klap.
+Aucun provider n'est obligatoire.
+
+Charte de style projet
+Statut : CAPACITÉ FUTURE.
+Doit pouvoir scoper/versionner : personnages, environnements, couleurs,
+lumière, composition, caméra, animation, continuité, variations interdites.
+Mémoire créative et paramètres doivent être scoped/versionnés.
+
+Vidéo URL
+Statut : CAPACITÉ FUTURE.
+Pipeline : métadonnées → transcription → vision → provenance → limites.
+
+Twitch / live génératif 24/7
+Statut : PROPOSÉ / OPPORTUNITÉ MEDIA.
+Concept : chaîne connectée à génération IA capable de produire/diffuser un
+flux continu.
+Pipeline possible : idées/scènes → vidéo/audio/voix/musique → composition →
+modération/Policy → diffusion → monitoring qualité/uptime → analytics →
+amélioration.
+Formats possibles : émission générative infinie, plateau fictionnel, univers
+persistant, personnages IA récurrents, interactions chat, musique/ambiance.
+Contraintes à garder : coût GPU/API, latence, continuité, fallback,
+droits/licences, règles plateforme, modération, budget et arrêt d'urgence.
+
+--------------------------------------------------
+E. ECONOMIC ENABLEMENT / OPPORTUNITY INTELLIGENCE
+--------------------------------------------------
+
+Statut : COUCHE BUSINESS OFFICIELLE DE BOT MODE.
+Chaîne :
+SIGNAL → OPPORTUNITY → QUALIFICATION → ECONOMIC ANALYSIS →
+BUSINESS BLUEPRINT → EXECUTION CONTRACT → DECISION → POLICY/AUTH →
+TASK/DAG → EXECUTION → EVIDENCE → ORACLE → PUBLICATION BARRIER →
+RESULT → REVENUE/COST/MARGIN/CASH → LEARNING → OPTIMIZATION.
+
+Opportunity Intelligence
+Pipeline :
+WATCH → DETECTION → NORMALIZATION → DEDUPLICATION → CORRELATION →
+QUALIFICATION → VERIFICATION → ANALYSIS → OPPORTUNITY BRIEF →
+BUSINESS BLUEPRINT → EXECUTION CONTRACT.
+
+Domaines :
+jobs, freelance, remote work, product testing, UGC, affiliate, brand
+collaborations, hospitality, mystery shopping, hotel audits, rate parity,
+consumer research, UX testing, grants, subsidies, tenders, financing,
+partnerships, sourcing, commerce, services, travel, events, technology,
+emerging trends, regulatory opportunities, marketplace/local/international
+opportunities.
+
+Principe EXPLOIT + EXPLORE :
+EXPLOIT = utiliser l'existant fiable, accessible, rentable, suffisamment bon.
+EXPLORE = chercher aussi plateformes, niches, programmes privés, offres
+directes, stratégies différentes et modèles émergents.
+Les références utilisateur sont des SEARCH SEEDS, jamais une SEARCH CEILING.
+
+Recherche géographique :
+France → francophonie → Europe → international.
+Ce n'est pas une limitation : une opportunité mondiale peut être retenue si
+la valeur nette est bonne.
+
+Total Value
+Inclure : cash + valeur produit/service + séjour/repas/activité +
+remboursements + UGC + affiliate + partenariat + relation + revente/utilité +
+learning/strategic value.
+Déduire : déplacement + logement non remboursé + temps + achat obligatoire +
+production + administratif + fiscalité + assurance + visa + compliance + risque.
+
+Opportunity scoring
+Le score sert au TRI uniquement.
+SCORE != TRUTH
+SCORE != AUTHORIZATION
+SCORE != DECISION finale.
+Critères : net cash, total value, margin, time to revenue, capital,
+risk, reliability, recurrence, competition, complexity, location, travel,
+qualification probability, strategic value, partnership potential,
+learning value.
+
+Feedback loop
+Conserver les résultats réels : applications envoyées/acceptées, missions
+réalisées, rémunération réelle, temps, dépenses, produits reçus, qualité
+plateforme, délais de paiement, relation marque, récurrence.
+
+Work / Job Opportunities
+Catégories : remote jobs, freelance missions, micro missions, consulting,
+specialist marketplaces, human-in-the-loop, digital tasks, local services.
+Sources historiques : EU Remote Jobs, Landing.jobs, Remotify Europe, Upwork,
+Workana, Malt, Contra, Freelancer, 99designs.
+Ne pas limiter la recherche à cette liste.
+
+Gestion / PME / automobile
+Conserver : gestion pour PME, asset management, automotive asset management,
+vehicle fleet management, vehicle rental management, gestion de patrimoine
+automobile.
+Explorer : gestion véhicules, location, flotte, sourcing, achat, revente,
+maintenance, services B2B.
+
+Product & Experience Opportunity Engine
+Branches : product testing ; brand collaboration ; paid research ;
+services/experiences.
+Product testing : free product, loaned product, discounted product,
+purchase + reimbursement, product + cash, consumer/sensory research.
+Brand : UGC, photo, vidéo, testimonials, ambassador, affiliate, partenariat.
+Paid research : UX, interviews, focus groups, consumer studies, surveys.
+Services : hotels, restaurants, travel, leisure, wellness, mystery guest,
+mystery shopping, rate-parity audits.
+
+Sources product testing :
+Sampleo, Skeepers, ACTALIA, Family UGC, Home Tester Club, The Insiders,
+Influenster, UserTesting, TesterDesProduits.fr.
+Pour chaque campagne vérifier : cadeau/prêt/achat/remboursement/cash/voucher/
+UGC/review/social posting/retour/deadline/restriction géographique.
+Ne jamais supposer les conditions.
+
+Hospitality Intelligence
+Sous-domaines : Mystery Guest, Hotel Quality Audit, Digital Booking Journey
+Audit, Rate-Parity Audit, OTA/Direct Comparison, Restaurant Audit,
+Spa/Wellness, Experience Audit, Paid Testing.
+Rate parity : même établissement, dates, chambre, occupation, annulation ;
+puis prix direct/OTA, taxes, petit-déjeuner, avantages membre, conditions,
+disponibilité, écarts.
+Mystery guest : réservation → pré-arrivée → arrivée → réception → chambre →
+propreté → F&B → personnel → incident → checkout → suivi → audit factuel.
+
+UserTesting
+Statut : SOURCE COMPLÉMENTAIRE UX/DIGITAL.
+Ne pas l'assimiler au mystery shopping physique.
+
+China Sourcing
+Statut : CAPACITÉ BUSINESS OFFICIELLE / FUTURE EXECUTION.
+Sources possibles : 1688, Taobao, Weidian, Yupoo, fabricants, fournisseurs,
+usines, agents.
+Toujours distinguer seller claim / supplier claim / factory claim /
+verified manufacturer.
+Ne jamais faciliter la contrefaçon.
+
+Opportunity → Execution
+DETECTION → VERIFY SOURCE → ECONOMIC ANALYSIS → QUALIFICATION → DECISION →
+POLICY/AUTH → TASK → EXECUTION → EVIDENCE → MISSION ORACLE →
+PUBLICATION BARRIER → RESULT.
+Candidature, acceptation commerciale ou engagement externe sous Policy/Auth.
+
+--------------------------------------------------
+F. AUTRES IDÉES / SOURCES À CONSERVER COMME RADAR
+--------------------------------------------------
+
+Tuta + SimpleX
+Statut : PROPOSÉ / FUTUR.
+Piste : messagerie chiffrée ; à traiter après stabilisation BOT MODE, sans
+second runtime de messagerie dans le cœur.
+
+DOTS
+Statut : À ÉVALUER.
+Question : modèle payant, compatibilité Jarvis/Jev, UX et patterns à absorber.
+Peut servir de référence, pas d'autorité centrale.
+
+VDI
+Statut : À CLASSIFIER/ÉVALUER.
+À insérer comme modalité d'environnement/exécution si elle apporte une
+capacité réelle, sans second Task Engine.
+
+Acurast / hub.acurast
+Statut : À VÉRIFIER.
+Piste : infrastructure/distribution ; disponibilité, fonctionnement et
+gains à confirmer avant toute intégration/opportunité.
+
+boitata.app.br
+Statut : À ÉVALUER / OPPORTUNITY SEED.
+
+Tato Talk / recherche associée
+Statut : À ÉVALUER / SEARCH SEED.
+
+archive.org
+Statut : SOURCE À ÉVALUER pour recherche/archive/provenance.
+
+Crypto/finance tools à surveiller :
+nobodycards, Deflow.exchange, Sideswap.io, BlueWallet.io, Personne.cards,
+SideShift.ai.
+Statut collectif : À VÉRIFIER avant usage (fiabilité, sécurité, conditions,
+custody, API, coûts, conformité).
+Aucune intégration ni confiance implicite.
+
+Humanize.io
+Statut : RETIRÉ.
+Ne plus utiliser ni comme référence ni comme recommandation.
+
+IntelBase
+Statut : DÉJÀ DOCUMENTÉ DANS LE CHECKPOINT.
+Conserver : adaptateur email isolé, autorisation exacte, budget/réservation,
+scope cible majeure, données de brèche désactivées, réponse bornée, aucun
+appel réel historique non prouvé.
+Ne pas dupliquer cette section.
+
+tinypages.co
+Statut : RÉFÉRENCE/SEARCH SEED DÉJÀ IDENTIFIÉE.
+À considérer avec IntelBase uniquement comme seed de recherche ; aucune
+autorité ni intégration implicite.
+
+Pollo MCP
+Statut : SEARCH/CAPABILITY SEED.
+À revalider et mapper via Capability Discovery ; ne crée pas de nouvelle
+autorité MCP.
+
+--------------------------------------------------
+G. INDEX DE RÉFÉRENCE ÉLARGI À MAINTENIR
+--------------------------------------------------
+
+Conserver comme radar, jamais comme liste d'intégrations garanties :
+Jev, GIVE, NanoJev, Decider, MiMo, MiMo Code, Codex, Roo Code, OpenCode,
+Perplexity, Proactor AI, JARVIS, DeerFlow, Honcho, Memory Graph, Kanban,
+n8n, Replit, Polsia, Manus, Cofounder, Frederick, FreeLLMAPI, OmniRoute,
+OpenRouter, OrcaRouter, Hugging Face, Kaggle, free-for.dev, GitHub, Linear,
+Notion, Google Drive, Coolify, SEO Studio, Google Dorks, Sherlock, Maltego,
+Shodan, OSINT Framework, Unredacted OSINT Tool, TGSTAT, fmhy.net, tinywow,
+seostudio.tools, skipthedrive.com, keoto.com, downloadcursos.top, galilai,
+galilai.br, pt.ifixit.com, Hacksplaining, Root-Me, OWASP, PortSwigger,
+pentest-ai, Pentest-Swarm-AI, Why Verification, AgentTube, ComfyUI,
+WorldSculpt, UniMate, YuE, YuE2, MiniCPM5, FishAudio, ACE Studio,
+Nano Banana, MiniMax, LTX, HyperFrames, TripoAI, Higgsfield, Qwen,
+DeepSeek, Claude, GPT, Gemini, GLM.
+Telegram candidate précédemment noté : smsfull_bot.
+
+Tout élément de cet index doit être revalidé avant usage sur :
+identity, availability, API, license, pricing, security, compatibility,
+maturity et evidence.
+
+==================================================
+RÈGLE FINALE DE CETTE ANNEXE
+==================================================
+
+Ces éléments enrichissent le radar et la feuille de route future.
+Ils n'ouvrent ni ne rouvrent P0–P14.
+Une idée devient une capacité BOT MODE uniquement après :
+DISCOVERY → CLASSIFICATION → SECURITY/PRIVACY → COST →
+COMPATIBILITY → IMPLEMENTATION → TEST → ORACLE → REGISTRY →
+PROOF → DECISION/POLICY → ADOPTION éventuelle.
+
+La source de vérité reste toujours :
+Git actuel → runtime → tests → preuves → commits → décisions récentes →
+checkpoint → anciens mémos.
+
+Méthode permanente :
+checkpoint-first → réconcilier Git/runtime/tests → lire → reproduire →
+isoler → patch minimal → test ciblé → tests voisins → build →
+diff-check → documenter → checkpoint/commit.
