@@ -3,7 +3,7 @@ import type { AuthorizedResourceCandidate, DecisionProvider, RoutingConstraints 
 import { createMtoEvent, type MtoEvent } from './mto';
 import { rankAuthorizedResources } from './routing';
 
-export type MediaKind = 'image' | 'audio' | 'video';
+export type MediaKind = 'image' | 'audio' | 'video' | '3d';
 
 export interface MediaInputRef {
   id: string;

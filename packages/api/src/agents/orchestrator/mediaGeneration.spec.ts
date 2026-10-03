@@ -147,6 +147,35 @@ describe('P11 governed media generation', () => {
     expect(pb.generate).not.toHaveBeenCalled();
   });
 
+  it('routes a 3d generation provider through the same governed pipeline', async () => {
+    const provider3d: GenerationProvider = {
+      id: 'tripo-3d',
+      candidate: createMediaProviderCandidate({
+        id: 'tripo-3d',
+        providerId: 'tripo-3d',
+        mediaKinds: ['3d'],
+        capabilities: ['media:3d'],
+        signals: { qualityScore: 0.8, estimatedCost: 1, latencyMs: 20 },
+      }),
+      generate: async () => ({
+        mimeType: 'model/gltf-binary',
+        uri: 'mem://model.glb',
+        byteLength: 42,
+      }),
+    };
+    const result = await generateMediaWithFallback({
+      brief: { ...brief, kind: '3d' },
+      providers: [provider3d],
+      admission: { authorize: jest.fn() },
+      qualityGate: {
+        evaluate: () => ({ status: 'VERIFIED', criteria: ['mime'], evidenceIds: ['qa-3d'] }),
+      },
+      artifactStore: { persist: async (artifact) => artifact },
+    });
+    expect(result.artifact.kind).toBe('3d');
+    expect(result.artifact.mimeType).toBe('model/gltf-binary');
+  });
+
   it('adapts registered image generation tools without coupling the pipeline to a provider SDK', async () => {
     const execute = jest.fn(
       async ({ toolName, args }: { toolName: string; args: { prompt: string } }) => ({
