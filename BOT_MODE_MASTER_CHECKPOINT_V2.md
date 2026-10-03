@@ -1474,3 +1474,70 @@ Méthode permanente :
 checkpoint-first → réconcilier Git/runtime/tests → lire → reproduire →
 isoler → patch minimal → test ciblé → tests voisins → build →
 diff-check → documenter → checkpoint/commit.
+
+==================================================
+PREMIER GAP POST-P14 — CAPABILITY RESOURCE REGISTRY
+==================================================
+
+Date : 3 octobre 2026
+Statut : MICRO-LOT IMPLEMENTÉ / PROUVÉ / À ÉTENDRE
+
+Diagnostic :
+Après P14, le code disposait déjà de :
+- routage générique de ressources autorisées ;
+- Decision Providers ;
+- discovery d'agents ;
+- registres MCP/outils ;
+- adapters de synchronisation de skills.
+
+Mais il manquait une abstraction descriptive générique permettant de
+représenter une ressource/capacité indépendamment de son provider et de
+préparer proprement les apports Paperclip / Hindsight / CLI-Anything /
+Resource Registry.
+
+Micro-lot réalisé :
+- création de `CapabilityResourceRegistry` ;
+- types de ressources : agent, model, tool, workflow, external-provider,
+  local-runtime, source ;
+- description de capability, executionMode, provider/model, accessMethod,
+  networkRequirement, permission, trustLevel, legalUsage, refreshPolicy,
+  enabled, toolBinding, provenance et signaux de routing ;
+- validation des identités, capacités, enabled et provenance ;
+- register / upsert / remove / get / list déterministes ;
+- snapshots indépendants pour éviter la mutation externe ;
+- export via l'index orchestrator ;
+- aucun accès aux credentials ;
+- aucune autorisation ;
+- aucune réservation budget ;
+- aucune exécution ;
+- aucune nouvelle source de vérité durable.
+
+Preuves :
+- suite ciblée `capabilityRegistry.spec.ts` : 5/5 PASS ;
+- typecheck API : PASS ;
+- build API : PASS ;
+- `git diff --check` : PASS ;
+- revue du diff : 3 fichiers uniquement ;
+- aucun fichier P0–P14 modifié.
+
+Important :
+Ce micro-lot n'est pas encore une adoption complète du Resource Registry
+global. Il fournit le contrat descriptif minimal manquant. La prochaine
+preuve devra déterminer comment raccorder ce registre aux sources/providers
+réels et au routage autorisé, sans contourner Policy/Auth ni créer de runtime
+parallèle.
+
+Références qui motivent cette évolution :
+Paperclip → Control Plane / objectifs / délégation / gouvernance / budgets /
+adapters / recovery.
+Hindsight → Memory Layer / consolidation / retrieval / provenance.
+CLI-Anything → Capability/Adapter Factory / agent-native software / harness.
+AI Engineering From Scratch → MCP / conformance / security.
+
+Règle :
+Registry décrit et sélectionne.
+Policy/Auth autorise.
+Runtime exécute.
+Durable conserve la vérité d'exécution.
+Oracle vérifie.
+Aucun de ces rôles ne doit être fusionné.

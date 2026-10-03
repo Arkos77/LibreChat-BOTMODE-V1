@@ -1,3 +1,4 @@
+export * from './capabilityRegistry';
 export * from './types';
 export * from './planner';
 export * from './native';
