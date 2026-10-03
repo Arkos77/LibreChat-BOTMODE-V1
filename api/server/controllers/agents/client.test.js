@@ -3313,6 +3313,143 @@ describe('AgentClient - startup telemetry', () => {
     });
   });
 
+  it('runs terminal Mission Oracle before chatCompletion returns to terminal persistence', async () => {
+    jest.clearAllMocks();
+    mockIsHITLEnabled.mockReturnValue(false);
+    const order = [];
+    const processStream = jest.fn(async () => {
+      order.push('stream');
+    });
+    mockCreateRun.mockResolvedValue({
+      Graph: null,
+      processStream,
+      getCalibrationRatio: jest.fn(() => 0),
+      getInterrupt: jest.fn(() => undefined),
+    });
+
+    const client = new AgentClient({
+      req: {
+        user: { id: 'user-123' },
+        body: {},
+        config: { endpoints: { [EModelEndpoint.agents]: {} } },
+        _resumableStreamId: 'conversation-terminal-oracle-order',
+      },
+      res: {},
+      agent: {
+        id: 'agent-123',
+        endpoint: EModelEndpoint.openAI,
+        provider: EModelEndpoint.openAI,
+        model_parameters: { model: 'gpt-4' },
+        hide_sequential_outputs: false,
+      },
+      endpointTokenConfig: {},
+      eventHandlers: {},
+      contentParts: [],
+      collectedUsage: [],
+      artifactPromises: [],
+    });
+    client.conversationId = 'conversation-terminal-oracle-order';
+    client.responseMessageId = 'response-terminal-oracle-order';
+    client.parentMessageId = 'parent-terminal-oracle-order';
+    client.recordCollectedUsage = jest.fn().mockResolvedValue();
+    client.handleRunInterrupt = jest.fn(async () => {
+      order.push('interrupt');
+    });
+    client.assertTerminalMissionOracle = jest.fn(async () => {
+      order.push('oracle');
+    });
+
+    await client.chatCompletion({ payload: [] });
+
+    expect(processStream).toHaveBeenCalledTimes(1);
+    expect(client.handleRunInterrupt).toHaveBeenCalledTimes(1);
+    expect(client.assertTerminalMissionOracle).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(['stream', 'interrupt', 'oracle']);
+  });
+
+  it('fails chatCompletion closed when terminal Mission Oracle returns REJECTED', async () => {
+    jest.clearAllMocks();
+    mockIsHITLEnabled.mockReturnValue(false);
+    mockCreateRun.mockResolvedValue({
+      Graph: null,
+      processStream: jest.fn().mockResolvedValue(),
+      getCalibrationRatio: jest.fn(() => 0),
+      getInterrupt: jest.fn(() => undefined),
+      getHaltReason: jest.fn(() => undefined),
+      getAgentOutputs: jest.fn(() => ({
+        'node-terminal-oracle-rejected': { content: '{"ok":false}' },
+      })),
+    });
+
+    const client = new AgentClient({
+      req: {
+        user: { id: 'user-123' },
+        body: {},
+        config: { endpoints: { [EModelEndpoint.agents]: {} } },
+        _resumableStreamId: 'conversation-terminal-oracle-rejected',
+      },
+      res: {},
+      agent: {
+        id: 'agent-123',
+        endpoint: EModelEndpoint.openAI,
+        provider: EModelEndpoint.openAI,
+        model_parameters: { model: 'gpt-4' },
+        hide_sequential_outputs: false,
+      },
+      endpointTokenConfig: {},
+      eventHandlers: {},
+      contentParts: [],
+      collectedUsage: [],
+      artifactPromises: [],
+    });
+    client.conversationId = 'conversation-terminal-oracle-rejected';
+    client.responseMessageId = 'response-terminal-oracle-rejected';
+    client.parentMessageId = 'parent-terminal-oracle-rejected';
+    client.jobCreatedAt = 1000;
+    client.orchestratorPlan = {
+      planId: 'plan-terminal-oracle-rejected',
+      planVersion: 1,
+      mission: {
+        missionId: 'mission-terminal-oracle-rejected',
+        taskId: 'root',
+        objective: 'Verify terminal output',
+        constraints: [],
+        requiredCapabilities: ['basic'],
+      },
+      strategy: 'DIRECT',
+      tasks: [
+        {
+          key: 'terminal',
+          objective: 'Verify terminal output',
+          requiredCapabilities: ['basic'],
+          dependsOn: [],
+          taskId: 'task-terminal-oracle-rejected',
+          parentTaskId: 'root',
+          nodeId: 'node-terminal-oracle-rejected',
+          agentId: 'agent-123',
+          constraints: [],
+          validation: [
+            {
+              criteria: [{ id: 'ok', field: 'ok', expected: true }],
+              requireIndependentEvidence: false,
+            },
+          ],
+          canRunInParallel: false,
+        },
+      ],
+      specialists: [],
+      reasons: [{ code: 'WORKER_CAPABLE' }],
+    };
+    client.recordCollectedUsage = jest.fn().mockResolvedValue();
+    client.persistMissionOracleResult = jest.fn().mockResolvedValue();
+
+    await expect(client.chatCompletion({ payload: [] })).rejects.toMatchObject({
+      code: 'MISSION_ORACLE_FAILURE',
+      message:
+        'Native mission Oracle blocked task task-terminal-oracle-rejected (node-terminal-oracle-rejected): REJECTED',
+    });
+  });
+
   it('propagates final model callback policy errors instead of persisting a generic error part', async () => {
     jest.clearAllMocks();
     let policyError;

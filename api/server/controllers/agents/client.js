@@ -4731,6 +4731,13 @@ class AgentClient extends BaseClient {
         );
         throw err;
       }
+      if (err?.code === 'MISSION_ORACLE_FAILURE') {
+        logger.warn(
+          '[api/server/controllers/agents/client.js #sendCompletion] Mission Oracle blocked terminal publication',
+          { conversationId: this.conversationId },
+        );
+        throw err;
+      }
       if (abortController.signal.aborted) {
         logger.debug(
           '[api/server/controllers/agents/client.js #sendCompletion] Operation aborted by user',
@@ -4965,16 +4972,28 @@ class AgentClient extends BaseClient {
       return;
     }
 
-    await this.persistTransientMissionOracleEvidence();
+    try {
+      await this.persistTransientMissionOracleEvidence();
 
-    await assertTerminalMissionTasksVerified(
-      this.orchestratorPlan,
-      run.getAgentOutputs(),
-      this.missionOracleState,
-      async (result) => {
-        await this.persistMissionOracleResult(result);
-      },
-    );
+      await assertTerminalMissionTasksVerified(
+        this.orchestratorPlan,
+        run.getAgentOutputs(),
+        this.missionOracleState,
+        async (result) => {
+          await this.persistMissionOracleResult(result);
+        },
+      );
+    } catch (error) {
+      /** Mission Oracle failures are terminal QA failures, not ordinary provider errors.
+       * Preserve their identity so the outer completion path cannot turn a private
+       * candidate failure into a publishable generic error response. */
+      if (error?.code == null) {
+        error.code = 'MISSION_ORACLE_FAILURE';
+      } else if (error.code !== 'MISSION_ORACLE_FAILURE') {
+        error.code = 'MISSION_ORACLE_FAILURE';
+      }
+      throw error;
+    }
   }
 
   /**
@@ -5344,6 +5363,13 @@ class AgentClient extends BaseClient {
             field: err?.body?.field,
             code: err?.code,
           },
+        );
+        throw err;
+      }
+      if (err?.code === 'MISSION_ORACLE_FAILURE') {
+        logger.warn(
+          '[api/server/controllers/agents/client.js #resumeCompletion] Mission Oracle blocked terminal publication',
+          { conversationId: this.conversationId },
         );
         throw err;
       }
