@@ -42,3 +42,4 @@ export * from './missionOracle';
 export * from './mediaGeneration';
 export * from './youtubeProduction';
 export * from './capabilityRegistryRouting';
+export * from './controlPlane';

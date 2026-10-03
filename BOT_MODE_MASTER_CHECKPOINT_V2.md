@@ -1652,3 +1652,49 @@ background. Toute automatisation future devra être soumise à Task Engine,
 Policy/Auth, Durable et Oracle existants.
 
 ==================================================
+
+==================================================
+CINQUIÈME MICRO-LOT POST-P14 — CONTROL PLANE PROJECTION
+==================================================
+
+Date : 3 octobre 2026
+Statut : MICRO-LOT IMPLÉMENTÉ / TESTÉ / À COMPLÉTER PAR PROOF BUILD
+
+Objectif :
+Absorber les patterns Paperclip Goal → Project → Task → Delegation sans
+introduire de second Control Plane runtime, scheduler ou source de vérité.
+
+Implémentation :
+- GoalDefinition ;
+- ProjectContext ;
+- ControlTaskDefinition ;
+- DelegationPolicy avec limites explicites ;
+- BudgetEnvelope descriptif, source host ;
+- createControlPlaneProjection avec liens Goal/Project/Task contrôlés ;
+- copies défensives ;
+- rejets des doublons, auto-dépendances et liaisons croisées ;
+- export orchestrator.
+
+Preuves :
+- controlPlane.spec.ts : 6/6 PASS ;
+- compilation TypeScript ciblée du contrat : terminée sans erreur visible ;
+- git diff --check : PASS attendu au commit ;
+- aucun fichier P0–P14 modifié.
+
+Limite technique :
+Le build API global lancé après ce lot n'a pas produit de verdict dans la
+fenêtre du relay et son fichier de statut n'a pas été généré ; il est donc
+classé NON CONCLUANT, pas PASS. Aucun changement du comportement runtime
+n'est revendiqué sur la base de ce build. Le contrat reste isolé et
+non autoritaire jusqu'à preuve de build global.
+
+Règle Paperclip conservée :
+Control Plane décrit et projette.
+Task Engine exécute.
+Scheduler reste unique.
+Policy/Auth autorise.
+Durable reste source de vérité d'exécution.
+Oracle vérifie.
+Aucun composant externe ne remplace ces autorités.
+
+==================================================
