@@ -951,3 +951,29 @@ Preuves fraîches :
 Décision : **P13 V3 CLOSED**. Le Project Workspace est maintenant une surface BOT MODE complète de projection/contrôle sans seconde autorité : les plans, coûts, observations, mémoire et sources sont dérivés des stores natifs ; pause/reprise reste le control path durable existant ; deux projets concurrents sont isolés par leurs identités projet/conversation/propriétaire.
 
 Prochaine phase : **P14 — release / restauration**, sans rouvrir P0–P13 fermés.
+
+==================================================
+CLOTURE P14 — RELEASE / RESTAURATION (3 octobre 2026)
+==================================================
+
+Statut : **P14 PASS/CLOSED**. P0–P13 restent fermés et ne sont pas rouverts.
+
+Gate P14 : le checkout de référence doit produire les artefacts de production, conserver un snapshot restaurable, permettre une restauration déterministe du commit de release, rester compatible avec la configuration de déploiement et laisser la release traçable sans embarquer les secrets.
+
+Preuves fraîches :
+- HEAD de référence avant release : `abf41a9a70e47b4ed83ac9d2b07871c0aae4a2c4` (`feat(botmode): close P13 project rooms`) ; checkout sans fichier suivi modifié.
+- `git diff --check` : **PASS**.
+- `npm run build:api` : **PASS**.
+- `npm run build:data-schemas` : **PASS**.
+- `npm run build:client` : **PASS**, PWA post-build inclus.
+- `deploy-compose.yml` : `docker compose ... config --quiet` **PASS**.
+- package-lock et autres lockfiles : aucun changement Git.
+- snapshot release créé hors repository sous `~/backups/librechat-p14-20261003/` : bundle Git + archive source + HEAD + preuves diff/status/fsck.
+- bundle Git vérifié par `git bundle verify` : **PASS**, historique complet contenant HEAD `abf41a9a...`.
+- restauration non destructive dans `/tmp/botmode-p14-restore` : HEAD restauré identique `abf41a9`, checkout propre, checkpoint et fichiers P13 présents.
+
+Intégrité Git : le `git fsck --full --no-reflogs` du dépôt hôte et du clone restauré révèle un objet historique manquant (`90cdcb...`) référencé par `f9f1b2...`. Cette anomalie préexistait au snapshot et n'empêche pas la vérification du bundle ni la restauration du commit P13 de référence ; elle reste explicitement documentée et ne doit pas être présentée comme une intégrité Git globale parfaite.
+
+Limite de release : aucune mise en production publique ni publication de contenu externe n'a été déclenchée pendant P14. La configuration de déploiement est valide et les artefacts de production sont construits ; une activation publique reste une opération distincte nécessitant ses credentials, variables d'environnement et autorisations opérationnelles exactes.
+
+Décision : **P14 CLOSED**. Le release point P13 est sauvegardé et restaurable, les builds de production sont passants, la configuration de déploiement est syntaxiquement valide et la provenance du snapshot est figée. Aucun changement P0–P13 n'est requis pour clôturer P14.
