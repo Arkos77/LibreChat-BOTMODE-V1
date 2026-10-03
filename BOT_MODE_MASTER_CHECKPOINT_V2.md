@@ -1862,3 +1862,52 @@ encore raccordé à des sources externes. Ce contrat constitue la brique de
 modèle de données et de qualification minimale.
 
 ==================================================
+
+==================================================
+GATE FINALISATION GLOBALE — ÉTAT AU 3 OCTOBRE 2026
+==================================================
+
+Statut : PRÊT POUR VALIDATION HUMAINE LIVE
+
+Réconciliation :
+- P0–P14 restent fermées ; aucune phase historique n'est rouverte.
+- Les micro-lots post-P14 sont distincts et commités sur la branche de travail.
+- Le chemin hôte BOT MODE existe : request.js → deterministicPlanner →
+  persisted orchestratorPlan → createRun → compileNativePlan → native SDK.
+- Registry, routing bridge, memory lifecycle, persisted memory adapter,
+  Control Plane, MissionPlan bridge, Agent Adapter/Harness, Capability
+  Evaluation et Opportunity Intelligence sont présents et testés.
+
+Preuve de code actuelle :
+- git diff --check : PASS ;
+- build API après les ajouts post-P14 : PASS ;
+- working tree tracked : CLEAN ;
+- HEAD actuel : d216abf.
+
+Gate global restant :
+La campagne finale exige une mission complexe, longue et récupérable avec un
+vrai provider exécuté : objectif → plan → spécialistes → tâches durables →
+outils autorisés → mémoire/RAG → preuves/Oracle → synthèse/artefacts, avec
+incident/reprise et attribution des coûts/provenance.
+
+Le harness live graph-subagent.e2e.test.ts existe et permet cette preuve avec
+OpenAI ou Anthropic, mais aucune clé de provider n'est actuellement chargée
+dans l'environnement de la machine. Il serait incorrect de marquer cette
+preuve PASS sans trafic réel.
+
+Action humaine requise :
+charger, dans l'environnement de travail déjà prévu à cet effet, au moins un
+provider live autorisé, sans coller ni exposer le secret dans le chat, puis
+relancer uniquement le harness live ciblé.
+
+Commande de preuve après chargement du provider :
+cd ~/agent-workspace/LibreChat && RUN_GRAPH_SUBAGENT_LIVE_TESTS=1 npx jest --config packages/api/jest.config.mjs src/agents/__tests__/graph-subagent.e2e.test.ts --runInBand --coverage=false
+
+Après un PASS live :
+1. enregistrer provider/modèle/temps/résultat/identités sans secret ;
+2. exécuter le scénario final complexe + incident/reprise ;
+3. vérifier coûts/provenance/Oracle/publication barrier ;
+4. générer le rapport DoD final ;
+5. créer le release tag final de BOT MODE.
+
+==================================================
