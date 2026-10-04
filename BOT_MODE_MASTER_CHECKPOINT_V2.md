@@ -2212,3 +2212,26 @@ Commits: a3e56e8 capability evolution; 7111f5b opportunity normalization; d9b00d
 Still intentionally not declared fully implemented: Capability Evolution autonomous discovery/evaluation loop, Opportunity source adapters/feedback-to-execution, real browser executor, Security Lab runner, A2A transport adapter, full China supplier connectors, full multi-engine media providers, autonomous Skill Evolution loop, Gemini/Anthropic/Uncensored/conditional model live E2E, fresh cross-replica/recovery proof, complete user mission E2E, production frontend release snapshot.
 
 ==================================================
+
+==================================================
+UI PHASE STARTED — 4 OCTOBRE 2026
+==================================================
+
+BOT MODE Project UI is now the active delivery layer after backend/core validation.
+- Existing P13 BotModeProjectPanel retained and enriched using the existing typed project projection.
+- Mission dashboard now shows derived mission state, cost, plan count, task count, verified Oracle observation count, recent evidence events, and per-conversation subagent pause/resume controls.
+- Loading and error states are explicit.
+- Mission states and dashboard labels localized in EN/FR.
+- Unsupported untyped memory/source fields were removed from the UI rather than guessed; official projection type currently exposes conversations/plans/traces/usage.
+- ProjectWorkspace continues to host the panel; no second UI application or backend authority introduced.
+- UI test: BotModeProjectPanel 1/1 PASS.
+- Client production build: `client/dist` present, 31 MB after build.
+- UI commits: 322a2db (mission dashboard), 132d15e (loading/error), b12ea73 (localized states), latest dashboard metrics commit immediately above.
+
+Backend extension commits since final-core lineage remain: a3e56e8 capability evolution; 7111f5b opportunity normalization; d9b00d7 browser/security; cd805d1 A2A; 7e6ec98 China sourcing; 833cd8c media 3D; eef14a7 improvement feedback; 23f1ccf opportunity source adapters.
+
+Cross-replica final verification: Redis 7.4 temporary instance + subagentCrossReplica.integration.spec.ts 1/1 PASS; temporary container removed after proof.
+
+Still not falsely declared complete: real external Browser executor, real Security Lab runner, real A2A transport, supplier/platform adapters, autonomous capability-discovery loop, full skill evolution feedback-to-publication loop, additional media provider bindings, conditional LLM E2E where credits are unavailable, complete user mission E2E, final production release snapshot.
+
+==================================================
