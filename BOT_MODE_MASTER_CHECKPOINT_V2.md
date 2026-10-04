@@ -2206,7 +2206,7 @@ CONTINUITY EXTENSIONS — 4 OCTOBRE 2026
 ==================================================
 
 Validated additions without reopening P0-P14:
-- Capability Evolution contract: DISCOVER -> EXTRACT_CAPABILITY -> ARCHITECTURE_MAPPING -> GAP_ANALYSIS -> DUPLICATION_ANALYSIS -> COMPATIBILITY -> LICENSE -> MATURITY -> VALUE -> COST -> RISK -> SANDBOX -> BENCHMARK -> ORACLE -> PROPOSAL. Pure bounded contract; no second authority/runtime.
+- Capability Evolution contract: DISCOVER -> EXTRACT_CAPABILITY -> ARCHITECTURE_MAPPING -> GAP_ANALYSIS -> DUPLICATION_ANALYSIS -> COMPATIBILITY -> LICENSE -> MATURITY -> VALUE -> COST -> RISK -> SANDBOX -> BENCHMARK -> ORACLE -> PROPOSAL. The bounded autonomous runner is now implemented as a host-owned evaluation/proposal loop with candidate fan-out limits; it never authorizes, persists, schedules, mutates or publishes capabilities. Dedicated tests 13/13 PASS and API build PASS.
 - Opportunity Intelligence: deterministic signal normalization, canonical URL normalization, external-ID/URL deduplication and explicit qualification states. Real source adapters remain a later layer.
 - Browser/Security Lab: bounded action vocabulary, network modes including ALLOWLIST/TOR_ALLOWLIST, mandatory destinations for allowlisted modes, expiration/revocation, allowed lab tools and max concurrency. Browser execution is implemented through the governed Playwright executor/session; Security Lab execution is now implemented through a scope-bounded tool executor with allowlisted tools, expiry/revocation enforcement and maxConcurrency.
 - Browser executor: `a57c40d` adds the bounded Playwright executor/session with per-action grant validation, destination enforcement, shared mission browser context, and real browser tests 7/7 PASS. No second authority or scheduler introduced.
@@ -2217,7 +2217,7 @@ Validated additions without reopening P0-P14:
 
 Commits: a3e56e8 capability evolution; 7111f5b opportunity normalization; d9b00d7 browser/security contract; cd805d1 A2A contract; 7e6ec98 China sourcing contract; 833cd8c media 3D; latest improvement feedback commit recorded immediately above.
 
-Still intentionally not declared fully implemented: Capability Evolution autonomous discovery/evaluation loop, Opportunity source adapters/feedback-to-execution, full remote A2A receiver/endpoint integration, full China supplier connectors, full multi-engine media providers, autonomous Skill Evolution loop, Gemini/Anthropic/Uncensored/conditional model live E2E, fresh cross-replica/recovery proof, complete durable/independently evidenced user mission settlement, production frontend release snapshot.
+Still intentionally not declared fully implemented: Opportunity source adapters/feedback-to-execution, full remote A2A receiver/endpoint integration, full China supplier connectors, full multi-engine media providers, autonomous Skill Evolution loop, Gemini/Anthropic/Uncensored/conditional model live E2E, fresh cross-replica/recovery proof, complete durable/independently evidenced user mission settlement, production frontend release snapshot.
 
 ==================================================
 
