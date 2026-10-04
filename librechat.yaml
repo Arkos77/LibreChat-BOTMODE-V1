@@ -25,7 +25,8 @@
         "apiKey": "user_provided",
         "baseURL": "https://router.huggingface.co/v1",
         "models": {
-          "fetch": true
+          "fetch": true,
+          "default": []
         },
         "titleConvo": true,
         "modelDisplayLabel": "Hugging Face"
@@ -35,7 +36,8 @@
         "apiKey": "user_provided",
         "baseURL": "https://api.deepseek.com",
         "models": {
-          "fetch": true
+          "fetch": true,
+          "default": []
         },
         "titleConvo": true,
         "modelDisplayLabel": "DeepSeek"
@@ -45,7 +47,8 @@
         "apiKey": "${GEMINI_API_KEY}",
         "baseURL": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "models": {
-          "fetch": true
+          "fetch": true,
+          "default": []
         },
         "titleConvo": true,
         "modelDisplayLabel": "Gemini"
@@ -55,7 +58,8 @@
         "apiKey": "user_provided",
         "baseURL": "https://api.mistral.ai/v1",
         "models": {
-          "fetch": true
+          "fetch": true,
+          "default": []
         },
         "titleConvo": true,
         "modelDisplayLabel": "Mistral"
@@ -65,7 +69,8 @@
         "apiKey": "user_provided",
         "baseURL": "user_provided",
         "models": {
-          "fetch": true
+          "fetch": true,
+          "default": []
         },
         "titleConvo": true,
         "modelDisplayLabel": "Qwen"
@@ -75,7 +80,8 @@
         "apiKey": "user_provided",
         "baseURL": "user_provided",
         "models": {
-          "fetch": true
+          "fetch": true,
+          "default": []
         },
         "titleConvo": true,
         "modelDisplayLabel": "GLM"
@@ -85,7 +91,8 @@
         "apiKey": "user_provided",
         "baseURL": "user_provided",
         "models": {
-          "fetch": true
+          "fetch": true,
+          "default": []
         },
         "titleConvo": true,
         "modelDisplayLabel": "MiniMax"
@@ -95,7 +102,8 @@
         "apiKey": "user_provided",
         "baseURL": "http://localhost:11434/v1",
         "models": {
-          "fetch": true
+          "fetch": true,
+          "default": []
         },
         "titleConvo": true,
         "modelDisplayLabel": "Ollama"
