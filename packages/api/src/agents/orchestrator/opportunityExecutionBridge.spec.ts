@@ -3,7 +3,7 @@ import {
   type OpportunityExecutionIntent,
 } from './opportunityExecutionBridge';
 import type { Opportunity } from '../opportunity';
-import type { DecisionProvider } from './decision';
+import type { DecisionProvider } from './routing';
 
 describe('opportunity execution bridge', () => {
   const opportunity: Opportunity = {
@@ -40,15 +40,7 @@ describe('opportunity execution bridge', () => {
 
   const provider: DecisionProvider = {
     id: 'test-decision',
-    decide: async (context, options) => ({
-      decisionId: 'decision-1',
-      question: 'Should this opportunity proceed?',
-      options,
-      selectedOption: 'EXECUTE',
-      provider: 'test-decision',
-      context,
-      timestamp: '2026-10-04T00:00:00.000Z',
-    }),
+    decide: async ({ candidates }) => candidates.map((candidate) => candidate.id),
   };
 
   const context = {
@@ -87,7 +79,7 @@ describe('opportunity execution bridge', () => {
     expect(result.status).toBe('DECIDED');
     expect(result.opportunity.status).toBe('VERIFIED');
     expect(result.decision).toMatchObject({
-      decisionId: 'decision-1',
+      decisionId: 'trace-opp-1:opportunity-decision',
       selectedOption: 'EXECUTE',
       provider: 'test-decision',
       context: {

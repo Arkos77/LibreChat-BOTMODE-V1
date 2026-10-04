@@ -3,13 +3,8 @@ import {
   type Opportunity,
   type OpportunityQualification,
 } from '../opportunity';
-import {
-  createDecisionRecord,
-  type DecisionContext,
-  type DecisionOption,
-  type DecisionProvider,
-  type DecisionRecord,
-} from './decision';
+import { createDecisionRecord, type DecisionContext, type DecisionRecord } from './decision';
+import type { DecisionProvider } from './routing';
 
 export interface OpportunityExecutionIntent {
   opportunityId: string;
@@ -44,36 +39,72 @@ export async function decideQualifiedOpportunityAction(
   if (intent.opportunityId !== opportunity.opportunityId) {
     throw new Error('Opportunity execution intent does not match the opportunity');
   }
-  const qualified = qualifyOpportunity(opportunity, qualification);
 
+  const qualified = qualifyOpportunity(opportunity, qualification);
   if (qualified.status !== 'VERIFIED') {
     return { status: 'HOLD', opportunity: qualified };
   }
 
-  const options: DecisionOption[] = [
-    { id: 'EXECUTE', description: intent.description },
-    { id: 'HOLD', description: 'Do not execute the opportunity action' },
-  ];
-  const decision = await provider.decide(
-    {
-      ...context,
-      objective: qualified.title,
-      policyContext: 'opportunity:' + qualified.opportunityId,
-    },
-    options,
-  );
-  const record = createDecisionRecord({
-    ...decision,
-    options,
+  const candidateId = intent.actionId;
+  const selected = await provider.decide({
+    candidates: [
+      {
+        id: candidateId,
+        capabilities: [intent.capability],
+        executionMode: 'workflow',
+      },
+    ],
     context: {
-      ...decision.context,
-      traceId: context.traceId,
-      ...(context.taskId === undefined ? {} : { taskId: context.taskId }),
-      ...(context.agentId === undefined ? {} : { agentId: context.agentId }),
-      objective: qualified.title,
-      policyContext: 'opportunity:' + qualified.opportunityId,
+      constraints: {
+        requiredCapabilities: [intent.capability],
+      },
     },
   });
 
-  return { status: 'DECIDED', opportunity: qualified, intent, decision: record };
+  const selectedOption = selected?.[0];
+  if (selectedOption !== candidateId) {
+    return {
+      status: 'DECIDED',
+      opportunity: qualified,
+      intent,
+      decision: createDecisionRecord({
+        decisionId: context.traceId + ':opportunity-decision',
+        question: 'Should this opportunity action proceed?',
+        options: [
+          { id: 'EXECUTE', description: intent.description },
+          { id: 'HOLD', description: 'Do not execute the opportunity action' },
+        ],
+        selectedOption: 'HOLD',
+        provider: provider.id ?? 'decision-provider',
+        context: {
+          ...context,
+          objective: qualified.title,
+          policyContext: 'opportunity:' + qualified.opportunityId,
+        },
+        timestamp: new Date().toISOString(),
+      }),
+    };
+  }
+
+  return {
+    status: 'DECIDED',
+    opportunity: qualified,
+    intent,
+    decision: createDecisionRecord({
+      decisionId: context.traceId + ':opportunity-decision',
+      question: 'Should this opportunity action proceed?',
+      options: [
+        { id: 'EXECUTE', description: intent.description },
+        { id: 'HOLD', description: 'Do not execute the opportunity action' },
+      ],
+      selectedOption: 'EXECUTE',
+      provider: provider.id ?? 'decision-provider',
+      context: {
+        ...context,
+        objective: qualified.title,
+        policyContext: 'opportunity:' + qualified.opportunityId,
+      },
+      timestamp: new Date().toISOString(),
+    }),
+  };
 }

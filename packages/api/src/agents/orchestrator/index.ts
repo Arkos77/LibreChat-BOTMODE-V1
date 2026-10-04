@@ -48,6 +48,8 @@ export * from './controlPlanePlannerBridge';
 export * from './capabilityEvaluation';
 export * from './capabilityEvolution';
 export * from './capabilityEvolutionRunner';
+export * from './opportunityExecutionBridge';
+export * from './opportunityTaskDispatcher';
 export * from './improvementFeedback';
 export * from './skillEvolutionRunner';
 export * from './browserSecurity';
