@@ -1,7 +1,7 @@
 import { v4 } from 'uuid';
 import { cloneDeep } from 'lodash';
-import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSetRecoilState, useRecoilValue, useRecoilCallback } from 'recoil';
 import {
   Constants,
@@ -213,6 +213,7 @@ export default function useChatFunctions({
   setSubmission: SetterOrUpdater<TSubmission | null>;
 }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const getSender = useGetSender();
   const { user } = useAuthContext();
   const queryClient = useQueryClient();
@@ -540,6 +541,35 @@ export default function useChatFunctions({
        */
       quotes: quotes.length > 0 ? quotes : undefined,
     };
+
+    if (searchParams.get('botmode') === '1' && isAgentsEndpoint(endpoint)) {
+      const botModeAgentId = conversation?.agent_id;
+      if (typeof botModeAgentId !== 'string' || botModeAgentId.length === 0) {
+        console.error('BOT MODE mission requires a selected agent');
+        return false;
+      }
+      Object.assign(currentMsg, {
+        orchestratorMission: {
+          mission: {
+            missionId: `botmode-${clientRequestId}`,
+            taskId: clientRequestId,
+            objective: text,
+            constraints: [],
+            requiredCapabilities: ['basic'],
+          },
+          plannerContext: {
+            worker: {
+              id: 'worker',
+              agentId: botModeAgentId,
+              role: 'worker',
+              capabilities: ['basic'],
+              constraints: [],
+            },
+            specialists: [],
+          },
+        },
+      });
+    }
 
     const submissionFiles = overrideFiles ?? targetParentMessage?.files;
     const reuseFiles =

@@ -2326,6 +2326,8 @@
   "com_ui_bot_mode_project_oracle": "Oracle",
   "com_ui_bot_mode_project_evidence": "Evidence",
   "com_ui_bot_mode_project_activity": "BOT MODE activity",
+  "com_ui_bot_mode_project_loading": "Loading BOT MODE activity…",
+  "com_ui_bot_mode_project_error": "Unable to load BOT MODE activity.",
   "com_ui_subagent_depth": "Level {{0}} child",
   "com_ui_subagent_thread_read_only": "This child thread is view-only here. Its parent agent owns this execution and can continue it with the saved thread history.",
   "com_ui_subagent_thread_status_cancelled": "Cancelled",
@@ -2599,5 +2601,6 @@
   "com_nav_mobile_drawer_strip": "Show chat beside the sidebar on mobile",
   "com_nav_mobile_drawer_strip_info": "The sidebar stops short of the edge so a strip of the conversation stays visible. Tapping it closes the sidebar.",
   "com_ui_bot_mode_project_memory": "Project memory",
-  "com_ui_bot_mode_project_sources": "Project sources"
+  "com_ui_bot_mode_project_sources": "Project sources",
+  "com_ui_bot_mode_project_launch": "Launch BOT MODE mission"
 }

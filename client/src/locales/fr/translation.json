@@ -1525,5 +1525,6 @@
   "com_ui_bot_mode_project_loading": "Chargement de l’activité BOT MODE…",
   "com_ui_bot_mode_project_error": "Impossible de charger l’activité BOT MODE.",
   "com_ui_bot_mode_project_memory": "Mémoire du projet",
-  "com_ui_bot_mode_project_sources": "Sources du projet"
+  "com_ui_bot_mode_project_sources": "Sources du projet",
+  "com_ui_bot_mode_project_launch": "Lancer une mission BOT MODE"
 }

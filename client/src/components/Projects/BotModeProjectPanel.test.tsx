@@ -6,8 +6,16 @@ import BotModeProjectPanel from './BotModeProjectPanel';
 const mockUseParentSubagentsQuery = jest.fn();
 const mockUseBotModeProjectProjectionQuery = jest.fn();
 const mockControlMutate = jest.fn();
+const mockUseListAgentsQuery = jest.fn();
+const mockNavigate = jest.fn();
+
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useNavigate: () => mockNavigate,
+}));
 
 jest.mock('~/data-provider', () => ({
+  useListAgentsQuery: () => mockUseListAgentsQuery(),
   useParentSubagentsQuery: (...args: unknown[]) => mockUseParentSubagentsQuery(...args),
   useBotModeProjectProjectionQuery: (...args: unknown[]) =>
     mockUseBotModeProjectProjectionQuery(...args),
@@ -81,6 +89,9 @@ const indexes: Record<string, ParentSubagentIndex> = {
 describe('BotModeProjectPanel', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseListAgentsQuery.mockReturnValue({
+      data: { data: [{ id: 'agent-worker', name: 'BOT MODE Worker' }] },
+    });
     mockUseParentSubagentsQuery.mockImplementation((conversationId: string) => ({
       data: indexes[conversationId],
     }));
@@ -195,6 +206,16 @@ describe('BotModeProjectPanel', () => {
       2,
       'conversation-b',
       expect.objectContaining({ enabled: true }),
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }));
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /\/c\/new\?projectId=project-a&agent_id=agent-worker&prompt=.*&submit=true&botmode=1/,
+      ),
     );
 
     expect(screen.getByText('Research A')).toBeInTheDocument();

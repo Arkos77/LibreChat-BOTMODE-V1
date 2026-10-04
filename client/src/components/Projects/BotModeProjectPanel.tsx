@@ -1,9 +1,11 @@
 import { v4 } from 'uuid';
 import { Button } from '@librechat/client';
+import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, CircleDashed, ListTree, Radio, Wallet } from 'lucide-react';
 import type { ParentSubagentSummary, TConversation } from 'librechat-data-provider';
 import {
   useBotModeProjectProjectionQuery,
+  useListAgentsQuery,
   useParentSubagentsQuery,
   useSubagentControlMutation,
 } from '~/data-provider';
@@ -100,6 +102,8 @@ export default function BotModeProjectPanel({
   conversations: TConversation[];
 }) {
   const localize = useLocalize();
+  const navigate = useNavigate();
+  const { data: agents } = useListAgentsQuery();
   const {
     data: projection,
     isLoading: isProjectionLoading,
@@ -120,15 +124,33 @@ export default function BotModeProjectPanel({
     ) ?? [];
   const tasks = plans.flatMap((plan) => plan.tasks);
   const oracleObservations = evidence.filter(({ observation }) => observation.source === 'oracle');
-  const verifiedObservations = oracleObservations.filter(({ observation }) => observation.type === 'VERIFIED');
-  const hasRejectedOracle = oracleObservations.some(({ observation }) => observation.type === 'REJECTED');
-  const missionState = plans.length === 0
-    ? 'idle'
-    : hasRejectedOracle
-      ? 'attention'
-      : verifiedObservations.length > 0
-        ? 'verified'
-        : 'running';
+  const verifiedObservations = oracleObservations.filter(
+    ({ observation }) => observation.type === 'VERIFIED',
+  );
+  const hasRejectedOracle = oracleObservations.some(
+    ({ observation }) => observation.type === 'REJECTED',
+  );
+  const missionState = (() => {
+    if (plans.length === 0) return 'idle';
+    if (hasRejectedOracle) return 'attention';
+    if (verifiedObservations.length > 0) return 'verified';
+    return 'running';
+  })();
+  const primaryAgent = agents?.data?.[0];
+
+  const launchMission = () => {
+    if (!primaryAgent?.id) {
+      return;
+    }
+    const params = new URLSearchParams({
+      projectId,
+      agent_id: primaryAgent.id,
+      prompt: 'Lance une mission BOT MODE et produis un résultat vérifiable.',
+      submit: 'true',
+      botmode: '1',
+    });
+    navigate(`/c/new?${params.toString()}`);
+  };
 
   if (projectConversations.length === 0) {
     return null;
@@ -140,34 +162,69 @@ export default function BotModeProjectPanel({
         <h2 className="text-sm font-medium text-text-primary">
           {localize('com_ui_bot_mode_project_activity')}
         </h2>
-        <span className="text-xs text-text-secondary">{localize(`com_ui_bot_mode_project_state_${missionState}`)}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-text-secondary">
+            {localize(`com_ui_bot_mode_project_state_${missionState}`)}
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!primaryAgent?.id}
+            onClick={launchMission}
+          >
+            {localize('com_ui_bot_mode_project_launch')}
+          </Button>
+        </div>
       </div>
       {isProjectionLoading && (
-        <div className="mb-3 rounded-xl border border-border-light bg-surface-secondary/60 p-3 text-xs text-text-secondary" role="status">
+        <div
+          className="mb-3 rounded-xl border border-border-light bg-surface-secondary/60 p-3 text-xs text-text-secondary"
+          role="status"
+        >
           {localize('com_ui_bot_mode_project_loading')}
         </div>
       )}
       {isProjectionError && (
-        <div className="mb-3 rounded-xl border border-border-light bg-surface-secondary/60 p-3 text-xs text-text-secondary" role="alert">
+        <div
+          className="mb-3 rounded-xl border border-border-light bg-surface-secondary/60 p-3 text-xs text-text-secondary"
+          role="alert"
+        >
           {localize('com_ui_bot_mode_project_error')}
         </div>
       )}
       <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <div className="rounded-xl border border-border-light bg-surface-secondary/60 p-2.5">
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary"><Wallet className="h-3.5 w-3.5" aria-hidden="true" />{localize('com_ui_bot_mode_project_cost')}</div>
-          <div className="mt-1 text-sm font-medium text-text-primary">{projection?.totals.costKnown ? `$${projection.totals.cost.toFixed(2)}` : '—'}</div>
+          <div className="flex items-center gap-1.5 text-xs text-text-secondary">
+            <Wallet className="h-3.5 w-3.5" aria-hidden="true" />
+            {localize('com_ui_bot_mode_project_cost')}
+          </div>
+          <div className="mt-1 text-sm font-medium text-text-primary">
+            {projection?.totals.costKnown ? `$${projection.totals.cost.toFixed(2)}` : '—'}
+          </div>
         </div>
         <div className="rounded-xl border border-border-light bg-surface-secondary/60 p-2.5">
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary"><ListTree className="h-3.5 w-3.5" aria-hidden="true" />{localize('com_ui_bot_mode_project_plans')}</div>
+          <div className="flex items-center gap-1.5 text-xs text-text-secondary">
+            <ListTree className="h-3.5 w-3.5" aria-hidden="true" />
+            {localize('com_ui_bot_mode_project_plans')}
+          </div>
           <div className="mt-1 text-sm font-medium text-text-primary">{plans.length}</div>
         </div>
         <div className="rounded-xl border border-border-light bg-surface-secondary/60 p-2.5">
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary"><CircleDashed className="h-3.5 w-3.5" aria-hidden="true" />{localize('com_ui_bot_mode_project_tasks')}</div>
+          <div className="flex items-center gap-1.5 text-xs text-text-secondary">
+            <CircleDashed className="h-3.5 w-3.5" aria-hidden="true" />
+            {localize('com_ui_bot_mode_project_tasks')}
+          </div>
           <div className="mt-1 text-sm font-medium text-text-primary">{tasks.length}</div>
         </div>
         <div className="rounded-xl border border-border-light bg-surface-secondary/60 p-2.5">
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />{localize('com_ui_bot_mode_project_oracle')}</div>
-          <div className="mt-1 text-sm font-medium text-text-primary">{verifiedObservations.length}</div>
+          <div className="flex items-center gap-1.5 text-xs text-text-secondary">
+            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+            {localize('com_ui_bot_mode_project_oracle')}
+          </div>
+          <div className="mt-1 text-sm font-medium text-text-primary">
+            {verifiedObservations.length}
+          </div>
         </div>
       </div>
       {plans.length > 0 && (
@@ -200,10 +257,16 @@ export default function BotModeProjectPanel({
       )}
       {evidence.length > 0 && (
         <section className="mb-3 rounded-xl border border-border-light bg-surface-secondary/60 p-3">
-          <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-text-primary"><Radio className="h-4 w-4" aria-hidden="true" />{localize('com_ui_bot_mode_project_evidence')}</div>
+          <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-text-primary">
+            <Radio className="h-4 w-4" aria-hidden="true" />
+            {localize('com_ui_bot_mode_project_evidence')}
+          </div>
           <div className="space-y-1 text-xs text-text-secondary">
             {evidence.slice(-8).map(({ traceId, observation }, index) => (
-              <div key={`${traceId}:${observation.traceEventId ?? index}`} className="flex items-center justify-between gap-3">
+              <div
+                key={`${traceId}:${observation.traceEventId ?? index}`}
+                className="flex items-center justify-between gap-3"
+              >
                 <span>{observation.type ?? 'EVENT'}</span>
                 <span className="truncate text-right">{traceId}</span>
               </div>
