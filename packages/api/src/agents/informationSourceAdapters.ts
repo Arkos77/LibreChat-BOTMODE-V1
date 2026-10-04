@@ -346,3 +346,92 @@ export class RedditInformationWatchAdapter implements InformationWatchAdapter {
     }
   }
 }
+
+export const DISCORD_INFORMATION_SOURCE: InformationSourceDescriptor = {
+  sourceId: 'discord',
+  name: 'Discord',
+  category: 'community',
+  access: 'USER_AUTHENTICATED',
+  connected: false,
+  sourceUrl: 'https://discord.com',
+};
+
+export interface DiscordInformationWatchAdapterOptions {
+  botToken?: string;
+  channelId: string;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+  limit?: number;
+  requireMessageContent?: boolean;
+}
+
+export class DiscordInformationWatchAdapter implements InformationWatchAdapter {
+  readonly descriptor = DISCORD_INFORMATION_SOURCE;
+  private readonly botToken?: string;
+  private readonly channelId: string;
+  private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
+  private readonly limit: number;
+  private readonly requireMessageContent: boolean;
+
+  constructor(options: DiscordInformationWatchAdapterOptions) {
+    if (!/^\d{15,25}$/.test(options.channelId))
+      throw new Error('Discord channelId must be a Discord snowflake');
+    this.botToken = options.botToken?.trim() || undefined;
+    this.channelId = options.channelId;
+    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.timeoutMs = Math.max(500, Math.min(options.timeoutMs ?? 15_000, 60_000));
+    this.limit = Math.max(1, Math.min(options.limit ?? 25, 100));
+    this.requireMessageContent = options.requireMessageContent ?? true;
+  }
+
+  async check(): Promise<InformationSourceObservation> {
+    if (!this.botToken) {
+      return {
+        sourceId: this.descriptor.sourceId,
+        checkedAt: new Date().toISOString(),
+        status: 'DISCONNECTED',
+        sourceRef: 'discord:bot-token-required',
+        note: 'A Discord bot token is required; normal user account automation is not supported',
+      };
+    }
+
+    const url = new URL(`https://discord.com/api/v10/channels/${this.channelId}/messages`);
+    url.searchParams.set('limit', String(this.limit));
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.fetchImpl(url, {
+        headers: {
+          accept: 'application/json',
+          authorization: `Bot ${this.botToken}`,
+          'user-agent': 'BOT-MODE-information-watch/1.0',
+        },
+        signal: controller.signal,
+      });
+      if (response.status === 401 || response.status === 403) {
+        return {
+          sourceId: this.descriptor.sourceId,
+          checkedAt: new Date().toISOString(),
+          status: 'UNAVAILABLE',
+          sourceRef: 'discord:bot-api',
+          note: `Discord bot authorization/channel permission failure (${response.status})`,
+        };
+      }
+      if (!response.ok) throw new Error(`Discord API HTTP ${response.status}`);
+      const payload = (await response.json()) as Array<Record<string, unknown>>;
+      return {
+        sourceId: this.descriptor.sourceId,
+        checkedAt: new Date().toISOString(),
+        status: 'ACTIVE',
+        sourceRef: 'discord:bot-api',
+        itemCount: payload.length,
+        note: this.requireMessageContent
+          ? 'Message content analysis requires Discord MESSAGE_CONTENT privileged intent when applicable'
+          : 'Metadata-only watch; no message content parsing requested',
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}

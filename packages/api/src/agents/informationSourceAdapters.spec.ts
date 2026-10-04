@@ -7,6 +7,8 @@ import {
   TGSTAT_INFORMATION_SOURCE,
   RedditInformationWatchAdapter,
   REDDIT_INFORMATION_SOURCE,
+  DiscordInformationWatchAdapter,
+  DISCORD_INFORMATION_SOURCE,
 } from './informationSourceAdapters';
 
 describe('information source adapters', () => {
@@ -120,6 +122,37 @@ describe('information source adapters', () => {
     });
     await expect(adapter.check()).resolves.toMatchObject({
       sourceId: 'reddit',
+      status: 'ACTIVE',
+      itemCount: 2,
+    });
+  });
+  it('marks Discord disconnected without a bot token', async () => {
+    const adapter = new DiscordInformationWatchAdapter({ channelId: '123456789012345678' });
+    await expect(adapter.check()).resolves.toMatchObject({
+      sourceId: DISCORD_INFORMATION_SOURCE.sourceId,
+      status: 'DISCONNECTED',
+    });
+  });
+
+  it('uses the official Discord bot API for channel message metadata', async () => {
+    const adapter = new DiscordInformationWatchAdapter({
+      botToken: 'test-bot-token',
+      channelId: '123456789012345678',
+      requireMessageContent: false,
+      limit: 2,
+      fetchImpl: (async (input, init) => {
+        expect(String(input)).toContain('/api/v10/channels/123456789012345678/messages?limit=2');
+        expect(init?.headers).toEqual(
+          expect.objectContaining({ authorization: 'Bot test-bot-token' }),
+        );
+        return new Response(JSON.stringify([{ id: '1' }, { id: '2' }]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }) as typeof fetch,
+    });
+    await expect(adapter.check()).resolves.toMatchObject({
+      sourceId: 'discord',
       status: 'ACTIVE',
       itemCount: 2,
     });
