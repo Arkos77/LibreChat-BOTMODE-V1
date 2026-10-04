@@ -9,10 +9,10 @@ import {
 } from 'librechat-data-provider';
 import type { TConversation } from 'librechat-data-provider';
 import BotModeDashboardDrawer from '~/components/Projects/BotModeDashboardDrawer';
+import { useGetAgentByIdQuery, useGetStartupConfig } from '~/data-provider';
 import { OpenSidebar, PresetsMenu, NewChat, HeaderMenu } from './Menus';
 import { TemporaryChat, TemporaryChatIndicator } from './TemporaryChat';
 import ModelSelector from './Menus/Endpoints/ModelSelector';
-import { useGetStartupConfig } from '~/data-provider';
 import ExportAndShareMenu from './ExportAndShareMenu';
 import SubagentThreadLink from './SubagentThreadLink';
 import { useAgentsMapContext } from '~/Providers';
@@ -46,8 +46,12 @@ function Header({
   const { data: startupConfig } = useGetStartupConfig();
   const agentsMap = useAgentsMapContext();
   const activeAgent = conversation?.agent_id ? agentsMap?.[conversation.agent_id] : undefined;
+  const { data: directAgent } = useGetAgentByIdQuery(conversation?.agent_id, {
+    enabled: Boolean(conversation?.agent_id) && activeAgent == null,
+  });
+  const resolvedAgent = activeAgent ?? directAgent;
   const isBotModeAgent =
-    activeAgent?.metadata?.botmode === true || activeAgent?.name === 'BOT MODE Worker';
+    resolvedAgent?.metadata?.botmode === true || resolvedAgent?.name === 'BOT MODE Worker';
   const navVisible = useRecoilValue(store.sidebarExpanded);
 
   /** The mobile row only offers a new chat when there is one to leave. Read
