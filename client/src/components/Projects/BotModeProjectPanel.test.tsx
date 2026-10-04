@@ -177,6 +177,66 @@ describe('BotModeProjectPanel', () => {
     });
   });
 
+  it('shows the durable SETTLED state when terminal evidence is present', () => {
+    mockUseBotModeProjectProjectionQuery.mockReturnValue({
+      data: {
+        projectId: 'project-a',
+        conversations: [
+          {
+            conversationId: 'conversation-a',
+            usage: {
+              input: 1,
+              output: 1,
+              cacheWrite: 0,
+              cacheRead: 0,
+              cost: 0,
+              costKnown: true,
+            },
+            traces: [
+              {
+                messageId: 'message-a',
+                traceId: 'trace-settled',
+                observations: [
+                  {
+                    traceId: 'trace-settled',
+                    traceEventId: 'trace-verified',
+                    type: 'VERIFIED',
+                    source: 'oracle',
+                    timestamp: '2026-10-04T10:00:00.000Z',
+                  },
+                  {
+                    traceId: 'trace-settled',
+                    traceEventId: 'trace-settled-terminal',
+                    type: 'SETTLED',
+                    source: 'host',
+                    timestamp: '2026-10-04T10:01:00.000Z',
+                  },
+                ],
+              },
+            ],
+            plans: [],
+          },
+        ],
+        totals: {
+          input: 1,
+          output: 1,
+          cacheWrite: 0,
+          cacheRead: 0,
+          cost: 0,
+          costKnown: true,
+        },
+        nextCursor: null,
+      },
+    });
+
+    render(<BotModeProjectPanel projectId="project-a" conversations={[conversationA]} />);
+
+    expect(
+      screen.getByRole('heading', { name: 'com_ui_bot_mode_project_state_settled' }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('bot-mode-project-state')).toHaveTextContent('6/6');
+  });
+
   it('keeps project task queries isolated and controls the addressed durable task', () => {
     render(
       <BotModeProjectPanel
@@ -190,7 +250,7 @@ describe('BotModeProjectPanel', () => {
       expect.objectContaining({ enabled: true }),
     );
     expect(screen.getByText('$0.25')).toBeInTheDocument();
-    expect(screen.getByText('AUTHORIZED')).toBeInTheDocument();
+    expect(screen.getAllByText('AUTHORIZED').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('trace-a')).toBeInTheDocument();
     expect(screen.getByText('Deliver project A')).toBeInTheDocument();
     expect(screen.getByText('PARALLEL')).toBeInTheDocument();
