@@ -1,4 +1,5 @@
 import {
+  INFORMATION_WATCH_CONSTRAINTS,
   INFORMATION_WATCH_SOURCES,
   InformationWatchRegistry,
   InformationWatchRunner,
@@ -72,5 +73,20 @@ describe('InformationWatchRunner', () => {
       'fmhy',
     ]);
     expect(INFORMATION_WATCH_SOURCES.every((source) => source.connected === false)).toBe(true);
+  });
+
+  it('records explicit access constraints for specialized sources', () => {
+    expect(INFORMATION_WATCH_CONSTRAINTS).toHaveLength(6);
+    expect(
+      INFORMATION_WATCH_CONSTRAINTS.find((source) => source.sourceId === 'discord')?.requirement,
+    ).toMatch(/authorized Discord bot/);
+    expect(
+      INFORMATION_WATCH_CONSTRAINTS.find((source) => source.sourceId === 'instagram')
+        ?.connectionStatus,
+    ).toBe('POLICY_LIMITED');
+    expect(
+      INFORMATION_WATCH_CONSTRAINTS.find((source) => source.sourceId === 'tgstat')
+        ?.connectionStatus,
+    ).toBe('AUTH_REQUIRED');
   });
 });

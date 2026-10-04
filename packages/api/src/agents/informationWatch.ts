@@ -92,12 +92,22 @@ export class InformationWatchRegistry {
   }
 }
 
+export interface InformationSourceConstraint {
+  sourceId: string;
+  connectionStatus:
+    | 'NOT_CONNECTED'
+    | 'AUTH_REQUIRED'
+    | 'ADMIN_APPROVAL_REQUIRED'
+    | 'POLICY_LIMITED';
+  requirement: string;
+}
+
 export const INFORMATION_WATCH_SOURCES: readonly InformationSourceDescriptor[] = [
   {
     sourceId: 'reddit',
     name: 'Reddit',
     category: 'social',
-    access: 'SEARCH_PROVIDER',
+    access: 'USER_AUTHENTICATED',
     connected: false,
     sourceUrl: 'https://www.reddit.com',
   },
@@ -105,7 +115,7 @@ export const INFORMATION_WATCH_SOURCES: readonly InformationSourceDescriptor[] =
     sourceId: 'youtube',
     name: 'YouTube',
     category: 'video',
-    access: 'SEARCH_PROVIDER',
+    access: 'USER_AUTHENTICATED',
     connected: false,
     sourceUrl: 'https://www.youtube.com',
   },
@@ -129,7 +139,7 @@ export const INFORMATION_WATCH_SOURCES: readonly InformationSourceDescriptor[] =
     sourceId: 'tgstat',
     name: 'TGStat',
     category: 'specialized',
-    access: 'PUBLIC_HTTP',
+    access: 'USER_AUTHENTICATED',
     connected: false,
     sourceUrl: 'https://tgstat.com',
   },
@@ -140,6 +150,42 @@ export const INFORMATION_WATCH_SOURCES: readonly InformationSourceDescriptor[] =
     access: 'PUBLIC_HTTP',
     connected: false,
     sourceUrl: 'https://fmhy.net',
+  },
+];
+
+export const INFORMATION_WATCH_CONSTRAINTS: readonly InformationSourceConstraint[] = [
+  {
+    sourceId: 'reddit',
+    connectionStatus: 'AUTH_REQUIRED',
+    requirement:
+      'External applications must use the supported Reddit developer authentication path; do not scrape reddit.com directly.',
+  },
+  {
+    sourceId: 'youtube',
+    connectionStatus: 'AUTH_REQUIRED',
+    requirement: 'YouTube Data API credentials are required for programmatic search.',
+  },
+  {
+    sourceId: 'discord',
+    connectionStatus: 'AUTH_REQUIRED',
+    requirement: 'Use an authorized Discord bot/application; never automate a normal user account.',
+  },
+  {
+    sourceId: 'instagram',
+    connectionStatus: 'POLICY_LIMITED',
+    requirement:
+      'Use an officially authorized Meta/Instagram API integration; do not automate collection from instagram.com.',
+  },
+  {
+    sourceId: 'tgstat',
+    connectionStatus: 'AUTH_REQUIRED',
+    requirement: 'Use TGStat API credentials and respect the selected plan/quota.',
+  },
+  {
+    sourceId: 'fmhy',
+    connectionStatus: 'NOT_CONNECTED',
+    requirement:
+      'Public web source; configure and verify a current feed endpoint before marking a live feed active.',
   },
 ];
 
