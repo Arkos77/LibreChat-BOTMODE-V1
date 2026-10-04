@@ -159,3 +159,97 @@ export class YouTubeInformationWatchAdapter implements InformationWatchAdapter {
     }
   }
 }
+
+export const TGSTAT_INFORMATION_SOURCE: InformationSourceDescriptor = {
+  sourceId: 'tgstat',
+  name: 'TGStat',
+  category: 'specialized',
+  access: 'USER_AUTHENTICATED',
+  connected: false,
+  sourceUrl: 'https://tgstat.com',
+};
+
+export interface TGStatInformationWatchAdapterOptions {
+  token?: string;
+  query: string;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+  limit?: number;
+}
+
+export class TGStatInformationWatchAdapter implements InformationWatchAdapter {
+  readonly descriptor = TGSTAT_INFORMATION_SOURCE;
+  private readonly token?: string;
+  private readonly query: string;
+  private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
+  private readonly limit: number;
+
+  constructor(options: TGStatInformationWatchAdapterOptions) {
+    if (!options.query.trim()) throw new Error('TGStat watch query is required');
+    this.token = options.token?.trim() || undefined;
+    this.query = options.query.trim();
+    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.timeoutMs = Math.max(500, Math.min(options.timeoutMs ?? 15_000, 60_000));
+    this.limit = Math.max(1, Math.min(options.limit ?? 20, 50));
+  }
+
+  async check(): Promise<InformationSourceObservation> {
+    if (!this.token) {
+      return {
+        sourceId: this.descriptor.sourceId,
+        checkedAt: new Date().toISOString(),
+        status: 'DISCONNECTED',
+        sourceRef: 'tgstat:api-token-required',
+        note: 'TGStat API token is required for publication search',
+      };
+    }
+
+    const url = new URL('https://api.tgstat.ru/posts/search');
+    url.searchParams.set('token', this.token);
+    url.searchParams.set('q', this.query);
+    url.searchParams.set('limit', String(this.limit));
+    url.searchParams.set('hideDeleted', '1');
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.fetchImpl(url, {
+        headers: { accept: 'application/json', 'user-agent': 'BOT-MODE-information-watch/1.0' },
+        signal: controller.signal,
+      });
+      if (response.status === 401 || response.status === 403) {
+        return {
+          sourceId: this.descriptor.sourceId,
+          checkedAt: new Date().toISOString(),
+          status: 'UNAVAILABLE',
+          sourceRef: 'tgstat:api-search',
+          note: `TGStat authentication/quota failure (${response.status})`,
+        };
+      }
+      if (!response.ok) throw new Error(`TGStat API HTTP ${response.status}`);
+      const payload = (await response.json()) as {
+        status?: string;
+        response?: { items?: unknown[]; count?: number };
+      };
+      if (payload.status !== 'ok') {
+        return {
+          sourceId: this.descriptor.sourceId,
+          checkedAt: new Date().toISOString(),
+          status: 'UNAVAILABLE',
+          sourceRef: 'tgstat:api-search',
+          note: 'TGStat returned a non-ok API status',
+        };
+      }
+      return {
+        sourceId: this.descriptor.sourceId,
+        checkedAt: new Date().toISOString(),
+        status: 'ACTIVE',
+        sourceRef: 'tgstat:api-search',
+        itemCount: payload.response?.count ?? payload.response?.items?.length ?? 0,
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}

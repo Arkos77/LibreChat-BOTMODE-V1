@@ -3,6 +3,8 @@ import {
   RssInformationWatchAdapter,
   YouTubeInformationWatchAdapter,
   YOUTUBE_INFORMATION_SOURCE,
+  TGStatInformationWatchAdapter,
+  TGSTAT_INFORMATION_SOURCE,
 } from './informationSourceAdapters';
 
 describe('information source adapters', () => {
@@ -55,6 +57,34 @@ describe('information source adapters', () => {
       sourceId: 'youtube',
       status: 'ACTIVE',
       itemCount: 2,
+    });
+  });
+  it('marks TGStat disconnected when its API token is absent', async () => {
+    const adapter = new TGStatInformationWatchAdapter({ query: 'BOT MODE' });
+    await expect(adapter.check()).resolves.toMatchObject({
+      sourceId: TGSTAT_INFORMATION_SOURCE.sourceId,
+      status: 'DISCONNECTED',
+    });
+  });
+
+  it('reads TGStat publication search results with a token', async () => {
+    const adapter = new TGStatInformationWatchAdapter({
+      token: 'test-token',
+      query: 'BOT MODE',
+      limit: 10,
+      fetchImpl: (async (input) => {
+        expect(String(input)).toContain('q=BOT+MODE');
+        expect(String(input)).toContain('limit=10');
+        return new Response(JSON.stringify({ status: 'ok', response: { count: 7, items: [{}] } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }) as typeof fetch,
+    });
+    await expect(adapter.check()).resolves.toMatchObject({
+      sourceId: 'tgstat',
+      status: 'ACTIVE',
+      itemCount: 7,
     });
   });
 });
