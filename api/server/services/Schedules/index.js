@@ -11,7 +11,11 @@ function getService() {
     return service;
   }
   const mongoose = require('mongoose');
-  const { createSchedulesService } = require('@librechat/api');
+  const {
+    createSchedulesService,
+    observeResolvedModelCatalog,
+    getActivatedCapabilityRegistry,
+  } = require('@librechat/api');
   const { getAppConfig } = require('~/server/services/Config/app');
   const {
     enqueueAgentTrigger,
@@ -20,7 +24,7 @@ function getService() {
   const { resolveAgentFireAccess } = require('./access');
   const methods = require('~/models');
   const isUserDeleting = async (userId) => !(await methods.isAgentTriggerPrincipalActive(userId));
-
+  const capabilityRegistry = getActivatedCapabilityRegistry();
   service = createSchedulesService({
     methods,
     getAppConfig,
@@ -51,6 +55,19 @@ function getService() {
     // Reconciliation reads the durable delivery to tell a still-live admission (a
     // deferred Retry-After) or a dead-letter apart from a genuinely orphaned run.
     getTriggerDelivery: getAgentTriggerDelivery,
+    maintenance: {
+      intervalMs: 30 * 60 * 1000,
+      run: async () => {
+        const { loadModels } = require('~/server/controllers/ModelController');
+        await observeResolvedModelCatalog(capabilityRegistry, {
+          sourcePrefix: 'librechat:model-catalog',
+          loadModels: async () => {
+            const appConfig = await getAppConfig({ baseOnly: true });
+            return (await loadModels({ config: appConfig, user: undefined })) ?? {};
+          },
+        });
+      },
+    },
     resolveAgentFireAccess,
     // Chat projects are user-owned, so this scoped read is both the existence and the
     // authorization check the fire-time destination precheck needs.

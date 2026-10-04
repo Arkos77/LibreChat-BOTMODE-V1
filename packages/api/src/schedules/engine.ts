@@ -44,6 +44,7 @@ export function startScheduleEngine(deps: ScheduleEngineDeps): ScheduleEngine {
   let stopped = false;
   let timer: NodeJS.Timeout | undefined;
   let ticks = 0;
+  let lastMaintenanceAt = 0;
   const instanceId = `${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
 
   /**
@@ -574,6 +575,17 @@ export function startScheduleEngine(deps: ScheduleEngineDeps): ScheduleEngine {
       try {
         if (ticks % 4 === 0) {
           await reconcile();
+        }
+        if (deps.maintenance) {
+          const now = Date.now();
+          if (lastMaintenanceAt === 0 || now - lastMaintenanceAt >= deps.maintenance.intervalMs) {
+            lastMaintenanceAt = now;
+            try {
+              await deps.maintenance.run();
+            } catch (maintenanceError) {
+              logger.error('[schedules] maintenance hook failed:', maintenanceError);
+            }
+          }
         }
         ticks += 1;
         await runTick();

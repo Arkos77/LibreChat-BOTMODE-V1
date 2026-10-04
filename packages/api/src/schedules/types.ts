@@ -169,8 +169,15 @@ export interface ScheduleFileRef {
   source?: string;
 }
 
+export interface ScheduleMaintenanceHook {
+  run: () => Promise<void>;
+  intervalMs: number;
+}
+
 export interface ScheduleEngineDeps {
   methods: ScheduleMethods;
+  /** Optional host-owned maintenance work executed by this scheduler's existing tick. */
+  maintenance?: ScheduleMaintenanceHook;
   /** Resolves interface.schedules limits, per-principal when a user is given. */
   getLimits: (user?: ScheduleUserContext) => Promise<ScheduleLimits>;
   /** Loads the owning user (id + tenant) or null when deleted/disabled. */

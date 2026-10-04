@@ -44,14 +44,13 @@ import type {
   InitializeResultBase,
 } from '~/types';
 import type { LCAvailableTools, RequestScopedMCPConnectionStore } from '../mcp/types';
+import type { CapabilityResourceRegistry } from './orchestrator/capabilityRegistry';
 import type { ContentTraversalLimitError } from '../protection/adapters/nested';
 import type { SkillContentInput } from '../protection/adapters/submissions';
 import type { TextContentFragment } from '../protection/types';
 import type { TFilterFilesByAgentAccess } from './resources';
 import type { MCPToolAlias } from '~/tools/classification';
 import type { AgentExecutionContext } from './runtime';
-import { createActivatedCapabilityRegistry } from './extensions';
-import type { CapabilityResourceRegistry } from './orchestrator/capabilityRegistry';
 import {
   injectSkillCatalog,
   resolveSkillCatalog,
@@ -99,6 +98,7 @@ import { registerMemoryTools, memoryToolUsageGuard } from './memory';
 import { applyIntentLabels, sanitizeIntentLabels } from './intent';
 import { ContentFilterError } from '../middleware/contentFilter';
 import { createRequestAgentExecutionContext } from './runtime';
+import { getActivatedCapabilityRegistry } from './extensions';
 import { filterFilesByEndpointRuntimeConfig } from '~/files';
 import { PARTIAL_RESOLVED_CONVERSATION } from './guard';
 import { applyBackgroundToolCalls } from './background';
@@ -1836,7 +1836,7 @@ export async function initializeAgent(
         : Math.max(1024, Math.round(baseContextTokens * (1 - DEFAULT_RESERVE_RATIO))),
     primedCodeFiles,
     endpointTokenConfig: options.endpointTokenConfig,
-    extensionCapabilityRegistry: createActivatedCapabilityRegistry(),
+    extensionCapabilityRegistry: getActivatedCapabilityRegistry(),
   };
 
   return initializedAgent;
