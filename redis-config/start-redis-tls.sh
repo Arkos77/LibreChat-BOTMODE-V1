@@ -10,4 +10,6 @@ if pgrep -f "redis-server.*tls" > /dev/null; then
 fi
 
 # Start Redis with TLS config
-redis-server /Users/theotr/WebstormProjects/LibreChat/redis-cluster/redis-tls.conf
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+redis-server redis-tls.conf

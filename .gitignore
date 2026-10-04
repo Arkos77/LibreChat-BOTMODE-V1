@@ -193,3 +193,11 @@ CLAUDE.md
 .gsd
 codedb.snapshot
 scripts/activity-labels/results/
+
+# Redis runtime state / generated TLS material
+redis-config/certs/*.rdb
+redis-config/certs/*.srl
+redis-config/certs/*.pem
+redis-config/certs/*.key
+redis-config/data/
+redis-config/logs/
