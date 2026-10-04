@@ -15,6 +15,7 @@ import ModelSelector from './Menus/Endpoints/ModelSelector';
 import { useGetStartupConfig } from '~/data-provider';
 import ExportAndShareMenu from './ExportAndShareMenu';
 import SubagentThreadLink from './SubagentThreadLink';
+import { useAgentsMapContext } from '~/Providers';
 import BookmarkMenu from './Menus/BookmarkMenu';
 import AddMultiConvo from './AddMultiConvo';
 import { useHasAccess } from '~/hooks';
@@ -34,13 +35,19 @@ function Header({
   readOnly = false,
   projectId,
   conversation,
+  botMode = false,
 }: {
   parentConversationId?: string;
   readOnly?: boolean;
   projectId?: string | null;
   conversation?: TConversation;
+  botMode?: boolean;
 }) {
   const { data: startupConfig } = useGetStartupConfig();
+  const agentsMap = useAgentsMapContext();
+  const activeAgent = conversation?.agent_id ? agentsMap?.[conversation.agent_id] : undefined;
+  const isBotModeAgent =
+    activeAgent?.metadata?.botmode === true || activeAgent?.name === 'BOT MODE Worker';
   const navVisible = useRecoilValue(store.sidebarExpanded);
 
   /** The mobile row only offers a new chat when there is one to leave. Read
@@ -111,10 +118,13 @@ function Header({
         <div className="hidden items-center gap-2 md:flex">
           <ExportAndShareMenu isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false} />
           {hasAccessToTemporaryChat === true && <TemporaryChat />}
-          <BotModeDashboardDrawer
-            projectId={projectId ?? conversation?.chatProjectId}
-            conversation={conversation}
-          />
+          {(botMode || isBotModeAgent) && (
+            <BotModeDashboardDrawer
+              projectId={projectId ?? conversation?.chatProjectId}
+              conversation={conversation}
+              botMode
+            />
+          )}
         </div>
       </div>
     </div>

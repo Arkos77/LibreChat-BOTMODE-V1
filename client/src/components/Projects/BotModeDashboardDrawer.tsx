@@ -13,9 +13,11 @@ import { useLocalize } from '~/hooks';
 export default function BotModeDashboardDrawer({
   projectId,
   conversation,
+  botMode = false,
 }: {
   projectId?: string | null;
   conversation?: TConversation;
+  botMode?: boolean;
 }) {
   const localize = useLocalize();
   const chat = useChatContext();
@@ -35,7 +37,7 @@ export default function BotModeDashboardDrawer({
     conversation: activeConversation,
   });
 
-  if (!projectId) {
+  if (!botMode) {
     return null;
   }
 
@@ -59,7 +61,7 @@ export default function BotModeDashboardDrawer({
   );
 
   const openSourcePicker = () => {
-    if (!conversationId || conversationId === 'new') {
+    if (!conversationId) {
       return;
     }
     inputRef.current?.click();
@@ -165,12 +167,18 @@ export default function BotModeDashboardDrawer({
 
                   {summaryOpen && (
                     <div className="px-3 pb-4">
-                      <BotModeProjectPanel
-                        projectId={projectId}
-                        conversations={conversation ? [conversation] : []}
-                        compact
-                        showSummary
-                      />
+                      {projectId ? (
+                        <BotModeProjectPanel
+                          projectId={projectId}
+                          conversations={conversation ? [conversation] : []}
+                          compact
+                          showSummary
+                        />
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-border-light px-4 py-5 text-sm text-text-secondary">
+                          {localize('com_ui_bot_mode_dashboard_no_mission')}
+                        </div>
+                      )}
                     </div>
                   )}
                 </section>
@@ -190,7 +198,7 @@ export default function BotModeDashboardDrawer({
                       size="sm"
                       variant="outline"
                       onClick={openSourcePicker}
-                      disabled={!conversationId || conversationId === 'new'}
+                      disabled={!conversationId}
                     >
                       <Paperclip className="mr-1.5 h-4 w-4" aria-hidden="true" />
                       {localize('com_ui_bot_mode_dashboard_add_source')}
@@ -201,7 +209,7 @@ export default function BotModeDashboardDrawer({
                     <div className="space-y-2">
                       {sourceFiles.map((file) => (
                         <div
-                          key={file.file_id}
+                          key={file.fileId}
                           className="flex items-center gap-3 rounded-xl border border-border-light bg-surface-secondary/30 px-3 py-2.5"
                         >
                           <FileText
@@ -210,7 +218,7 @@ export default function BotModeDashboardDrawer({
                           />
                           <div className="min-w-0 flex-1">
                             <div className="truncate text-sm text-text-primary">
-                              {file.filename ?? file.file?.name}
+                              {file.filename ?? localize('com_file_unknown')}
                             </div>
                             <div className="text-[11px] text-text-tertiary">
                               {localize('com_ui_bot_mode_dashboard_source_ready')}

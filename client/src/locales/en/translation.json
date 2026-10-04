@@ -2622,5 +2622,6 @@
   "com_ui_bot_mode_dashboard_sources_hint": "Documents available to the mission",
   "com_ui_bot_mode_dashboard_add_source": "Add",
   "com_ui_bot_mode_dashboard_no_sources": "No sources added",
-  "com_ui_bot_mode_dashboard_source_ready": "Available to the conversation context"
+  "com_ui_bot_mode_dashboard_source_ready": "Available to the conversation context",
+  "com_ui_bot_mode_dashboard_no_mission": "No mission has been launched yet."
 }

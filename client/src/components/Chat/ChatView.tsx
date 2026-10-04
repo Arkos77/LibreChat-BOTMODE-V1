@@ -2,7 +2,7 @@ import { memo, useCallback } from 'react';
 import { useRecoilValue } from 'recoil';
 import { useForm } from 'react-hook-form';
 import { Spinner } from '@librechat/client';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { Constants, buildTree } from 'librechat-data-provider';
 import type { TChatProject, TMessage } from 'librechat-data-provider';
 import type { ChatFormValues } from '~/common';
@@ -38,6 +38,8 @@ function LoadingSpinner() {
 
 function ChatView({ index = 0, project }: { index?: number; project?: TChatProject }) {
   const { conversationId } = useParams();
+  const [searchParams] = useSearchParams();
+  const isBotMode = searchParams.get('botmode') === '1';
   const localize = useLocalize();
   const rootSubmission = useRecoilValue(store.submissionByIndex(index));
   const isSubmitting = useRecoilValue(store.isSubmittingFamily(index));
@@ -139,7 +141,10 @@ function ChatView({ index = 0, project }: { index?: number; project?: TChatProje
                 parentConversationId={parentConversationId}
                 readOnly={isSubagentThreadReadOnly}
                 projectId={project?._id ?? activeConversation?.chatProjectId}
-                conversation={activeConversation}
+                conversation={
+                  activeConversation ?? (isLandingPage ? chatHelpers.conversation : undefined)
+                }
+                botMode={isBotMode}
               />
               <>
                 <div

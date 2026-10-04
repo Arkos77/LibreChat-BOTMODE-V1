@@ -1546,5 +1546,6 @@
   "com_ui_bot_mode_dashboard_sources_hint": "Documents disponibles pour la mission",
   "com_ui_bot_mode_dashboard_add_source": "Ajouter",
   "com_ui_bot_mode_dashboard_no_sources": "Aucune source ajoutée",
-  "com_ui_bot_mode_dashboard_source_ready": "Disponible pour le contexte de conversation"
+  "com_ui_bot_mode_dashboard_source_ready": "Disponible pour le contexte de conversation",
+  "com_ui_bot_mode_dashboard_no_mission": "Aucune mission n’est encore lancée."
 }
