@@ -146,11 +146,12 @@ const useNewConvo = (index = 0) => {
             isAgentsEndpoint(defaultEndpoint) &&
             ((conversation.agent_id && !isEphemeralAgentId(conversation.agent_id)) ||
               (storedAgentId && !isEphemeralAgentId(storedAgentId)));
+          const hasAvailableAgents = Object.keys(agentsMap ?? {}).length > 0;
           if (
             defaultEndpoint &&
             isAgentsEndpoint(defaultEndpoint) &&
-            !hasAgentAccess &&
-            !isExistingAgentConvo
+            !isExistingAgentConvo &&
+            (!hasAgentAccess || !hasAvailableAgents)
           ) {
             defaultEndpoint = Object.keys(endpointsConfig ?? {}).find(
               (ep) => !isAgentsEndpoint(ep as EModelEndpoint) && endpointsConfig?.[ep],
@@ -162,8 +163,8 @@ const useNewConvo = (index = 0) => {
             defaultEndpoint = Object.keys(endpointsConfig ?? {}).find((ep) => {
               if (
                 isAgentsEndpoint(ep as EModelEndpoint) &&
-                !hasAgentAccess &&
-                !isExistingAgentConvo
+                !isExistingAgentConvo &&
+                (!hasAgentAccess || !hasAvailableAgents)
               ) {
                 return false;
               }
