@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, useMemo, useCallback, useEffect } from 'react';
 import debounce from 'lodash/debounce';
 import {
   EModelEndpoint,
@@ -172,6 +172,7 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
     setSelectedValues,
   });
 
+
   const [searchValue, setSearchValueState] = useState('');
   const [endpointSearchValues, setEndpointSearchValues] = useState<Record<string, string>>({});
 
@@ -235,6 +236,22 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
     },
     [onSelectEndpoint],
   );
+
+  useEffect(() => {
+    if (!isAgentsEndpoint(endpoint) || agent_id || agents == null || agents.length > 0) {
+      return;
+    }
+    const fallback = mappedEndpoints.find((item) => !isAgentsEndpoint(item.value));
+    if (fallback?.value) {
+      onSelectEndpoint?.(fallback.value);
+      setSelectedValues((current) => ({
+        ...current,
+        endpoint: fallback.value,
+        model: '',
+        modelSpec: '',
+      }));
+    }
+  }, [agent_id, agents, endpoint, mappedEndpoints, onSelectEndpoint]);
 
   const handleSelectModel = useCallback(
     (endpoint: Endpoint, model: string) => {
