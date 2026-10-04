@@ -52,3 +52,4 @@ export * from './browserSecurity';
 export * from './browserExecutor';
 export * from './securityLabExecutor';
 export * from './a2a';
+export * from './a2aTransport';
