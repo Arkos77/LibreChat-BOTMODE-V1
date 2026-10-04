@@ -60,3 +60,5 @@ export * from './securityLabExecutor';
 export * from './a2a';
 export * from './a2aTransport';
 export * from './a2aReceiver';
+export * from './modelWatch';
+export * from './modelWatchRunner';
