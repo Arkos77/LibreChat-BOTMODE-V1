@@ -17,6 +17,8 @@ export interface AuthorizedResourceSignals {
   benchmarkScore?: number;
   /** Opaque host privacy class. */
   privacy?: string;
+  /** Lifecycle freshness supplied by the host/provider registry. */
+  freshness?: 'ACTIVE' | 'STALE' | 'DEPRECATED' | 'RETIRED';
 }
 
 export type ResourceExecutionMode =
@@ -159,6 +161,9 @@ function rejectCode(
   if (signals.available === false) {
     return 'UNAVAILABLE';
   }
+  if (signals.freshness === 'DEPRECATED' || signals.freshness === 'RETIRED') {
+    return 'UNAVAILABLE';
+  }
   if (
     constraints.requiredContextTokens != null &&
     (signals.contextWindow == null || signals.contextWindow < constraints.requiredContextTokens)
@@ -207,7 +212,16 @@ function deterministicOrder<T extends AuthorizedResourceCandidate>(
   candidates: ReadonlyArray<T>,
 ): T[] {
   return [...candidates].sort((left, right) => {
-    let order = compareDescending(left.signals?.qualityScore, right.signals?.qualityScore);
+    const freshnessRank = (value: AuthorizedResourceSignals['freshness']): number => {
+      if (value === 'ACTIVE') return 0;
+      if (value === 'STALE') return 1;
+      if (value === 'DEPRECATED') return 2;
+      if (value === 'RETIRED') return 3;
+      return 1;
+    };
+    let order = freshnessRank(left.signals?.freshness) - freshnessRank(right.signals?.freshness);
+    if (order !== 0) return order;
+    order = compareDescending(left.signals?.qualityScore, right.signals?.qualityScore);
     if (order !== 0) return order;
     order = compareDescending(left.signals?.oracleScore, right.signals?.oracleScore);
     if (order !== 0) return order;

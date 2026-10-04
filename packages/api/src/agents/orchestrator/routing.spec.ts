@@ -270,4 +270,20 @@ describe('routeAuthorizedModelBindings', () => {
     expect(JSON.stringify(seen)).not.toContain('DO_NOT_EXPOSE');
     expect(JSON.stringify(seen)).not.toContain('Authorization');
   });
+
+  it('rejects deprecated and retired models while preferring active over stale', async () => {
+    const result = await rankAuthorizedResources([
+      { id: 'stale', signals: { freshness: 'STALE' } },
+      { id: 'active', signals: { freshness: 'ACTIVE' } },
+      { id: 'deprecated', signals: { freshness: 'DEPRECATED' } },
+      { id: 'retired', signals: { freshness: 'RETIRED' } },
+    ]);
+
+    expect(result.selectedCandidateId).toBe('active');
+    expect(result.orderedCandidateIds).toEqual(['active', 'stale']);
+    expect(result.rejected).toEqual([
+      { candidateId: 'deprecated', code: 'UNAVAILABLE' },
+      { candidateId: 'retired', code: 'UNAVAILABLE' },
+    ]);
+  });
 });
