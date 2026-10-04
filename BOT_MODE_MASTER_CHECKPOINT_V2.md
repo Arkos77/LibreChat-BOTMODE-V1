@@ -2224,7 +2224,7 @@ Validated additions without reopening P0-P14:
 
 Commits: a3e56e8 capability evolution; 7111f5b opportunity normalization; d9b00d7 browser/security contract; cd805d1 A2A contract; 7e6ec98 China sourcing contract; 833cd8c media 3D; latest improvement feedback commit recorded immediately above.
 
-Still intentionally not declared fully implemented: authenticated 1688/Alibaba supplier connectors and supplier verification, individual external media provider live E2E/credential validation, Gemini/Anthropic/Uncensored/conditional model live E2E, fresh cross-replica/recovery proof, complete durable/independently evidenced user mission settlement, production frontend release snapshot.
+Still intentionally not declared fully implemented: authenticated 1688/Alibaba supplier verification LIVE proof, Gemini/Anthropic/Uncensored/conditional generation E2E where provider quota/credits are currently insufficient, fresh cross-replica/recovery proof, complete durable/independently evidenced user mission settlement, production frontend release snapshot.
 
 ==================================================
 
