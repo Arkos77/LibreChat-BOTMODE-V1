@@ -45,9 +45,11 @@ function Header({
 }) {
   const { data: startupConfig } = useGetStartupConfig();
   const agentsMap = useAgentsMapContext();
-  const activeAgent = conversation?.agent_id ? agentsMap?.[conversation.agent_id] : undefined;
-  const { data: directAgent } = useGetAgentByIdQuery(conversation?.agent_id, {
-    enabled: Boolean(conversation?.agent_id) && activeAgent == null,
+  const selectedAgentId = useRecoilValue(store.conversationAgentIdByIndex(0));
+  const activeAgentId = conversation?.agent_id ?? selectedAgentId;
+  const activeAgent = activeAgentId ? agentsMap?.[activeAgentId] : undefined;
+  const { data: directAgent } = useGetAgentByIdQuery(activeAgentId, {
+    enabled: Boolean(activeAgentId) && activeAgent == null,
   });
   const resolvedAgent = activeAgent ?? directAgent;
   const isBotModeAgent =
@@ -122,7 +124,7 @@ function Header({
         <div className="hidden items-center gap-2 md:flex">
           <ExportAndShareMenu isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false} />
           {hasAccessToTemporaryChat === true && <TemporaryChat />}
-          {(botMode || isBotModeAgent) && (
+          {(botMode || isBotModeAgent || (isNewChat && Boolean(activeAgentId))) && (
             <BotModeDashboardDrawer
               projectId={projectId ?? conversation?.chatProjectId}
               conversation={conversation}
