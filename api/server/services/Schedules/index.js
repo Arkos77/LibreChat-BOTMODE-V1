@@ -15,6 +15,10 @@ function getService() {
     createSchedulesService,
     observeResolvedModelCatalog,
     getActivatedCapabilityRegistry,
+    getOpportunityWatchRunner,
+    JobicyOpportunityAdapter,
+    RemotiveOpportunityAdapter,
+    discoverOpportunitySignals,
   } = require('@librechat/api');
   const { getAppConfig } = require('~/server/services/Config/app');
   const {
@@ -25,6 +29,15 @@ function getService() {
   const methods = require('~/models');
   const isUserDeleting = async (userId) => !(await methods.isAgentTriggerPrincipalActive(userId));
   const capabilityRegistry = getActivatedCapabilityRegistry();
+  const economicWatch = getOpportunityWatchRunner();
+  const economicSources = [new JobicyOpportunityAdapter(), new RemotiveOpportunityAdapter()];
+  const economicQueries = [
+    'personal shopper',
+    'concierge',
+    'procurement',
+    'purchasing',
+    'automotive',
+  ];
   service = createSchedulesService({
     methods,
     getAppConfig,
@@ -66,6 +79,30 @@ function getService() {
             return (await loadModels({ config: appConfig, user: undefined })) ?? {};
           },
         });
+
+        const economicObservations = [];
+        for (const adapter of economicSources) {
+          for (const query of economicQueries) {
+            try {
+              const signals = await discoverOpportunitySignals(adapter, { query, limit: 10 });
+              economicObservations.push(
+                ...signals.map((signal) => ({
+                  signal,
+                  checkedAt: new Date().toISOString(),
+                  sourceRef: `economic-watch:${adapter.descriptor.sourceId}:${query}`,
+                })),
+              );
+            } catch (error) {
+              console.warn(
+                `[botmode:economic-watch] ${adapter.descriptor.sourceId}/${query} failed:`,
+                error,
+              );
+            }
+          }
+        }
+        if (economicObservations.length > 0) {
+          economicWatch.run(economicObservations);
+        }
       },
     },
     resolveAgentFireAccess,

@@ -114,6 +114,18 @@ afterEach(() => jest.restoreAllMocks());
 /** Overdue past MISFIRE_GRACE_MS (15m), so the tick skips it forward instead of firing. */
 const staleAt = () => new Date(Date.now() - 20 * 60_000);
 
+describe('runTick maintenance hook', () => {
+  it('runs maintenance once when due and does not create an execution authority', async () => {
+    const schedule = makeClaimedSchedule({ nextRunAt: new Date(Date.now() - 1_000) });
+    const methods = makeMethods(schedule);
+    const maintenance = jest.fn(async () => undefined);
+    await tickOnce(
+      makeDeps(methods, { maintenance: { intervalMs: 30 * 60_000, run: maintenance } }),
+    );
+    expect(maintenance).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('runTick misfire skip-forward', () => {
   it('advances a stale occurrence to the next future one', async () => {
     const schedule = makeClaimedSchedule({ nextRunAt: staleAt() });

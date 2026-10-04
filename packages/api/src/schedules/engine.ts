@@ -403,6 +403,17 @@ export function startScheduleEngine(deps: ScheduleEngineDeps): ScheduleEngine {
    * owner's context via `runInTenantContext`.
    */
   async function runTick(): Promise<number> {
+    if (deps.maintenance) {
+      const now = Date.now();
+      if (lastMaintenanceAt === 0 || now - lastMaintenanceAt >= deps.maintenance.intervalMs) {
+        lastMaintenanceAt = now;
+        try {
+          await deps.maintenance.run();
+        } catch (maintenanceError) {
+          logger.error('[schedules] maintenance hook failed:', maintenanceError);
+        }
+      }
+    }
     // GLOBAL kill switch: stop claiming entirely. This is the operator's hard stop
     // (SCHEDULES_DISABLED, or `interface.schedules: false` in the BASE config), which
     // no principal override can widen — distinct from per-principal availability below.
@@ -575,17 +586,6 @@ export function startScheduleEngine(deps: ScheduleEngineDeps): ScheduleEngine {
       try {
         if (ticks % 4 === 0) {
           await reconcile();
-        }
-        if (deps.maintenance) {
-          const now = Date.now();
-          if (lastMaintenanceAt === 0 || now - lastMaintenanceAt >= deps.maintenance.intervalMs) {
-            lastMaintenanceAt = now;
-            try {
-              await deps.maintenance.run();
-            } catch (maintenanceError) {
-              logger.error('[schedules] maintenance hook failed:', maintenanceError);
-            }
-          }
         }
         ticks += 1;
         await runTick();
