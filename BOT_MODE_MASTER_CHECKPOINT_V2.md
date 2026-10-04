@@ -2265,3 +2265,38 @@ Implemented without reopening P0-P14:
 Still not falsely declared complete: real external Browser executor, real Security Lab runner, real A2A transport, supplier/platform adapters, autonomous capability-discovery loop, full skill evolution feedback-to-publication loop, additional media provider bindings, conditional LLM E2E where credits are unavailable, independently durable evidence for this specific user mission settlement, final production release snapshot.
 
 ==================================================
+
+==================================================
+RECONCILIATION — 4 OCTOBRE 2026 — POST-P14 / UI + REGRESSION
+==================================================
+
+Current HEAD: d57df14 (`fix(botmode): show mission button on new agent chat`).
+Working tree tracked files: CLEAN. Pre-existing untracked temporary/vendor artifacts remain intentionally unstaged.
+
+Fresh evidence executed on 4 Oct 2026:
+- orchestrator planner/native/Oracle/synthesis targeted campaign: 31/31 PASS;
+- memory + persisted memory + memory knowledge + opportunity HTTP/source/action/bridge/dispatch campaign: 37/37 PASS;
+- capability evolution + skill evolution + browser security + security lab + A2A + media campaign: 45/46 PASS;
+- the single failure is `browserExecutor.spec.ts`: real browser OPEN/CLICK exceeded the 30s Jest timeout;
+- Chromium Playwright 1243 binary exists and launches directly in under 2s; no artificial timeout increase and no PASS inference were made;
+- API build after regression campaign: PASS;
+- P13 UI targeted test remains 2/2 PASS and client production build remains PASS.
+
+Frontend/UI status:
+- mission dashboard redesign, mission drawer, Summary toggle and Sources UI are implemented and committed;
+- visual/browser UX validation is intentionally deferred to the dedicated final UI pass;
+- no P0-P14 phase is reopened by these UI changes.
+
+Mission settlement status:
+- planner/native/Oracle contracts remain PASS;
+- the historical user mission terminal SETTLED remains unproven and is not inferred from result text;
+- authenticated browser launch remains a human/environment validation when an authenticated local LibreChat session is available.
+
+Next work order:
+1. isolate/fix or explicitly classify the browser executor harness timeout;
+2. complete remaining post-P14 regression/build gates;
+3. validate external capability/provider items where credentials and quota permit;
+4. perform the dedicated final visual UI pass;
+5. perform clean-machine reproducibility/release verification without reopening P0-P14.
+
+==================================================
