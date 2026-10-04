@@ -1,5 +1,6 @@
 import { v4 } from 'uuid';
 import { Button } from '@librechat/client';
+import { CheckCircle2, CircleDashed, ListTree, Radio, Wallet } from 'lucide-react';
 import type { ParentSubagentSummary, TConversation } from 'librechat-data-provider';
 import {
   useBotModeProjectProjectionQuery,
@@ -113,6 +114,17 @@ export default function BotModeProjectPanel({
     projection?.conversations.flatMap((conversation) =>
       conversation.plans.map((entry) => entry.plan),
     ) ?? [];
+  const tasks = plans.flatMap((plan) => plan.tasks);
+  const oracleObservations = evidence.filter(({ observation }) => observation.source === 'oracle');
+  const verifiedObservations = oracleObservations.filter(({ observation }) => observation.type === 'VERIFIED');
+  const hasRejectedOracle = oracleObservations.some(({ observation }) => observation.type === 'REJECTED');
+  const missionState = plans.length === 0
+    ? 'idle'
+    : hasRejectedOracle
+      ? 'attention'
+      : verifiedObservations.length > 0
+        ? 'verified'
+        : 'running';
 
   if (projectConversations.length === 0) {
     return null;
@@ -124,10 +136,26 @@ export default function BotModeProjectPanel({
         <h2 className="text-sm font-medium text-text-primary">
           {localize('com_ui_bot_mode_project_activity')}
         </h2>
+        <span className="text-xs text-text-secondary">{missionState}</span>
       </div>
-      {projection?.totals.costKnown && (
-        <div className="mb-3 text-sm text-text-secondary">${projection.totals.cost.toFixed(2)}</div>
-      )}
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="rounded-xl border border-border-light bg-surface-secondary/60 p-2.5">
+          <div className="flex items-center gap-1.5 text-xs text-text-secondary"><Wallet className="h-3.5 w-3.5" aria-hidden="true" />Cost</div>
+          <div className="mt-1 text-sm font-medium text-text-primary">{projection?.totals.costKnown ? `$${projection.totals.cost.toFixed(2)}` : '—'}</div>
+        </div>
+        <div className="rounded-xl border border-border-light bg-surface-secondary/60 p-2.5">
+          <div className="flex items-center gap-1.5 text-xs text-text-secondary"><ListTree className="h-3.5 w-3.5" aria-hidden="true" />Plans</div>
+          <div className="mt-1 text-sm font-medium text-text-primary">{plans.length}</div>
+        </div>
+        <div className="rounded-xl border border-border-light bg-surface-secondary/60 p-2.5">
+          <div className="flex items-center gap-1.5 text-xs text-text-secondary"><CircleDashed className="h-3.5 w-3.5" aria-hidden="true" />Tasks</div>
+          <div className="mt-1 text-sm font-medium text-text-primary">{tasks.length}</div>
+        </div>
+        <div className="rounded-xl border border-border-light bg-surface-secondary/60 p-2.5">
+          <div className="flex items-center gap-1.5 text-xs text-text-secondary"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />Oracle</div>
+          <div className="mt-1 text-sm font-medium text-text-primary">{verifiedObservations.length}</div>
+        </div>
+      </div>
       {plans.length > 0 && (
         <div className="mb-3 space-y-2">
           {plans.map((plan, planIndex) => (
@@ -157,40 +185,13 @@ export default function BotModeProjectPanel({
         </div>
       )}
       {evidence.length > 0 && (
-        <div className="mb-3 space-y-1 text-xs text-text-secondary">
-          {evidence.map(({ traceId, observation }, index) => (
-            <div key={`${traceId}:${observation.traceEventId ?? index}`}>
-              <span>{observation.type}</span> <span>{traceId}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      {projection?.memories?.length > 0 && (
         <section className="mb-3 rounded-xl border border-border-light bg-surface-secondary/60 p-3">
-          <div className="mb-2 text-sm font-medium text-text-primary">
-            {localize('com_ui_bot_mode_project_memory')}
-          </div>
+          <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-text-primary"><Radio className="h-4 w-4" aria-hidden="true" />Evidence</div>
           <div className="space-y-1 text-xs text-text-secondary">
-            {projection.memories.map((memory) => (
-              <div key={memory.id ?? memory.key}>
-                <span className="font-medium text-text-primary">{memory.key}</span>: {memory.value}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-      {projection?.sources?.length > 0 && (
-        <section className="mb-3 rounded-xl border border-border-light bg-surface-secondary/60 p-3">
-          <div className="mb-2 text-sm font-medium text-text-primary">
-            {localize('com_ui_bot_mode_project_sources')}
-          </div>
-          <div className="space-y-1 text-xs text-text-secondary">
-            {projection.sources.map((source) => (
-              <div key={source.fileId} className="flex items-center justify-between gap-3">
-                <span className="min-w-0 truncate text-text-primary">
-                  {source.filename ?? source.fileId}
-                </span>
-                <span className="shrink-0">{source.type ?? ''}</span>
+            {evidence.slice(-8).map(({ traceId, observation }, index) => (
+              <div key={`${traceId}:${observation.traceEventId ?? index}`} className="flex items-center justify-between gap-3">
+                <span>{observation.type ?? 'EVENT'}</span>
+                <span className="truncate text-right">{traceId}</span>
               </div>
             ))}
           </div>

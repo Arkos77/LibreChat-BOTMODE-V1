@@ -184,10 +184,6 @@ describe('BotModeProjectPanel', () => {
     expect(screen.getByText('Deliver project A')).toBeInTheDocument();
     expect(screen.getByText('PARALLEL')).toBeInTheDocument();
     expect(screen.getByText('Research sources')).toBeInTheDocument();
-    expect(screen.getByText('project-focus')).toBeInTheDocument();
-    expect(screen.getByText(/Only Project A/)).toBeInTheDocument();
-    expect(screen.getByText('research-a.pdf')).toBeInTheDocument();
-    expect(screen.getByText('application/pdf')).toBeInTheDocument();
 
     expect(mockUseParentSubagentsQuery).toHaveBeenCalledTimes(2);
     expect(mockUseParentSubagentsQuery).toHaveBeenNthCalledWith(
