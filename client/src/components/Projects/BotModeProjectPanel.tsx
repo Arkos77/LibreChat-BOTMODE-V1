@@ -154,19 +154,19 @@ export default function BotModeProjectPanel({
       )}
       <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <div className="rounded-xl border border-border-light bg-surface-secondary/60 p-2.5">
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary"><Wallet className="h-3.5 w-3.5" aria-hidden="true" />Cost</div>
+          <div className="flex items-center gap-1.5 text-xs text-text-secondary"><Wallet className="h-3.5 w-3.5" aria-hidden="true" />{localize('com_ui_bot_mode_project_cost')}</div>
           <div className="mt-1 text-sm font-medium text-text-primary">{projection?.totals.costKnown ? `$${projection.totals.cost.toFixed(2)}` : '—'}</div>
         </div>
         <div className="rounded-xl border border-border-light bg-surface-secondary/60 p-2.5">
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary"><ListTree className="h-3.5 w-3.5" aria-hidden="true" />Plans</div>
+          <div className="flex items-center gap-1.5 text-xs text-text-secondary"><ListTree className="h-3.5 w-3.5" aria-hidden="true" />{localize('com_ui_bot_mode_project_plans')}</div>
           <div className="mt-1 text-sm font-medium text-text-primary">{plans.length}</div>
         </div>
         <div className="rounded-xl border border-border-light bg-surface-secondary/60 p-2.5">
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary"><CircleDashed className="h-3.5 w-3.5" aria-hidden="true" />Tasks</div>
+          <div className="flex items-center gap-1.5 text-xs text-text-secondary"><CircleDashed className="h-3.5 w-3.5" aria-hidden="true" />{localize('com_ui_bot_mode_project_tasks')}</div>
           <div className="mt-1 text-sm font-medium text-text-primary">{tasks.length}</div>
         </div>
         <div className="rounded-xl border border-border-light bg-surface-secondary/60 p-2.5">
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />Oracle</div>
+          <div className="flex items-center gap-1.5 text-xs text-text-secondary"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />{localize('com_ui_bot_mode_project_oracle')}</div>
           <div className="mt-1 text-sm font-medium text-text-primary">{verifiedObservations.length}</div>
         </div>
       </div>
@@ -200,7 +200,7 @@ export default function BotModeProjectPanel({
       )}
       {evidence.length > 0 && (
         <section className="mb-3 rounded-xl border border-border-light bg-surface-secondary/60 p-3">
-          <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-text-primary"><Radio className="h-4 w-4" aria-hidden="true" />Evidence</div>
+          <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-text-primary"><Radio className="h-4 w-4" aria-hidden="true" />{localize('com_ui_bot_mode_project_evidence')}</div>
           <div className="space-y-1 text-xs text-text-secondary">
             {evidence.slice(-8).map(({ traceId, observation }, index) => (
               <div key={`${traceId}:${observation.traceEventId ?? index}`} className="flex items-center justify-between gap-3">
