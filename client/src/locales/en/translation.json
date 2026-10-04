@@ -2615,5 +2615,12 @@
   "com_ui_bot_mode_project_launch": "Launch BOT MODE mission",
   "com_ui_bot_mode_dashboard_open": "Open BOT MODE dashboard",
   "com_ui_bot_mode_dashboard_title": "BOT MODE Mission Center",
-  "com_ui_bot_mode_dashboard_subtitle": "Follow the current mission"
+  "com_ui_bot_mode_dashboard_subtitle": "Follow the current mission",
+  "com_ui_bot_mode_dashboard_summary": "Summary",
+  "com_ui_bot_mode_dashboard_summary_hint": "State, progress and key indicators",
+  "com_ui_bot_mode_dashboard_sources": "Sources",
+  "com_ui_bot_mode_dashboard_sources_hint": "Documents available to the mission",
+  "com_ui_bot_mode_dashboard_add_source": "Add",
+  "com_ui_bot_mode_dashboard_no_sources": "No sources added",
+  "com_ui_bot_mode_dashboard_source_ready": "Available to the conversation context"
 }

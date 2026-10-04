@@ -107,10 +107,12 @@ export default function BotModeProjectPanel({
   projectId,
   conversations,
   compact = false,
+  showSummary = true,
 }: {
   projectId: string;
   conversations: TConversation[];
   compact?: boolean;
+  showSummary?: boolean;
 }) {
   const localize = useLocalize();
   const navigate = useNavigate();
@@ -195,75 +197,77 @@ export default function BotModeProjectPanel({
       className={compact ? 'space-y-3' : 'mt-8 space-y-4'}
       aria-label={localize('com_ui_bot_mode_project_activity')}
     >
-      <div
-        className={
-          compact
-            ? 'rounded-xl border border-border-light bg-surface-secondary/50 p-3'
-            : 'rounded-2xl border border-border-light bg-surface-secondary/50 p-4 md:p-5'
-        }
-      >
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0">
-            {!compact && (
-              <div className="mb-1 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-text-secondary">
-                <Activity className="h-3.5 w-3.5" aria-hidden="true" />
-                {localize('com_ui_bot_mode_project_activity')}
-              </div>
-            )}
-            <div className="flex flex-wrap items-center gap-2">
-              <h2
-                className={
-                  compact
-                    ? 'text-base font-semibold tracking-tight text-text-primary'
-                    : 'text-lg font-semibold tracking-tight text-text-primary'
-                }
-              >
-                {localize(`com_ui_bot_mode_project_state_${missionState}`)}
-              </h2>
-              <span
-                className="rounded-full border border-border-light bg-surface-secondary px-2 py-0.5 text-xs font-medium text-text-secondary"
-                data-testid="bot-mode-project-state"
-              >
-                {progressStep}/{MTO_STEPS.length}
-              </span>
-            </div>
-            <p className="mt-1 text-sm text-text-secondary">
-              {localize('com_ui_bot_mode_project_mission_progress', {
-                step: latestMtoType ?? '—',
-              })}
-            </p>
-          </div>
-          <Button type="button" size="sm" disabled={!primaryAgent?.id} onClick={launchMission}>
-            {localize('com_ui_bot_mode_project_launch')}
-          </Button>
-        </div>
-
-        <div className="mt-5 grid grid-cols-6 gap-1.5" aria-label="Mission progress">
-          {MTO_STEPS.map((step, index) => {
-            const isComplete = index < progressStep;
-            const isCurrent = index === progressStep - 1 && !hasSettled;
-            return (
-              <div key={step} className="min-w-0">
-                <div className="flex items-center">
-                  <div
-                    className={`h-1.5 w-full rounded-full ${
-                      isComplete ? 'bg-text-primary' : 'bg-surface-tertiary'
-                    }`}
-                    aria-hidden="true"
-                  />
+      {showSummary && (
+        <div
+          className={
+            compact
+              ? 'rounded-xl border border-border-light bg-surface-secondary/50 p-3'
+              : 'rounded-2xl border border-border-light bg-surface-secondary/50 p-4 md:p-5'
+          }
+        >
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div className="min-w-0">
+              {!compact && (
+                <div className="mb-1 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-text-secondary">
+                  <Activity className="h-3.5 w-3.5" aria-hidden="true" />
+                  {localize('com_ui_bot_mode_project_activity')}
                 </div>
-                <div
-                  className={`mt-1 truncate text-[10px] font-medium uppercase tracking-wide ${
-                    isCurrent ? 'text-text-primary' : 'text-text-tertiary'
-                  }`}
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <h2
+                  className={
+                    compact
+                      ? 'text-base font-semibold tracking-tight text-text-primary'
+                      : 'text-lg font-semibold tracking-tight text-text-primary'
+                  }
                 >
-                  {step}
-                </div>
+                  {localize(`com_ui_bot_mode_project_state_${missionState}`)}
+                </h2>
+                <span
+                  className="rounded-full border border-border-light bg-surface-secondary px-2 py-0.5 text-xs font-medium text-text-secondary"
+                  data-testid="bot-mode-project-state"
+                >
+                  {progressStep}/{MTO_STEPS.length}
+                </span>
               </div>
-            );
-          })}
+              <p className="mt-1 text-sm text-text-secondary">
+                {localize('com_ui_bot_mode_project_mission_progress', {
+                  step: latestMtoType ?? '—',
+                })}
+              </p>
+            </div>
+            <Button type="button" size="sm" disabled={!primaryAgent?.id} onClick={launchMission}>
+              {localize('com_ui_bot_mode_project_launch')}
+            </Button>
+          </div>
+
+          <div className="mt-5 grid grid-cols-6 gap-1.5" aria-label="Mission progress">
+            {MTO_STEPS.map((step, index) => {
+              const isComplete = index < progressStep;
+              const isCurrent = index === progressStep - 1 && !hasSettled;
+              return (
+                <div key={step} className="min-w-0">
+                  <div className="flex items-center">
+                    <div
+                      className={`h-1.5 w-full rounded-full ${
+                        isComplete ? 'bg-text-primary' : 'bg-surface-tertiary'
+                      }`}
+                      aria-hidden="true"
+                    />
+                  </div>
+                  <div
+                    className={`mt-1 truncate text-[10px] font-medium uppercase tracking-wide ${
+                      isCurrent ? 'text-text-primary' : 'text-text-tertiary'
+                    }`}
+                  >
+                    {step}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {isProjectionLoading && (
         <div
@@ -282,44 +286,46 @@ export default function BotModeProjectPanel({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <div className="rounded-xl border border-border-light bg-surface-secondary/40 p-3">
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary">
-            <Wallet className="h-3.5 w-3.5" aria-hidden="true" />
-            {localize('com_ui_bot_mode_project_cost')}
+      {showSummary && (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="rounded-xl border border-border-light bg-surface-secondary/40 p-3">
+            <div className="flex items-center gap-1.5 text-xs text-text-secondary">
+              <Wallet className="h-3.5 w-3.5" aria-hidden="true" />
+              {localize('com_ui_bot_mode_project_cost')}
+            </div>
+            <div className="mt-1 text-lg font-semibold tabular-nums text-text-primary">
+              {projection?.totals.costKnown ? `$${projection.totals.cost.toFixed(2)}` : '—'}
+            </div>
           </div>
-          <div className="mt-1 text-lg font-semibold tabular-nums text-text-primary">
-            {projection?.totals.costKnown ? `$${projection.totals.cost.toFixed(2)}` : '—'}
+          <div className="rounded-xl border border-border-light bg-surface-secondary/40 p-3">
+            <div className="flex items-center gap-1.5 text-xs text-text-secondary">
+              <ListTree className="h-3.5 w-3.5" aria-hidden="true" />
+              {localize('com_ui_bot_mode_project_plans')}
+            </div>
+            <div className="mt-1 text-lg font-semibold tabular-nums text-text-primary">
+              {plans.length}
+            </div>
+          </div>
+          <div className="rounded-xl border border-border-light bg-surface-secondary/40 p-3">
+            <div className="flex items-center gap-1.5 text-xs text-text-secondary">
+              <CircleDashed className="h-3.5 w-3.5" aria-hidden="true" />
+              {localize('com_ui_bot_mode_project_tasks')}
+            </div>
+            <div className="mt-1 text-lg font-semibold tabular-nums text-text-primary">
+              {tasks.length}
+            </div>
+          </div>
+          <div className="rounded-xl border border-border-light bg-surface-secondary/40 p-3">
+            <div className="flex items-center gap-1.5 text-xs text-text-secondary">
+              <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+              {localize('com_ui_bot_mode_project_oracle')}
+            </div>
+            <div className="mt-1 text-lg font-semibold tabular-nums text-text-primary">
+              {verifiedObservations.length}
+            </div>
           </div>
         </div>
-        <div className="rounded-xl border border-border-light bg-surface-secondary/40 p-3">
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary">
-            <ListTree className="h-3.5 w-3.5" aria-hidden="true" />
-            {localize('com_ui_bot_mode_project_plans')}
-          </div>
-          <div className="mt-1 text-lg font-semibold tabular-nums text-text-primary">
-            {plans.length}
-          </div>
-        </div>
-        <div className="rounded-xl border border-border-light bg-surface-secondary/40 p-3">
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary">
-            <CircleDashed className="h-3.5 w-3.5" aria-hidden="true" />
-            {localize('com_ui_bot_mode_project_tasks')}
-          </div>
-          <div className="mt-1 text-lg font-semibold tabular-nums text-text-primary">
-            {tasks.length}
-          </div>
-        </div>
-        <div className="rounded-xl border border-border-light bg-surface-secondary/40 p-3">
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary">
-            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-            {localize('com_ui_bot_mode_project_oracle')}
-          </div>
-          <div className="mt-1 text-lg font-semibold tabular-nums text-text-primary">
-            {verifiedObservations.length}
-          </div>
-        </div>
-      </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.6fr)]">
         <section className="rounded-2xl border border-border-light bg-surface-secondary/30 p-4">

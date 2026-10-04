@@ -432,6 +432,13 @@ export type TBotModeProjectPlanEntry = {
   plan: TBotModeProjectPlan;
 };
 
+export type TBotModeProjectSource = {
+  fileId?: string;
+  filename?: string;
+  type?: string;
+  size?: number;
+};
+
 export type TBotModeProjectConversation = {
   conversationId: string;
   usage: TBotModeProjectUsage;
@@ -442,6 +449,13 @@ export type TBotModeProjectConversation = {
 export type TBotModeProjectProjection = {
   projectId: string;
   conversations: TBotModeProjectConversation[];
+  memories?: Array<{
+    id?: string;
+    key?: string;
+    value?: unknown;
+    updatedAt?: string | null;
+  }>;
+  sources: TBotModeProjectSource[];
   totals: TBotModeProjectUsage;
   nextCursor: string | null;
 };

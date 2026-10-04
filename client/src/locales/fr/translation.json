@@ -1539,5 +1539,12 @@
   "com_ui_bot_mode_project_launch": "Lancer une mission BOT MODE",
   "com_ui_bot_mode_dashboard_open": "Ouvrir le dashboard BOT MODE",
   "com_ui_bot_mode_dashboard_title": "Centre de mission BOT MODE",
-  "com_ui_bot_mode_dashboard_subtitle": "Suivi de la mission en cours"
+  "com_ui_bot_mode_dashboard_subtitle": "Suivi de la mission en cours",
+  "com_ui_bot_mode_dashboard_summary": "Résumé",
+  "com_ui_bot_mode_dashboard_summary_hint": "État, progression et indicateurs essentiels",
+  "com_ui_bot_mode_dashboard_sources": "Sources",
+  "com_ui_bot_mode_dashboard_sources_hint": "Documents disponibles pour la mission",
+  "com_ui_bot_mode_dashboard_add_source": "Ajouter",
+  "com_ui_bot_mode_dashboard_no_sources": "Aucune source ajoutée",
+  "com_ui_bot_mode_dashboard_source_ready": "Disponible pour le contexte de conversation"
 }
