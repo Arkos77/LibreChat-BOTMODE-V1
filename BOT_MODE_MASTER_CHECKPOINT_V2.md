@@ -2184,8 +2184,14 @@ remain visible as choices but are not treated as active on an unfunded account.
 No censorship bypass is made an authority; these are ordinary model profiles
 subject to the same Policy/Auth, budget, safety, provenance and task controls.
 
-Provider configuration : OpenRouter custom endpoint now lists the three concrete
-models plus openrouter/free. `free` remains the generic provider selector.
+Provider configuration : OpenRouter custom endpoint now lists the concrete models
+`openrouter/free`, `nvidia/nemotron-3-ultra-550b-a55b:free`,
+`nvidia/nemotron-3-super-120b-a12b:free`,
+`cognitivecomputations/dolphin-mistral-24b-venice-edition` and
+`thedrummer/cydonia-24b-v4.1`. `free` remains the generic provider selector.
+
+Post-release configuration fix : `7a90c99` adds Nemotron Super to the OpenRouter
+model list. No P0-P14 phase was reopened.
 
 Validation :
 - model profile suite : 3/3 PASS
@@ -2209,7 +2215,7 @@ Validated additions without reopening P0-P14:
 
 Commits: a3e56e8 capability evolution; 7111f5b opportunity normalization; d9b00d7 browser/security contract; cd805d1 A2A contract; 7e6ec98 China sourcing contract; 833cd8c media 3D; latest improvement feedback commit recorded immediately above.
 
-Still intentionally not declared fully implemented: Capability Evolution autonomous discovery/evaluation loop, Opportunity source adapters/feedback-to-execution, real browser executor, Security Lab runner, A2A transport adapter, full China supplier connectors, full multi-engine media providers, autonomous Skill Evolution loop, Gemini/Anthropic/Uncensored/conditional model live E2E, fresh cross-replica/recovery proof, complete user mission E2E, production frontend release snapshot.
+Still intentionally not declared fully implemented: Capability Evolution autonomous discovery/evaluation loop, Opportunity source adapters/feedback-to-execution, real browser executor, Security Lab runner, A2A transport adapter, full China supplier connectors, full multi-engine media providers, autonomous Skill Evolution loop, Gemini/Anthropic/Uncensored/conditional model live E2E, fresh cross-replica/recovery proof, complete durable/independently evidenced user mission settlement, production frontend release snapshot.
 
 ==================================================
 
@@ -2232,6 +2238,18 @@ Backend extension commits since final-core lineage remain: a3e56e8 capability ev
 
 Cross-replica final verification: Redis 7.4 temporary instance + subagentCrossReplica.integration.spec.ts 1/1 PASS; temporary container removed after proof.
 
-Still not falsely declared complete: real external Browser executor, real Security Lab runner, real A2A transport, supplier/platform adapters, autonomous capability-discovery loop, full skill evolution feedback-to-publication loop, additional media provider bindings, conditional LLM E2E where credits are unavailable, complete user mission E2E, final production release snapshot.
+Mission E2E user trigger — 4 OCTOBRE 2026
+
+Implemented without reopening P0-P14:
+- BOT MODE Project UI exposes a mission launcher on empty and populated projects.
+- Launcher reuses the native LibreChat conversation path with the selected authorized agent; no parallel agent-chat route or second Task Engine was introduced.
+- Native payload carries `orchestratorMission`; backend `request.js` validates the worker agentId, invokes the deterministic planner, and hands the plan to the existing native runtime.
+- Real user launch observed with missionId `botmode-4e6f5385-522b-4716-87ae-c227e558d460` and taskId `4e6f5385-522b-4716-87ae-c227e558d460/main`; a verifiable result was returned by the BOT MODE worker.
+- Supporting fresh proofs: UI test 1/1 PASS; controller mission/Oracle/metadata suite 362/362 PASS; planner/native/Oracle/synthesis suite 45/45 PASS; live graph-subagent 1/1 PASS; frontend typecheck PASS; targeted ESLint PASS; production build PASS.
+- Mission result text itself is not treated as durable evidence; its synthetic timestamp was explicitly rejected as proof.
+- Direct durable Mongo verification of this specific mission remains pending because the Desktop Commander content-search path cannot read the Mongo WiredTiger volume due to filesystem permissions. No permissions were changed and no database bypass was introduced.
+- Commits: `a48ea4b` mission launcher + native submission integration; `c1fff75` launcher visible on empty project.
+
+Still not falsely declared complete: real external Browser executor, real Security Lab runner, real A2A transport, supplier/platform adapters, autonomous capability-discovery loop, full skill evolution feedback-to-publication loop, additional media provider bindings, conditional LLM E2E where credits are unavailable, independently durable evidence for this specific user mission settlement, final production release snapshot.
 
 ==================================================
