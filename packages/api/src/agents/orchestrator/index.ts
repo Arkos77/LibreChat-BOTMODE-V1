@@ -49,4 +49,5 @@ export * from './capabilityEvaluation';
 export * from './capabilityEvolution';
 export * from './improvementFeedback';
 export * from './browserSecurity';
+export * from './browserExecutor';
 export * from './a2a';
