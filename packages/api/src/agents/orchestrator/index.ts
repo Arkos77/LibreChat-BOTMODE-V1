@@ -40,6 +40,7 @@ export * from './synthesisReadiness';
 
 export * from './missionOracle';
 export * from './mediaGeneration';
+export * from './mediaProviderBindings';
 export * from './youtubeProduction';
 export * from './capabilityRegistryRouting';
 export * from './controlPlane';
