@@ -22,7 +22,7 @@
     "custom": [
       {
         "name": "HuggingFace",
-        "apiKey": "\u0024{HUGGINGFACE_TOKEN}",
+        "apiKey": "user_provided",
         "baseURL": "https://router.huggingface.co/v1",
         "models": {
           "fetch": true
@@ -32,18 +32,73 @@
       },
       {
         "name": "DeepSeek",
-        "apiKey": "\u0024{DEEPSEEK_API_KEY}",
+        "apiKey": "user_provided",
         "baseURL": "https://api.deepseek.com",
         "models": {
-          "default": [
-            "deepseek-flash",
-            "deepseek-v4-pro"
-          ],
-          "fetch": false
+          "fetch": true
         },
         "titleConvo": true,
-        "titleModel": "deepseek-flash",
         "modelDisplayLabel": "DeepSeek"
+      },
+      {
+        "name": "Gemini",
+        "apiKey": "${GEMINI_API_KEY}",
+        "baseURL": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "models": {
+          "fetch": true
+        },
+        "titleConvo": true,
+        "modelDisplayLabel": "Gemini"
+      },
+      {
+        "name": "Mistral",
+        "apiKey": "user_provided",
+        "baseURL": "https://api.mistral.ai/v1",
+        "models": {
+          "fetch": true
+        },
+        "titleConvo": true,
+        "modelDisplayLabel": "Mistral"
+      },
+      {
+        "name": "Qwen",
+        "apiKey": "user_provided",
+        "baseURL": "user_provided",
+        "models": {
+          "fetch": true
+        },
+        "titleConvo": true,
+        "modelDisplayLabel": "Qwen"
+      },
+      {
+        "name": "GLM",
+        "apiKey": "user_provided",
+        "baseURL": "user_provided",
+        "models": {
+          "fetch": true
+        },
+        "titleConvo": true,
+        "modelDisplayLabel": "GLM"
+      },
+      {
+        "name": "MiniMax",
+        "apiKey": "user_provided",
+        "baseURL": "user_provided",
+        "models": {
+          "fetch": true
+        },
+        "titleConvo": true,
+        "modelDisplayLabel": "MiniMax"
+      },
+      {
+        "name": "Ollama",
+        "apiKey": "user_provided",
+        "baseURL": "http://localhost:11434/v1",
+        "models": {
+          "fetch": true
+        },
+        "titleConvo": true,
+        "modelDisplayLabel": "Ollama"
       },
       {
         "name": "OpenRouter",
