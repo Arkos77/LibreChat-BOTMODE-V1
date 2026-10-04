@@ -152,10 +152,6 @@ export default function BotModeProjectPanel({
     navigate(`/c/new?${params.toString()}`);
   };
 
-  if (projectConversations.length === 0) {
-    return null;
-  }
-
   return (
     <section className="mt-8" aria-label={localize('com_ui_bot_mode_project_activity')}>
       <div className="mb-3 flex items-center justify-between gap-3">
