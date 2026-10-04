@@ -85,4 +85,6 @@ export * from './queuedTurnHttp';
 export * from './opportunity';
 export * from './chinaSourcing';
 export * from './opportunitySources';
+export * from './opportunityHttp';
+export * from './jobicyOpportunityAdapter';
 export * from './extensions';
