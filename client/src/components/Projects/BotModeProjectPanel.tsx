@@ -100,7 +100,11 @@ export default function BotModeProjectPanel({
   conversations: TConversation[];
 }) {
   const localize = useLocalize();
-  const { data: projection } = useBotModeProjectProjectionQuery(projectId, {
+  const {
+    data: projection,
+    isLoading: isProjectionLoading,
+    isError: isProjectionError,
+  } = useBotModeProjectProjectionQuery(projectId, {
     enabled: projectId !== '',
   });
   const projectConversations = conversations.filter((conversation) => conversation.conversationId);
@@ -138,6 +142,16 @@ export default function BotModeProjectPanel({
         </h2>
         <span className="text-xs text-text-secondary">{missionState}</span>
       </div>
+      {isProjectionLoading && (
+        <div className="mb-3 rounded-xl border border-border-light bg-surface-secondary/60 p-3 text-xs text-text-secondary" role="status">
+          {localize('com_ui_bot_mode_project_loading')}
+        </div>
+      )}
+      {isProjectionError && (
+        <div className="mb-3 rounded-xl border border-border-light bg-surface-secondary/60 p-3 text-xs text-text-secondary" role="alert">
+          {localize('com_ui_bot_mode_project_error')}
+        </div>
+      )}
       <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <div className="rounded-xl border border-border-light bg-surface-secondary/60 p-2.5">
           <div className="flex items-center gap-1.5 text-xs text-text-secondary"><Wallet className="h-3.5 w-3.5" aria-hidden="true" />Cost</div>
