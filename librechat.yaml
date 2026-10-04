@@ -21,6 +21,31 @@
     },
     "custom": [
       {
+        "name": "HuggingFace",
+        "apiKey": "\u0024{HUGGINGFACE_TOKEN}",
+        "baseURL": "https://router.huggingface.co/v1",
+        "models": {
+          "fetch": true
+        },
+        "titleConvo": true,
+        "modelDisplayLabel": "Hugging Face"
+      },
+      {
+        "name": "DeepSeek",
+        "apiKey": "\u0024{DEEPSEEK_API_KEY}",
+        "baseURL": "https://api.deepseek.com",
+        "models": {
+          "default": [
+            "deepseek-flash",
+            "deepseek-v4-pro"
+          ],
+          "fetch": false
+        },
+        "titleConvo": true,
+        "titleModel": "deepseek-flash",
+        "modelDisplayLabel": "DeepSeek"
+      },
+      {
         "name": "OpenRouter",
         "apiKey": "${OPENROUTER_KEY}",
         "baseURL": "https://openrouter.ai/api/v1",
@@ -32,7 +57,7 @@
             "cognitivecomputations/dolphin-mistral-24b-venice-edition",
             "thedrummer/cydonia-24b-v4.1"
           ],
-          "fetch": false
+          "fetch": true
         },
         "titleConvo": false,
         "dropParams": [
@@ -68,7 +93,7 @@
       "advancedMode": false,
       "speechToText": true,
       "textToSpeech": {
-        "engineTTS": "external",
+        "engineTTS": "browser",
         "voice": "CwhRBWXzGAHq8TQ4Fs17",
         "automaticPlayback": false,
         "playbackRate": 1.0,

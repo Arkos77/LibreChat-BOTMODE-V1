@@ -118,6 +118,23 @@ describe('useSpeechSettingsInit', () => {
     });
   });
 
+  it('overrides a saved external TTS engine when the server default is browser', async () => {
+    localStorage.setItem('engineTTS', JSON.stringify('external'));
+    mockUseGetCustomConfigSpeechQuery.mockReturnValue({
+      data: {
+        sttExternal: false,
+        ttsExternal: true,
+        engineTTS: 'browser',
+      },
+      isFetched: true,
+    });
+
+    const { result } = renderHook(() => useSpeechSettingsHarness(), { wrapper });
+
+    await waitFor(() => expect(result.current.engineTTS).toBe('browser'));
+    expect(localStorage.getItem('engineTTS')).toBe(JSON.stringify('browser'));
+  });
+
   it.each([
     ['loading', { data: undefined, isFetched: false, isError: false }, false],
     ['error', { data: undefined, isFetched: true, isError: true }, true],

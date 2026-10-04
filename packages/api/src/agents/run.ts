@@ -1734,8 +1734,15 @@ export async function createRun({
 
     const toolInstructions = joinInstructionMap(agent.toolContextMap);
     const dynamicToolInstructions = joinInstructionMap(agent.dynamicToolContextMap);
+    const isBotModeAgent = agent?.metadata?.botmode === true || agent?.name === 'BOT MODE Worker';
+    const botModeLanguageInstruction = isBotModeAgent
+      ? 'Réponds toujours en français, sauf demande explicite de l’utilisateur dans une autre langue. Tous les intitulés, résumés et textes destinés à l’utilisateur doivent être en français.'
+      : '';
 
-    const systemContent = [toolInstructions, agent.instructions ?? ''].join('\n').trim();
+    const systemContent = [toolInstructions, agent.instructions ?? '', botModeLanguageInstruction]
+      .filter(Boolean)
+      .join('\n')
+      .trim();
 
     const additionalInstructions = [dynamicToolInstructions, agent.additional_instructions ?? '']
       .join('\n')

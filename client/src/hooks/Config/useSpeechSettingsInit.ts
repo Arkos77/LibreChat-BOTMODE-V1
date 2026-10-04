@@ -79,7 +79,11 @@ export default function useSpeechSettingsInit(isAuthenticated: boolean) {
     if (sttExternalUnavailable && configuredEngineSTT === STTEndpoints.external) {
       setEngineSTT(STTEndpoints.browser);
     }
-    if (ttsExternalUnavailable && configuredEngineTTS === TTSEndpoints.external) {
+    if (
+      (ttsExternalUnavailable && configuredEngineTTS === TTSEndpoints.external) ||
+      (data?.engineTTS === TTSEndpoints.browser && configuredEngineTTS !== TTSEndpoints.browser)
+    ) {
+      localStorage.removeItem('engineTTS');
       setEngineTTS(TTSEndpoints.browser);
     }
 
