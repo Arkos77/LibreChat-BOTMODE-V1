@@ -1,3 +1,28 @@
+export const ECONOMIC_OPPORTUNITY_CATEGORIES = [
+  'setter',
+  'sales',
+  'personal-shopper',
+  'concierge',
+  'procurement',
+  'real-estate-search',
+  'automotive-asset-management',
+  'jobs',
+  'product-testing',
+  'hosting',
+  'api-discovery',
+] as const;
+
+export type EconomicOpportunityCategory = (typeof ECONOMIC_OPPORTUNITY_CATEGORIES)[number];
+
+export interface OpportunityCommercialProfile {
+  category: EconomicOpportunityCategory;
+  compensationModel?: 'FIXED' | 'COMMISSION' | 'FIXED_PLUS_COMMISSION' | 'UNSPECIFIED';
+  commissionRate?: number;
+  qualificationDifficulty?: 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN';
+  accessDifficulty?: 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN';
+  recurringPotential?: 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN';
+}
+
 export type OpportunityStatus =
   | 'SIGNAL'
   | 'QUALIFICATION'
@@ -107,7 +132,9 @@ export function opportunitySignalKey(signal: OpportunitySignal): string {
 }
 
 /** Deterministic first-wins deduplication of source signals. */
-export function deduplicateOpportunitySignals(signals: readonly OpportunitySignal[]): OpportunitySignal[] {
+export function deduplicateOpportunitySignals(
+  signals: readonly OpportunitySignal[],
+): OpportunitySignal[] {
   const seen = new Set<string>();
   const result: OpportunitySignal[] = [];
   for (const signal of signals) {
@@ -145,14 +172,13 @@ export function qualifyOpportunity(
   if (qualification.eligible === 'YES' && qualification.reasons.length === 0) {
     throw new Error('A positive qualification requires reasons');
   }
+  let status: OpportunityStatus = 'QUALIFICATION';
+  if (qualification.eligible === 'YES') status = 'VERIFIED';
+  else if (qualification.eligible === 'NO') status = 'REJECTED';
+
   return {
     ...opportunity,
-    status:
-      qualification.eligible === 'YES'
-        ? 'VERIFIED'
-        : qualification.eligible === 'NO'
-          ? 'REJECTED'
-          : 'QUALIFICATION',
+    status,
     qualification: [...qualification.reasons],
   };
 }

@@ -37,6 +37,8 @@ function getService() {
     'procurement',
     'purchasing',
     'automotive',
+    'setter',
+    'sales development representative',
   ];
   service = createSchedulesService({
     methods,

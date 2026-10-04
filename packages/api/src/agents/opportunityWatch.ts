@@ -18,6 +18,7 @@ export interface EconomicOpportunityRecord {
   estimatedCosts?: number;
   estimatedNetValue?: number;
   valueCurrency?: string;
+  commercialProfile?: import('./opportunity').OpportunityCommercialProfile;
   sourceRef: string;
   evidenceRefs: readonly string[];
 }
@@ -31,6 +32,7 @@ export interface OpportunityWatchObservation {
   estimatedValue?: number;
   estimatedCosts?: number;
   valueCurrency?: string;
+  commercialProfile?: import('./opportunity').OpportunityCommercialProfile;
 }
 
 const MAX_OBSERVATIONS = 100;
