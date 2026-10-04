@@ -92,6 +92,57 @@ export class InformationWatchRegistry {
   }
 }
 
+export const INFORMATION_WATCH_SOURCES: readonly InformationSourceDescriptor[] = [
+  {
+    sourceId: 'reddit',
+    name: 'Reddit',
+    category: 'social',
+    access: 'SEARCH_PROVIDER',
+    connected: false,
+    sourceUrl: 'https://www.reddit.com',
+  },
+  {
+    sourceId: 'youtube',
+    name: 'YouTube',
+    category: 'video',
+    access: 'SEARCH_PROVIDER',
+    connected: false,
+    sourceUrl: 'https://www.youtube.com',
+  },
+  {
+    sourceId: 'discord',
+    name: 'Discord',
+    category: 'community',
+    access: 'USER_AUTHENTICATED',
+    connected: false,
+    sourceUrl: 'https://discord.com',
+  },
+  {
+    sourceId: 'instagram',
+    name: 'Instagram',
+    category: 'social',
+    access: 'USER_AUTHENTICATED',
+    connected: false,
+    sourceUrl: 'https://www.instagram.com',
+  },
+  {
+    sourceId: 'tgstat',
+    name: 'TGStat',
+    category: 'specialized',
+    access: 'PUBLIC_HTTP',
+    connected: false,
+    sourceUrl: 'https://tgstat.com',
+  },
+  {
+    sourceId: 'fmhy',
+    name: 'FMHY',
+    category: 'web',
+    access: 'PUBLIC_HTTP',
+    connected: false,
+    sourceUrl: 'https://fmhy.net',
+  },
+];
+
 export interface InformationWatchAdapter {
   readonly descriptor: InformationSourceDescriptor;
   check(): Promise<InformationSourceObservation>;

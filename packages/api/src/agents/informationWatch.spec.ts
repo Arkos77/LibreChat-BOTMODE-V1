@@ -1,4 +1,8 @@
-import { InformationWatchRegistry, InformationWatchRunner } from './informationWatch';
+import {
+  INFORMATION_WATCH_SOURCES,
+  InformationWatchRegistry,
+  InformationWatchRunner,
+} from './informationWatch';
 
 describe('InformationWatchRunner', () => {
   const descriptor = {
@@ -57,5 +61,16 @@ describe('InformationWatchRunner', () => {
       }),
     };
     await expect(runner.run([adapter, adapter])).rejects.toThrow('watch limit');
+  });
+  it('keeps specialized sources explicit until a real adapter is connected', () => {
+    expect(INFORMATION_WATCH_SOURCES.map((source) => source.sourceId)).toEqual([
+      'reddit',
+      'youtube',
+      'discord',
+      'instagram',
+      'tgstat',
+      'fmhy',
+    ]);
+    expect(INFORMATION_WATCH_SOURCES.every((source) => source.connected === false)).toBe(true);
   });
 });

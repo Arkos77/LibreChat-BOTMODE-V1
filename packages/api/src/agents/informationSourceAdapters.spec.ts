@@ -1,0 +1,60 @@
+import {
+  FMHY_INFORMATION_SOURCE,
+  RssInformationWatchAdapter,
+  YouTubeInformationWatchAdapter,
+  YOUTUBE_INFORMATION_SOURCE,
+} from './informationSourceAdapters';
+
+describe('information source adapters', () => {
+  it('reads RSS and reports an active source with item count', async () => {
+    const adapter = new RssInformationWatchAdapter({
+      descriptor: FMHY_INFORMATION_SOURCE,
+      feedUrl: 'https://example.com/feed.xml',
+      fetchImpl: (async () =>
+        new Response('<rss><channel><item/><item/></channel></rss>', {
+          status: 200,
+        })) as typeof fetch,
+    });
+    await expect(adapter.check()).resolves.toMatchObject({
+      sourceId: 'fmhy',
+      status: 'ACTIVE',
+      itemCount: 2,
+    });
+  });
+
+  it('fails closed on RSS HTTP failures', async () => {
+    const adapter = new RssInformationWatchAdapter({
+      descriptor: FMHY_INFORMATION_SOURCE,
+      feedUrl: 'https://example.com/feed.xml',
+      fetchImpl: (async () => new Response('', { status: 503 })) as typeof fetch,
+    });
+    await expect(adapter.check()).rejects.toThrow('HTTP 503');
+  });
+
+  it('marks YouTube disconnected when its API key is absent', async () => {
+    const adapter = new YouTubeInformationWatchAdapter({ query: 'AI France' });
+    await expect(adapter.check()).resolves.toMatchObject({
+      sourceId: YOUTUBE_INFORMATION_SOURCE.sourceId,
+      status: 'DISCONNECTED',
+    });
+  });
+
+  it('maps YouTube authenticated search results to an active watch state', async () => {
+    const adapter = new YouTubeInformationWatchAdapter({
+      apiKey: 'test-key',
+      query: 'BOT MODE',
+      fetchImpl: (async (input) => {
+        expect(String(input)).toContain('q=BOT+MODE');
+        return new Response(JSON.stringify({ items: [{ id: 1 }, { id: 2 }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }) as typeof fetch,
+    });
+    await expect(adapter.check()).resolves.toMatchObject({
+      sourceId: 'youtube',
+      status: 'ACTIVE',
+      itemCount: 2,
+    });
+  });
+});
