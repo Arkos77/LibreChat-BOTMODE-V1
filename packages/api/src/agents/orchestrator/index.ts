@@ -49,6 +49,7 @@ export * from './capabilityEvaluation';
 export * from './capabilityEvolution';
 export * from './capabilityEvolutionRunner';
 export * from './improvementFeedback';
+export * from './skillEvolutionRunner';
 export * from './browserSecurity';
 export * from './browserExecutor';
 export * from './securityLabExecutor';
