@@ -5,6 +5,8 @@ import {
   YOUTUBE_INFORMATION_SOURCE,
   TGStatInformationWatchAdapter,
   TGSTAT_INFORMATION_SOURCE,
+  RedditInformationWatchAdapter,
+  REDDIT_INFORMATION_SOURCE,
 } from './informationSourceAdapters';
 
 describe('information source adapters', () => {
@@ -85,6 +87,41 @@ describe('information source adapters', () => {
       sourceId: 'tgstat',
       status: 'ACTIVE',
       itemCount: 7,
+    });
+  });
+  it('marks Reddit disconnected without OAuth instead of scraping the site', async () => {
+    const adapter = new RedditInformationWatchAdapter({ query: 'BOT MODE' });
+    await expect(adapter.check()).resolves.toMatchObject({
+      sourceId: REDDIT_INFORMATION_SOURCE.sourceId,
+      status: 'DISCONNECTED',
+    });
+  });
+
+  it('uses Reddit OAuth API search when a token is present', async () => {
+    const adapter = new RedditInformationWatchAdapter({
+      accessToken: 'test-token',
+      query: 'BOT MODE',
+      subreddit: 'opensource',
+      limit: 10,
+      fetchImpl: (async (input, init) => {
+        const url = String(input);
+        expect(url).toContain('/r/opensource/search');
+        expect(url).toContain('q=BOT+MODE');
+        expect(init?.headers).toEqual(
+          expect.objectContaining({
+            authorization: 'Bearer test-token',
+          }),
+        );
+        return new Response(JSON.stringify({ data: { children: [{}, {}] } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }) as typeof fetch,
+    });
+    await expect(adapter.check()).resolves.toMatchObject({
+      sourceId: 'reddit',
+      status: 'ACTIVE',
+      itemCount: 2,
     });
   });
 });

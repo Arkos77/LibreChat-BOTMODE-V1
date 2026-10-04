@@ -253,3 +253,96 @@ export class TGStatInformationWatchAdapter implements InformationWatchAdapter {
     }
   }
 }
+
+export const REDDIT_INFORMATION_SOURCE: InformationSourceDescriptor = {
+  sourceId: 'reddit',
+  name: 'Reddit',
+  category: 'social',
+  access: 'USER_AUTHENTICATED',
+  connected: false,
+  sourceUrl: 'https://www.reddit.com',
+};
+
+export interface RedditInformationWatchAdapterOptions {
+  accessToken?: string;
+  query: string;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+  subreddit?: string;
+  limit?: number;
+}
+
+export class RedditInformationWatchAdapter implements InformationWatchAdapter {
+  readonly descriptor = REDDIT_INFORMATION_SOURCE;
+  private readonly accessToken?: string;
+  private readonly query: string;
+  private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
+  private readonly subreddit?: string;
+  private readonly limit: number;
+
+  constructor(options: RedditInformationWatchAdapterOptions) {
+    if (!options.query.trim()) throw new Error('Reddit watch query is required');
+    this.accessToken = options.accessToken?.trim() || undefined;
+    this.query = options.query.trim();
+    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.timeoutMs = Math.max(500, Math.min(options.timeoutMs ?? 15_000, 60_000));
+    this.subreddit = options.subreddit?.trim() || undefined;
+    this.limit = Math.max(1, Math.min(options.limit ?? 25, 100));
+  }
+
+  async check(): Promise<InformationSourceObservation> {
+    if (!this.accessToken) {
+      return {
+        sourceId: this.descriptor.sourceId,
+        checkedAt: new Date().toISOString(),
+        status: 'DISCONNECTED',
+        sourceRef: 'reddit:oauth-required',
+        note: 'Reddit OAuth access token is required; direct site scraping is not used',
+      };
+    }
+
+    const url = new URL(
+      `https://oauth.reddit.com${this.subreddit ? `/r/${encodeURIComponent(this.subreddit)}/search` : '/search'}`,
+    );
+    url.searchParams.set('q', this.query);
+    url.searchParams.set('sort', 'new');
+    url.searchParams.set('limit', String(this.limit));
+    url.searchParams.set('restrict_sr', this.subreddit ? 'on' : 'off');
+    url.searchParams.set('raw_json', '1');
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.fetchImpl(url, {
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${this.accessToken}`,
+          'user-agent': 'BOT-MODE-information-watch/1.0',
+        },
+        signal: controller.signal,
+      });
+      if (response.status === 401 || response.status === 403) {
+        return {
+          sourceId: this.descriptor.sourceId,
+          checkedAt: new Date().toISOString(),
+          status: 'UNAVAILABLE',
+          sourceRef: 'reddit:oauth-api',
+          note: `Reddit authentication or policy failure (${response.status})`,
+        };
+      }
+      if (!response.ok) throw new Error(`Reddit API HTTP ${response.status}`);
+      const payload = (await response.json()) as { data?: { children?: unknown[] } };
+      return {
+        sourceId: this.descriptor.sourceId,
+        checkedAt: new Date().toISOString(),
+        status: 'ACTIVE',
+        sourceRef: 'reddit:oauth-api',
+        itemCount: payload.data?.children?.length ?? 0,
+        note: 'Using OAuth/API path; monitor Reddit developer-platform migration status',
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
