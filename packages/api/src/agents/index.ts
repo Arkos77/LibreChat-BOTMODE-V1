@@ -88,4 +88,5 @@ export * from './chinaProductConnector';
 export * from './opportunitySources';
 export * from './opportunityHttp';
 export * from './jobicyOpportunityAdapter';
+export * from './remotiveOpportunityAdapter';
 export * from './extensions';
