@@ -140,7 +140,7 @@ export default function BotModeProjectPanel({
         <h2 className="text-sm font-medium text-text-primary">
           {localize('com_ui_bot_mode_project_activity')}
         </h2>
-        <span className="text-xs text-text-secondary">{missionState}</span>
+        <span className="text-xs text-text-secondary">{localize(`com_ui_bot_mode_project_state_${missionState}`)}</span>
       </div>
       {isProjectionLoading && (
         <div className="mb-3 rounded-xl border border-border-light bg-surface-secondary/60 p-3 text-xs text-text-secondary" role="status">
