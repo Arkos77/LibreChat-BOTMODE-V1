@@ -50,6 +50,7 @@ export * from './capabilityEvolution';
 export * from './capabilityEvolutionRunner';
 export * from './opportunityExecutionBridge';
 export * from './opportunityTaskDispatcher';
+export * from './opportunityActionAdapter';
 export * from './improvementFeedback';
 export * from './skillEvolutionRunner';
 export * from './browserSecurity';
