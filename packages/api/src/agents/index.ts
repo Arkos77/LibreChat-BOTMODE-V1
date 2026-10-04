@@ -92,3 +92,4 @@ export * from './jobicyOpportunityAdapter';
 export * from './remotiveOpportunityAdapter';
 export * from './extensions';
 export * from './opportunityWatch';
+export * from './informationWatch';
