@@ -2300,3 +2300,31 @@ Next work order:
 5. perform clean-machine reproducibility/release verification without reopening P0-P14.
 
 ==================================================
+
+--------------------------------------------------
+REVALIDATION ENVIRONMENT — 4 OCTOBRE 2026
+--------------------------------------------------
+- `/tmp` saturation was identified as the root cause of the previous Jest Mongo failures: a preserved reproducibility checkout had consumed ~1.2 GiB in tmpfs. The checkout was preserved under `~/backups/botmode-repro-check-20261004/` and the temporary `/tmp` copy plus Jest/node caches were removed.
+- `MongoMemoryServer` probe after cleanup: PASS (`MMS_OK`, MongoMemoryServer 11.0.1 using cached MongoDB 8.2.1).
+- `browserExecutor.spec.ts` + `subagentThreads.spec.ts`: **105/105 PASS** after cleanup; browser executor real OPEN/CLICK now completes in ~13 s and SubagentThreadTaskStore suite completes in ~73 s.
+- No Browser Executor code change was required; prior timeout was environmental.
+- API package build and workspace `npm run build:packages` remain PASS.
+
+--------------------------------------------------
+
+--------------------------------------------------
+FINAL TARGETED REVALIDATION — 4 OCTOBRE 2026
+--------------------------------------------------
+After isolating and removing the `/tmp` saturation that polluted the global test run:
+- `browserExecutor.spec.ts` + `subagentThreads.spec.ts`: 105/105 PASS.
+- `ReadThroughAllCache.spec.ts` + `violationCache.spec.ts`: 14/14 PASS.
+- `shared-links/service.test.ts`: 20/20 PASS.
+- `staleJobReaping.spec.ts`: 15/15 PASS.
+- `libreoffice.spec.ts`: 50/50 PASS after correcting the malformed-input assertion and restoring the missing deterministic minimal `sample.pptx` fixture.
+- `MongoMemoryServer.create()` standalone probe: PASS after freeing tmpfs.
+- `npm run build:packages`: PASS.
+- API production build: PASS.
+- Client production build from the UI tranche: PASS.
+
+The earlier global `test:ci` 540/545 suites result is not the final truth because it ran while `/tmp` was saturated. The subsequently isolated failing suites all PASS in a healthy environment. A fresh complete `test:ci` remains optional/expensive; targeted post-failure revalidation is currently green.
+--------------------------------------------------

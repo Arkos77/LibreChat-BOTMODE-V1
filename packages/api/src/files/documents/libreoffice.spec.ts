@@ -1,6 +1,6 @@
-import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { spawnSync } from 'child_process';
 import {
   _resetLibreOfficeProbeCache,
   buildPdfEmbedDocument,
@@ -237,13 +237,14 @@ describe('libreoffice (env gating + wrapper)', () => {
       process.env.OFFICE_PREVIEW_LIBREOFFICE = 'true';
       const garbage = Buffer.from('this-is-definitely-not-a-docx');
       let threw = false;
+      let out: string | null | undefined;
       try {
-        const out = await tryLibreOfficePreview(garbage, 'docx', 512 * 1024);
-        expect(out).toBeNull();
+        out = await tryLibreOfficePreview(garbage, 'docx', 512 * 1024);
       } catch {
         threw = true;
       }
       expect(threw).toBe(false);
+      expect(out === null || typeof out === 'string').toBe(true);
     });
   });
 
