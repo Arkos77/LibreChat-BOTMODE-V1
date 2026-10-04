@@ -57,6 +57,7 @@ const responses = require('./responses');
 const openai = require('./openai');
 const { v1 } = require('./v1');
 const chat = require('./chat');
+const a2a = require('./a2a');
 
 const { LIMIT_MESSAGE_IP, LIMIT_MESSAGE_USER } = process.env ?? {};
 
@@ -118,6 +119,8 @@ const router = express.Router();
  * NOTE: Must be mounted BEFORE /v1 to avoid being caught by the less specific route
  * @see https://openresponses.org/specification
  */
+router.use('/a2a', a2a);
+
 router.use('/v1/responses', responses);
 
 /**
