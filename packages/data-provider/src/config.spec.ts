@@ -38,6 +38,44 @@ describe('excludedKeys', () => {
   });
 });
 
+describe('custom endpoint dynamic model schema', () => {
+  it('accepts an empty default list when models are fetched dynamically', () => {
+    const result = configSchema.safeParse({
+      version: '1.0',
+      endpoints: {
+        custom: [
+          {
+            name: 'DynamicProvider',
+            apiKey: 'user_provided',
+            baseURL: 'https://example.com/v1',
+            models: { fetch: true, default: [] },
+          },
+        ],
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an empty default list when model fetching is disabled', () => {
+    const result = configSchema.safeParse({
+      version: '1.0',
+      endpoints: {
+        custom: [
+          {
+            name: 'StaticProvider',
+            apiKey: 'user_provided',
+            baseURL: 'https://example.com/v1',
+            models: { fetch: false, default: [] },
+          },
+        ],
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
+});
+
 describe('bedrockEndpointSchema', () => {
   it('preserves guardrailConfig from configSchema parsing', () => {
     const guardrailConfig = {
