@@ -129,6 +129,10 @@ auth.json
 # User uploads
 uploads/
 
+# BOT MODE local runtime data / development bundles
+.botmode-*/
+vendor/librechat-agents/*.tgz
+
 # owner
 release/
 
