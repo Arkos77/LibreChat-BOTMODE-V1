@@ -106,9 +106,11 @@ function ConversationTasks({ conversation }: { conversation: TConversation }) {
 export default function BotModeProjectPanel({
   projectId,
   conversations,
+  compact = false,
 }: {
   projectId: string;
   conversations: TConversation[];
+  compact?: boolean;
 }) {
   const localize = useLocalize();
   const navigate = useNavigate();
@@ -189,16 +191,33 @@ export default function BotModeProjectPanel({
   const progressStep = hasSettled ? MTO_STEPS.length : Math.max(currentStepIndex + 1, 0);
 
   return (
-    <section className="mt-8 space-y-4" aria-label={localize('com_ui_bot_mode_project_activity')}>
-      <div className="rounded-2xl border border-border-light bg-surface-secondary/50 p-4 md:p-5">
+    <section
+      className={compact ? 'space-y-3' : 'mt-8 space-y-4'}
+      aria-label={localize('com_ui_bot_mode_project_activity')}
+    >
+      <div
+        className={
+          compact
+            ? 'rounded-xl border border-border-light bg-surface-secondary/50 p-3'
+            : 'rounded-2xl border border-border-light bg-surface-secondary/50 p-4 md:p-5'
+        }
+      >
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
-            <div className="mb-1 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-text-secondary">
-              <Activity className="h-3.5 w-3.5" aria-hidden="true" />
-              {localize('com_ui_bot_mode_project_activity')}
-            </div>
+            {!compact && (
+              <div className="mb-1 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-text-secondary">
+                <Activity className="h-3.5 w-3.5" aria-hidden="true" />
+                {localize('com_ui_bot_mode_project_activity')}
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-semibold tracking-tight text-text-primary">
+              <h2
+                className={
+                  compact
+                    ? 'text-base font-semibold tracking-tight text-text-primary'
+                    : 'text-lg font-semibold tracking-tight text-text-primary'
+                }
+              >
                 {localize(`com_ui_bot_mode_project_state_${missionState}`)}
               </h2>
               <span

@@ -2612,5 +2612,8 @@
   "com_nav_mobile_drawer_strip_info": "The sidebar stops short of the edge so a strip of the conversation stays visible. Tapping it closes the sidebar.",
   "com_ui_bot_mode_project_memory": "Project memory",
   "com_ui_bot_mode_project_sources": "Project sources",
-  "com_ui_bot_mode_project_launch": "Launch BOT MODE mission"
+  "com_ui_bot_mode_project_launch": "Launch BOT MODE mission",
+  "com_ui_bot_mode_dashboard_open": "Open BOT MODE dashboard",
+  "com_ui_bot_mode_dashboard_title": "BOT MODE Mission Center",
+  "com_ui_bot_mode_dashboard_subtitle": "Follow the current mission"
 }

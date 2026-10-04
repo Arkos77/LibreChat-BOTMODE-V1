@@ -138,6 +138,8 @@ function ChatView({ index = 0, project }: { index?: number; project?: TChatProje
               <Header
                 parentConversationId={parentConversationId}
                 readOnly={isSubagentThreadReadOnly}
+                projectId={project?._id ?? activeConversation?.chatProjectId}
+                conversation={activeConversation}
               />
               <>
                 <div

@@ -1536,5 +1536,8 @@
   "com_ui_bot_mode_project_error": "Impossible de charger l’activité BOT MODE.",
   "com_ui_bot_mode_project_memory": "Mémoire du projet",
   "com_ui_bot_mode_project_sources": "Sources du projet",
-  "com_ui_bot_mode_project_launch": "Lancer une mission BOT MODE"
+  "com_ui_bot_mode_project_launch": "Lancer une mission BOT MODE",
+  "com_ui_bot_mode_dashboard_open": "Ouvrir le dashboard BOT MODE",
+  "com_ui_bot_mode_dashboard_title": "Centre de mission BOT MODE",
+  "com_ui_bot_mode_dashboard_subtitle": "Suivi de la mission en cours"
 }

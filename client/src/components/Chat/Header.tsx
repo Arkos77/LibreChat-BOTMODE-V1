@@ -7,6 +7,8 @@ import {
   PermissionTypes,
   Permissions,
 } from 'librechat-data-provider';
+import type { TConversation } from 'librechat-data-provider';
+import BotModeDashboardDrawer from '~/components/Projects/BotModeDashboardDrawer';
 import { OpenSidebar, PresetsMenu, NewChat, HeaderMenu } from './Menus';
 import { TemporaryChat, TemporaryChatIndicator } from './TemporaryChat';
 import ModelSelector from './Menus/Endpoints/ModelSelector';
@@ -30,9 +32,13 @@ const defaultInterface = getConfigDefaults().interface;
 function Header({
   parentConversationId,
   readOnly = false,
+  projectId,
+  conversation,
 }: {
   parentConversationId?: string;
   readOnly?: boolean;
+  projectId?: string | null;
+  conversation?: TConversation;
 }) {
   const { data: startupConfig } = useGetStartupConfig();
   const navVisible = useRecoilValue(store.sidebarExpanded);
@@ -105,6 +111,10 @@ function Header({
         <div className="hidden items-center gap-2 md:flex">
           <ExportAndShareMenu isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false} />
           {hasAccessToTemporaryChat === true && <TemporaryChat />}
+          <BotModeDashboardDrawer
+            projectId={projectId ?? conversation?.chatProjectId}
+            conversation={conversation}
+          />
         </div>
       </div>
     </div>
