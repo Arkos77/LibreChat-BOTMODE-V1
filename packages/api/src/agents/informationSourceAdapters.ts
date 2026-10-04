@@ -62,6 +62,8 @@ export class RssInformationWatchAdapter implements InformationWatchAdapter {
   }
 }
 
+export const FMHY_RSS_FEED_URL = 'https://d.fmhy.bid/rss.xml';
+
 export const FMHY_INFORMATION_SOURCE: InformationSourceDescriptor = {
   sourceId: 'fmhy',
   name: 'FMHY',

@@ -1,5 +1,6 @@
 import {
   FMHY_INFORMATION_SOURCE,
+  FMHY_RSS_FEED_URL,
   RssInformationWatchAdapter,
   YouTubeInformationWatchAdapter,
   YOUTUBE_INFORMATION_SOURCE,
@@ -156,5 +157,9 @@ describe('information source adapters', () => {
       status: 'ACTIVE',
       itemCount: 2,
     });
+  });
+  it('uses the verified FMHY RSS endpoint as the live-source contract', () => {
+    expect(FMHY_RSS_FEED_URL).toBe('https://d.fmhy.bid/rss.xml');
+    expect(FMHY_INFORMATION_SOURCE.sourceUrl).toBe('https://fmhy.net');
   });
 });
