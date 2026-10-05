@@ -31,6 +31,19 @@ export interface CapabilityResourceDescriptor {
     evidenceRef?: string;
   };
   signals?: Readonly<AuthorizedResourceSignals>;
+  inputs?: readonly string[];
+  outputs?: readonly string[];
+  requirements?: readonly string[];
+  tools?: readonly string[];
+  mcpServers?: readonly string[];
+  acpAgents?: readonly string[];
+  secrets?: readonly string[];
+  resourcePolicy?: string;
+  timeoutMs?: number;
+  retryPolicy?: string;
+  fallbackIds?: readonly string[];
+  sandbox?: string;
+  qa?: readonly string[];
 }
 
 export interface ResourceRegistryQuery {
@@ -46,6 +59,15 @@ function cloneDescriptor(resource: CapabilityResourceDescriptor): CapabilityReso
     capabilities: [...resource.capabilities],
     ...(resource.provenance ? { provenance: { ...resource.provenance } } : {}),
     ...(resource.signals ? { signals: { ...resource.signals } } : {}),
+    ...(resource.inputs ? { inputs: [...resource.inputs] } : {}),
+    ...(resource.outputs ? { outputs: [...resource.outputs] } : {}),
+    ...(resource.requirements ? { requirements: [...resource.requirements] } : {}),
+    ...(resource.tools ? { tools: [...resource.tools] } : {}),
+    ...(resource.mcpServers ? { mcpServers: [...resource.mcpServers] } : {}),
+    ...(resource.acpAgents ? { acpAgents: [...resource.acpAgents] } : {}),
+    ...(resource.secrets ? { secrets: [...resource.secrets] } : {}),
+    ...(resource.fallbackIds ? { fallbackIds: [...resource.fallbackIds] } : {}),
+    ...(resource.qa ? { qa: [...resource.qa] } : {}),
   };
 }
 
@@ -64,6 +86,30 @@ function validateDescriptor(resource: CapabilityResourceDescriptor): void {
   }
   if (typeof resource.enabled !== 'boolean') {
     throw new Error('Capability resource enabled flag is required');
+  }
+  for (const [field, value] of [
+    ['inputs', resource.inputs],
+    ['outputs', resource.outputs],
+    ['requirements', resource.requirements],
+    ['tools', resource.tools],
+    ['mcpServers', resource.mcpServers],
+    ['acpAgents', resource.acpAgents],
+    ['secrets', resource.secrets],
+    ['fallbackIds', resource.fallbackIds],
+    ['qa', resource.qa],
+  ] as const) {
+    if (
+      value != null &&
+      (!Array.isArray(value) || value.some((item) => typeof item !== 'string'))
+    ) {
+      throw new Error(`Capability resource ${field} must contain only strings`);
+    }
+  }
+  if (
+    resource.timeoutMs != null &&
+    (!Number.isSafeInteger(resource.timeoutMs) || resource.timeoutMs <= 0)
+  ) {
+    throw new Error('Capability resource timeoutMs must be a positive integer');
   }
   if (resource.provenance != null) {
     if (

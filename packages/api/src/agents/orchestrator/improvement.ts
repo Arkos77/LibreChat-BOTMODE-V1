@@ -153,3 +153,39 @@ export function createImprovementCandidate(input: ImprovementCandidateInput): Im
     createdAt: input.createdAt ?? new Date().toISOString(),
   };
 }
+
+export interface ExperienceCandidateInput {
+  candidateId: string;
+  target: ImprovementTarget;
+  title: string;
+  summary: string;
+  traceId: string;
+  observations: readonly MtoEvent[];
+  outcome?: 'SUCCESS' | 'FAILURE' | 'PARTIAL' | 'UNKNOWN';
+  pattern?: string;
+  requiresHumanReview?: boolean;
+  createdAt?: string;
+}
+
+/** Build a bounded experience proposal from an observed outcome/pattern without executing or publishing it. */
+export function createExperienceCandidate(input: ExperienceCandidateInput): ImprovementCandidate {
+  const outcome = input.outcome == null ? 'UNKNOWN' : input.outcome;
+  const pattern = typeof input.pattern === 'string' ? input.pattern.trim() : '';
+  const summary = [
+    input.summary.trim(),
+    `Outcome: ${outcome}.`,
+    ...(pattern ? [`Pattern: ${pattern}.`] : []),
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return createImprovementCandidate({
+    candidateId: input.candidateId,
+    target: input.target,
+    title: input.title,
+    summary,
+    traceId: input.traceId,
+    observations: input.observations,
+    requiresHumanReview: input.requiresHumanReview,
+    createdAt: input.createdAt,
+  });
+}

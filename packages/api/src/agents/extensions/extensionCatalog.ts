@@ -1,10 +1,18 @@
-import { CapabilityResourceRegistry, type CapabilityResourceDescriptor } from '../orchestrator/capabilityRegistry';
+import {
+  CapabilityResourceRegistry,
+  type CapabilityResourceDescriptor,
+} from '../orchestrator/capabilityRegistry';
 import { BUILTIN_EXTENSION_PACKS } from './extensionPacks';
 
 export interface CapabilityDiscoverySeed {
   id: string;
   name: string;
-  category: 'api-catalog' | 'provider-router' | 'hosting' | 'software-adapter' | 'vertical-reference';
+  category:
+    | 'api-catalog'
+    | 'provider-router'
+    | 'hosting'
+    | 'software-adapter'
+    | 'vertical-reference';
   sourceRef: string;
   status: 'REFERENCE' | 'CANDIDATE';
   capabilities: readonly string[];
@@ -12,6 +20,45 @@ export interface CapabilityDiscoverySeed {
 
 /** Descriptive seeds only: evaluation and authorization remain host-owned. */
 export const CAPABILITY_DISCOVERY_SEEDS: readonly CapabilityDiscoverySeed[] = [
+  {
+    id: 'seed:paperclip',
+    name: 'Agent work management reference',
+    category: 'provider-router',
+    sourceRef: 'memo:github:paperclipai-paperclip',
+    status: 'REFERENCE',
+    capabilities: [
+      'goal-project-task',
+      'agent-delegation',
+      'budgets',
+      'governance',
+      'heartbeat',
+      'recovery',
+    ],
+  },
+  {
+    id: 'seed:hindsight',
+    name: 'Long-term memory reference',
+    category: 'provider-router',
+    sourceRef: 'memo:github:vectorize-io-hindsight',
+    status: 'REFERENCE',
+    capabilities: ['memory-retain', 'memory-recall', 'memory-reflect', 'memory-provenance'],
+  },
+  {
+    id: 'seed:voicestudio',
+    name: 'Local audio and voice reference',
+    category: 'provider-router',
+    sourceRef: 'memo:github:debpalash-voicestudio',
+    status: 'REFERENCE',
+    capabilities: ['audio', 'voice', 'transcription', 'dubbing', 'batch-media'],
+  },
+  {
+    id: 'seed:impeccable',
+    name: 'Deterministic UI and artifact QA reference',
+    category: 'software-adapter',
+    sourceRef: 'memo:github:pbakaus-impeccable',
+    status: 'REFERENCE',
+    capabilities: ['ui-audit', 'artifact-qa', 'drift-detection', 'validation-hooks'],
+  },
   {
     id: 'seed:public-apis',
     name: 'Public APIs catalog',
@@ -55,23 +102,26 @@ export const CAPABILITY_DISCOVERY_SEEDS: readonly CapabilityDiscoverySeed[] = [
 ];
 
 export function createBuiltinExtensionResources(): CapabilityResourceDescriptor[] {
-  const extensionResources = BUILTIN_EXTENSION_PACKS.map((pack) => ({
-    id: `extension:${pack.id}`,
-    kind: pack.kind === 'vertical' ? 'workflow' : 'tool',
-    name: pack.name,
-    capabilities: [...pack.capabilities],
-    executionMode: 'local-runtime' as const,
-    enabled: pack.enabled,
-    accessMethod: 'governed-extension',
-    permission: 'host-policy',
-    trustLevel: 'declared',
-    legalUsage: 'pending-provider-specific-review',
-    provenance: {
-      source: pack.evidenceRefs[0],
-      verifiedAt: new Date().toISOString(),
-      evidenceRef: pack.evidenceRefs[0],
-    },
-  } satisfies CapabilityResourceDescriptor));
+  const extensionResources = BUILTIN_EXTENSION_PACKS.map(
+    (pack) =>
+      ({
+        id: `extension:${pack.id}`,
+        kind: pack.kind === 'vertical' ? 'workflow' : 'tool',
+        name: pack.name,
+        capabilities: [...pack.capabilities],
+        executionMode: 'local-runtime' as const,
+        enabled: pack.enabled,
+        accessMethod: 'governed-extension',
+        permission: 'host-policy',
+        trustLevel: 'declared',
+        legalUsage: 'pending-provider-specific-review',
+        provenance: {
+          source: pack.evidenceRefs[0],
+          verifiedAt: new Date().toISOString(),
+          evidenceRef: pack.evidenceRefs[0],
+        },
+      }) satisfies CapabilityResourceDescriptor,
+  );
 
   return extensionResources;
 }

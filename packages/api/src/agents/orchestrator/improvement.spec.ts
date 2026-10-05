@@ -1,5 +1,9 @@
 import type { MtoEvent } from './mto';
-import { createImprovementCandidate, summarizeImprovementSignals } from './improvement';
+import {
+  createExperienceCandidate,
+  createImprovementCandidate,
+  summarizeImprovementSignals,
+} from './improvement';
 
 const observation = (overrides: Partial<MtoEvent> = {}): MtoEvent => ({
   type: 'OBSERVED',
@@ -11,6 +15,24 @@ const observation = (overrides: Partial<MtoEvent> = {}): MtoEvent => ({
 });
 
 describe('controlled improvement contracts', () => {
+  it('creates an outcome-backed experience candidate as a non-executable proposal', () => {
+    const candidate = createExperienceCandidate({
+      candidateId: 'experience-1',
+      target: 'workflow',
+      title: 'Improve source fallback',
+      summary: 'A mission failed after a source outage.',
+      traceId: 'trace-1',
+      observations: [observation()],
+      outcome: 'FAILURE',
+      pattern: 'single-source dependency',
+    });
+    expect(candidate.status).toBe('CANDIDATE');
+    expect(candidate.summary).toContain('Outcome: FAILURE.');
+    expect(candidate.summary).toContain('Pattern: single-source dependency.');
+    expect(candidate.publication.requiresOracle).toBe(true);
+    expect(candidate.publication.requiresAuthorization).toBe(true);
+  });
+
   it('aggregates only sanitized observation metadata deterministically', () => {
     const observations: MtoEvent[] = [
       observation(),
