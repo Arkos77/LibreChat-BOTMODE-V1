@@ -1110,6 +1110,24 @@ describe('initialSummary passthrough', () => {
 // Suite 7: stable/dynamic system instructions
 // ---------------------------------------------------------------------------
 describe('stable/dynamic system instructions', () => {
+  it('adds BOT MODE public-output safety and French-language instructions', async () => {
+    const agents = await callAndCapture({
+      agents: [
+        makeAgent({
+          name: 'BOT MODE Worker',
+          metadata: { botmode: true },
+          instructions: 'Base BOT MODE instructions',
+        }),
+      ],
+    });
+
+    const instructions = String(agents[0].instructions ?? '');
+    expect(instructions).toContain('Réponds toujours en français');
+    expect(instructions).toContain('Ne publie jamais ton raisonnement interne');
+    expect(instructions).toContain('Publie une seule réponse finale consolidée');
+    expect(instructions).toContain('n’a pas réellement réussi');
+  });
+
   it('keeps static tool and agent instructions separate from dynamic runtime tail', async () => {
     const agents = await callAndCapture({
       agents: [

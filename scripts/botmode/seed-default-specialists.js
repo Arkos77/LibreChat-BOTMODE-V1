@@ -43,8 +43,11 @@ const specs = [
     if (!worker) throw new Error('BOT MODE Worker not found');
     const now = new Date();
     const ids = [];
+    const publicOutputPolicy =
+      "Réponds toujours en français, sauf demande explicite d'une autre langue. Ne publie jamais ton raisonnement interne, scratchpad, hésitations ou planification. Publie une seule réponse finale consolidée. N'affirme jamais avoir utilisé une source, un outil ou une donnée temps réel si l'appel correspondant n'a pas réellement réussi. ";
     const workerInstructions =
-      "Tu es le Worker principal de BOT MODE. Réponds toujours en français, sauf demande explicite d'une autre langue. " +
+      'Tu es le Worker principal de BOT MODE. ' +
+      publicOutputPolicy +
       "Pour les missions issues de la fiche Idées, privilégie une analyse approfondie plutôt qu'une réponse rapide. " +
       "Décompose l'idée en tâches vérifiables, délègue aux spécialistes pertinents, exploite le parallélisme quand il est sûr, " +
       "et utilise l'exécution en arrière-plan pour les travaux longs dont le résultat n'est pas nécessaire immédiatement. " +
@@ -58,7 +61,7 @@ const specs = [
           {
             $set: {
               description: desc,
-              instructions,
+              instructions: `${publicOutputPolicy}${instructions}`,
               tools,
               metadata: { ...(a.metadata || {}), botmode: true, specialist: true },
               updatedAt: new Date(),
@@ -75,7 +78,7 @@ const specs = [
           model: worker.model,
           author: worker.author,
           description: desc,
-          instructions,
+          instructions: `${publicOutputPolicy}${instructions}`,
           tools,
           category: 'botmode',
           createdAt: now,

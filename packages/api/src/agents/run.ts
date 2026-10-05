@@ -1735,11 +1735,21 @@ export async function createRun({
     const toolInstructions = joinInstructionMap(agent.toolContextMap);
     const dynamicToolInstructions = joinInstructionMap(agent.dynamicToolContextMap);
     const isBotModeAgent = agent?.metadata?.botmode === true || agent?.name === 'BOT MODE Worker';
-    const botModeLanguageInstruction = isBotModeAgent
-      ? 'Réponds toujours en français, sauf demande explicite de l’utilisateur dans une autre langue. Tous les intitulés, résumés et textes destinés à l’utilisateur doivent être en français.'
+    const botModePublicOutputInstruction = isBotModeAgent
+      ? [
+          'Réponds toujours en français, sauf demande explicite de l’utilisateur dans une autre langue.',
+          'Tous les intitulés, résumés et textes destinés à l’utilisateur doivent rester dans cette langue.',
+          'Ne publie jamais ton raisonnement interne, ton scratchpad, tes hésitations, ni des phrases de planification telles que « je dois vérifier » ou « voyons ». Utilise les canaux de raisonnement/outils prévus pour ce travail interne.',
+          'Publie une seule réponse finale consolidée : ne concatène pas plusieurs brouillons, réponses intermédiaires ou variantes successives.',
+          'Ne prétends jamais avoir consulté une source, utilisé un outil ou obtenu une donnée temps réel si l’appel correspondant n’a pas réellement réussi. En cas d’échec ou d’absence de donnée fraîche, dis-le clairement au lieu d’inventer une valeur.',
+        ].join(' ')
       : '';
 
-    const systemContent = [toolInstructions, agent.instructions ?? '', botModeLanguageInstruction]
+    const systemContent = [
+      toolInstructions,
+      agent.instructions ?? '',
+      botModePublicOutputInstruction,
+    ]
       .filter(Boolean)
       .join('\n')
       .trim();

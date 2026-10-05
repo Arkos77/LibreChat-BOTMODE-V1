@@ -3635,6 +3635,46 @@ class AgentClient extends BaseClient {
   }
 
   /**
+   * BOT MODE publication hardening. Keep exactly one public text answer and
+   * never persist structured reasoning. Provider/model loops can create
+   * several text parts in one turn; only the latest explicit final_answer
+   * (or, for legacy providers, the latest non-empty text part) is publishable.
+   * Tool/activity/steer parts remain available as bounded UI evidence.
+   */
+  applyBotModePublicationFilter() {
+    const agent = this.options?.agent;
+    const isBotModeAgent = agent?.metadata?.botmode === true || agent?.name === 'BOT MODE Worker';
+    if (!isBotModeAgent || !Array.isArray(this.contentParts)) {
+      return;
+    }
+
+    let lastTextIndex = -1;
+    let lastExplicitFinalIndex = -1;
+    for (let index = 0; index < this.contentParts.length; index += 1) {
+      const part = this.contentParts[index];
+      if (part?.type !== ContentTypes.TEXT || typeof part.text !== 'string' || !part.text.trim()) {
+        continue;
+      }
+      lastTextIndex = index;
+      if (part.phase === 'final_answer') {
+        lastExplicitFinalIndex = index;
+      }
+    }
+    const publishableTextIndex =
+      lastExplicitFinalIndex >= 0 ? lastExplicitFinalIndex : lastTextIndex;
+
+    this.contentParts = this.contentParts.filter((part, index) => {
+      if (part == null || part.type === ContentTypes.THINK) {
+        return false;
+      }
+      if (part.type === ContentTypes.TEXT) {
+        return index === publishableTextIndex;
+      }
+      return true;
+    });
+  }
+
+  /**
    * Rebase parent activity bounds after completion-time content reshaping.
    * Object identity links retained parts back to their pre-reshape positions,
    * so prepended skill cards cannot enter a phase and a filtered-away leading
@@ -4717,6 +4757,7 @@ class AgentClient extends BaseClient {
       this.eventActorSummary =
         getLatestEventActorSummary(this.contentParts) ?? this.eventActorSummary;
       this.applyHideSequentialOutputsFilter();
+      this.applyBotModePublicationFilter();
       this.rebaseActivityPhaseBounds(contentBeforeReshape);
     } catch (err) {
       if (
@@ -5361,6 +5402,7 @@ class AgentClient extends BaseClient {
         getLatestEventActorSummary(this.contentParts) ?? this.eventActorSummary;
       const contentBeforeReshape = [...this.contentParts];
       this.applyHideSequentialOutputsFilter();
+      this.applyBotModePublicationFilter();
       this.rebaseActivityPhaseBounds(contentBeforeReshape);
     } catch (err) {
       if (isContentFilterError(err)) {

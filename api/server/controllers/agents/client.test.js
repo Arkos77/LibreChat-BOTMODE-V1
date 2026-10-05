@@ -2472,6 +2472,65 @@ jest.mock('~/config', () => ({
   })),
 }));
 
+describe('AgentClient - BOT MODE publication filter', () => {
+  const text = (value, phase) => ({
+    type: ContentTypes.TEXT,
+    text: value,
+    ...(phase ? { phase } : {}),
+  });
+
+  it('drops reasoning and intermediate drafts, keeping one explicit final answer', () => {
+    const tool = { type: ContentTypes.TOOL_CALL, tool_call: { id: 'weather-call' } };
+    const activity = {
+      type: ContentTypes.ACTIVITY_LABEL,
+      activity_label: 'Recherche météo terminée',
+    };
+    const ctx = {
+      options: { agent: { name: 'BOT MODE Worker', metadata: { botmode: true } } },
+      contentParts: [
+        { type: ContentTypes.THINK, think: 'First I need to check the weather.' },
+        text('Brouillon 1 : 23°C'),
+        tool,
+        text('Brouillon 2 : je ne peux pas vérifier.'),
+        text('Il fait actuellement 18°C à Cergy.', 'final_answer'),
+        activity,
+      ],
+    };
+
+    AgentClient.prototype.applyBotModePublicationFilter.call(ctx);
+
+    expect(ctx.contentParts).toEqual([
+      tool,
+      text('Il fait actuellement 18°C à Cergy.', 'final_answer'),
+      activity,
+    ]);
+  });
+
+  it('uses the latest non-empty text for legacy BOT MODE providers without phase metadata', () => {
+    const ctx = {
+      options: { agent: { name: 'BOT MODE Worker' } },
+      contentParts: [
+        { type: ContentTypes.THINK, think: 'Wait, maybe I should search.' },
+        text('Première tentative'),
+        text('Réponse finale consolidée'),
+      ],
+    };
+
+    AgentClient.prototype.applyBotModePublicationFilter.call(ctx);
+
+    expect(ctx.contentParts).toEqual([text('Réponse finale consolidée')]);
+  });
+
+  it('is a no-op for non-BOT MODE agents', () => {
+    const parts = [{ type: ContentTypes.THINK, think: 'visible native reasoning' }, text('answer')];
+    const ctx = { options: { agent: { name: 'Other agent' } }, contentParts: parts };
+
+    AgentClient.prototype.applyBotModePublicationFilter.call(ctx);
+
+    expect(ctx.contentParts).toBe(parts);
+  });
+});
+
 describe('AgentClient - applyHideSequentialOutputsFilter', () => {
   const textPart = (text) => ({ type: ContentTypes.TEXT, text });
   const toolCallPart = (id) => ({ type: ContentTypes.TOOL_CALL, tool_call: { id } });
