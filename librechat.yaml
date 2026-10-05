@@ -78,7 +78,7 @@
       {
         "name": "Qwen",
         "apiKey": "user_provided",
-        "baseURL": "user_provided",
+        "baseURL": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
         "models": {
           "fetch": true,
           "default": []
@@ -89,7 +89,7 @@
       {
         "name": "GLM",
         "apiKey": "user_provided",
-        "baseURL": "user_provided",
+        "baseURL": "https://api.z.ai/api/paas/v4",
         "models": {
           "fetch": true,
           "default": []
@@ -100,7 +100,7 @@
       {
         "name": "MiniMax",
         "apiKey": "user_provided",
-        "baseURL": "user_provided",
+        "baseURL": "https://api.minimax.io/v1",
         "models": {
           "fetch": true,
           "default": []
