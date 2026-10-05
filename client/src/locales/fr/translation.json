@@ -391,6 +391,7 @@
   "com_error_no_base_url": "Aucune URL de base trouvée. Veuillez en fournir une et réessayer.",
   "com_error_no_user_key": "Aucune clé trouvée. Veuillez fournir une clé et réessayer.",
   "com_error_refusal": "Réponse refusée par les filtres de sécurité. Reformulez votre message et réessayez. Si vous rencontrez cela fréquemment avec Claude Sonnet 4.5 ou Opus 4.1, vous pouvez essayer Sonnet 4, qui a des restrictions d'utilisation différentes.",
+  "com_error_model_rate_limit": "Le fournisseur a refusé cette requête en raison d’une limite de débit ou de dépense. Réessayez dans un instant ou demandez à un administrateur de vérifier les limites du fournisseur.",
   "com_error_stream_expired": "Le flux de réponse a expiré ou est déjà terminé. Veuillez réessayer.",
   "com_file_pages": "Pages: {{pages}}",
   "com_file_source": "Fichier",
