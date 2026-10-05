@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react';
+import { Lightbulb, Plus } from 'lucide-react';
 import { Button, useMediaQuery } from '@librechat/client';
 import OpenSidebar from '~/components/Chat/Menus/OpenSidebar';
 import { useLocalize } from '~/hooks';
@@ -20,10 +20,19 @@ export default function ProjectsNavBar({ onCreate }: ProjectsNavBarProps) {
             {localize('com_ui_projects')}
           </h1>
         </div>
-        <Button type="button" variant="default" size="sm" onClick={onCreate} className="shrink-0">
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          {localize('com_ui_new_project')}
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <a
+            href="/ideas"
+            className="inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-text-primary"
+          >
+            <Lightbulb className="h-4 w-4" aria-hidden="true" />
+            {localize('com_ui_ideas')}
+          </a>
+          <Button type="button" variant="default" size="sm" onClick={onCreate} className="shrink-0">
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            {localize('com_ui_new_project')}
+          </Button>
+        </div>
       </div>
     </header>
   );

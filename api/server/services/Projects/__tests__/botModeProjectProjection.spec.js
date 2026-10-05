@@ -165,6 +165,7 @@ describe('createBotModeProjectProjection', () => {
               },
             },
           ],
+          results: [],
         },
       ],
       memories: [
@@ -199,6 +200,41 @@ describe('createBotModeProjectProjection', () => {
       'owner',
       expect.objectContaining({ projectId: projectA }),
     );
+  });
+
+  it('projects only public text results and excludes internal reasoning/tool payloads', async () => {
+    const deps = makeDeps();
+    deps.getMessages.mockResolvedValueOnce([
+      {
+        messageId: 'msg-result',
+        conversationId: 'conv-a',
+        isCreatedByUser: false,
+        content: [
+          { type: 'text', text: 'Conclusion publique.' },
+          { type: 'thinking', text: 'private chain of thought' },
+          { type: 'tool', toolName: 'web_search', input: 'private query' },
+        ],
+        metadata: {
+          botModePlan: {
+            planId: 'plan-result',
+            planVersion: 3,
+            strategy: 'SEQUENTIAL',
+            objective: 'Result',
+            tasks: [],
+          },
+        },
+      },
+    ]);
+    const projection = await createBotModeProjectProjection({
+      userId: 'owner',
+      projectId: projectA,
+      deps,
+    });
+    expect(projection.conversations[0].results).toEqual([
+      { messageId: 'msg-result', content: 'Conclusion publique.' },
+    ]);
+    expect(JSON.stringify(projection)).not.toContain('private chain of thought');
+    expect(JSON.stringify(projection)).not.toContain('private query');
   });
 
   it('isolates two concurrent project projections', async () => {

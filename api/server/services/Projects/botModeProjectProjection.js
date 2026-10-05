@@ -56,6 +56,24 @@ function publicObservation(record) {
   return observation;
 }
 
+function publicResultContent(value) {
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  if (!Array.isArray(value)) {
+    return '';
+  }
+  return value
+    .filter(
+      (part) =>
+        part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string',
+    )
+    .map((part) => part.text.trim())
+    .filter(Boolean)
+    .join('\n\n')
+    .trim();
+}
+
 function publicPlan(value) {
   if (!value || typeof value !== 'object') {
     return null;
@@ -145,6 +163,7 @@ async function createBotModeProjectProjection({ userId, tenantId, projectId, dep
     const usage = { ...EMPTY_USAGE };
     const traces = [];
     const plans = [];
+    const results = [];
 
     for (const message of messages) {
       if (message?.isCreatedByUser === true) {
@@ -159,6 +178,13 @@ async function createBotModeProjectProjection({ userId, tenantId, projectId, dep
         plans.push({
           messageId: message.messageId,
           plan,
+        });
+      }
+      const resultContent = publicResultContent(message?.content);
+      if (resultContent) {
+        results.push({
+          messageId: message.messageId,
+          content: resultContent,
         });
       }
 
@@ -187,6 +213,7 @@ async function createBotModeProjectProjection({ userId, tenantId, projectId, dep
       usage,
       traces,
       plans,
+      results,
     });
   }
 

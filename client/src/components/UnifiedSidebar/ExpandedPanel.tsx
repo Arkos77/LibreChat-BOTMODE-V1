@@ -1,7 +1,7 @@
 import { memo, useCallback, lazy, Suspense } from 'react';
 import { useRecoilValue } from 'recoil';
-import { SquarePen } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import { BriefcaseBusiness, MessagesSquare, SquarePen } from 'lucide-react';
 import { Skeleton, Sidebar, Button, TooltipAnchor } from '@librechat/client';
 import type { NavLink } from '~/common';
 import { useShortcutAriaKey, useShortcutHint } from '~/hooks/useKeyboardShortcuts';
@@ -168,6 +168,46 @@ function ExpandedPanel({
         }
       />
       <NewChatButton setActive={setActive} />
+      <div className="grid grid-cols-2 gap-1 rounded-xl bg-surface-secondary p-1">
+        <a
+          href="/c/new"
+          aria-current={
+            !isInsightsRoute &&
+            !location.pathname.startsWith('/projects') &&
+            !location.pathname.startsWith('/ideas')
+              ? 'page'
+              : undefined
+          }
+          className={cn(
+            'flex h-8 items-center justify-center gap-2 rounded-lg px-2 text-xs font-medium transition-colors',
+            !isInsightsRoute &&
+              !location.pathname.startsWith('/projects') &&
+              !location.pathname.startsWith('/ideas')
+              ? 'bg-surface-primary text-text-primary shadow-sm'
+              : 'text-text-secondary hover:text-text-primary',
+          )}
+        >
+          <MessagesSquare className="h-4 w-4" aria-hidden="true" />
+          {localize('com_ui_chat')}
+        </a>
+        <a
+          href="/projects"
+          aria-current={
+            location.pathname.startsWith('/projects') || location.pathname.startsWith('/ideas')
+              ? 'page'
+              : undefined
+          }
+          className={cn(
+            'flex h-8 items-center justify-center gap-2 rounded-lg px-2 text-xs font-medium transition-colors',
+            location.pathname.startsWith('/projects') || location.pathname.startsWith('/ideas')
+              ? 'bg-surface-primary text-text-primary shadow-sm'
+              : 'text-text-secondary hover:text-text-primary',
+          )}
+        >
+          <BriefcaseBusiness className="h-4 w-4" aria-hidden="true" />
+          {localize('com_ui_work')}
+        </a>
+      </div>
       <div className="mx-2 border-b border-border-light" />
       <div className="flex flex-col gap-1 overflow-y-auto">
         {links.map((link) => (

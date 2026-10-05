@@ -2632,5 +2632,21 @@
   "com_ui_idea_analyze": "Analyze",
   "com_ui_idea_develop": "Develop",
   "com_ui_idea_watch": "Watch",
-  "com_ui_idea_project": "Turn into project"
+  "com_ui_idea_project": "Turn into project",
+  "com_ui_bot_mode_idea_state_ready": "Ready",
+  "com_ui_bot_mode_idea_state_analysis": "In-depth analysis",
+  "com_ui_bot_mode_idea_state_developing": "Development in progress",
+  "com_ui_bot_mode_idea_state_completed": "Mission completed",
+  "com_ui_bot_mode_idea_tracking_unavailable": "Start an analysis to activate BOT MODE tracking, results, and evidence.",
+  "com_ui_bot_mode_idea_workplan": "Work plan",
+  "com_ui_bot_mode_idea_plan_task_count": "{{plans}} plans • {{tasks}} tasks",
+  "com_ui_bot_mode_idea_evidence_count": "{{files}} associated files • {{events}} events",
+  "com_ui_bot_mode_idea_activity": "Activity",
+  "com_ui_bot_mode_idea_background": "durable background work",
+  "com_ui_bot_mode_idea_agents": "Agents",
+  "com_ui_bot_mode_idea_subagents_count": "{{count}} durable subagents",
+  "com_ui_bot_mode_idea_specialists": "BOT MODE specialists",
+  "com_ui_bot_mode_idea_recent_activity": "Recent activity",
+  "com_ui_bot_mode_idea_mission_conversations": "{{count}} mission conversations",
+  "com_ui_bot_mode_idea_analysis_runs": "recorded analyses"
 }
