@@ -3705,6 +3705,64 @@ describe('AgentClient - startup telemetry', () => {
     );
   });
 
+  it('treats a classified provider rate limit as an expected warning with a typed error part', async () => {
+    jest.clearAllMocks();
+    const { logger } = require('@librechat/data-schemas');
+    const rateLimitError = Object.assign(new Error('provider rate limited'), {
+      lc_error_code: 'MODEL_RATE_LIMIT',
+    });
+    mockCreateRun.mockResolvedValue({
+      Graph: null,
+      processStream: jest.fn().mockRejectedValue(rateLimitError),
+      getCalibrationRatio: jest.fn(() => 0),
+    });
+    mockIsHITLEnabled.mockReturnValue(false);
+    const client = new AgentClient({
+      req: {
+        user: { id: 'user-123' },
+        body: {},
+        config: { endpoints: { [EModelEndpoint.agents]: {} } },
+        _resumableStreamId: 'conversation-rate-limit',
+      },
+      res: {},
+      agent: {
+        id: 'agent-123',
+        endpoint: EModelEndpoint.openAI,
+        provider: EModelEndpoint.openAI,
+        model_parameters: { model: 'gpt-4' },
+        hide_sequential_outputs: false,
+      },
+      endpointTokenConfig: {},
+      eventHandlers: {},
+      contentParts: [],
+      collectedUsage: [],
+      artifactPromises: [],
+    });
+    client.conversationId = 'conversation-rate-limit';
+    client.responseMessageId = 'response-rate-limit';
+    client.parentMessageId = 'parent-rate-limit';
+    client.recordCollectedUsage = jest.fn().mockResolvedValue();
+
+    await client.chatCompletion({ payload: [] });
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      '[api/server/controllers/agents/client.js #sendCompletion] Classified provider error',
+      expect.any(Object),
+    );
+    expect(logger.error).not.toHaveBeenCalledWith(
+      '[api/server/controllers/agents/client.js #sendCompletion] Unhandled error type',
+      expect.anything(),
+    );
+    expect(client.contentParts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: ContentTypes.ERROR,
+          [ContentTypes.ERROR]: JSON.stringify({ type: 'model_rate_limit' }),
+        }),
+      ]),
+    );
+  });
+
   it('still surfaces an error part for an ordinary run failure', async () => {
     jest.clearAllMocks();
     mockCreateRun.mockResolvedValue({

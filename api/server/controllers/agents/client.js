@@ -4812,10 +4812,18 @@ class AgentClient extends BaseClient {
           },
         );
       } else {
-        logger.error(
-          '[api/server/controllers/agents/client.js #sendCompletion] Unhandled error type',
-          getSafeErrorMetadata(err),
-        );
+        const classifiedProviderError = resolveLangChainError(err);
+        if (classifiedProviderError != null) {
+          logger.warn(
+            '[api/server/controllers/agents/client.js #sendCompletion] Classified provider error',
+            getSafeErrorMetadata(err),
+          );
+        } else {
+          logger.error(
+            '[api/server/controllers/agents/client.js #sendCompletion] Unhandled error type',
+            getSafeErrorMetadata(err),
+          );
+        }
         const videoError = resolveGoogleVideoError({
           error: err,
           provider: this.options.agent?.provider,
@@ -4825,6 +4833,7 @@ class AgentClient extends BaseClient {
           type: ContentTypes.ERROR,
           [ContentTypes.ERROR]:
             videoError ??
+            classifiedProviderError ??
             getUserFacingRequestError(
               'An error occurred while processing the request',
               err,
