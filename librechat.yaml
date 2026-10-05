@@ -195,9 +195,15 @@
     },
     "github": {
       "type": "streamable-http",
-      "url": "https://api.githubcopilot.com/mcp/readonly",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "apiKey": {
+        "key": "${GITHUB_TOKEN}",
+        "source": "admin",
+        "authorization_type": "bearer"
+      },
       "headers": {
-        "X-MCP-Toolsets": "repos,issues,pull_requests"
+        "X-MCP-Toolsets": "repos,issues,pull_requests",
+        "X-MCP-Readonly": "true"
       },
       "title": "GitHub",
       "description": "Official GitHub MCP server restricted to read-only repository, issue, and pull request tools.",
