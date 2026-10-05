@@ -240,14 +240,16 @@ export default function BotModeDashboardDrawer({
                   )}
                 </section>
 
-                <div className="px-3 pb-6">
-                  <BotModeProjectPanel
-                    projectId={projectId}
-                    conversations={conversation ? [conversation] : []}
-                    compact
-                    showSummary={false}
-                  />
-                </div>
+                {projectId && (
+                  <div className="px-3 pb-6">
+                    <BotModeProjectPanel
+                      projectId={projectId}
+                      conversations={conversation ? [conversation] : []}
+                      compact
+                      showSummary={false}
+                    />
+                  </div>
+                )}
               </div>
             </DialogPanel>
           </TransitionChild>

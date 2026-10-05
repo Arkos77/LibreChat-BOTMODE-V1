@@ -1,6 +1,7 @@
 export * from './avatars';
 export * from './attachments';
 export * from './chain';
+export * from './channels/gateway';
 export * from './callerCapabilities';
 export * from './client';
 export * from './config';
