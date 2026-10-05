@@ -387,6 +387,7 @@ export type TIdea = {
     | 'archived';
   priority: 'low' | 'medium' | 'high' | 'critical';
   tags: string[];
+  projectId?: string;
   createdAt: string;
   updatedAt: string;
   user?: string;
@@ -398,7 +399,10 @@ export type TCreateIdeaRequest = {
   priority?: TIdea['priority'];
   tags?: string[];
 };
-export type TUpdateIdeaRequest = Partial<TCreateIdeaRequest> & { ideaId: string };
+export type TUpdateIdeaRequest = Partial<TCreateIdeaRequest> & {
+  ideaId: string;
+  projectId?: string;
+};
 
 export type TChatProject = {
   _id: string;

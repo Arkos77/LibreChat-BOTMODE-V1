@@ -1,6 +1,6 @@
 import { Schema } from 'mongoose';
 import type { IIdeaDocument } from '~/types';
-const ideaSchema = new Schema<IIdeaDocument>(
+const ideaSchema: Schema<IIdeaDocument> = new Schema<IIdeaDocument>(
   {
     user: { type: String, required: true, index: true },
     tenantId: { type: String, index: true },
@@ -28,6 +28,7 @@ const ideaSchema = new Schema<IIdeaDocument>(
       index: true,
     },
     tags: { type: [String], default: [] },
+    projectId: { type: String, index: true },
   },
   { timestamps: true },
 );

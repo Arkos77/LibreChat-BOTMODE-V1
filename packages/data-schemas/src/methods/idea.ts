@@ -1,6 +1,7 @@
+import type { Model } from 'mongoose';
 import type * as t from '~/types';
 export function createIdeaMethods(mongoose: typeof import('mongoose')): t.IdeaMethods {
-  const I = () => mongoose.models.Idea;
+  const I = (): Model<t.IIdeaDocument> => mongoose.models.Idea as Model<t.IIdeaDocument>;
   return {
     listIdeas: (u) => I().find({ user: u }).sort({ updatedAt: -1, _id: -1 }).lean<t.IIdea[]>(),
     getIdea: (u, id) => I().findOne({ _id: id, user: u }).lean<t.IIdea>(),

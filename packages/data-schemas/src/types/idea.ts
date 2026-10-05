@@ -18,6 +18,7 @@ export interface IIdea {
   status: IdeaStatus;
   priority: IdeaPriority;
   tags: string[];
+  projectId?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -30,6 +31,7 @@ export interface CreateIdeaInput {
   tags?: string[];
 }
 export interface UpdateIdeaInput {
+  projectId?: string;
   title?: string;
   content?: string;
   status?: IdeaStatus;

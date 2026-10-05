@@ -5,6 +5,7 @@ import { dataService } from 'librechat-data-provider';
 import { Lightbulb, Plus, Trash2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { TIdea } from 'librechat-data-provider';
+import { useListAgentsQuery } from '~/data-provider';
 import { useLocalize } from '~/hooks';
 
 export default function IdeasView() {
@@ -24,10 +25,58 @@ export default function IdeasView() {
   const remove = useMutation((id: string) => dataService.deleteIdea(id), {
     onSuccess: () => qc.invalidateQueries(['ideas']),
   });
-  const project = useMutation(
-    (idea: TIdea) => dataService.createProject({ name: idea.title, description: idea.content }),
-    { onSuccess: (p) => navigate(`/projects/${p._id}`) },
+  const { data: agents } = useListAgentsQuery();
+  const createIdeaProject = useMutation(
+    (idea: TIdea) =>
+      dataService.createProject({
+        name: `BOT MODE — ${idea.title}`,
+        description: idea.content,
+      }),
+    { onSuccess: (project) => navigate(`/projects/${project._id}`) },
   );
+
+  const launchIdeaMission = useMutation({
+    mutationFn: async ({ idea, mode }: { idea: TIdea; mode: 'analyze' | 'develop' | 'watch' }) => {
+      const project = idea.projectId
+        ? { _id: idea.projectId }
+        : await dataService.createProject({
+            name: `BOT MODE — ${idea.title}`,
+            description: idea.content,
+          });
+      let status: TIdea['status'];
+      let prefix: string;
+      switch (mode) {
+        case 'analyze':
+          status = 'in_analysis';
+          prefix = 'Analyse cette idée avec BOT MODE et produis un résultat vérifiable.';
+          break;
+        case 'develop':
+          status = 'to_develop';
+          prefix = 'Développe cette idée avec BOT MODE en produisant un plan vérifiable.';
+          break;
+        default:
+          status = 'to_study';
+          prefix = 'Lance une veille BOT MODE sur cette idée et produis un résultat vérifiable.';
+      }
+      await dataService.updateIdea({ ideaId: idea._id, status, projectId: project._id });
+      return {
+        projectId: project._id,
+        prompt: `${prefix}\n\nIDÉE : ${idea.title}\n\nCONTENU : ${idea.content}`,
+      };
+    },
+    onSuccess: ({ projectId, prompt }) => {
+      const agentId = agents?.data?.[0]?.id;
+      if (!agentId) return;
+      const params = new URLSearchParams({
+        projectId,
+        agent_id: agentId,
+        prompt,
+        submit: 'true',
+        botmode: '1',
+      });
+      navigate(`/c/new?${params.toString()}`);
+    },
+  });
   const update = useMutation(
     (x: { ideaId: string; status: TIdea['status'] }) => dataService.updateIdea(x),
     { onSuccess: () => qc.invalidateQueries(['ideas']) },
@@ -89,25 +138,32 @@ export default function IdeasView() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => update.mutate({ ideaId: idea._id, status: 'in_analysis' })}
+                onClick={() => launchIdeaMission.mutate({ idea, mode: 'analyze' })}
               >
                 {localize('com_ui_idea_analyze')}
               </Button>
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => update.mutate({ ideaId: idea._id, status: 'to_develop' })}
+                onClick={() => launchIdeaMission.mutate({ idea, mode: 'develop' })}
               >
                 {localize('com_ui_idea_develop')}
               </Button>
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => update.mutate({ ideaId: idea._id, status: 'to_study' })}
+                onClick={() => launchIdeaMission.mutate({ idea, mode: 'watch' })}
               >
                 {localize('com_ui_idea_watch')}
               </Button>
-              <Button size="sm" onClick={() => project.mutate(idea)} disabled={project.isLoading}>
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (idea.projectId) navigate(`/projects/${idea.projectId}`);
+                  else createIdeaProject.mutate(idea);
+                }}
+                disabled={createIdeaProject.isLoading}
+              >
                 {localize('com_ui_idea_project')}
               </Button>
             </div>
