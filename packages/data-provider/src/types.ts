@@ -372,6 +372,34 @@ export type TUpdateConversationRequest = {
 
 export type TUpdateConversationResponse = TConversation;
 
+export type TIdea = {
+  _id: string;
+  title: string;
+  content: string;
+  status:
+    | 'new'
+    | 'to_study'
+    | 'in_analysis'
+    | 'solution_proposed'
+    | 'to_develop'
+    | 'in_progress'
+    | 'done'
+    | 'archived';
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  user?: string;
+};
+export type TCreateIdeaRequest = {
+  title: string;
+  content?: string;
+  status?: TIdea['status'];
+  priority?: TIdea['priority'];
+  tags?: string[];
+};
+export type TUpdateIdeaRequest = Partial<TCreateIdeaRequest> & { ideaId: string };
+
 export type TChatProject = {
   _id: string;
   name: string;

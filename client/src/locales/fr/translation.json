@@ -1547,5 +1547,10 @@
   "com_ui_bot_mode_dashboard_add_source": "Ajouter",
   "com_ui_bot_mode_dashboard_no_sources": "Aucune source ajoutée",
   "com_ui_bot_mode_dashboard_source_ready": "Disponible pour le contexte de conversation",
-  "com_ui_bot_mode_dashboard_no_mission": "Aucune mission n’est encore lancée."
+  "com_ui_bot_mode_dashboard_no_mission": "Aucune mission n’est encore lancée.",
+  "com_ui_ideas": "Idées",
+  "com_ui_ideas_description": "Déposez vos idées et laissez BOT MODE les analyser, développer et transformer en projets.",
+  "com_ui_idea_title": "Titre de l’idée",
+  "com_ui_idea_content": "Décrivez votre idée…",
+  "com_ui_add_idea": "Ajouter l’idée"
 }

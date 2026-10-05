@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MCPIcon, AttachmentIcon, OpenAIMinimalIcon } from '@librechat/client';
 import {
   Bot,
@@ -9,6 +10,7 @@ import {
   CalendarClock,
   ArrowRightToLine,
   SlidersHorizontal,
+  Lightbulb,
 } from 'lucide-react';
 import {
   Permissions,
@@ -54,6 +56,7 @@ export default function useSideNavLinks({
   endpointsConfig: TEndpointsConfig;
   includeHidePanel?: boolean;
 }) {
+  const navigate = useNavigate();
   const hasAccessToPrompts = useHasAccess({
     permissionType: PermissionTypes.PROMPTS,
     permission: Permissions.USE,
@@ -101,6 +104,13 @@ export default function useSideNavLinks({
 
   const Links = useMemo(() => {
     const links: NavLink[] = [];
+    links.push({
+      title: 'com_ui_ideas',
+      label: '',
+      icon: Lightbulb,
+      id: 'ideas',
+      onClick: () => navigate('/ideas'),
+    });
 
     if (
       endpointsConfig?.[EModelEndpoint.agents] &&
@@ -264,6 +274,7 @@ export default function useSideNavLinks({
     hasAccessToCreateMCP,
     includeHidePanel,
     hidePanel,
+    navigate,
   ]);
 
   return Links;

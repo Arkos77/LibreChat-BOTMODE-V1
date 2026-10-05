@@ -954,6 +954,23 @@ export function archiveAllConversations(): Promise<t.TArchiveAllConversationsRes
   return request.post(endpoints.archiveAllConversations(), {});
 }
 
+export function listIdeas(): Promise<{ ideas: t.TIdea[] }> {
+  return request.get(endpoints.ideas());
+}
+
+export function createIdea(payload: t.TCreateIdeaRequest): Promise<t.TIdea> {
+  return request.post(endpoints.ideas(), payload);
+}
+
+export function updateIdea(payload: t.TUpdateIdeaRequest): Promise<t.TIdea> {
+  const { ideaId, ...data } = payload;
+  return request.patch(endpoints.ideaById(ideaId), data);
+}
+
+export function deleteIdea(ideaId: string): Promise<{ removed: boolean }> {
+  return request.delete(endpoints.ideaById(ideaId));
+}
+
 export function listProjects(params?: q.ProjectListParams): Promise<q.ProjectListResponse> {
   return request.get(endpoints.projects(params ?? {}));
 }

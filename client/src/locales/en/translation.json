@@ -2623,5 +2623,10 @@
   "com_ui_bot_mode_dashboard_add_source": "Add",
   "com_ui_bot_mode_dashboard_no_sources": "No sources added",
   "com_ui_bot_mode_dashboard_source_ready": "Available to the conversation context",
-  "com_ui_bot_mode_dashboard_no_mission": "No mission has been launched yet."
+  "com_ui_bot_mode_dashboard_no_mission": "No mission has been launched yet.",
+  "com_ui_ideas": "Ideas",
+  "com_ui_ideas_description": "Capture ideas and let BOT MODE analyze, develop, and turn them into projects.",
+  "com_ui_idea_title": "Idea title",
+  "com_ui_idea_content": "Describe your idea…",
+  "com_ui_add_idea": "Add idea"
 }

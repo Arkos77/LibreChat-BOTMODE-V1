@@ -44,6 +44,7 @@ import { createTokenModel } from './token';
 import { createAgentModel } from './agent';
 import { createSkillModel } from './skill';
 import { createGroupModel } from './group';
+import { createIdeaModel } from './idea';
 import { createUserModel } from './user';
 import { createRoleModel } from './role';
 import { createFileModel } from './file';
@@ -60,6 +61,7 @@ export function createModels(mongoose: typeof import('mongoose')): {
   Balance: ReturnType<typeof createBalanceModel>;
   Conversation: ReturnType<typeof createConversationModel>;
   ChatProject: ReturnType<typeof createChatProjectModel>;
+  Idea: ReturnType<typeof createIdeaModel>;
   CodeEnvironment: ReturnType<typeof createCodeEnvironmentModel>;
   Message: ReturnType<typeof createMessageModel>;
   Agent: ReturnType<typeof createAgentModel>;
@@ -114,6 +116,7 @@ export function createModels(mongoose: typeof import('mongoose')): {
     Balance: createBalanceModel(mongoose),
     Conversation: createConversationModel(mongoose),
     ChatProject: createChatProjectModel(mongoose),
+    Idea: createIdeaModel(mongoose),
     CodeEnvironment: createCodeEnvironmentModel(mongoose),
     Message: createMessageModel(mongoose),
     Agent: createAgentModel(mongoose),
