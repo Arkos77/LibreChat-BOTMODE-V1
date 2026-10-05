@@ -192,6 +192,16 @@
       "title": "Web Fetch",
       "description": "Fetch and convert public web pages to Markdown for research.",
       "timeout": 30000
+    },
+    "github": {
+      "type": "streamable-http",
+      "url": "https://api.githubcopilot.com/mcp/readonly",
+      "headers": {
+        "X-MCP-Toolsets": "repos,issues,pull_requests"
+      },
+      "title": "GitHub",
+      "description": "Official GitHub MCP server restricted to read-only repository, issue, and pull request tools.",
+      "timeout": 30000
     }
   }
 }
