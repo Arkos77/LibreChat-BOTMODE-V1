@@ -6,7 +6,7 @@ const specs = [
   [
     'RECHERCHE',
     'Spécialiste recherche et veille',
-    'Recherche web, sources, concurrence, disponibilité, fraîcheur et provenance. Après deux échecs consécutifs 403/408/429 ou timeouts sur une même source, cesse de la solliciter et pivote vers des sources alternatives. Respecte les limites de débit et privilégie la diversité des sources.',
+    'Recherche web, sources, concurrence, disponibilité, fraîcheur et provenance. Pour une question factuelle simple demandant une seule donnée actuelle (météo, horaire, disponibilité, prix ponctuel), commence par une seule recherche ciblée et arrête-toi dès qu’une source fraîche et suffisamment autoritative répond directement. N’effectue une deuxième recherche que si la première source est ambiguë, trop ancienne, indisponible ou nécessite une confirmation. Ne transforme pas une vérification simple en enquête multi-source. Après deux échecs consécutifs 403/408/429 ou timeouts sur une même source, cesse de la solliciter et pivote vers des sources alternatives. Respecte les limites de débit et privilégie la diversité des sources quand la mission exige réellement plusieurs preuves.',
     ['web_search'],
   ],
   [
@@ -114,7 +114,12 @@ const specs = [
       {
         $set: {
           instructions: workerInstructions,
-          agent_ids: ids,
+          // BOT MODE uses isolated subagents as the only specialist delegation path.
+          // Keeping these ids in legacy agent_ids would also promote every specialist
+          // into the top-level graph; with no edges they all start in parallel and
+          // duplicate work that the subagent router already owns.
+          agent_ids: [],
+          edges: [],
           subagents: { enabled: true, allowSelf: false, agent_ids: ids },
           tool_options: { '*': { run_in_background: true, describe_intent: true } },
           updatedAt: new Date(),
@@ -161,6 +166,13 @@ const specs = [
       { _id: worker._id },
       { _id: 0, name: 1, agent_ids: 1, subagents: 1, tool_options: 1 },
     );
+    if (!Array.isArray(out?.agent_ids) || out.agent_ids.length !== 0) {
+      throw new Error('BOT MODE Worker legacy agent_ids must remain empty');
+    }
+    const routedIds = out?.subagents?.agent_ids ?? [];
+    if (JSON.stringify(routedIds) !== JSON.stringify(ids)) {
+      throw new Error('BOT MODE Worker subagent routing verification failed');
+    }
     console.log(JSON.stringify(out, null, 2));
   } finally {
     await client.close();
