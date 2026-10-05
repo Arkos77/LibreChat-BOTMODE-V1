@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button, Input } from '@librechat/client';
 import { dataService } from 'librechat-data-provider';
 import { Lightbulb, Plus, Trash2 } from 'lucide-react';
@@ -8,6 +9,7 @@ import { useLocalize } from '~/hooks';
 
 export default function IdeasView() {
   const localize = useLocalize();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -22,6 +24,10 @@ export default function IdeasView() {
   const remove = useMutation((id: string) => dataService.deleteIdea(id), {
     onSuccess: () => qc.invalidateQueries(['ideas']),
   });
+  const project = useMutation(
+    (idea: TIdea) => dataService.createProject({ name: idea.title, description: idea.content }),
+    { onSuccess: (p) => navigate(`/projects/${p._id}`) },
+  );
   const update = useMutation(
     (x: { ideaId: string; status: TIdea['status'] }) => dataService.updateIdea(x),
     { onSuccess: () => qc.invalidateQueries(['ideas']) },
@@ -77,6 +83,32 @@ export default function IdeasView() {
                 aria-label={localize('com_ui_delete')}
               >
                 <Trash2 className="size-4" />
+              </Button>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => update.mutate({ ideaId: idea._id, status: 'in_analysis' })}
+              >
+                {localize('com_ui_idea_analyze')}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => update.mutate({ ideaId: idea._id, status: 'to_develop' })}
+              >
+                {localize('com_ui_idea_develop')}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => update.mutate({ ideaId: idea._id, status: 'to_study' })}
+              >
+                {localize('com_ui_idea_watch')}
+              </Button>
+              <Button size="sm" onClick={() => project.mutate(idea)} disabled={project.isLoading}>
+                {localize('com_ui_idea_project')}
               </Button>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">

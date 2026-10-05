@@ -1552,5 +1552,9 @@
   "com_ui_ideas_description": "Déposez vos idées et laissez BOT MODE les analyser, développer et transformer en projets.",
   "com_ui_idea_title": "Titre de l’idée",
   "com_ui_idea_content": "Décrivez votre idée…",
-  "com_ui_add_idea": "Ajouter l’idée"
+  "com_ui_add_idea": "Ajouter l’idée",
+  "com_ui_idea_analyze": "Analyser",
+  "com_ui_idea_develop": "Développer",
+  "com_ui_idea_watch": "Surveiller",
+  "com_ui_idea_project": "Transformer en projet"
 }

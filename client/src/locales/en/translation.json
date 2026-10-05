@@ -2628,5 +2628,9 @@
   "com_ui_ideas_description": "Capture ideas and let BOT MODE analyze, develop, and turn them into projects.",
   "com_ui_idea_title": "Idea title",
   "com_ui_idea_content": "Describe your idea…",
-  "com_ui_add_idea": "Add idea"
+  "com_ui_add_idea": "Add idea",
+  "com_ui_idea_analyze": "Analyze",
+  "com_ui_idea_develop": "Develop",
+  "com_ui_idea_watch": "Watch",
+  "com_ui_idea_project": "Turn into project"
 }
