@@ -471,11 +471,17 @@ export type TBotModeProjectSource = {
   size?: number;
 };
 
+export type TBotModeProjectResult = {
+  messageId?: string;
+  content: string;
+};
+
 export type TBotModeProjectConversation = {
   conversationId: string;
   usage: TBotModeProjectUsage;
   traces: TBotModeProjectTrace[];
   plans: TBotModeProjectPlanEntry[];
+  results: TBotModeProjectResult[];
 };
 
 export type TBotModeProjectProjection = {

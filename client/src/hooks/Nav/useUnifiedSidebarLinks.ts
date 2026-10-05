@@ -87,7 +87,7 @@ export default function useUnifiedSidebarLinks() {
     const nextLinks = [...sideNavLinks];
     nextLinks.splice(mcpIndex >= 0 ? mcpIndex + 1 : nextLinks.length, 0, insightsLink);
 
-    return [conversationLink, workLink, ...nextLinks];
+    return [conversationLink, ...nextLinks];
   }, [insightsAccess?.access, insightsFeatureEnabled, location.pathname, navigate, sideNavLinks]);
 
   return links;

@@ -2333,6 +2333,7 @@
   "com_ui_bot_mode_project_subagents_hint": "Project execution activity and controls.",
   "com_ui_bot_mode_project_cost": "Cost",
   "com_ui_bot_mode_project_plans": "Plans",
+  "com_ui_bot_mode_project_results": "Results",
   "com_ui_bot_mode_project_tasks": "Tasks",
   "com_ui_bot_mode_project_oracle": "Oracle",
   "com_ui_bot_mode_project_evidence": "Evidence",

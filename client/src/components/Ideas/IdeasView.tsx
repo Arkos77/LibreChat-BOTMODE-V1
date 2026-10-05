@@ -17,6 +17,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { TIdea } from 'librechat-data-provider';
+import type { TranslationKeys } from '~/hooks/useLocalize';
 import { subagentStatusDotClass, subagentStatusLabelKey } from '~/components/Chat/Subagents/status';
 import { useBotModeProjectProjectionQuery, useParentSubagentsQuery } from '~/data-provider';
 import { useLocalize } from '~/hooks';
@@ -91,7 +92,7 @@ function IdeaMissionView({ idea }: { idea: TIdea }) {
     ? MTO_STEPS.indexOf(latestMto.type as (typeof MTO_STEPS)[number])
     : -1;
   const progress = stepIndex >= 0 ? Math.round(((stepIndex + 1) / MTO_STEPS.length) * 100) : 0;
-  let missionLabelKey = 'com_ui_bot_mode_idea_state_ready';
+  let missionLabelKey: TranslationKeys = 'com_ui_bot_mode_idea_state_ready';
   if (idea.status === 'in_analysis') missionLabelKey = 'com_ui_bot_mode_idea_state_analysis';
   else if (idea.status === 'in_progress') missionLabelKey = 'com_ui_bot_mode_idea_state_developing';
   else if (latestMto?.type === 'SETTLED') missionLabelKey = 'com_ui_bot_mode_idea_state_completed';
