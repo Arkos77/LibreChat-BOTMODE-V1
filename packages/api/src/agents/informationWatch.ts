@@ -198,6 +198,15 @@ export interface InformationWatchRunnerOptions {
   maxSourcesPerPass?: number;
 }
 
+let processInformationWatchRunner: InformationWatchRunner | undefined;
+
+export function getInformationWatchRunner(): InformationWatchRunner {
+  if (!processInformationWatchRunner) {
+    processInformationWatchRunner = new InformationWatchRunner();
+  }
+  return processInformationWatchRunner;
+}
+
 export class InformationWatchRunner {
   readonly registry: InformationWatchRegistry;
   private readonly maxSourcesPerPass: number;

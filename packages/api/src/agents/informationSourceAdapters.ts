@@ -437,3 +437,37 @@ export class DiscordInformationWatchAdapter implements InformationWatchAdapter {
     }
   }
 }
+
+export function getDefaultInformationWatchAdapters(): InformationWatchAdapter[] {
+  const adapters: InformationWatchAdapter[] = [
+    new RssInformationWatchAdapter({
+      descriptor: { ...FMHY_INFORMATION_SOURCE, connected: true },
+      feedUrl: FMHY_RSS_FEED_URL,
+    }),
+    new YouTubeInformationWatchAdapter({
+      apiKey: process.env.YOUTUBE_API_KEY,
+      query: 'BOT MODE',
+    }),
+    new TGStatInformationWatchAdapter({
+      token: process.env.TGSTAT_API_TOKEN,
+      query: 'BOT MODE',
+    }),
+  ];
+
+  const redditToken = process.env.REDDIT_ACCESS_TOKEN;
+  adapters.push(
+    new RedditInformationWatchAdapter({
+      accessToken: redditToken,
+      query: 'BOT MODE',
+    }),
+  );
+
+  adapters.push(
+    new DiscordInformationWatchAdapter({
+      botToken: process.env.DISCORD_BOT_TOKEN,
+      channelId: process.env.DISCORD_WATCH_CHANNEL_ID ?? '123456789012345678',
+      requireMessageContent: false,
+    }),
+  );
+  return adapters;
+}

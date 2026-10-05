@@ -16,6 +16,8 @@ function getService() {
     observeResolvedModelCatalog,
     getActivatedCapabilityRegistry,
     getOpportunityWatchRunner,
+    getInformationWatchRunner,
+    getDefaultInformationWatchAdapters,
     JobicyOpportunityAdapter,
     RemotiveOpportunityAdapter,
     discoverOpportunitySignals,
@@ -30,6 +32,7 @@ function getService() {
   const isUserDeleting = async (userId) => !(await methods.isAgentTriggerPrincipalActive(userId));
   const capabilityRegistry = getActivatedCapabilityRegistry();
   const economicWatch = getOpportunityWatchRunner();
+  const informationWatch = getInformationWatchRunner();
   const economicSources = [new JobicyOpportunityAdapter(), new RemotiveOpportunityAdapter()];
   const economicQueries = [
     'personal shopper',
@@ -105,6 +108,9 @@ function getService() {
         if (economicObservations.length > 0) {
           economicWatch.run(economicObservations);
         }
+
+        const informationAdapters = getDefaultInformationWatchAdapters();
+        await informationWatch.run(informationAdapters);
       },
     },
     resolveAgentFireAccess,
