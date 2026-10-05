@@ -4,13 +4,10 @@ import type { AppConfig, CodeEnvironmentDocument } from '@librechat/data-schemas
 import type { CodeBridgeFetch } from './bridge';
 import { readCodeBridgeSecret, revokeCodeBridgeWorker } from './bridge';
 
-const RECONCILE_INTERVAL_MS = 60_000;
 const RECONCILE_LEASE_MS = 2 * 60_000;
 const REGISTRATION_STALE_MS = 5 * 60_000;
 const REGISTRATION_RETRY_MS = 5 * 60_000;
 const REVOCATION_RETRY_MS = 5 * 60_000;
-let reconcileTimer: NodeJS.Timeout | undefined;
-let reconcileInFlight: Promise<void> | undefined;
 
 function agentReferenceFilter(environmentId: string, tenantId?: string) {
   return {
@@ -321,26 +318,6 @@ export async function reconcileCodeEnvironmentLifecycle({
       }
     }
   });
-}
-
-export function startCodeEnvironmentLifecycleReconciler(
-  options: Parameters<typeof reconcileCodeEnvironmentLifecycle>[0],
-): void {
-  if (reconcileTimer != null) return;
-  const run = (): void => {
-    if (reconcileInFlight != null) return;
-    const current = reconcileCodeEnvironmentLifecycle(options)
-      .catch((error) => {
-        logger.error('[code-environments] lifecycle reconciliation failed:', error);
-      })
-      .finally(() => {
-        if (reconcileInFlight === current) reconcileInFlight = undefined;
-      });
-    reconcileInFlight = current;
-  };
-  run();
-  reconcileTimer = setInterval(run, RECONCILE_INTERVAL_MS);
-  reconcileTimer.unref();
 }
 
 export async function revokeUserCodeEnvironmentWorkers({

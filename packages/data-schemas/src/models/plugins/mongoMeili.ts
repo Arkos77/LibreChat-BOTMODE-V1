@@ -991,10 +991,12 @@ export default function mongoMeili(schema: Schema, options: MongoMeiliOptions): 
       { _meiliIndex: 1, _meiliCleanupVersion: 1, [options.primaryKey]: 1 },
       {
         name: 'meili_excluded_legacy_cleanup_v3',
+        // MongoDB 4.4 rejects `$exists: false` inside partialFilterExpression.
+        // Keep the partial index compatible by selecting the explicit false marker;
+        // cleanupExcludedMeiliIndex() retains the stricter legacy-version predicate.
         partialFilterExpression: {
           [options.excludeFromIndexPath]: { $exists: true },
           _meiliIndex: { $eq: false },
-          _meiliCleanupVersion: { $exists: false },
         },
       },
     );

@@ -21,6 +21,7 @@ function getService() {
     JobicyOpportunityAdapter,
     RemotiveOpportunityAdapter,
     discoverOpportunitySignals,
+    reconcileCodeEnvironmentLifecycle,
   } = require('@librechat/api');
   const { getAppConfig } = require('~/server/services/Config/app');
   const {
@@ -111,6 +112,8 @@ function getService() {
 
         const informationAdapters = getDefaultInformationWatchAdapters();
         await informationWatch.run(informationAdapters);
+
+        await reconcileCodeEnvironmentLifecycle({ mongoose });
       },
     },
     resolveAgentFireAccess,
