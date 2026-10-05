@@ -9,6 +9,7 @@ CHECK_ONLY=0
 SKIP_INSTALL=0
 SKIP_BUILD=0
 SKIP_VERIFY=0
+LITE=0
 
 usage() {
   cat <<'EOF'
@@ -19,6 +20,7 @@ Safe BOT MODE bootstrap for Linux/ChromeOS Crostini/macOS.
 Options:
   --check-only    Validate prerequisites only; change nothing.
   --start         Start the Docker Compose stack after validation.
+  --lite          Use the low-memory API + MongoDB profile.
   --skip-install  Skip npm ci.
   --skip-build    Skip package/client builds.
   --skip-verify   Skip BOT MODE reproducibility tests.
@@ -33,6 +35,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --check-only) CHECK_ONLY=1 ;;
     --start) START_STACK=1 ;;
+    --lite) LITE=1 ;;
     --skip-install) SKIP_INSTALL=1 ;;
     --skip-build) SKIP_BUILD=1 ;;
     --skip-verify) SKIP_VERIFY=1 ;;
@@ -81,11 +84,35 @@ if [ "$CURRENT_MAJOR" != "$EXPECTED_MAJOR" ]; then
   exit 3
 fi
 
+if [ "$OS" = 'Linux' ] && [ -r /proc/meminfo ]; then
+  TOTAL_MEM_KB=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+  TOTAL_MEM_MB=$((TOTAL_MEM_KB / 1024))
+elif [ "$OS" = 'Darwin' ]; then
+  TOTAL_MEM_MB=$(( $(sysctl -n hw.memsize) / 1024 / 1024 ))
+else
+  TOTAL_MEM_MB=0
+fi
+
+COMPOSE_ARGS=(-f docker-compose.yml)
+if [ "$LITE" -eq 1 ]; then
+  COMPOSE_ARGS+=(-f docker-compose.botmode-lite.yml)
+  PROFILE='lite'
+else
+  PROFILE='full'
+fi
+
 printf 'BOTMODE_PLATFORM=%s\n' "$PLATFORM"
 printf 'BOTMODE_ARCH=%s\n' "$ARCH"
 printf 'BOTMODE_NODE=%s\n' "$CURRENT_NODE"
+printf 'BOTMODE_MEMORY_MB=%s\n' "$TOTAL_MEM_MB"
+printf 'BOTMODE_PROFILE=%s\n' "$PROFILE"
 printf 'BOTMODE_DOCKER=PASS\n'
 printf 'BOTMODE_COMPOSE=PASS\n'
+
+if [ "$LITE" -eq 0 ] && [ "$TOTAL_MEM_MB" -gt 0 ] && [ "$TOTAL_MEM_MB" -lt 4096 ]; then
+  echo 'Full profile requires at least 4 GiB RAM for this bootstrap. Use --lite on low-memory systems.' >&2
+  [ "$CHECK_ONLY" -eq 1 ] || exit 3
+fi
 
 if [ "$CHECK_ONLY" -eq 1 ]; then
   printf 'BOTMODE_BOOTSTRAP_CHECK=PASS\n'
@@ -115,7 +142,7 @@ else
   printf 'BOTMODE_BUILD=SKIPPED\n'
 fi
 
-env UID="$(id -u)" GID="$(id -g)" docker compose config --quiet
+env UID="$(id -u)" GID="$(id -g)" docker compose "${COMPOSE_ARGS[@]}" config --quiet
 printf 'BOTMODE_COMPOSE_CONFIG=PASS\n'
 
 if [ "$SKIP_VERIFY" -eq 0 ]; then
@@ -125,7 +152,7 @@ else
 fi
 
 if [ "$START_STACK" -eq 1 ]; then
-  env UID="$(id -u)" GID="$(id -g)" docker compose up -d
+  env UID="$(id -u)" GID="$(id -g)" docker compose "${COMPOSE_ARGS[@]}" up -d
   printf 'BOTMODE_STACK=STARTED\n'
 else
   printf 'BOTMODE_STACK=NOT_STARTED\n'

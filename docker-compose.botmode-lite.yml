@@ -1,0 +1,20 @@
+services:
+  api:
+    depends_on:
+      mongodb:
+        condition: service_started
+        required: true
+      rag_api:
+        condition: service_started
+        required: false
+    environment:
+      - MEILI_HOST=
+      - RAG_API_URL=
+  admin-panel:
+    profiles: ["full"]
+  meilisearch:
+    profiles: ["full"]
+  vectordb:
+    profiles: ["full"]
+  rag_api:
+    profiles: ["full"]
