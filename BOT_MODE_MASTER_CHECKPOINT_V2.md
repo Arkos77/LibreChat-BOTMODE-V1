@@ -2344,3 +2344,16 @@ CLEAN-CHECKOUT REPRODUCIBILITY — 5 OCTOBRE 2026
 - Documentation : `docs/BOT_MODE_INSTALL.md` décrit le chemin Linux/ChromeOS/macOS et Windows via WSL2.
 - Cette preuve valide checkout + lockfile + builds + Compose sur la machine actuelle. La preuve matérielle finale après nettoyage du Chromebook reste une étape future distincte ; elle ne doit pas être inférée de cette validation locale.
 --------------------------------------------------
+
+--------------------------------------------------
+PUBLIC RELEASE SECRET AUDIT — 5 OCTOBRE 2026
+--------------------------------------------------
+- Remotes vérifiés : `origin` = LibreChat officiel ; `personal` = fork Arkos77. Aucun push n'a été effectué pendant cet audit.
+- Références upstream `origin/main` et `origin/dev` récupérées sans checkout/merge ; base commune BOT MODE/upstream : `f9f1b2fb951a`.
+- 330 commits BOT MODE uniques (`base..HEAD`) contrôlés avec motifs forts : GitHub PAT, `ghp_`, clés `sk-` longues, Google `AIza`, Slack `xox*`, marqueurs de clé privée. Résultat : 0 commit à risque ; messages de commit : PASS.
+- Les fichiers locaux `.env`, `.env.backup-20261003` et `.env.temp` sont ignorés par `.gitignore`; aucun n'a d'historique Git. Les seuls `.env*` suivis sont des exemples : `.env.example`, `api/test/.env.test.example`, `search/.env.example`.
+- Les correspondances actuelles à forme de secret sont limitées aux fixtures historiques connues et au marqueur commenté `CODEAPI_JWT_PRIVATE_KEY` de `.env.example`; aucune valeur active n'a été affichée pendant l'audit.
+- Nouveau `scripts/botmode/audit-public-release.sh` : fail-closed sur modifications suivies/stagées, fichiers `.env*` non autorisés, motifs secrets inattendus dans HEAD/historique BOT MODE ou messages de commit. Le script ne sort que les chemins/types de risque.
+- Test d'archive publique : `git archive HEAD` produit une archive de ~45 MiB ; 0 `.env`, `.env.backup` ou `.env.temp` embarqué. SHA-256 de l'archive de test enregistré dans la sortie locale de validation, archive laissée uniquement sous `/tmp`.
+- Documentation : `docs/BOT_MODE_PUBLIC_RELEASE.md`. Une publication réelle/push reste une opération humaine distincte et non exécutée ici.
+--------------------------------------------------
