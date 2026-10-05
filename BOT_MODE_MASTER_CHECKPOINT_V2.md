@@ -2328,3 +2328,19 @@ After isolating and removing the `/tmp` saturation that polluted the global test
 
 The earlier global `test:ci` 540/545 suites result is not the final truth because it ran while `/tmp` was saturated. The subsequently isolated failing suites all PASS in a healthy environment. A fresh complete `test:ci` remains optional/expensive; targeted post-failure revalidation is currently green.
 --------------------------------------------------
+
+--------------------------------------------------
+CLEAN-CHECKOUT REPRODUCIBILITY — 5 OCTOBRE 2026
+--------------------------------------------------
+- HEAD de référence : `446c783` (`fix(botmode): align ideas projection and sidebar types`).
+- Clone isolé créé sous `~/backups/botmode-repro-check-20261005/LibreChat` avec worktree propre, sans `.env` et sans réutiliser le `node_modules` du dépôt principal.
+- `npm ci` : PASS ; 2 980 paquets installés depuis `package-lock.json`.
+- `scripts/botmode/verify-reproducibility.sh` : 38/38 tests PASS, ESLint ciblé PASS, worktree du clone propre.
+- `npm run build:packages` : PASS pour data-provider, data-schemas, API et package client.
+- build client CI : PASS ; artefacts PWA générés, avertissements Rolldown/Tailwind/PWA non bloquants seulement.
+- Docker Compose : l'absence de `.env` est correctement refusée ; après copie temporaire `.env.example -> .env` et fourniture locale UID/GID, `docker compose config --quiet` PASS. Le `.env` temporaire a ensuite été supprimé et le clone est revenu propre.
+- Nouveau bootstrap `scripts/botmode/bootstrap.sh` : préflight Linux/ChromeOS Crostini/macOS, création sûre de `.env` sans écrasement, `npm ci`, builds, validation Compose, vérification BOT MODE, et démarrage Docker uniquement avec `--start`. Aucun sudo, aucune suppression de données et aucun secret dans Git.
+- Test fonctionnel du bootstrap dans le clone isolé : PASS avec Compose PASS, 38/38 tests PASS, `BOTMODE_STACK=NOT_STARTED`, puis nettoyage des fichiers temporaires et worktree propre.
+- Documentation : `docs/BOT_MODE_INSTALL.md` décrit le chemin Linux/ChromeOS/macOS et Windows via WSL2.
+- Cette preuve valide checkout + lockfile + builds + Compose sur la machine actuelle. La preuve matérielle finale après nettoyage du Chromebook reste une étape future distincte ; elle ne doit pas être inférée de cette validation locale.
+--------------------------------------------------
