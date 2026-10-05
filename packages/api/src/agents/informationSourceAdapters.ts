@@ -92,7 +92,7 @@ export const YOUTUBE_INFORMATION_SOURCE: InformationSourceDescriptor = {
 };
 
 export class YouTubeInformationWatchAdapter implements InformationWatchAdapter {
-  readonly descriptor = YOUTUBE_INFORMATION_SOURCE;
+  readonly descriptor: InformationSourceDescriptor = YOUTUBE_INFORMATION_SOURCE;
   private readonly apiKey?: string;
   private readonly query: string;
   private readonly fetchImpl: typeof fetch;
@@ -180,7 +180,7 @@ export interface TGStatInformationWatchAdapterOptions {
 }
 
 export class TGStatInformationWatchAdapter implements InformationWatchAdapter {
-  readonly descriptor = TGSTAT_INFORMATION_SOURCE;
+  readonly descriptor: InformationSourceDescriptor = TGSTAT_INFORMATION_SOURCE;
   private readonly token?: string;
   private readonly query: string;
   private readonly fetchImpl: typeof fetch;
@@ -275,7 +275,7 @@ export interface RedditInformationWatchAdapterOptions {
 }
 
 export class RedditInformationWatchAdapter implements InformationWatchAdapter {
-  readonly descriptor = REDDIT_INFORMATION_SOURCE;
+  readonly descriptor: InformationSourceDescriptor = REDDIT_INFORMATION_SOURCE;
   private readonly accessToken?: string;
   private readonly query: string;
   private readonly fetchImpl: typeof fetch;
@@ -368,7 +368,7 @@ export interface DiscordInformationWatchAdapterOptions {
 }
 
 export class DiscordInformationWatchAdapter implements InformationWatchAdapter {
-  readonly descriptor = DISCORD_INFORMATION_SOURCE;
+  readonly descriptor: InformationSourceDescriptor = DISCORD_INFORMATION_SOURCE;
   private readonly botToken?: string;
   private readonly channelId: string;
   private readonly fetchImpl: typeof fetch;
