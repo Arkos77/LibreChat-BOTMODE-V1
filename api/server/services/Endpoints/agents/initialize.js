@@ -1221,6 +1221,8 @@ const initializeClient = async ({
     }
   };
 
+  const orchestratedMission = req.body?.orchestratorMission != null;
+
   const getExplicitSubagentIds = (agent) =>
     Array.from(
       new Set(
@@ -1544,6 +1546,17 @@ const initializeClient = async ({
           depth + 1,
           nextAncestors,
         );
+        if (orchestratedMission) {
+          const eagerConfig = await initializeLazySubagent({
+            agentId: metadata.id,
+            configId: metadata.configId,
+            context: { signal },
+            lazyChildren: [],
+          });
+          eagerConfig.lazySubagentConfigs = [];
+          eagerConfig.subagentAgentConfigs = childDescriptors.filter((child) => !child.configId);
+          return eagerConfig;
+        }
         const lazyChildren = childDescriptors.filter((child) => child.configId);
         const eagerChildren = childDescriptors.filter((child) => !child.configId);
         const subagentGraphMemberMetadata = await loadGraphMemberCapabilityMetadata(metadata);
@@ -1606,6 +1619,35 @@ const initializeClient = async ({
 
   const rootSubagentConfigs = [primaryConfig, ...agentConfigs.values()];
   await resolveSubagentTrees(rootSubagentConfigs);
+
+  if (orchestratedMission) {
+    for (const agentId of getExplicitSubagentIds(primaryConfig)) {
+      if (agentConfigs.has(agentId)) {
+        continue;
+      }
+      const agent = await waitForAbort(db.getAgentWithVersionCount({ id: agentId }), signal);
+      if (!agent) {
+        skippedAgentIds.add(agentId);
+        throw new Error(`Orchestrator specialist ${agentId} could not be found`);
+      }
+      const hasView = await hasSubagentViewAccess(agent, agentId, signal);
+      if (!hasView) {
+        skippedAgentIds.add(agentId);
+        throw new Error(
+          `Orchestrator specialist ${agentId} is not authorized or could not be initialized`,
+        );
+      }
+      const config = await initializeLoadedSubagent({
+        agent,
+        agentId,
+        configId: getLazySubagentConfigId(agent),
+        context: { signal },
+        lazyChildren: [],
+        viewAccessChecked: true,
+      });
+      agentConfigs.set(agentId, config);
+    }
+  }
 
   const graphMemberConfigsById = new Map(
     rootSubagentConfigs.filter((config) => config?.id).map((config) => [config.id, config]),
@@ -1993,7 +2035,6 @@ const initializeClient = async ({
     dockerExecutionProfile,
   });
   client.publicationBarrier = publicationBarrier;
-
   if (streamId) {
     GenerationJobManager.setCollectedUsage(streamId, collectedUsage, jobCreatedAt);
   }

@@ -1972,6 +1972,15 @@ export async function createRun({
   let graphConfig: RunConfig['graphConfig'];
   if (orchestratorPlan != null) {
     const authorizedBindings = new Map<string, AgentInputs>();
+    const collectSubagentBindings = (configs: AgentInputs['subagentConfigs']): void => {
+      for (const config of configs ?? []) {
+        const binding = config.agentInputs;
+        if (binding?.agentId && !authorizedBindings.has(binding.agentId)) {
+          authorizedBindings.set(binding.agentId, binding);
+        }
+        collectSubagentBindings(binding?.subagentConfigs);
+      }
+    };
     for (let index = 0; index < agents.length; index++) {
       const savedAgentId = agents[index]?.id;
       const binding = agentInputs[index];
@@ -1984,6 +1993,7 @@ export async function createRun({
         throw new Error('Invalid authorized agent binding for orchestrator plan');
       }
       authorizedBindings.set(savedAgentId, binding);
+      collectSubagentBindings(binding.subagentConfigs);
     }
     const nativePlan = compileNativePlan(
       orchestratorPlan,

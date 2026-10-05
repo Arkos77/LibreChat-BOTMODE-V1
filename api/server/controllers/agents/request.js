@@ -1380,6 +1380,9 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
     parentMessageId:
       editedContent != null ? preallocatedResponseMessageId : preallocatedUserMessageId,
   });
+  if (req.body?.orchestratorMission != null) {
+    mcpRequestBody.orchestratorMission = req.body.orchestratorMission;
+  }
 
   let client = null;
   let jobCreatedAt;
