@@ -5,6 +5,26 @@ describe('SerusIntelligence', () => {
     jest.restoreAllMocks();
   });
 
+  it('loads without credentials but fails closed before any network call', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => {
+      throw new Error('network should not be called');
+    });
+    const previousKey = process.env.SERUS_API_KEY;
+    delete process.env.SERUS_API_KEY;
+    try {
+      const tool = new SerusIntelligence();
+      const result = await tool._call({ action: 'verify_key' });
+      expect(result).toContain('Missing SERUS_API_KEY');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      if (previousKey == null) {
+        delete process.env.SERUS_API_KEY;
+      } else {
+        process.env.SERUS_API_KEY = previousKey;
+      }
+    }
+  });
+
   it('verifies access without exposing the subject', async () => {
     global.fetch = jest.fn(async () => ({
       ok: true,

@@ -56,14 +56,13 @@ class SerusIntelligence extends Tool {
   }
 
   getApiKey() {
-    const key = getEnvironmentVariable('SERUS_API_KEY');
-    if (!key) {
-      throw new Error('Missing SERUS_API_KEY environment variable.');
-    }
-    return key;
+    return getEnvironmentVariable('SERUS_API_KEY');
   }
 
   async request(path, options = {}) {
+    if (!this.apiKey) {
+      throw new Error('Missing SERUS_API_KEY environment variable.');
+    }
     const response = await fetch(BASE_URL + path, {
       ...options,
       headers: {
