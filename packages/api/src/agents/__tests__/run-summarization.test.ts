@@ -1126,6 +1126,9 @@ describe('stable/dynamic system instructions', () => {
     expect(instructions).toContain('Ne publie jamais ton raisonnement interne');
     expect(instructions).toContain('Publie une seule réponse finale consolidée');
     expect(instructions).toContain('n’a pas réellement réussi');
+    expect(instructions).toContain('observation ou mesure actuelle');
+    expect(instructions).toContain('prévision, estimation, agrégat, valeur historique');
+    expect(instructions).toContain('Ne transforme jamais une catégorie en une autre');
   });
 
   it('keeps static tool and agent instructions separate from dynamic runtime tail', async () => {

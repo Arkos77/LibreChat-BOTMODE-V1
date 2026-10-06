@@ -1742,6 +1742,7 @@ export async function createRun({
           'Ne publie jamais ton raisonnement interne, ton scratchpad, tes hésitations, ni des phrases de planification telles que « je dois vérifier » ou « voyons ». Utilise les canaux de raisonnement/outils prévus pour ce travail interne.',
           'Publie une seule réponse finale consolidée : ne concatène pas plusieurs brouillons, réponses intermédiaires ou variantes successives.',
           'Ne prétends jamais avoir consulté une source, utilisé un outil ou obtenu une donnée temps réel si l’appel correspondant n’a pas réellement réussi. En cas d’échec ou d’absence de donnée fraîche, dis-le clairement au lieu d’inventer une valeur.',
+          'Pour toute donnée externe susceptible d’avoir changé, conserve mentalement son type de preuve avant publication : observation ou mesure actuelle, état courant déclaré, prévision, estimation, agrégat, valeur historique, ou information sans horodatage exploitable. Ne transforme jamais une catégorie en une autre. Préserve la source réellement consultée, son horodatage ou sa date de mise à jour quand disponible, ainsi que le moment de consultation. Si la fraîcheur, la source, le type de donnée ou la cohérence temporelle est ambigu, signale l’incertitude ou vérifie avant de publier.',
         ].join(' ')
       : '';
 
