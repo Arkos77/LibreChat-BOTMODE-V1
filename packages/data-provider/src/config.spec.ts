@@ -1114,4 +1114,51 @@ describe('host model routing configuration', () => {
       }).success,
     ).toBe(false);
   });
+
+  it('accepts stable agentName routing with explicit failover and rejects ambiguous selectors', () => {
+    const byName = {
+      version: '1.0',
+      endpoints: {
+        agents: {
+          hostModelRouting: [
+            {
+              agentName: 'BOT MODE Worker',
+              models: ['model-a:free', 'model-b:free'],
+              preferredModel: 'model-a:free',
+              allowFailover: true,
+            },
+          ],
+        },
+      },
+    };
+    expect(configSchema.safeParse(byName).success).toBe(true);
+
+    expect(
+      configSchema.safeParse({
+        ...byName,
+        endpoints: {
+          agents: {
+            hostModelRouting: [
+              {
+                agentId: 'agent-one',
+                agentName: 'BOT MODE Worker',
+                models: ['model-a:free', 'model-b:free'],
+              },
+            ],
+          },
+        },
+      }).success,
+    ).toBe(false);
+
+    expect(
+      configSchema.safeParse({
+        ...byName,
+        endpoints: {
+          agents: {
+            hostModelRouting: [{ models: ['model-a:free', 'model-b:free'] }],
+          },
+        },
+      }).success,
+    ).toBe(false);
+  });
 });

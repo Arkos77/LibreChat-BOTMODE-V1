@@ -17,6 +17,74 @@
         "chain",
         "ocr",
         "run_in_background"
+      ],
+      "hostModelRouting": [
+        {
+          "agentName": "BOT MODE Worker",
+          "models": [
+            "openrouter/free",
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "nvidia/nemotron-3-super-120b-a12b:free",
+            "nvidia/nemotron-3.5-lightning:free"
+          ],
+          "preferredModel": "nvidia/nemotron-3-ultra-550b-a55b:free",
+          "allowFailover": true
+        },
+        {
+          "agentName": "RECHERCHE",
+          "models": [
+            "openrouter/free",
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "nvidia/nemotron-3-super-120b-a12b:free",
+            "nvidia/nemotron-3.5-lightning:free"
+          ],
+          "preferredModel": "nvidia/nemotron-3-super-120b-a12b:free",
+          "allowFailover": true
+        },
+        {
+          "agentName": "ANALYSE",
+          "models": [
+            "openrouter/free",
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "nvidia/nemotron-3-super-120b-a12b:free",
+            "nvidia/nemotron-3.5-lightning:free"
+          ],
+          "preferredModel": "nvidia/nemotron-3-ultra-550b-a55b:free",
+          "allowFailover": true
+        },
+        {
+          "agentName": "CODE",
+          "models": [
+            "openrouter/free",
+            "poolside/laguna-s-2.1:free",
+            "cohere/north-mini-code:free",
+            "nvidia/nemotron-3-super-120b-a12b:free"
+          ],
+          "preferredModel": "poolside/laguna-s-2.1:free",
+          "allowFailover": true
+        },
+        {
+          "agentName": "DOCUMENTS",
+          "models": [
+            "openrouter/free",
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "nvidia/nemotron-3-super-120b-a12b:free",
+            "nvidia/nemotron-3.5-lightning:free"
+          ],
+          "preferredModel": "nvidia/nemotron-3-super-120b-a12b:free",
+          "allowFailover": true
+        },
+        {
+          "agentName": "RÉDACTION",
+          "models": [
+            "openrouter/free",
+            "nvidia/nemotron-3.5-lightning:free",
+            "nvidia/nemotron-3-super-120b-a12b:free",
+            "nvidia/nemotron-3-ultra-550b-a55b:free"
+          ],
+          "preferredModel": "nvidia/nemotron-3.5-lightning:free",
+          "allowFailover": true
+        }
       ]
     },
     "custom": [
@@ -128,6 +196,9 @@
             "openrouter/free",
             "nvidia/nemotron-3-ultra-550b-a55b:free",
             "nvidia/nemotron-3-super-120b-a12b:free",
+            "nvidia/nemotron-3.5-lightning:free",
+            "poolside/laguna-s-2.1:free",
+            "cohere/north-mini-code:free",
             "cognitivecomputations/dolphin-mistral-24b-venice-edition",
             "thedrummer/cydonia-24b-v4.1"
           ],

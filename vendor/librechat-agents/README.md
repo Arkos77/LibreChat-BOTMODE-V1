@@ -1,3 +1,16 @@
+# BOT MODE safe rate-limit failover SDK — current artifact
+
+- Package: `@librechat/agents` 3.7.17.
+- Source commit: `29e3b4231ee7c52eec01257678f3babb07f6fa9e`.
+- Commit message: `feat(agents): gate failover on zero-chunk rate limits`.
+- Artifact: `librechat-agents-3.7.17-29e3b4231ee7c52eec01257678f3babb07f6fa9e.tgz`.
+- SHA-256: `8277ec1a7012a28bf1153bc871883150dcbbd545b0c9110fa627127f41451632`.
+- npm integrity: `sha512-fAnGEyNugQoqI28MKMtsTFmsIdcOp64a+WQeVBV8Lns1gqWOxUkNO5EoAZisvhegCi8TLqMoEnSD2PCyHsIRpA==`.
+- Validation: fallback suite 18/18 PASS; SDK build PASS; `git diff --check` PASS.
+- Typecheck note: standalone `tsc --noEmit` currently reports the pre-existing unrelated `src/hooks/effectAuthority.ts:77 TS2367`; this failover patch does not touch that file.
+- Contract: a fallback carrying `retryOn: MODEL_RATE_LIMIT_ZERO_CHUNK` may run only after a typed model rate-limit whose failed attempt emitted zero model chunks. Ordinary provider errors, context-overflow errors, stream-limit aborts, and rate-limits after any emitted chunk remain fail-closed. Unmarked historical fallbacks retain their previous behavior.
+- Host integration: LibreChat P11 still resolves, validates, authorizes and records the candidate bindings before execution; this SDK restriction narrows when the already-authorized native fallback chain may advance.
+
 # P8 Docker execution gateway SDK — current artifact
 
 - Package: `@librechat/agents` 3.7.17.

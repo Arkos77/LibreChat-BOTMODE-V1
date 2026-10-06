@@ -1127,14 +1127,27 @@ export const agentsEndpointSchema = baseEndpointSchema
           z.union([
             z
               .object({
-                agentId: z.string().min(1).max(128),
+                agentId: z.string().min(1).max(128).optional(),
+                agentName: z.string().min(1).max(128).optional(),
                 models: z.array(z.string().min(1).max(256)).min(2).max(4),
                 preferredModel: z.string().min(1).max(256).optional(),
+                allowFailover: z.boolean().optional(),
               })
-              .strict(),
+              .strict()
+              .superRefine((value, ctx) => {
+                const selectors = Number(value.agentId != null) + Number(value.agentName != null);
+                if (selectors !== 1) {
+                  ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: 'Exactly one of agentId or agentName is required',
+                    path: ['agentId'],
+                  });
+                }
+              }),
             z
               .object({
-                agentId: z.string().min(1).max(128),
+                agentId: z.string().min(1).max(128).optional(),
+                agentName: z.string().min(1).max(128).optional(),
                 bindings: z
                   .array(
                     z
@@ -1148,8 +1161,19 @@ export const agentsEndpointSchema = baseEndpointSchema
                   .min(2)
                   .max(4),
                 preferredBindingId: z.string().min(1).max(256).optional(),
+                allowFailover: z.boolean().optional(),
               })
-              .strict(),
+              .strict()
+              .superRefine((value, ctx) => {
+                const selectors = Number(value.agentId != null) + Number(value.agentName != null);
+                if (selectors !== 1) {
+                  ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: 'Exactly one of agentId or agentName is required',
+                    path: ['agentId'],
+                  });
+                }
+              }),
           ]),
         )
         .max(32)

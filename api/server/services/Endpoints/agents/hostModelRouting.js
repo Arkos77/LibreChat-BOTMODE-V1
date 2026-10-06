@@ -6,6 +6,15 @@ function sameProvider(left, right) {
   );
 }
 
+function matchesAgentPolicy(policy, originalAgent) {
+  const hasId = typeof policy?.agentId === 'string' && policy.agentId.length > 0;
+  const hasName = typeof policy?.agentName === 'string' && policy.agentName.length > 0;
+  if (hasId === hasName) {
+    return false;
+  }
+  return hasId ? policy.agentId === originalAgent.id : policy.agentName === originalAgent.name;
+}
+
 function normalizePolicy(policy, originalAgent) {
   if (Array.isArray(policy?.bindings)) {
     const bindings = policy.bindings.map((binding) => ({
@@ -85,7 +94,7 @@ async function resolveHostModelRouting({
   decisionId,
   traceEventId,
 }) {
-  const entries = config?.filter((entry) => entry.agentId === originalAgent.id) ?? [];
+  const entries = config?.filter((entry) => matchesAgentPolicy(entry, originalAgent)) ?? [];
   if (entries.length === 0) return primaryConfig;
   if (entries.length !== 1) throw new Error('Duplicate host model routing policies for agent');
   const [policy] = entries;

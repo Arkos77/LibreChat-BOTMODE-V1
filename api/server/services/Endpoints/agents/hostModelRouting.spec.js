@@ -2,7 +2,7 @@ const { resolveHostModelRouting } = require('./hostModelRouting');
 
 const base = () => ({
   config: [{ agentId: 'agent-one', models: ['a:free', 'b:free'], preferredModel: 'b:free' }],
-  originalAgent: { id: 'agent-one', provider: 'OpenRouter', model: 'a:free' },
+  originalAgent: { id: 'agent-one', name: 'Agent One', provider: 'OpenRouter', model: 'a:free' },
   primaryConfig: {
     id: 'agent-one',
     model: 'a:free',
@@ -66,6 +66,23 @@ describe('host model routing', () => {
     expect(request.persist).toHaveBeenCalledTimes(1);
     expect(request.sink).toHaveBeenCalledTimes(1);
   });
+
+  it('matches a stable agentName selector without requiring a machine-local agent id', async () => {
+    const request = base();
+    request.config = [
+      {
+        agentName: 'Agent One',
+        models: ['a:free', 'b:free'],
+        preferredModel: 'b:free',
+      },
+    ];
+
+    const result = await resolveHostModelRouting(request);
+
+    expect(result.model).toBe('b:free');
+    expect(result.hostModelDecision.agentId).toBe('agent-one');
+  });
+
   it('resolves an explicitly authorized cross-provider binding without inheriting the primary provider', async () => {
     const request = base();
     request.config = [

@@ -260,6 +260,7 @@ export async function decideHostModel(input: Input): Promise<{
                 return {
                   provider: binding.provider,
                   clientOptions: { ...binding.options },
+                  retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
                   ...(binding.contextWindow != null
                     ? { maxContextTokens: binding.contextWindow }
                     : {}),

@@ -112,6 +112,7 @@ describe('host P11 model decision', () => {
         {
           provider: 'OpenRouter',
           clientOptions: { model: 'model-b:free' },
+          retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
         },
       ],
     });

@@ -2357,3 +2357,20 @@ PUBLIC RELEASE SECRET AUDIT — 5 OCTOBRE 2026
 - Test d'archive publique : `git archive HEAD` produit une archive de ~45 MiB ; 0 `.env`, `.env.backup` ou `.env.temp` embarqué. SHA-256 de l'archive de test enregistré dans la sortie locale de validation, archive laissée uniquement sous `/tmp`.
 - Documentation : `docs/BOT_MODE_PUBLIC_RELEASE.md`. Une publication réelle/push reste une opération humaine distincte et non exécutée ici.
 --------------------------------------------------
+
+--------------------------------------------------
+SAFE FREE-MODEL FAILOVER — 6 OCTOBRE 2026
+--------------------------------------------------
+- Objectif validé : BOT MODE privilégie les modèles gratuits et ne doit plus s'arrêter sur un simple rate-limit si un autre modèle gratuit déjà autorisé peut répondre.
+- SDK `@librechat/agents` source : commit `29e3b4231ee7c52eec01257678f3babb07f6fa9e` (`feat(agents): gate failover on zero-chunk rate limits`).
+- Artefact vendored : `vendor/librechat-agents/librechat-agents-3.7.17-29e3b4231ee7c52eec01257678f3babb07f6fa9e.tgz` ; SHA-256 `8277ec1a7012a28bf1153bc871883150dcbbd545b0c9110fa627127f41451632` ; npm integrity `sha512-fAnGEyNugQoqI28MKMtsTFmsIdcOp64a+WQeVBV8Lns1gqWOxUkNO5EoAZisvhegCi8TLqMoEnSD2PCyHsIRpA==`.
+- Contrat fermé : un fallback BOT MODE marqué `MODEL_RATE_LIMIT_ZERO_CHUNK` n'est autorisé qu'après un `MODEL_RATE_LIMIT` typé, hors overflow, et seulement si l'appel échoué n'a émis aucun chunk modèle. Une erreur ordinaire, un overflow, un stream-limit ou un rate-limit après un chunk reste fail-closed.
+- Les fallbacks SDK historiques non marqués conservent leur comportement ; le changement est donc borné au routage hôte explicitement autorisé.
+- Preuves SDK : `fallbackOverflow.test.ts` 18/18 PASS ; build SDK PASS ; `git diff --check` PASS. Le `tsc --noEmit` global du SDK signale uniquement le TS2367 préexistant dans `src/hooks/effectAuthority.ts:77`, fichier hors périmètre de ce changement.
+- LibreChat P11 : `hostModelRouting` accepte désormais un sélecteur reproductible `agentName` ou `agentId`, exactement un des deux ; `allowFailover` est explicitement admis par le schéma. Chaque fallback généré par le Decision Layer porte la politique stricte `MODEL_RATE_LIMIT_ZERO_CHUNK`.
+- Preuves hôte : schéma host-model 2/2 PASS ; resolver hostModelRouting 7/7 PASS ; hostModelDecision 6/6 PASS ; revalidation initialisation/reprise 2/2 PASS ; callbacks modèle/fallback 1/1 PASS ; Prettier/ESLint ciblés PASS.
+- Pool OpenRouter gratuit vérifié live avec la clé locale : `openrouter/free`, `nvidia/nemotron-3-ultra-550b-a55b:free`, `nvidia/nemotron-3-super-120b-a12b:free`, `nvidia/nemotron-3.5-lightning:free`, `poolside/laguna-s-2.1:free`, `cohere/north-mini-code:free` sont présents dans `/v1/models`.
+- Routage par rôle configuré : Worker/ANALYSE privilégient Nemotron Ultra ; RECHERCHE/DOCUMENTS Nemotron Super ; CODE Laguna S 2.1 puis North Mini Code/Super ; RÉDACTION Nemotron Lightning. Tous les candidats de cette tranche sont gratuits.
+- Aucun modèle payant n'est ajouté au failover automatique tant qu'un budget explicite n'est pas défini par l'utilisateur.
+- Limite explicite : les candidats actuels passent tous par le même compte OpenRouter. Un quota global OpenRouter épuisé peut donc encore bloquer tout ce pool. La résilience gratuite multi-provider (Gemini/Groq/Mistral/Qwen selon quotas réellement disponibles) reste une extension future nécessitant les clés correspondantes ; elle réutilisera le même contrat de failover sûr.
+--------------------------------------------------
