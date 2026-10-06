@@ -274,7 +274,7 @@ describe('BotModeProjectPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }));
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.stringMatching(
-        /\/c\/new\?projectId=project-a&agent_id=agent-worker&prompt=.*&submit=true&botmode=1/,
+        /\/c\/new\?projectId=project-a&agent_id=agent-worker&prompt=.*&submit=true&botmode=1&botmode_mode=analyze/,
       ),
     );
 

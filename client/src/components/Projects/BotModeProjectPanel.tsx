@@ -183,6 +183,7 @@ export default function BotModeProjectPanel({
       prompt: 'Lance une mission BOT MODE et produis un résultat vérifiable.',
       submit: 'true',
       botmode: '1',
+      botmode_mode: 'analyze',
     });
     navigate(`/c/new?${params.toString()}`);
   };

@@ -1,8 +1,10 @@
 import type { TMessage } from 'librechat-data-provider';
 import {
+  getBotModeExecutionMode,
   getRegenerateSubmissionMessages,
   getPreliminaryRegenerateResponseMessageId,
   getRegenerateTargetResponseMessage,
+  shouldUseBotModeMission,
 } from '../useChatFunctions';
 
 const userMessage = (messageId: string, parentMessageId = '00000000-0000-0000-0000-000000000000') =>
@@ -22,6 +24,30 @@ const assistantMessage = (messageId: string, parentMessageId: string) =>
     sender: 'Assistant',
     text: messageId,
   }) as TMessage;
+
+describe('BOT MODE execution depth', () => {
+  it('defaults ordinary BOT MODE chat to the fast path', () => {
+    const params = new URLSearchParams({ botmode: '1' });
+
+    expect(getBotModeExecutionMode(params)).toBe('fast');
+    expect(shouldUseBotModeMission(params)).toBe(false);
+  });
+
+  it.each(['analyze', 'develop', 'watch'])(
+    'keeps explicit %s launches on the deep mission path',
+    (mode) => {
+      const params = new URLSearchParams({ botmode: '1', botmode_mode: mode });
+
+      expect(getBotModeExecutionMode(params)).toBe(mode);
+      expect(shouldUseBotModeMission(params)).toBe(true);
+    },
+  );
+
+  it('does not create a mission when BOT MODE itself is not active', () => {
+    const params = new URLSearchParams({ botmode_mode: 'analyze' });
+    expect(shouldUseBotModeMission(params)).toBe(false);
+  });
+});
 
 describe('regenerate response targeting', () => {
   it('uses the clicked assistant response instead of the conversation tail', () => {

@@ -49,6 +49,14 @@ import { useAuthContext } from '~/hooks';
  * refetch so a send can't fork from an outdated tail. */
 const STALE_SEND_REVALIDATION_MS = 5_000;
 
+export function getBotModeExecutionMode(searchParams: URLSearchParams): string {
+  return searchParams.get('botmode_mode') ?? 'fast';
+}
+
+export function shouldUseBotModeMission(searchParams: URLSearchParams): boolean {
+  return searchParams.get('botmode') === '1' && getBotModeExecutionMode(searchParams) !== 'fast';
+}
+
 const logChatRequest = (request: Record<string, unknown>) => {
   logger.log('=====================================\nAsk function called with:');
   logger.dir(request);
@@ -542,7 +550,8 @@ export default function useChatFunctions({
       quotes: quotes.length > 0 ? quotes : undefined,
     };
 
-    if (searchParams.get('botmode') === '1' && isAgentsEndpoint(endpoint)) {
+    const botModeMode = getBotModeExecutionMode(searchParams);
+    if (shouldUseBotModeMission(searchParams) && isAgentsEndpoint(endpoint)) {
       const botModeAgentId = conversation?.agent_id;
       if (typeof botModeAgentId !== 'string' || botModeAgentId.length === 0) {
         console.error('BOT MODE mission requires a selected agent');
@@ -564,7 +573,7 @@ export default function useChatFunctions({
             capabilities,
             constraints: [],
           }));
-          const mode = searchParams.get('botmode_mode') ?? 'analyze';
+          const mode = botModeMode;
           const analyzeObjectives = [
             {
               key: 'research',
