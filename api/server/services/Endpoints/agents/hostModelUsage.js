@@ -49,6 +49,15 @@ function projectHostModelUsage(decision, usageEvents) {
     const outputTokens = tokenCount(event.output_tokens);
     const costUsd = usdCost(event.cost);
     const observedLatencyMs = latencyMs(event.latency_ms);
+    const cacheReadTokens = tokenCount(
+      event?.input_token_details?.cache_read ?? event?.cache_read_input_tokens,
+    );
+    const cacheWriteTokens = tokenCount(
+      event?.input_token_details?.cache_creation ??
+        event?.input_token_details?.cache_write_tokens ??
+        event?.cache_creation_input_tokens ??
+        event?.cache_write_tokens,
+    );
     if (inputTokens == null && outputTokens == null) continue;
     modelCalls.push({
       usageModel,
@@ -57,6 +66,8 @@ function projectHostModelUsage(decision, usageEvents) {
       ...(outputTokens == null ? {} : { outputTokens }),
       ...(costUsd == null ? {} : { costUsd }),
       ...(observedLatencyMs == null ? {} : { latencyMs: observedLatencyMs }),
+      ...(cacheReadTokens == null ? {} : { cacheReadTokens }),
+      ...(cacheWriteTokens == null ? {} : { cacheWriteTokens }),
     });
   }
   if (!modelCalls.length) return undefined;
@@ -75,6 +86,16 @@ function projectHostModelUsage(decision, usageEvents) {
       } else {
         acc.latencyMs += call.latencyMs;
       }
+      if (call.cacheReadTokens == null) {
+        acc.cacheReadKnown = false;
+      } else {
+        acc.cacheReadTokens += call.cacheReadTokens;
+      }
+      if (call.cacheWriteTokens == null) {
+        acc.cacheWriteKnown = false;
+      } else {
+        acc.cacheWriteTokens += call.cacheWriteTokens;
+      }
       return acc;
     },
     {
@@ -84,6 +105,10 @@ function projectHostModelUsage(decision, usageEvents) {
       costKnown: true,
       latencyMs: 0,
       latencyKnown: true,
+      cacheReadTokens: 0,
+      cacheReadKnown: true,
+      cacheWriteTokens: 0,
+      cacheWriteKnown: true,
     },
   );
 

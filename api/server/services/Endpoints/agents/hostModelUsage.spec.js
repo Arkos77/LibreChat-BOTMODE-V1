@@ -17,6 +17,7 @@ describe('P11 model invocation evidence', () => {
         output_tokens: 3,
         cost: 0.0017,
         latency_ms: 420,
+        input_token_details: { cache_read: 6, cache_creation: 2 },
       },
       { model: 'other', provider: 'openrouter', usage_type: 'subagent', input_tokens: 80 },
     ]);
@@ -37,6 +38,8 @@ describe('P11 model invocation evidence', () => {
           outputTokens: 3,
           costUsd: 0.0017,
           latencyMs: 420,
+          cacheReadTokens: 6,
+          cacheWriteTokens: 2,
         },
       ],
       total: {
@@ -46,6 +49,10 @@ describe('P11 model invocation evidence', () => {
         costKnown: true,
         latencyMs: 420,
         latencyKnown: true,
+        cacheReadTokens: 6,
+        cacheReadKnown: true,
+        cacheWriteTokens: 2,
+        cacheWriteKnown: true,
       },
     });
   });
@@ -114,6 +121,10 @@ describe('P11 model invocation evidence', () => {
         costKnown: false,
         latencyMs: 435,
         latencyKnown: true,
+        cacheReadTokens: 0,
+        cacheReadKnown: false,
+        cacheWriteTokens: 0,
+        cacheWriteKnown: false,
       },
     });
   });
@@ -162,6 +173,10 @@ describe('P11 model invocation evidence', () => {
         costKnown: true,
         latencyMs: 0,
         latencyKnown: false,
+        cacheReadTokens: 0,
+        cacheReadKnown: false,
+        cacheWriteTokens: 0,
+        cacheWriteKnown: false,
       },
     });
     expect(JSON.stringify(result)).not.toContain('apiKey');

@@ -17,6 +17,8 @@ export interface AuthorizedResourceSignals {
   fallbackRate?: number;
   /** Number of bounded historical observations behind health signals. */
   sampleCount?: number;
+  /** Historical prompt-cache read ratio, 0..1, supplied by the host. */
+  cacheReadRate?: number;
   /** Higher is better. May come from benchmarks or historical QA. */
   qualityScore?: number;
   /** Higher is better. Historical Oracle signal only; Oracle remains independent QA. */
@@ -73,6 +75,8 @@ export interface RoutingConstraints {
   allowedExecutionModes?: readonly ResourceExecutionMode[];
   /** Cost-admission policy; omitted preserves historical routing semantics. */
   spendingPolicy?: SpendingPolicy;
+  /** Prefer historically cache-reusable candidates after quality/health checks. */
+  preferCached?: boolean;
 }
 
 export interface RoutingDecisionContext {
@@ -256,6 +260,10 @@ function deterministicOrder<T extends AuthorizedResourceCandidate>(
     if (order !== 0) return order;
     order = compareAscending(left.signals?.fallbackRate, right.signals?.fallbackRate);
     if (order !== 0) return order;
+    if (constraints.preferCached === true) {
+      order = compareDescending(left.signals?.cacheReadRate, right.signals?.cacheReadRate);
+      if (order !== 0) return order;
+    }
     order = compareAscending(left.signals?.estimatedCost, right.signals?.estimatedCost);
     if (order !== 0) return order;
     order = compareAscending(left.signals?.latencyMs, right.signals?.latencyMs);

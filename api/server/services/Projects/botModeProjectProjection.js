@@ -81,6 +81,10 @@ function publicModelReceipt(value) {
       costKnown: total.costKnown === true,
       latencyMs: finite(total.latencyMs),
       latencyKnown: total.latencyKnown === true,
+      cacheReadTokens: finite(total.cacheReadTokens),
+      cacheReadKnown: total.cacheReadKnown === true,
+      cacheWriteTokens: finite(total.cacheWriteTokens),
+      cacheWriteKnown: total.cacheWriteKnown === true,
     },
   };
 }

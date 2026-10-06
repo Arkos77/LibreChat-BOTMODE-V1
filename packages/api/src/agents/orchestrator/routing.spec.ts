@@ -167,6 +167,37 @@ describe('rankAuthorizedResources', () => {
     expect(result.orderedCandidateIds).toEqual(['healthy-slower', 'unstable-fast']);
   });
 
+  it('uses observed cache reuse only when preferCached is explicitly enabled', async () => {
+    const uncached = resource('uncached', {
+      signals: {
+        qualityScore: 0.8,
+        successRate: 0.95,
+        fallbackRate: 0.05,
+        cacheReadRate: 0.1,
+        estimatedCost: 0,
+        latencyMs: 50,
+      },
+    });
+    const cached = resource('cached', {
+      signals: {
+        qualityScore: 0.8,
+        successRate: 0.95,
+        fallbackRate: 0.05,
+        cacheReadRate: 0.9,
+        estimatedCost: 0,
+        latencyMs: 120,
+      },
+    });
+
+    const defaultOrder = await rankAuthorizedResources([cached, uncached]);
+    expect(defaultOrder.orderedCandidateIds).toEqual(['uncached', 'cached']);
+
+    const cacheAware = await rankAuthorizedResources([uncached, cached], {
+      constraints: { preferCached: true },
+    });
+    expect(cacheAware.orderedCandidateIds).toEqual(['cached', 'uncached']);
+  });
+
   it('rejects paid and unknown-price candidates under free_only', async () => {
     const result = await rankAuthorizedResources(
       [

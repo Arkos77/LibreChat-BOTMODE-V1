@@ -511,6 +511,10 @@ export type TBotModeModelReceipt = {
     costKnown: boolean;
     latencyMs: number;
     latencyKnown: boolean;
+    cacheReadTokens: number;
+    cacheReadKnown: boolean;
+    cacheWriteTokens: number;
+    cacheWriteKnown: boolean;
   };
 };
 

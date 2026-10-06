@@ -43,6 +43,9 @@ function createBucket(provider, model) {
     selectedAttempts: 0,
     selectedSuccesses: 0,
     fallbackCount: 0,
+    cacheObservedCalls: 0,
+    cacheInputTokens: 0,
+    cacheReadTokens: 0,
   };
 }
 
@@ -86,6 +89,19 @@ function deriveHealthSignals(receipts) {
       bucket.sampleCount += 1;
       const latency = boundedLatency(call.latencyMs);
       if (latency != null) bucket.latencies.push(latency);
+      const inputTokens =
+        Number.isSafeInteger(call.inputTokens) && call.inputTokens >= 0
+          ? call.inputTokens
+          : undefined;
+      const cacheReadTokens =
+        Number.isSafeInteger(call.cacheReadTokens) && call.cacheReadTokens >= 0
+          ? call.cacheReadTokens
+          : undefined;
+      if (inputTokens != null && cacheReadTokens != null) {
+        bucket.cacheObservedCalls += 1;
+        bucket.cacheInputTokens += inputTokens;
+        bucket.cacheReadTokens += Math.min(cacheReadTokens, inputTokens);
+      }
       if (provider === selectedProvider && model === selectedModel) {
         selectedSucceeded = true;
       }
@@ -103,6 +119,9 @@ function deriveHealthSignals(receipts) {
     if (bucket.selectedAttempts >= MIN_SIGNAL_SAMPLES) {
       signals.successRate = boundedRate(bucket.selectedSuccesses / bucket.selectedAttempts);
       signals.fallbackRate = boundedRate(bucket.fallbackCount / bucket.selectedAttempts);
+    }
+    if (bucket.cacheObservedCalls >= MIN_SIGNAL_SAMPLES && bucket.cacheInputTokens > 0) {
+      signals.cacheReadRate = boundedRate(bucket.cacheReadTokens / bucket.cacheInputTokens);
     }
     byProviderModel[key] = signals;
   }

@@ -15,7 +15,15 @@ describe('BOT MODE model health signals', () => {
           selectedProvider: 'OpenRouter',
           selectedModel: 'free-a',
           fallbackUsed: false,
-          modelCalls: [{ provider: 'openrouter', usageModel: 'free-a', latencyMs: 100 }],
+          modelCalls: [
+            {
+              provider: 'openrouter',
+              usageModel: 'free-a',
+              latencyMs: 100,
+              inputTokens: 100,
+              cacheReadTokens: 80,
+            },
+          ],
         },
       },
       {
@@ -24,7 +32,13 @@ describe('BOT MODE model health signals', () => {
           selectedModel: 'free-a',
           fallbackUsed: true,
           modelCalls: [
-            { provider: 'openrouter', usageModel: 'free-a', latencyMs: 300 },
+            {
+              provider: 'openrouter',
+              usageModel: 'free-a',
+              latencyMs: 300,
+              inputTokens: 100,
+              cacheReadTokens: 60,
+            },
             { provider: 'Gemini', usageModel: 'flash', latencyMs: 80 },
           ],
         },
@@ -34,7 +48,15 @@ describe('BOT MODE model health signals', () => {
           selectedProvider: 'openrouter',
           selectedModel: 'free-a',
           fallbackUsed: false,
-          modelCalls: [{ provider: 'openrouter', usageModel: 'free-a', latencyMs: 200 }],
+          modelCalls: [
+            {
+              provider: 'openrouter',
+              usageModel: 'free-a',
+              latencyMs: 200,
+              inputTokens: 100,
+              cacheReadTokens: 70,
+            },
+          ],
         },
       },
     ]);
@@ -45,6 +67,7 @@ describe('BOT MODE model health signals', () => {
       latencyP95Ms: 300,
       successRate: 1,
       fallbackRate: 1 / 3,
+      cacheReadRate: 0.7,
     });
     expect(byProviderModel['gemini\0flash']).toEqual({
       sampleCount: 1,

@@ -9,6 +9,7 @@ function mergeObservedHealthSignals(signals, health) {
     ...(health.successRate == null ? {} : { successRate: health.successRate }),
     ...(health.fallbackRate == null ? {} : { fallbackRate: health.fallbackRate }),
     ...(health.sampleCount == null ? {} : { sampleCount: health.sampleCount }),
+    ...(health.cacheReadRate == null ? {} : { cacheReadRate: health.cacheReadRate }),
   };
 }
 
