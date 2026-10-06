@@ -185,6 +185,19 @@
         "modelDisplayLabel": "MiniMax"
       },
       {
+        "name": "xAI",
+        "apiKey": "user_provided",
+        "baseURL": "https://api.x.ai/v1",
+        "models": {
+          "fetch": true,
+          "default": [
+            "grok-4.7"
+          ]
+        },
+        "titleConvo": true,
+        "modelDisplayLabel": "Grok / xAI"
+      },
+      {
         "name": "Drael",
         "apiKey": "user_provided",
         "baseURL": "https://drael.sh/v1",
