@@ -50,6 +50,8 @@ function makeDeps() {
           },
           usage: { input: 10, output: 4, cacheWrite: 1, cacheRead: 2, cost: 0.25 },
           hostModelUsage: {
+            traceId: 'trace-routing-a',
+            decisionId: 'decision-routing-a',
             selectedProvider: 'OpenRouter',
             selectedModel: 'free-a',
             resolvedProvider: 'openrouter',
@@ -189,6 +191,8 @@ describe('createBotModeProjectProjection', () => {
             {
               messageId: 'msg-a',
               receipt: {
+                traceId: 'trace-routing-a',
+                decisionId: 'decision-routing-a',
                 selectedProvider: 'OpenRouter',
                 selectedModel: 'free-a',
                 resolvedProvider: 'openrouter',

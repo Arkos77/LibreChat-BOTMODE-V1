@@ -57,6 +57,12 @@ function publicObservation(record) {
   return observation;
 }
 
+function boundedId(value) {
+  return typeof value === 'string' && value.trim() !== '' && value.length <= 256
+    ? value.trim()
+    : undefined;
+}
+
 function publicModelReceipt(value) {
   if (!value || typeof value !== 'object') return null;
   const selectedProvider =
@@ -65,6 +71,8 @@ function publicModelReceipt(value) {
   if (!selectedProvider || !selectedModel) return null;
   const total = value.total && typeof value.total === 'object' ? value.total : {};
   return {
+    ...(boundedId(value.traceId) ? { traceId: boundedId(value.traceId) } : {}),
+    ...(boundedId(value.decisionId) ? { decisionId: boundedId(value.decisionId) } : {}),
     selectedProvider,
     selectedModel,
     ...(typeof value.resolvedProvider === 'string'

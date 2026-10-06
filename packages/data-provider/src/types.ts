@@ -497,6 +497,8 @@ export type TBotModeProjectResult = {
 };
 
 export type TBotModeModelReceipt = {
+  traceId?: string;
+  decisionId?: string;
   selectedProvider: string;
   selectedModel: string;
   resolvedProvider?: string;
