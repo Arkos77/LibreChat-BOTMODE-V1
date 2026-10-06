@@ -52,6 +52,7 @@ const {
   initializeScheduleErasureSweep,
 } = require('./services/Schedules');
 const { configureSubagentTaskRouting } = require('./services/Endpoints/agents/subagentThreadStore');
+const { createSimpleXPendingActionNotifier } = require('./services/Notifications/simplex');
 const { jwtLogin, ldapLogin, passportLogin } = require('~/strategies');
 const { updateInterfacePermissions: updateInterfacePerms } = require('@librechat/api');
 const {
@@ -295,6 +296,7 @@ if (cluster.isMaster) {
   // but an already-fired scheduled generation can still reach HITL here. Settle
   // its durable run when the generic approval runtime expires it.
   GenerationJobManager.setApprovalExpiredHandler(recordExpiredScheduleApproval);
+  GenerationJobManager.setPendingActionDurableHandler(createSimpleXPendingActionNotifier());
   GenerationJobManager.setTerminalHostActionHandler(
     createAgentEventTerminalHandler(agentEventMethods, {
       resumeDetachedAction: resumeAgentEventDetachedAction,

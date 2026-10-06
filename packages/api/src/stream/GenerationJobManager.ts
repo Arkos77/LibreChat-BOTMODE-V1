@@ -513,6 +513,11 @@ export type ApprovalExpiredHandler = (
   job: SerializableJobData,
 ) => void | Promise<void>;
 
+export type PendingActionDurableHandler = (
+  streamId: string,
+  job: SerializableJobData,
+) => void | Promise<void>;
+
 export type TerminalHostActionHandler = (
   streamId: string,
   job: SerializableJobData,
@@ -789,6 +794,7 @@ class GenerationJobManagerClass {
   /** Optional host hook; the generic stream runtime does not know what external
    * durable work (scheduled chats, webhooks, etc.) a generation represents. */
   private approvalExpiredHandler: ApprovalExpiredHandler | undefined;
+  private pendingActionDurableHandler: PendingActionDurableHandler | undefined;
   private terminalHostActionHandler: TerminalHostActionHandler | undefined;
 
   constructor(options?: GenerationJobManagerOptions) {
@@ -939,6 +945,36 @@ class GenerationJobManagerClass {
     this.approvalExpiredHandler = handler;
   }
 
+  /** Installs a best-effort host notification hook after a review pause is durable. */
+  setPendingActionDurableHandler(handler?: PendingActionDurableHandler): void {
+    this.pendingActionDurableHandler = handler;
+  }
+
+  private async notifyPendingActionDurable(
+    streamId: string,
+    expectedCreatedAt: number,
+  ): Promise<void> {
+    const handler = this.pendingActionDurableHandler;
+    if (!handler) return;
+    try {
+      const job = await this.jobStore.getJob(streamId);
+      if (
+        !job ||
+        job.createdAt !== expectedCreatedAt ||
+        job.status !== 'requires_action' ||
+        job.pendingAction == null ||
+        isPendingActionStale(job)
+      ) {
+        return;
+      }
+      await handler(streamId, job);
+    } catch (error) {
+      logger.warn(
+        `[GenerationJobManager] Pending-action host notification failed for ${streamId}: ${String(error)}`,
+      );
+    }
+  }
+
   /** Installs a durable, generation-fenced terminal lifecycle adapter. */
   setTerminalHostActionHandler(handler?: TerminalHostActionHandler): void {
     this.terminalHostActionHandler = handler;
@@ -974,7 +1010,10 @@ class GenerationJobManagerClass {
 
   private createApprovalLifecycle(store: IJobStoreV2): ApprovalLifecycle {
     return new ApprovalLifecycle(store, {
-      onPaused: (streamId, createdAt) => this.releaseJobOwnership(streamId, createdAt),
+      onPaused: (streamId, createdAt) => {
+        this.releaseJobOwnership(streamId, createdAt);
+        void this.notifyPendingActionDurable(streamId, createdAt);
+      },
       onResumed: (streamId, createdAt) => this.acquireResumedJobOwnership(streamId, createdAt),
       onExpired: (streamId, createdAt) => this.releaseJobOwnership(streamId, createdAt),
       onPausePersistenceFailed: (streamId, createdAt, error, drainedSteers) =>

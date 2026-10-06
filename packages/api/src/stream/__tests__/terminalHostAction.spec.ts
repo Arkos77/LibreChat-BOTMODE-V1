@@ -724,6 +724,56 @@ describe('GenerationJobManager terminal host actions', () => {
     await expect(store.getJob(streamId)).resolves.not.toHaveProperty('terminalHostActionPending');
   });
 
+  it('notifies the host only after a pending action is durable', async () => {
+    const handler = jest.fn().mockResolvedValue(undefined);
+    manager.setPendingActionDurableHandler(handler);
+    const streamId = 'conversation-pending-notify';
+    const job = await manager.createJob(streamId, 'user-1', streamId);
+    const action = buildPendingAction(
+      buildToolApprovalPayload([
+        { name: 'submit_move', arguments: { gameId: 'game-1' }, tool_call_id: 'call-1' },
+      ]),
+      { streamId, conversationId: streamId },
+    );
+
+    await expect(
+      manager.approvals.pause(streamId, action, { expectedCreatedAt: job.createdAt }),
+    ).resolves.toBe(true);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith(
+      streamId,
+      expect.objectContaining({
+        createdAt: job.createdAt,
+        status: 'requires_action',
+        pendingAction: expect.objectContaining({ actionId: action.actionId }),
+      }),
+    );
+  });
+
+  it('keeps a durable pause when the host notification fails', async () => {
+    manager.setPendingActionDurableHandler(jest.fn().mockRejectedValue(new Error('offline')));
+    const streamId = 'conversation-pending-notify-failure';
+    const job = await manager.createJob(streamId, 'user-1', streamId);
+    const action = buildPendingAction(
+      buildToolApprovalPayload([
+        { name: 'submit_move', arguments: { gameId: 'game-2' }, tool_call_id: 'call-2' },
+      ]),
+      { streamId, conversationId: streamId },
+    );
+
+    await expect(
+      manager.approvals.pause(streamId, action, { expectedCreatedAt: job.createdAt }),
+    ).resolves.toBe(true);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    await expect(store.getJob(streamId)).resolves.toMatchObject({
+      status: 'requires_action',
+      pendingAction: { actionId: action.actionId },
+    });
+  });
+
   it('settles a bound generation when pause persistence times out', async () => {
     const now = jest.spyOn(Date, 'now').mockReturnValue(1_000);
     const handler = jest.fn().mockResolvedValue(undefined);
