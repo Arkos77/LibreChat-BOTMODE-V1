@@ -9,6 +9,7 @@ policy layer, or alternative source of truth.
 - `memory:hindsight` — retain/recall/reflect and provenance-backed knowledge.
 - `qa:artifact-drift` — deterministic artifact integrity and drift checks.
 - `media:audio-voice` — audio/voice/transcription/dubbing capability contract.
+- `hardware:openblueprint` — hardware design/BOM/wiring/assembly contract; disabled until a real governed runtime is admitted.
 - `opportunity:economic-enablement` — jobs, product testing, hospitality and sourcing.
 - six vertical packs — Finance, Immobilier, Achats PME, Conciergerie, Automobile,
   Hospitality Intelligence.
