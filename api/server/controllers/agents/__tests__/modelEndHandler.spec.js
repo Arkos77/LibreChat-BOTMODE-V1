@@ -231,6 +231,26 @@ describe('ModelEndHandler — Vertex thoughtSignature capture (issue #13006 foll
     expect(emitUsage).toHaveBeenCalledWith(expect.objectContaining({ agentId: undefined }));
   });
 
+  it('records bounded per-model latency from the matching model start run id', async () => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(2000);
+    const collectedUsage = [];
+    const emitUsage = jest.fn();
+    const modelStartTimes = new Map([['model-run-1', 1500]]);
+    const handler = new ModelEndHandler(collectedUsage, null, emitUsage, modelStartTimes);
+
+    await handler.handle(
+      'on_chat_model_end',
+      { output: { usage_metadata: { input_tokens: 10, output_tokens: 5, total_tokens: 15 } } },
+      { ls_model_name: 'gpt-4', run_id: 'model-run-1', user_id: 'u1' },
+      buildGraph(),
+    );
+
+    expect(collectedUsage[0].latencyMs).toBe(500);
+    expect(emitUsage).toHaveBeenCalledWith(expect.objectContaining({ latency_ms: 500 }));
+    expect(modelStartTimes.has('model-run-1')).toBe(false);
+    now.mockRestore();
+  });
+
   it('throws when collectedUsage is not an array (existing contract)', () => {
     expect(() => new ModelEndHandler(null)).toThrow('collectedUsage must be an array');
   });

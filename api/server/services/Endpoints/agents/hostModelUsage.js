@@ -3,6 +3,10 @@ const boundedText = (value) =>
 const tokenCount = (value) => (Number.isSafeInteger(value) && value >= 0 ? value : undefined);
 const usdCost = (value) =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+const latencyMs = (value) =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 600000
+    ? Math.round(value)
+    : undefined;
 
 /** Persist a small projection of actual primary model-end usage for an opted-in P11 decision. */
 function projectHostModelUsage(decision, usageEvents) {
@@ -44,6 +48,7 @@ function projectHostModelUsage(decision, usageEvents) {
     const inputTokens = tokenCount(event.input_tokens);
     const outputTokens = tokenCount(event.output_tokens);
     const costUsd = usdCost(event.cost);
+    const observedLatencyMs = latencyMs(event.latency_ms);
     if (inputTokens == null && outputTokens == null) continue;
     modelCalls.push({
       usageModel,
@@ -51,6 +56,7 @@ function projectHostModelUsage(decision, usageEvents) {
       ...(inputTokens == null ? {} : { inputTokens }),
       ...(outputTokens == null ? {} : { outputTokens }),
       ...(costUsd == null ? {} : { costUsd }),
+      ...(observedLatencyMs == null ? {} : { latencyMs: observedLatencyMs }),
     });
   }
   if (!modelCalls.length) return undefined;
@@ -64,16 +70,36 @@ function projectHostModelUsage(decision, usageEvents) {
       } else {
         acc.costUsd += call.costUsd;
       }
+      if (call.latencyMs == null) {
+        acc.latencyKnown = false;
+      } else {
+        acc.latencyMs += call.latencyMs;
+      }
       return acc;
     },
-    { inputTokens: 0, outputTokens: 0, costUsd: 0, costKnown: true },
+    {
+      inputTokens: 0,
+      outputTokens: 0,
+      costUsd: 0,
+      costKnown: true,
+      latencyMs: 0,
+      latencyKnown: true,
+    },
   );
+
+  const fallbackUsed = modelCalls.some(
+    (call) => call.provider !== selectedProvider.toLowerCase() || call.usageModel !== selectedModel,
+  );
+  const resolvedCall = modelCalls[modelCalls.length - 1];
 
   return {
     traceId,
     decisionId,
     selectedModel,
     selectedProvider,
+    resolvedProvider: resolvedCall.provider,
+    resolvedModel: resolvedCall.usageModel,
+    fallbackUsed,
     ...(boundedText(decision?.selectedBindingId)
       ? { selectedBindingId: boundedText(decision.selectedBindingId) }
       : {}),

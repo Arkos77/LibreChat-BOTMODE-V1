@@ -289,6 +289,76 @@ describe('host model routing', () => {
     expect(result.model).toBe('b:free');
   });
 
+  it('merges recent observed health into adaptive routing signals before decision', async () => {
+    const request = base();
+    request.config = [
+      {
+        agentId: 'agent-one',
+        models: ['a:free', 'b:free'],
+        preferredModel: undefined,
+        routingMode: 'adaptive',
+        routingSignals: {
+          'a:free': { qualityScore: 0.8, latencyMs: 900 },
+          'b:free': { qualityScore: 0.8, latencyMs: 100 },
+        },
+      },
+    ];
+    request.modelHealthState = {
+      byProviderModel: {
+        'openrouter\0a:free': {
+          sampleCount: 5,
+          latencyMs: 120,
+          successRate: 0.98,
+          fallbackRate: 0.02,
+        },
+        'openrouter\0b:free': {
+          sampleCount: 5,
+          latencyMs: 80,
+          successRate: 0.6,
+          fallbackRate: 0.4,
+        },
+      },
+    };
+    request.decide.mockImplementation(async (input) => ({
+      selectedModel: 'a:free',
+      event: {
+        type: 'DECIDED',
+        identity: { traceId: 'trace', traceEventId: 'event' },
+        source: 'host',
+        timestamp: '2026-10-06T12:00:00.000Z',
+        payload: {
+          decisionId: 'decision',
+          selectedOption: 'a:free',
+          provider: 'deterministic',
+        },
+      },
+      input,
+    }));
+
+    await resolveHostModelRouting(request);
+
+    expect(request.decide).toHaveBeenCalledWith(
+      expect.objectContaining({
+        routingSignals: {
+          'a:free': {
+            qualityScore: 0.8,
+            latencyMs: 120,
+            successRate: 0.98,
+            fallbackRate: 0.02,
+            sampleCount: 5,
+          },
+          'b:free': {
+            qualityScore: 0.8,
+            latencyMs: 80,
+            successRate: 0.6,
+            fallbackRate: 0.4,
+            sampleCount: 5,
+          },
+        },
+      }),
+    );
+  });
+
   it('returns controlled native fallbacks only when host failover is explicitly enabled', async () => {
     const request = base();
     request.config = [

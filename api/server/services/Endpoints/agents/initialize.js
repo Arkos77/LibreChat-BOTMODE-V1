@@ -87,6 +87,7 @@ const {
 const { recordSkillImprovementProposal } = require('./improvementSkillProposal');
 const { resolveHostModelRouting } = require('./hostModelRouting');
 const { readModelBudgetState } = require('./modelBudget');
+const { readModelHealthState } = require('./modelHealth');
 const { randomUUID } = require('crypto');
 const { logViolation } = require('~/cache');
 const db = require('~/models');
@@ -884,13 +885,25 @@ const initializeClient = async ({
 
   const initialPrimaryConfig = primaryConfig;
   const modelBudgetConfig = appConfig?.endpoints?.[EModelEndpoint.agents]?.modelBudget;
-  const modelBudgetState =
+  const adaptiveHostRouting = hostModelRouting?.some(
+    (entry) =>
+      entry.routingMode === 'adaptive' &&
+      (entry.agentId === originalPrimaryAgent.id ||
+        (typeof entry.agentName === 'string' && entry.agentName === originalPrimaryAgent.name)),
+  );
+  const [modelBudgetState, modelHealthState] = await Promise.all([
     hostModelRouting && modelBudgetConfig
-      ? await readModelBudgetState({
+      ? readModelBudgetState({
           userId: req.user.id,
           config: modelBudgetConfig,
         })
-      : undefined;
+      : undefined,
+    adaptiveHostRouting
+      ? readModelHealthState({
+          userId: req.user.id,
+        })
+      : undefined,
+  ]);
   primaryConfig = await resolveHostModelRouting({
     config: hostModelRouting,
     originalAgent: originalPrimaryAgent,
@@ -957,6 +970,7 @@ const initializeClient = async ({
     decisionId: randomUUID(),
     traceEventId: randomUUID(),
     budgetState: modelBudgetState,
+    modelHealthState,
   });
 
   if (primaryConfig !== initialPrimaryConfig) {

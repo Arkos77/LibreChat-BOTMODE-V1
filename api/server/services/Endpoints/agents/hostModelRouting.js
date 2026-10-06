@@ -1,4 +1,16 @@
 const { mergeBudgetRoutingConstraints } = require('./modelBudget');
+const { getModelHealthSignals } = require('./modelHealth');
+
+function mergeObservedHealthSignals(signals, health) {
+  if (!health) return signals;
+  return {
+    ...(signals ?? {}),
+    ...(health.latencyMs == null ? {} : { latencyMs: health.latencyMs }),
+    ...(health.successRate == null ? {} : { successRate: health.successRate }),
+    ...(health.fallbackRate == null ? {} : { fallbackRate: health.fallbackRate }),
+    ...(health.sampleCount == null ? {} : { sampleCount: health.sampleCount }),
+  };
+}
 
 function sameProvider(left, right) {
   return (
@@ -101,6 +113,7 @@ async function resolveHostModelRouting({
   decisionId,
   traceEventId,
   budgetState,
+  modelHealthState,
 }) {
   const entries = config?.filter((entry) => matchesAgentPolicy(entry, originalAgent)) ?? [];
   if (entries.length === 0) return primaryConfig;
@@ -180,6 +193,15 @@ async function resolveHostModelRouting({
       contextWindow: resolved.maxContextTokens,
       ...(binding.signals ? { signals: binding.signals } : {}),
     });
+  }
+
+  for (const binding of resolvedBindings) {
+    const health =
+      getModelHealthSignals(modelHealthState, binding.provider, binding.model) ??
+      getModelHealthSignals(modelHealthState, binding.runtimeProvider, binding.model);
+    if (health) {
+      binding.signals = mergeObservedHealthSignals(binding.signals, health);
+    }
   }
 
   const decision = explicitBindings

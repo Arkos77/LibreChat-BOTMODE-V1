@@ -11,6 +11,12 @@ export interface AuthorizedResourceSignals {
   pricingTier?: 'free' | 'paid';
   /** Host-observed or estimated latency. */
   latencyMs?: number;
+  /** Historical primary-selection success ratio, 0..1. */
+  successRate?: number;
+  /** Historical fallback ratio after selecting this resource, 0..1. Lower is better. */
+  fallbackRate?: number;
+  /** Number of bounded historical observations behind health signals. */
+  sampleCount?: number;
   /** Higher is better. May come from benchmarks or historical QA. */
   qualityScore?: number;
   /** Higher is better. Historical Oracle signal only; Oracle remains independent QA. */
@@ -245,6 +251,10 @@ function deterministicOrder<T extends AuthorizedResourceCandidate>(
     order = compareDescending(left.signals?.oracleScore, right.signals?.oracleScore);
     if (order !== 0) return order;
     order = compareDescending(left.signals?.benchmarkScore, right.signals?.benchmarkScore);
+    if (order !== 0) return order;
+    order = compareDescending(left.signals?.successRate, right.signals?.successRate);
+    if (order !== 0) return order;
+    order = compareAscending(left.signals?.fallbackRate, right.signals?.fallbackRate);
     if (order !== 0) return order;
     order = compareAscending(left.signals?.estimatedCost, right.signals?.estimatedCost);
     if (order !== 0) return order;

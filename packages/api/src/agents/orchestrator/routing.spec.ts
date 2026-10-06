@@ -142,6 +142,31 @@ describe('rankAuthorizedResources', () => {
     expect(result.orderedCandidateIds).toEqual(['free-slower', 'paid-fast']);
   });
 
+  it('uses historical health before cost and latency when quality is otherwise equal', async () => {
+    const result = await rankAuthorizedResources([
+      resource('unstable-fast', {
+        signals: {
+          qualityScore: 0.8,
+          successRate: 0.6,
+          fallbackRate: 0.4,
+          estimatedCost: 0,
+          latencyMs: 50,
+        },
+      }),
+      resource('healthy-slower', {
+        signals: {
+          qualityScore: 0.8,
+          successRate: 0.95,
+          fallbackRate: 0.05,
+          estimatedCost: 0,
+          latencyMs: 120,
+        },
+      }),
+    ]);
+
+    expect(result.orderedCandidateIds).toEqual(['healthy-slower', 'unstable-fast']);
+  });
+
   it('rejects paid and unknown-price candidates under free_only', async () => {
     const result = await rankAuthorizedResources(
       [

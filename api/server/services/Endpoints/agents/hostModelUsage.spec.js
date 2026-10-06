@@ -16,6 +16,7 @@ describe('P11 model invocation evidence', () => {
         input_tokens: 14,
         output_tokens: 3,
         cost: 0.0017,
+        latency_ms: 420,
       },
       { model: 'other', provider: 'openrouter', usage_type: 'subagent', input_tokens: 80 },
     ]);
@@ -24,6 +25,9 @@ describe('P11 model invocation evidence', () => {
       decisionId: 'decision-1',
       selectedModel: 'b:free',
       selectedProvider: 'openrouter',
+      resolvedProvider: 'openrouter',
+      resolvedModel: 'b:free',
+      fallbackUsed: false,
       authorizedBindings: [{ provider: 'openrouter', model: 'b:free' }],
       modelCalls: [
         {
@@ -32,6 +36,7 @@ describe('P11 model invocation evidence', () => {
           inputTokens: 14,
           outputTokens: 3,
           costUsd: 0.0017,
+          latencyMs: 420,
         },
       ],
       total: {
@@ -39,6 +44,8 @@ describe('P11 model invocation evidence', () => {
         outputTokens: 3,
         costUsd: 0.0017,
         costKnown: true,
+        latencyMs: 420,
+        latencyKnown: true,
       },
     });
   });
@@ -61,12 +68,14 @@ describe('P11 model invocation evidence', () => {
           input_tokens: 21,
           output_tokens: 5,
           cost: 0.0026,
+          latency_ms: 310,
         },
         {
           agentId: 'agent-primary',
           model: 'claude-sonnet',
           provider: 'openrouter',
           input_tokens: 999,
+          latency_ms: 125,
         },
       ],
     );
@@ -75,6 +84,9 @@ describe('P11 model invocation evidence', () => {
       decisionId: 'decision-1',
       selectedModel: 'claude-sonnet',
       selectedProvider: 'anthropic',
+      resolvedProvider: 'openrouter',
+      resolvedModel: 'claude-sonnet',
+      fallbackUsed: true,
       authorizedBindings: [
         { provider: 'anthropic', model: 'claude-sonnet' },
         { provider: 'openrouter', model: 'claude-sonnet' },
@@ -86,11 +98,13 @@ describe('P11 model invocation evidence', () => {
           inputTokens: 21,
           outputTokens: 5,
           costUsd: 0.0026,
+          latencyMs: 310,
         },
         {
           usageModel: 'claude-sonnet',
           provider: 'openrouter',
           inputTokens: 999,
+          latencyMs: 125,
         },
       ],
       total: {
@@ -98,6 +112,8 @@ describe('P11 model invocation evidence', () => {
         outputTokens: 5,
         costUsd: 0.0026,
         costKnown: false,
+        latencyMs: 435,
+        latencyKnown: true,
       },
     });
   });
@@ -139,7 +155,14 @@ describe('P11 model invocation evidence', () => {
       selectedBindingId: 'free-primary',
       routingMode: 'adaptive',
       spendingPolicy: 'free_first',
-      total: { inputTokens: 7, outputTokens: 2, costUsd: 0, costKnown: true },
+      total: {
+        inputTokens: 7,
+        outputTokens: 2,
+        costUsd: 0,
+        costKnown: true,
+        latencyMs: 0,
+        latencyKnown: false,
+      },
     });
     expect(JSON.stringify(result)).not.toContain('apiKey');
   });

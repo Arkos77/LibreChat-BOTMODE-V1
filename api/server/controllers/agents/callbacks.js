@@ -102,13 +102,19 @@ class ModelEndHandler {
    * @param {(data: Record<string, unknown>) => Promise<void> | void} [emitUsage] Optional
    *   callback to stream per-call token usage to the client.
    */
-  constructor(collectedUsage, collectedThoughtSignatures = null, emitUsage = null) {
+  constructor(
+    collectedUsage,
+    collectedThoughtSignatures = null,
+    emitUsage = null,
+    modelStartTimes = null,
+  ) {
     if (!Array.isArray(collectedUsage)) {
       throw new Error('collectedUsage must be an array');
     }
     this.collectedUsage = collectedUsage;
     this.collectedThoughtSignatures = collectedThoughtSignatures;
     this.emitUsage = emitUsage;
+    this.modelStartTimes = modelStartTimes;
   }
 
   finalize(errorMessage) {
@@ -150,10 +156,17 @@ class ModelEndHandler {
       }
 
       const usage = data?.output?.usage_metadata;
+      const modelRunId = typeof metadata?.run_id === 'string' ? metadata.run_id : undefined;
       if (!usage) {
+        if (modelRunId != null) this.modelStartTimes?.delete(modelRunId);
         return this.finalize(errorMessage);
       }
       let taggedUsage = contextualizeModelUsage(usage, metadata, agentContext);
+      const startedAt = modelRunId == null ? undefined : this.modelStartTimes?.get(modelRunId);
+      if (startedAt != null) {
+        taggedUsage = { ...taggedUsage, latencyMs: Math.max(0, Date.now() - startedAt) };
+        this.modelStartTimes.delete(modelRunId);
+      }
       /** Hidden intermediate sequential-agent calls are billed but never shown.
        *  Tag them non-primary on the COLLECTED usage too (not just the emit) so
        *  recordCollectedUsage excludes their output from the parent's tokenCount
@@ -198,6 +211,7 @@ class ModelEndHandler {
             /** Per-run sequence so identical payloads from distinct calls
              *  stay distinguishable during resume dedupe */
             seq: this.collectedUsage.length,
+            latency_ms: taggedUsage.latencyMs,
           });
         } catch (err) {
           /** Best-effort telemetry: a failed emit (closed SSE, Redis publish
@@ -438,6 +452,7 @@ function getDefaultHandlers({
   let eventActivityPending = 0;
   let eventActivityCircuitOpen = false;
   let eventActivityTail = Promise.resolve();
+  const modelStartTimes = new Map();
   const publishEventChildActivity = (eventData) => {
     const phase = eventActivityPhases[eventData?.event];
     if (
@@ -513,10 +528,22 @@ function getDefaultHandlers({
     return emitForJob({ event: UsageEvents.ON_TOKEN_USAGE, data: payload });
   };
   const handlers = {
+    [GraphEvents.CHAT_MODEL_START]: {
+      handle: async (_event, _data, metadata) => {
+        const runId = typeof metadata?.run_id === 'string' ? metadata.run_id : undefined;
+        if (!runId) return;
+        if (!modelStartTimes.has(runId) && modelStartTimes.size >= 128) {
+          const oldestRunId = modelStartTimes.keys().next().value;
+          if (oldestRunId != null) modelStartTimes.delete(oldestRunId);
+        }
+        modelStartTimes.set(runId, Date.now());
+      },
+    },
     [GraphEvents.CHAT_MODEL_END]: new ModelEndHandler(
       collectedUsage,
       collectedThoughtSignatures,
       emitTokenUsage,
+      modelStartTimes,
     ),
     [GraphEvents.TOOL_END]: new ToolEndHandler(toolEndCallback, logger),
     [GraphEvents.ON_RUN_STEP]: {
