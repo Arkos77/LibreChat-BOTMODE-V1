@@ -22,23 +22,23 @@
         {
           "agentName": "BOT MODE Worker",
           "bindings": [
-            { "id": "or-free", "provider": "OpenRouter", "model": "openrouter/free", "signals": { "latencyMs": 8000 } },
-            { "id": "or-lightning", "provider": "OpenRouter", "model": "nvidia/nemotron-3.5-lightning:free", "signals": { "latencyMs": 1000 } },
-            { "id": "gemini-flash", "provider": "Gemini", "model": "models/gemini-3.5-flash", "signals": { "latencyMs": 2000 } },
-            { "id": "or-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free", "signals": { "latencyMs": 4000 } }
+            { "id": "99-or-free", "provider": "OpenRouter", "model": "openrouter/free" },
+            { "id": "01-lightning", "provider": "OpenRouter", "model": "nvidia/nemotron-3.5-lightning:free" },
+            { "id": "02-gemini", "provider": "Gemini", "model": "models/gemini-3.5-flash" },
+            { "id": "03-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free" }
           ],
-          "preferredBindingId": "or-lightning",
+          "preferredBindingId": "01-lightning",
           "allowFailover": true
         },
         {
           "agentName": "RECHERCHE",
           "bindings": [
-            { "id": "or-free", "provider": "OpenRouter", "model": "openrouter/free", "signals": { "latencyMs": 8000 } },
-            { "id": "or-lightning", "provider": "OpenRouter", "model": "nvidia/nemotron-3.5-lightning:free", "signals": { "latencyMs": 1000 } },
-            { "id": "gemini-flash", "provider": "Gemini", "model": "models/gemini-3.5-flash", "signals": { "latencyMs": 2000 } },
-            { "id": "or-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free", "signals": { "latencyMs": 4000 } }
+            { "id": "99-or-free", "provider": "OpenRouter", "model": "openrouter/free" },
+            { "id": "01-lightning", "provider": "OpenRouter", "model": "nvidia/nemotron-3.5-lightning:free" },
+            { "id": "02-gemini", "provider": "Gemini", "model": "models/gemini-3.5-flash" },
+            { "id": "03-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free" }
           ],
-          "preferredBindingId": "or-lightning",
+          "preferredBindingId": "01-lightning",
           "allowFailover": true
         },
         {
