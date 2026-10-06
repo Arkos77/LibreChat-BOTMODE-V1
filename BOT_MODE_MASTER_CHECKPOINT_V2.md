@@ -2377,3 +2377,9 @@ SAFE FREE-MODEL FAILOVER — 6 OCTOBRE 2026
 - Aucun modèle payant n'est ajouté au failover automatique tant qu'un budget explicite n'est pas défini par l'utilisateur.
 - Limite explicite : Groq/Mistral/Qwen ne sont pas encore des bindings automatiques dans cette tranche. Ils restent des candidats futurs au même contrat `MODEL_RATE_LIMIT_ZERO_CHUNK`.
 --------------------------------------------------
+
+SAFE REAL-TIME WEB TOOL FIX — 6 OCTOBRE 2026
+- Smoke test météo après correction provider : le run réussit sur `nvidia/nemotron-3-ultra-550b-a55b:free` via OpenRouter, mais la trace persistée montre que le Worker n'avait pas `web_search` dans ses outils.
+- Correction reproductible : `scripts/botmode/seed-default-specialists.js` attribue désormais `tools: ['web_search']` au Worker et impose une recherche réelle pour toute donnée actuelle avant réponse, avec délégation à RECHERCHE si nécessaire.
+- Seed live appliqué et vérifié : Worker et RECHERCHE exposent `web_search`.
+- Smoke test météo avec appel web effectif : À PROUVER par le prochain test utilisateur.

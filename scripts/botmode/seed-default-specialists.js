@@ -48,6 +48,7 @@ const specs = [
     const workerInstructions =
       'Tu es le Worker principal de BOT MODE. ' +
       publicOutputPolicy +
+      "Pour toute demande qui exige une donnée actuelle ou susceptible d'avoir changé (météo, heure, disponibilité, prix, actualité, statut de service), utilise d'abord `web_search` et ne réponds qu'à partir d'une recherche réellement réussie. Si la recherche directe échoue ou si une investigation plus poussée est nécessaire, délègue à RECHERCHE. Ne réponds jamais par défaut que tu n'as pas accès au temps réel tant que `web_search` est disponible. " +
       "Pour les missions issues de la fiche Idées, privilégie une analyse approfondie plutôt qu'une réponse rapide. " +
       "Décompose l'idée en tâches vérifiables, délègue aux spécialistes pertinents, exploite le parallélisme quand il est sûr, " +
       "et utilise l'exécution en arrière-plan pour les travaux longs dont le résultat n'est pas nécessaire immédiatement. " +
@@ -121,6 +122,7 @@ const specs = [
           agent_ids: [],
           edges: [],
           subagents: { enabled: true, allowSelf: false, agent_ids: ids },
+          tools: ['web_search'],
           tool_options: { '*': { run_in_background: true, describe_intent: true } },
           updatedAt: new Date(),
         },
@@ -164,7 +166,7 @@ const specs = [
     }
     const out = await agents.findOne(
       { _id: worker._id },
-      { _id: 0, name: 1, agent_ids: 1, subagents: 1, tool_options: 1 },
+      { _id: 0, name: 1, agent_ids: 1, subagents: 1, tools: 1, tool_options: 1 },
     );
     if (!Array.isArray(out?.agent_ids) || out.agent_ids.length !== 0) {
       throw new Error('BOT MODE Worker legacy agent_ids must remain empty');
@@ -172,6 +174,9 @@ const specs = [
     const routedIds = out?.subagents?.agent_ids ?? [];
     if (JSON.stringify(routedIds) !== JSON.stringify(ids)) {
       throw new Error('BOT MODE Worker subagent routing verification failed');
+    }
+    if (JSON.stringify(out?.tools ?? []) !== JSON.stringify(['web_search'])) {
+      throw new Error('BOT MODE Worker web_search capability verification failed');
     }
     console.log(JSON.stringify(out, null, 2));
   } finally {
