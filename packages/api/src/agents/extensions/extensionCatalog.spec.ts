@@ -7,9 +7,15 @@ import {
 describe('extension capability catalog', () => {
   it('exposes builtin extension packs through the existing capability registry', () => {
     const registry = createExtensionCapabilityRegistry();
-    expect(registry.size()).toBe(10);
+    expect(registry.size()).toBe(11);
     expect(registry.list({ enabledOnly: true })).toHaveLength(0);
     expect(registry.list({ requiredCapabilities: ['opportunity:jobs'] })).toHaveLength(1);
+    expect(registry.list({ requiredCapabilities: ['hardware.design'] })).toEqual([
+      expect.objectContaining({
+        id: 'extension:hardware:openblueprint',
+        enabled: false,
+      }),
+    ]);
   });
 
   it('keeps discovery seeds descriptive and non-authoritative', () => {
