@@ -1383,6 +1383,9 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
   if (req.body?.orchestratorMission != null) {
     mcpRequestBody.orchestratorMission = req.body.orchestratorMission;
   }
+  if (req.body?.botModeExecutionMode === 'fast') {
+    mcpRequestBody.botModeExecutionMode = 'fast';
+  }
 
   let client = null;
   let jobCreatedAt;

@@ -72,6 +72,7 @@ const mockGetUserMCPAuthMap = jest.fn();
 jest.mock('@librechat/api', () => ({
   ...jest.requireActual('@librechat/api'),
   AGENT_EXPECTED_MCP_TOOLS_UNAVAILABLE: 'AGENT_EXPECTED_MCP_TOOLS_UNAVAILABLE',
+  CURRENT_STATE_TOOL_NAME: 'current_state',
   isFatalAgentInitializationError: (error) =>
     ['AGENT_EXPECTED_MCP_TOOLS_UNAVAILABLE', 'resource_recovery_required'].includes(error?.code),
   loadToolDefinitions: (...args) => mockLoadToolDefinitions(...args),
@@ -697,6 +698,41 @@ describe('ToolService - Action Capability Gating', () => {
       // the guard interprets as the MCP suffix.
       const edgeCaseTool = `getData${actionDelimiter}api_mcp_internal_com`;
       expect(isActionTool(edgeCaseTool)).toBe(false);
+    });
+  });
+
+  describe('loadAgentTools BOT MODE fast current-state injection', () => {
+    it('injects current_state only for fast BOT MODE turns without changing persisted agent tools', async () => {
+      const req = createMockReq([AgentCapabilities.tools]);
+      req.body = {};
+      mockGetEndpointsConfig.mockResolvedValue(createEndpointsConfig([AgentCapabilities.tools]));
+
+      await loadAgentTools({
+        req,
+        res: {},
+        agent: { id: 'agent_fast', tools: [] },
+        requestBody: { botModeExecutionMode: 'fast' },
+        definitionsOnly: true,
+      });
+
+      expect(mockLoadToolDefinitions).toHaveBeenCalledWith(
+        expect.objectContaining({ tools: ['current_state'] }),
+        expect.any(Object),
+      );
+
+      mockLoadToolDefinitions.mockClear();
+      await loadAgentTools({
+        req,
+        res: {},
+        agent: { id: 'agent_normal', tools: ['calculator'] },
+        requestBody: {},
+        definitionsOnly: true,
+      });
+
+      expect(mockLoadToolDefinitions).toHaveBeenCalledWith(
+        expect.objectContaining({ tools: ['calculator'] }),
+        expect.any(Object),
+      );
     });
   });
 

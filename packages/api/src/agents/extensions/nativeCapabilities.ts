@@ -7,6 +7,27 @@ import { createMediaCapabilityResources } from '../orchestrator/mediaProviderBin
 
 export const VERIFIED_EXTERNAL_CAPABILITIES: readonly CapabilityResourceDescriptor[] = [
   {
+    id: 'external:open-meteo-current-state',
+    kind: 'external-provider',
+    name: 'Open-Meteo Current State',
+    capabilities: ['location.resolve', 'weather.current'],
+    executionMode: 'external-provider',
+    providerId: 'open-meteo',
+    accessMethod: 'https-public-api',
+    networkRequirement: 'internet',
+    permission: 'host-policy',
+    trustLevel: 'structured-public-provider',
+    legalUsage: 'provider-terms-review',
+    refreshPolicy: 'query-on-demand',
+    enabled: true,
+    toolBinding: 'current_state',
+    timeoutMs: 4000,
+    provenance: {
+      source: 'https://open-meteo.com/en/docs',
+      verifiedAt: new Date().toISOString(),
+    },
+  },
+  {
     id: 'external:serper',
     kind: 'tool',
     name: 'Serper Search',
@@ -128,6 +149,21 @@ export const MEDIA_PROVIDER_CAPABILITIES: readonly CapabilityResourceDescriptor[
   createMediaCapabilityResources();
 
 export const NATIVE_BOTMODE_CAPABILITIES: readonly CapabilityResourceDescriptor[] = [
+  {
+    id: 'native:runtime-clock',
+    kind: 'local-runtime',
+    name: 'Runtime Clock',
+    capabilities: ['time.current'],
+    executionMode: 'local-runtime',
+    accessMethod: 'native-runtime',
+    permission: 'host-policy',
+    trustLevel: 'native',
+    legalUsage: 'host-policy',
+    refreshPolicy: 'per-turn',
+    enabled: true,
+    toolBinding: 'current_state',
+    provenance: { source: 'librechat:runtime-clock', verifiedAt: new Date().toISOString() },
+  },
   {
     id: 'native:web-search',
     kind: 'tool',

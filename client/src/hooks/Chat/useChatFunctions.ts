@@ -551,6 +551,9 @@ export default function useChatFunctions({
     };
 
     const botModeMode = getBotModeExecutionMode(searchParams);
+    if (searchParams.get('botmode') === '1') {
+      Object.assign(currentMsg, { botModeExecutionMode: botModeMode });
+    }
     if (shouldUseBotModeMission(searchParams) && isAgentsEndpoint(endpoint)) {
       const botModeAgentId = conversation?.agent_id;
       if (typeof botModeAgentId !== 'string' || botModeAgentId.length === 0) {

@@ -465,6 +465,7 @@ panel in the native Project surface. Existing subagent status labels and pause/r
 reused rather than duplicated into a new control authority.
 
 Closure proof:
+
 - `ab821dd` adds the project subagent task control panel and its isolated-addressing test.
 - `e2c3f4c` mounts the panel in the Project workspace and adds the BOT MODE activity label.
 - targeted Jest sentinel passes with coverage disabled:
@@ -481,3 +482,11 @@ BOT MODE uses one `CapabilityResourceRegistry` and one generic authorized-resour
 The stable media capability vocabulary is `image.generate`, `image.edit`, `video.generate`, `voice.generate`, `audio.generate`, `music.generate`, `avatar.generate`, `3d.generate`, and `live.compose`. Provider bindings are separate from that vocabulary. OpenAI/Gemini image tools and configured Higgsfield resources are represented by governed bindings; ElevenLabs, MiniMax, LTX and Tripo entries remain templates until their runtime/auth is verified. `music.generate` and `live.compose` are valid architectural capabilities but intentionally have no provider marked available yet.
 
 Hardware engineering is separate from media generation. The `hardware:openblueprint` extension declares `hardware.design`, BOM, wiring, assembly and build-instruction capabilities but is disabled by default. Until a real CAD/hardware runtime passes host admission and authorization, routing `hardware.design` remains fail-closed. 3D asset generation stays in the media pipeline and does not imply hardware-design authority.
+
+## FAST current-state resolution
+
+Ordinary BOT MODE FAST turns can use the native `current_state` tool for simple current local-time and weather lookups. The client marks only FAST BOT MODE turns; the controller preserves that hint in the normalized runtime body, and ToolService injects `current_state` without modifying the persisted agent tool list.
+
+The resolver remains under the existing Capability Router. `time.current` routes to `native:runtime-clock`; `location.resolve` and `weather.current` route to `external:open-meteo-current-state`. The Open-Meteo adapter uses bounded HTTP timeouts, a 24-hour geocoding cache, a 5-minute weather cache, and a freshness gate. Its current weather payload is labeled `model-current` rather than as a station observation. A stale or failed structured result returns `fallbackRequired: true`, at which point `web_search` may resolve only the missing or stale fact.
+
+The tool returns the selected capability resource IDs, IANA timezone, authoritative runtime instant, UTC offset, localized wall-clock time, weather-data timestamp, freshness, human-readable WMO condition, and public provider provenance. When `ok: true`, the model is instructed not to perform a supplementary web search merely to add a second source.

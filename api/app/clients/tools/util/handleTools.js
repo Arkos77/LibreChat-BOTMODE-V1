@@ -18,7 +18,9 @@ const {
   buildWebSearchContext,
   DELETE_MEMORY_TOOL_NAME,
   createAskUserQuestionTool,
+  createCurrentStateTool,
   ASK_USER_QUESTION_TOOL_NAME,
+  CURRENT_STATE_TOOL_NAME,
   resolveWebSearchSSRFAgents,
   buildWebSearchDynamicContext,
   codeExecutionAuthHeaders,
@@ -456,6 +458,9 @@ const loadTools = async ({
           logger,
         });
       };
+      continue;
+    } else if (tool === CURRENT_STATE_TOOL_NAME) {
+      requestedTools[tool] = async () => createCurrentStateTool();
       continue;
     } else if (tool === ASK_USER_QUESTION_TOOL_NAME) {
       requestedTools[tool] = async () => createAskUserQuestionTool();

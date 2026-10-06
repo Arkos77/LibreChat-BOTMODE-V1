@@ -20,6 +20,7 @@ describe('web search context', () => {
     expect(context).not.toContain('NOW');
     expect(context).not.toContain('{{iso_datetime}}');
     expect(context).toContain('Never infer or extrapolate a current value from older observations');
+    expect(context).toContain('use `current_state` first');
   });
 
   it('guides the model to answer directly when a search is not warranted', () => {

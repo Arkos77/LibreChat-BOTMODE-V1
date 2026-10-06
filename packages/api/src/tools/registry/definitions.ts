@@ -15,6 +15,27 @@ export interface ToolRegistryDefinition {
   toolType: 'builtin' | 'mcp' | 'action' | 'custom';
 }
 
+/** Fast structured current-state resolver schema */
+export const currentStateSchema: ExtendedJsonSchema = {
+  type: 'object',
+  properties: {
+    location: {
+      type: 'string',
+      minLength: 2,
+      maxLength: 200,
+      description: 'Named city or place to resolve, optionally qualified by country or region.',
+    },
+    facts: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 2,
+      items: { type: 'string', enum: ['time', 'weather'] },
+      description: 'Current facts to resolve together. Defaults to both time and weather.',
+    },
+  },
+  required: ['location'],
+};
+
 /** Google Search tool JSON schema */
 export const googleSearchSchema: ExtendedJsonSchema = {
   type: 'object',
@@ -360,6 +381,13 @@ export const serusIntelligenceSchema: ExtendedJsonSchema = {
 
 /** Tool definitions registry - maps tool names to their definitions */
 export const toolDefinitions: Record<string, ToolRegistryDefinition> = {
+  current_state: {
+    name: 'current_state',
+    description:
+      'Fast structured resolver for current local time and current weather for a named city or place. Prefer this before web_search for simple current-state lookups. When ok=true, answer from this result without a supplementary web search; use web_search only when the result requests fallback.',
+    schema: currentStateSchema,
+    toolType: 'builtin',
+  },
   google: {
     name: 'google',
     description:

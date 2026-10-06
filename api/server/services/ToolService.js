@@ -38,6 +38,7 @@ const {
   isFileAuthoringToolDefinition,
   normalizeActionToolName,
   ASK_USER_QUESTION_TOOL_NAME,
+  CURRENT_STATE_TOOL_NAME,
   splitMCPToolKey,
   buildServerNameAliases,
   findShadowedServerNames,
@@ -690,6 +691,7 @@ const nativeTools = new Set([
   Tools.file_search,
   Tools.web_search,
   Tools.memory,
+  CURRENT_STATE_TOOL_NAME,
 ]);
 
 const mcpServerPinPrefix = `${Constants.mcp_server}${Constants.mcp_delimiter}`;
@@ -754,20 +756,21 @@ async function loadToolDefinitionsWrapper({
   codeExecutionContext,
   accessibleMcpServerNames,
 }) {
-  if (!agent.tools || agent.tools.length === 0) {
+  const runtimeRequestBody = requestBody ?? req.body;
+  const fastCurrentStateRequested = runtimeRequestBody?.botModeExecutionMode === 'fast';
+  if ((!agent.tools || agent.tools.length === 0) && !fastCurrentStateRequested) {
     return { toolDefinitions: [] };
   }
 
   if (
-    agent.tools.length === 1 &&
+    agent.tools?.length === 1 &&
     (agent.tools[0] === AgentCapabilities.context || agent.tools[0] === AgentCapabilities.ocr)
   ) {
     return { toolDefinitions: [] };
   }
 
   const appConfig = req.config;
-  const runtimeRequestBody = requestBody ?? req.body;
-  const hasExpectedMCPTools = agent.tools.some(isExpectedMCPTool);
+  const hasExpectedMCPTools = (agent.tools ?? []).some(isExpectedMCPTool);
   const enabledCapabilities = await resolveAgentCapabilities(req, appConfig, agent.id);
 
   const checkCapability = (capability) => enabledCapabilities.has(capability);
@@ -792,11 +795,15 @@ async function loadToolDefinitionsWrapper({
       agentId: agent.id,
       conversationId: runtimeRequestBody?.conversationId,
     });
-  const hasMCPTools = agent.tools?.some((tool) => tool?.includes(Constants.mcp_delimiter));
+  const runtimeTools =
+    runtimeRequestBody?.botModeExecutionMode === 'fast'
+      ? [...new Set([...(agent.tools ?? []), CURRENT_STATE_TOOL_NAME])]
+      : agent.tools;
+  const hasMCPTools = runtimeTools?.some((tool) => tool?.includes(Constants.mcp_delimiter));
   const mcpPermissionContext = createMCPPermissionContext(req);
   const canUseMCP = hasMCPTools ? await mcpPermissionContext.canUseServers(req.user) : true;
 
-  const filteredTools = agent.tools?.filter((tool) => {
+  const filteredTools = runtimeTools?.filter((tool) => {
     if (tool === Tools.file_search) {
       return checkCapability(AgentCapabilities.file_search);
     }
@@ -811,6 +818,9 @@ async function loadToolDefinitionsWrapper({
     }
     if (tool === ASK_USER_QUESTION_TOOL_NAME) {
       return checkCapability(AgentCapabilities.ask_user_question);
+    }
+    if (tool === CURRENT_STATE_TOOL_NAME) {
+      return areToolsEnabled;
     }
     if (isActionTool(tool)) {
       return actionsEnabled;
@@ -1539,7 +1549,8 @@ async function loadAgentTools({
     }
   }
 
-  if (!agent.tools || agent.tools.length === 0) {
+  const fastCurrentStateRequested = (requestBody ?? req.body)?.botModeExecutionMode === 'fast';
+  if ((!agent.tools || agent.tools.length === 0) && !fastCurrentStateRequested) {
     return { toolDefinitions: [] };
   } else if (
     agent.tools &&
@@ -1569,12 +1580,17 @@ async function loadAgentTools({
   };
   const areToolsEnabled = checkCapability(AgentCapabilities.tools);
   const actionsEnabled = checkCapability(AgentCapabilities.actions);
-  const hasMCPTools = agent.tools?.some((tool) => tool?.includes(Constants.mcp_delimiter));
+  const runtimeRequestBody = requestBody ?? req.body;
+  const runtimeTools =
+    runtimeRequestBody?.botModeExecutionMode === 'fast'
+      ? [...new Set([...(agent.tools ?? []), CURRENT_STATE_TOOL_NAME])]
+      : agent.tools;
+  const hasMCPTools = runtimeTools?.some((tool) => tool?.includes(Constants.mcp_delimiter));
   const mcpPermissionContext = createMCPPermissionContext(req);
   const canUseMCP = hasMCPTools ? await mcpPermissionContext.canUseServers(req.user) : true;
 
   let includesWebSearch = false;
-  const _agentTools = agent.tools?.filter((tool) => {
+  const _agentTools = runtimeTools?.filter((tool) => {
     if (tool === Tools.file_search) {
       return checkCapability(AgentCapabilities.file_search);
     } else if (tool === Tools.execute_code) {
@@ -1586,6 +1602,8 @@ async function loadAgentTools({
       return checkCapability(AgentCapabilities.memory);
     } else if (tool === ASK_USER_QUESTION_TOOL_NAME) {
       return checkCapability(AgentCapabilities.ask_user_question);
+    } else if (tool === CURRENT_STATE_TOOL_NAME) {
+      return areToolsEnabled;
     } else if (isActionTool(tool)) {
       return actionsEnabled;
     } else if (tool?.includes(Constants.mcp_delimiter)) {

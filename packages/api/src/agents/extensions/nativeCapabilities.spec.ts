@@ -10,12 +10,12 @@ import {
 
 describe('native capability activation', () => {
   it('registers only capabilities already exposed by the current LibreChat runtime', () => {
-    expect(NATIVE_BOTMODE_CAPABILITIES).toHaveLength(7);
+    expect(NATIVE_BOTMODE_CAPABILITIES).toHaveLength(8);
     expect(ACTIVE_PROVIDER_CAPABILITIES).toHaveLength(1);
     expect(PENDING_E2E_PROVIDER_CAPABILITIES).toHaveLength(1);
     expect(PENDING_E2E_PROVIDER_CAPABILITIES[0].providerId).toBe('anthropic');
     expect(PENDING_E2E_PROVIDER_CAPABILITIES[0].enabled).toBe(false);
-    expect(VERIFIED_EXTERNAL_CAPABILITIES).toHaveLength(5);
+    expect(VERIFIED_EXTERNAL_CAPABILITIES).toHaveLength(6);
     expect(MEDIA_PROVIDER_CAPABILITIES).toHaveLength(7);
     expect(
       MEDIA_PROVIDER_CAPABILITIES.filter((resource) => resource.enabled).map((r) => r.id),
@@ -44,6 +44,7 @@ describe('native capability activation', () => {
     expect(registry.list({ enabledOnly: true }).map((item) => item.id)).toEqual([
       'external:elevenlabs',
       'external:firecrawl',
+      'external:open-meteo-current-state',
       'external:serper',
       'external:tavily',
       'media:gemini:image-gen',
@@ -53,6 +54,7 @@ describe('native capability activation', () => {
       'native:background-tasks',
       'native:execute-code',
       'native:file-search',
+      'native:runtime-clock',
       'native:skills',
       'native:subagents',
       'native:web-search',
@@ -64,7 +66,7 @@ describe('native capability activation', () => {
 
   it('exposes native, extension and discovery views separately', () => {
     const catalog = createRuntimeCapabilityCatalog();
-    expect(catalog.native).toHaveLength(20);
+    expect(catalog.native).toHaveLength(22);
     expect(catalog.extensions).toHaveLength(11);
     expect(catalog.discoverySeeds.length).toBeGreaterThanOrEqual(5);
   });
