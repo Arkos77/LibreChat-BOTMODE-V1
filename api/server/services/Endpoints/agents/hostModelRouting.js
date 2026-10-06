@@ -84,6 +84,7 @@ async function resolveHostModelRouting({
   primaryConfig,
   validate,
   initialize,
+  resolveRuntimeProvider,
   decide,
   persist,
   sink,
@@ -118,6 +119,7 @@ async function resolveHostModelRouting({
     {
       id: bindings[0].id,
       provider: bindings[0].provider,
+      runtimeProvider: primaryConfig.provider,
       model: bindings[0].model,
       options: primaryConfig.model_parameters,
       contextWindow: primaryConfig.maxContextTokens,
@@ -141,10 +143,11 @@ async function resolveHostModelRouting({
       throw new Error('Host model routing alternative failed native validation');
     }
     const resolved = await initialize(agent);
+    const expectedRuntimeProvider = resolveRuntimeProvider(binding.provider);
     if (
       resolved?.id !== primaryConfig.id ||
       resolved?.model !== binding.model ||
-      !sameProvider(resolved?.provider, binding.provider) ||
+      !sameProvider(resolved?.provider, expectedRuntimeProvider) ||
       resolved?.model_parameters?.model !== binding.model
     ) {
       throw new Error('Host model routing alternative has a mismatched resolved binding');
@@ -153,6 +156,7 @@ async function resolveHostModelRouting({
     resolvedBindings.push({
       id: binding.id,
       provider: binding.provider,
+      runtimeProvider: resolved.provider,
       model: binding.model,
       options: resolved.model_parameters,
       contextWindow: resolved.maxContextTokens,

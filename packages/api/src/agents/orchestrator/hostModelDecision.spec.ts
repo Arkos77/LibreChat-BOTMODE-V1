@@ -72,6 +72,56 @@ describe('host P11 model decision', () => {
     expect(JSON.stringify(result.record)).not.toContain('secret');
   });
 
+  it('uses runtime provider only for SDK fallback while preserving logical provider provenance', async () => {
+    const result = await decideHostModel({
+      agentId: 'agent-one',
+      bindings: [
+        {
+          id: 'openrouter-primary',
+          provider: 'OpenRouter',
+          runtimeProvider: 'openrouter',
+          model: 'model-a:free',
+          options: { model: 'model-a:free', apiKey: 'primary-secret' },
+        },
+        {
+          id: 'gemini-free',
+          provider: 'Gemini',
+          runtimeProvider: 'openAI',
+          model: 'models/gemini-3.5-flash',
+          options: {
+            model: 'models/gemini-3.5-flash',
+            apiKey: 'gemini-secret',
+            configuration: { baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/' },
+          },
+        },
+      ],
+      preferredBindingId: 'openrouter-primary',
+      allowFailover: true,
+      traceId: 'trace-runtime-provider',
+      timestamp: '2026-10-06T12:00:00.000Z',
+      decisionId: 'decision-runtime-provider',
+      traceEventId: 'event-runtime-provider',
+    });
+
+    expect(result).toMatchObject({
+      selectedProvider: 'OpenRouter',
+      selectedModel: 'model-a:free',
+      modelParameters: {
+        fallbacks: [
+          expect.objectContaining({
+            provider: 'openAI',
+            retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
+            clientOptions: expect.objectContaining({
+              model: 'models/gemini-3.5-flash',
+            }),
+          }),
+        ],
+      },
+    });
+    expect(result.event.payload.selectedOption).toBe('openrouter-primary');
+    expect(JSON.stringify(result.event)).not.toContain('gemini-secret');
+  });
+
   it('fails closed on unavailable, duplicate or unauthorized alternatives', async () => {
     await expect(decideHostModel({ ...input, availableModels: ['model-a:free'] })).rejects.toThrow(
       /available/i,

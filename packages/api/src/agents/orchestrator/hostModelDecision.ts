@@ -30,6 +30,7 @@ type BindingInput = {
   bindings: ReadonlyArray<{
     id: string;
     provider: string;
+    runtimeProvider?: string;
     model: string;
     options: Record<string, unknown>;
     contextWindow?: number;
@@ -49,6 +50,7 @@ type Input = LegacyInput | BindingInput;
 type NormalizedBinding = {
   id: string;
   provider: string;
+  runtimeProvider: string;
   model: string;
   options: Record<string, unknown>;
   contextWindow?: number;
@@ -68,6 +70,7 @@ function normalizeBindings(input: Input): {
     const bindings = input.bindings.map((binding) => ({
       id: binding.id,
       provider: binding.provider,
+      runtimeProvider: binding.runtimeProvider ?? binding.provider,
       model: binding.model,
       options: binding.options,
       contextWindow: binding.contextWindow,
@@ -169,6 +172,7 @@ function normalizeBindings(input: Input): {
   const bindings = authorizedModels.map((model) => ({
     id: model,
     provider,
+    runtimeProvider: provider,
     model,
     options: optionsByModel.get(model)!,
     contextWindow: contextByModel.get(model),
@@ -258,7 +262,7 @@ export async function decideHostModel(input: Input): Promise<{
               .map((id) => {
                 const binding = bindings.find((item) => item.id === id)!;
                 return {
-                  provider: binding.provider,
+                  provider: binding.runtimeProvider,
                   clientOptions: { ...binding.options },
                   retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
                   ...(binding.contextWindow != null

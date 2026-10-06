@@ -11,6 +11,7 @@ const base = () => ({
     maxContextTokens: 8192,
   },
   validate: jest.fn(async () => ({ isValid: true })),
+  resolveRuntimeProvider: jest.fn((provider) => provider),
   initialize: jest.fn(async (agent) => ({
     id: agent.id,
     model: agent.model,
@@ -156,6 +157,85 @@ describe('host model routing', () => {
         selectedProvider: 'anthropic',
         selectedModel: 'shared-model',
         agentId: 'agent-one',
+      },
+    });
+  });
+
+  it('keeps a custom logical provider while using its canonical runtime provider', async () => {
+    const request = base();
+    request.config = [
+      {
+        agentId: 'agent-one',
+        bindings: [
+          { id: 'primary', provider: 'OpenRouter', model: 'a:free' },
+          { id: 'gemini-free', provider: 'Gemini', model: 'models/gemini-3.5-flash' },
+        ],
+        preferredBindingId: 'gemini-free',
+        allowFailover: true,
+      },
+    ];
+    request.resolveRuntimeProvider.mockImplementation((provider) =>
+      provider === 'Gemini' ? 'openAI' : provider,
+    );
+    request.initialize.mockImplementation(async (agent) => ({
+      id: agent.id,
+      model: agent.model,
+      provider: agent.provider === 'Gemini' ? 'openAI' : agent.provider,
+      model_parameters: {
+        model: agent.model,
+        apiKey: 'secret',
+        baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+      },
+      maxContextTokens: 32768,
+    }));
+    request.decide.mockImplementation(async ({ bindings, preferredBindingId }) => ({
+      selectedBindingId: preferredBindingId,
+      selectedProvider: 'Gemini',
+      selectedModel: 'models/gemini-3.5-flash',
+      modelParameters: {
+        model: 'models/gemini-3.5-flash',
+        fallbacks: [
+          {
+            provider: 'openrouter',
+            clientOptions: { model: 'a:free' },
+            retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
+          },
+        ],
+      },
+      event: {
+        type: 'DECIDED',
+        identity: { traceId: 'trace', traceEventId: 'event' },
+        source: 'host',
+        timestamp: '2026-10-06T12:00:00.000Z',
+        payload: {
+          decisionId: 'decision',
+          selectedOption: preferredBindingId,
+          provider: 'RuleDecisionProvider',
+        },
+      },
+      bindings,
+    }));
+
+    const result = await resolveHostModelRouting(request);
+
+    expect(request.decide).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bindings: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'gemini-free',
+            provider: 'Gemini',
+            runtimeProvider: 'openAI',
+            model: 'models/gemini-3.5-flash',
+          }),
+        ]),
+      }),
+    );
+    expect(result).toMatchObject({
+      provider: 'openAI',
+      model: 'models/gemini-3.5-flash',
+      hostModelDecision: {
+        selectedProvider: 'Gemini',
+        selectedModel: 'models/gemini-3.5-flash',
       },
     });
   });

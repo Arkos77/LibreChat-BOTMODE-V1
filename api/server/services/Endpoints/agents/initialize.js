@@ -887,6 +887,8 @@ const initializeClient = async ({
     originalAgent: originalPrimaryAgent,
     primaryConfig,
     validate: (agent) => validateAgentModel({ req, res, agent, modelsConfig, logViolation }),
+    resolveRuntimeProvider: (provider) =>
+      getProviderConfig({ provider, appConfig }).overrideProvider,
     initialize: (agent) =>
       initializeAgent(
         {
