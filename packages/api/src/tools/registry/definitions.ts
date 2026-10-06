@@ -327,6 +327,37 @@ export const fileSearchSchema: ExtendedJsonSchema = {
   required: ['query'],
 };
 
+/** Serus Intelligence tool JSON schema */
+export const serusIntelligenceSchema: ExtendedJsonSchema = {
+  type: 'object',
+  properties: {
+    action: {
+      type: 'string',
+      enum: ['verify_key', 'start_scan', 'get_scan'],
+      description:
+        'verify_key checks access; start_scan starts a masked dark-web scan; get_scan retrieves masked results.',
+    },
+    identifier_type: {
+      type: 'string',
+      enum: ['email', 'phone', 'username', 'domain', 'keyword', 'origin', 'password'],
+      description: 'Identifier type for start_scan.',
+    },
+    identifier_value: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 512,
+      description: 'Identifier value for start_scan.',
+    },
+    scan_id: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 256,
+      description: 'Serus scan ID for get_scan.',
+    },
+  },
+  required: ['action'],
+};
+
 /** Tool definitions registry - maps tool names to their definitions */
 export const toolDefinitions: Record<string, ToolRegistryDefinition> = {
   google: {
@@ -377,6 +408,13 @@ export const toolDefinitions: Record<string, ToolRegistryDefinition> = {
     name: 'azure-ai-search',
     description: "Use the 'azure-ai-search' tool to retrieve search results relevant to your input",
     schema: azureAISearchSchema,
+    toolType: 'builtin',
+  },
+  serus_intelligence: {
+    name: 'serus_intelligence',
+    description:
+      'Security intelligence via Serus: verify API access, start masked dark-web scans, and retrieve masked results. Never reveals unmasked breach values.',
+    schema: serusIntelligenceSchema,
     toolType: 'builtin',
   },
   traversaal_search: {

@@ -23,6 +23,8 @@ describe('P11 model invocation evidence', () => {
       traceId: 'trace-1',
       decisionId: 'decision-1',
       selectedModel: 'b:free',
+      selectedProvider: 'openrouter',
+      authorizedBindings: [{ provider: 'openrouter', model: 'b:free' }],
       modelCalls: [
         {
           usageModel: 'b:free',
@@ -32,6 +34,12 @@ describe('P11 model invocation evidence', () => {
           costUsd: 0.0017,
         },
       ],
+      total: {
+        inputTokens: 14,
+        outputTokens: 3,
+        costUsd: 0.0017,
+        costKnown: true,
+      },
     });
   });
   it('attributes explicit cross-provider usage to the selected provider', () => {
@@ -66,6 +74,11 @@ describe('P11 model invocation evidence', () => {
       traceId: 'trace-1',
       decisionId: 'decision-1',
       selectedModel: 'claude-sonnet',
+      selectedProvider: 'anthropic',
+      authorizedBindings: [
+        { provider: 'anthropic', model: 'claude-sonnet' },
+        { provider: 'openrouter', model: 'claude-sonnet' },
+      ],
       modelCalls: [
         {
           usageModel: 'claude-sonnet',
@@ -80,6 +93,12 @@ describe('P11 model invocation evidence', () => {
           inputTokens: 999,
         },
       ],
+      total: {
+        inputTokens: 1020,
+        outputTokens: 5,
+        costUsd: 0.0026,
+        costKnown: false,
+      },
     });
   });
 
@@ -92,6 +111,39 @@ describe('P11 model invocation evidence', () => {
       { usageModel: 'b:free', provider: 'openrouter', inputTokens: 14 },
     ]);
   });
+  it('adds bounded routing context to the same usage receipt without secrets', () => {
+    const result = projectHostModelUsage(
+      {
+        ...decision,
+        selectedBindingId: 'free-primary',
+        routingMode: 'adaptive',
+        spendingPolicy: 'free_first',
+        authorizedBindings: [
+          { bindingId: 'free-primary', provider: 'openrouter', model: 'b:free' },
+          { bindingId: 'fallback', provider: 'Gemini', model: 'models/gemini-3.5-flash' },
+        ],
+      },
+      [
+        {
+          agentId: 'agent-primary',
+          model: 'b:free',
+          provider: 'openrouter',
+          input_tokens: 7,
+          output_tokens: 2,
+          cost: 0,
+        },
+      ],
+    );
+
+    expect(result).toMatchObject({
+      selectedBindingId: 'free-primary',
+      routingMode: 'adaptive',
+      spendingPolicy: 'free_first',
+      total: { inputTokens: 7, outputTokens: 2, costUsd: 0, costKnown: true },
+    });
+    expect(JSON.stringify(result)).not.toContain('apiKey');
+  });
+
   it('keeps a mismatch visible and excludes secrets and unbounded values', () => {
     const result = projectHostModelUsage(
       {

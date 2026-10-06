@@ -53,6 +53,39 @@ function projectHostModelUsage(decision, usageEvents) {
       ...(costUsd == null ? {} : { costUsd }),
     });
   }
-  return modelCalls.length ? { traceId, decisionId, selectedModel, modelCalls } : undefined;
+  if (!modelCalls.length) return undefined;
+
+  const total = modelCalls.reduce(
+    (acc, call) => {
+      acc.inputTokens += call.inputTokens ?? 0;
+      acc.outputTokens += call.outputTokens ?? 0;
+      if (call.costUsd == null) {
+        acc.costKnown = false;
+      } else {
+        acc.costUsd += call.costUsd;
+      }
+      return acc;
+    },
+    { inputTokens: 0, outputTokens: 0, costUsd: 0, costKnown: true },
+  );
+
+  return {
+    traceId,
+    decisionId,
+    selectedModel,
+    selectedProvider,
+    ...(boundedText(decision?.selectedBindingId)
+      ? { selectedBindingId: boundedText(decision.selectedBindingId) }
+      : {}),
+    ...(boundedText(decision?.routingMode)
+      ? { routingMode: boundedText(decision.routingMode) }
+      : {}),
+    ...(boundedText(decision?.spendingPolicy)
+      ? { spendingPolicy: boundedText(decision.spendingPolicy) }
+      : {}),
+    authorizedBindings,
+    modelCalls,
+    total,
+  };
 }
 module.exports = { projectHostModelUsage };

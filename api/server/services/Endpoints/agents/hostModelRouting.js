@@ -286,6 +286,8 @@ async function resolveHostModelRouting({
     selectedProvider: selectedBinding.provider,
     selectedModel: selectedBinding.model,
     agentId: originalAgent.id,
+    routingMode,
+    spendingPolicy: effectiveRoutingConstraints?.spendingPolicy,
     authorizedBindings,
   };
 

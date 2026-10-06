@@ -45,6 +45,7 @@ const {
   StructuredSD,
   StructuredACS,
   TraversaalSearch,
+  SerusIntelligence,
   StructuredWolfram,
   TavilySearchResults,
   createGeminiImageTool,
@@ -214,6 +215,7 @@ const loadTools = async ({
     'stable-diffusion': StructuredSD,
     'azure-ai-search': StructuredACS,
     traversaal_search: TraversaalSearch,
+    serus_intelligence: SerusIntelligence,
     tavily_search_results_json: TavilySearchResults,
   };
 

@@ -173,5 +173,18 @@
         "optional": true
       }
     ]
+  },
+  {
+    "name": "Serus Intelligence",
+    "pluginKey": "serus_intelligence",
+    "description": "Masked Serus security intelligence and dark-web exposure scans for legitimate privacy/security investigations.",
+    "icon": "https://www.serus.ai/favicon.ico",
+    "authConfig": [
+      {
+        "authField": "SERUS_API_KEY",
+        "label": "Serus API Key",
+        "description": "Create a least-privilege API key in Serus Settings → Developer → API Keys."
+      }
+    ]
   }
 ]

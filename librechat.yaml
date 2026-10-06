@@ -287,6 +287,16 @@
       "title": "GitHub",
       "description": "Official GitHub MCP server restricted to read-only repository, issue, and pull request tools.",
       "timeout": 30000
+    },
+    "higgsfield": {
+      "type": "streamable-http",
+      "url": "https://mcp.higgsfield.ai/mcp",
+      "startup": false,
+      "requiresOAuth": true,
+      "serverInstructions": true,
+      "title": "Higgsfield",
+      "description": "Official Higgsfield MCP for image, video, character and audio generation. Automated generations consume Higgsfield credits.",
+      "timeout": 30000
     }
   }
 }

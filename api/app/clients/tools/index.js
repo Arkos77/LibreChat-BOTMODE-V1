@@ -9,6 +9,7 @@ const StructuredACS = require('./structured/AzureAISearch');
 const StructuredSD = require('./structured/StableDiffusion');
 const GoogleSearchAPI = require('./structured/GoogleSearch');
 const TraversaalSearch = require('./structured/TraversaalSearch');
+const SerusIntelligence = require('./structured/SerusIntelligence');
 const createOpenAIImageTools = require('./structured/OpenAIImageTools');
 const TavilySearchResults = require('./structured/TavilySearchResults');
 const createGeminiImageTool = require('./structured/GeminiImageGen');
@@ -23,6 +24,7 @@ module.exports = {
   StructuredACS,
   GoogleSearchAPI,
   TraversaalSearch,
+  SerusIntelligence,
   StructuredWolfram,
   TavilySearchResults,
   createOpenAIImageTools,
