@@ -1127,6 +1127,10 @@ describe('host model routing configuration', () => {
               preferredModel: 'model-a:free',
               routingMode: 'adaptive',
               requestTimeoutMs: 15000,
+              routingSignals: {
+                'model-a:free': { cacheReadRate: 0.8 },
+              },
+              routingConstraints: { preferCached: true },
               allowFailover: true,
             },
           ],

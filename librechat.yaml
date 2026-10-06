@@ -30,7 +30,7 @@
           "preferredBindingId": "01-lightning",
           "routingMode": "adaptive",
           "requestTimeoutMs": 15000,
-          "routingConstraints": { "spendingPolicy": "free_first" },
+          "routingConstraints": { "spendingPolicy": "free_first", "preferCached": true },
           "allowFailover": true
         },
         {
@@ -44,7 +44,7 @@
           "preferredBindingId": "01-lightning",
           "routingMode": "adaptive",
           "requestTimeoutMs": 15000,
-          "routingConstraints": { "spendingPolicy": "free_first" },
+          "routingConstraints": { "spendingPolicy": "free_first", "preferCached": true },
           "allowFailover": true
         },
         {

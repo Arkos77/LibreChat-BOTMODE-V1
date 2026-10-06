@@ -1154,6 +1154,7 @@ export const agentsEndpointSchema = baseEndpointSchema
                         qualityScore: z.number().finite().optional(),
                         oracleScore: z.number().finite().optional(),
                         benchmarkScore: z.number().finite().optional(),
+                        cacheReadRate: z.number().min(0).max(1).optional(),
                         pricingTier: z.enum(['free', 'paid']).optional(),
                         freshness: z.enum(['ACTIVE', 'STALE', 'DEPRECATED', 'RETIRED']).optional(),
                       })
@@ -1167,6 +1168,7 @@ export const agentsEndpointSchema = baseEndpointSchema
                     maxEstimatedCost: z.number().nonnegative().optional(),
                     maxLatencyMs: z.number().nonnegative().optional(),
                     spendingPolicy: z.enum(['free_only', 'free_first', 'paid_allowed']).optional(),
+                    preferCached: z.boolean().optional(),
                   })
                   .strict()
                   .optional(),
@@ -1221,6 +1223,7 @@ export const agentsEndpointSchema = baseEndpointSchema
                     maxEstimatedCost: z.number().nonnegative().optional(),
                     maxLatencyMs: z.number().nonnegative().optional(),
                     spendingPolicy: z.enum(['free_only', 'free_first', 'paid_allowed']).optional(),
+                    preferCached: z.boolean().optional(),
                   })
                   .strict()
                   .optional(),
