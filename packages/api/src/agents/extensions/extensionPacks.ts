@@ -1,4 +1,4 @@
-export type ExtensionKind = 'memory' | 'qa' | 'media' | 'vertical' | 'opportunity';
+export type ExtensionKind = 'memory' | 'qa' | 'media' | 'hardware' | 'vertical' | 'opportunity';
 
 export interface ExtensionPackManifest {
   id: string;
@@ -71,7 +71,8 @@ export const BUILTIN_EXTENSION_PACKS: readonly ExtensionPackManifest[] = [
     version: '1',
     kind: 'memory',
     name: 'Hindsight Memory Lifecycle',
-    description: 'Retain, recall and reflect over durable observations without replacing the durable owner.',
+    description:
+      'Retain, recall and reflect over durable observations without replacing the durable owner.',
     capabilities: ['memory:retain', 'memory:recall', 'memory:reflect', 'memory:provenance'],
     evidenceRefs: ['memo:github:vectorize-io-hindsight'],
     enabled: false,
@@ -81,7 +82,8 @@ export const BUILTIN_EXTENSION_PACKS: readonly ExtensionPackManifest[] = [
     version: '1',
     kind: 'qa',
     name: 'Artifact Drift Audit',
-    description: 'Deterministic artifact integrity and field-drift checks feeding the existing Oracle/QA layer.',
+    description:
+      'Deterministic artifact integrity and field-drift checks feeding the existing Oracle/QA layer.',
     capabilities: ['qa:artifact-audit', 'qa:drift-detection'],
     evidenceRefs: ['memo:github:pbakaus-impeccable'],
     enabled: false,
@@ -91,9 +93,27 @@ export const BUILTIN_EXTENSION_PACKS: readonly ExtensionPackManifest[] = [
     version: '1',
     kind: 'media',
     name: 'Audio Voice Media',
-    description: 'Audio, voice, transcription and dubbing capabilities using the existing governed media router.',
+    description:
+      'Audio, voice, transcription and dubbing capabilities using the existing governed media router.',
     capabilities: ['media:audio', 'media:voice', 'media:transcription', 'media:dubbing'],
     evidenceRefs: ['memo:github:debpalash-voicestudio'],
+    enabled: false,
+  },
+  {
+    id: 'hardware:openblueprint',
+    version: '1',
+    kind: 'hardware',
+    name: 'OpenBlueprint Hardware Design',
+    description:
+      'Hardware design, BOM, wiring, assembly and build-instruction capabilities routed through the existing governed capability layer.',
+    capabilities: [
+      'hardware.design',
+      'hardware.bom',
+      'hardware.wiring',
+      'hardware.assembly',
+      'hardware.build-instructions',
+    ],
+    evidenceRefs: ['https://github.com/noobianlabs/openblueprint'],
     enabled: false,
   },
   {
@@ -101,8 +121,14 @@ export const BUILTIN_EXTENSION_PACKS: readonly ExtensionPackManifest[] = [
     version: '1',
     kind: 'opportunity',
     name: 'Economic Enablement',
-    description: 'Jobs, product testing, hospitality, sourcing and service opportunities feeding the existing Opportunity contract.',
-    capabilities: ['opportunity:jobs', 'opportunity:product-testing', 'opportunity:hospitality', 'opportunity:sourcing'],
+    description:
+      'Jobs, product testing, hospitality, sourcing and service opportunities feeding the existing Opportunity contract.',
+    capabilities: [
+      'opportunity:jobs',
+      'opportunity:product-testing',
+      'opportunity:hospitality',
+      'opportunity:sourcing',
+    ],
     evidenceRefs: ['memo:business:economic-enablement'],
     enabled: false,
   },

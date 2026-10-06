@@ -65,7 +65,7 @@ describe('native capability activation', () => {
   it('exposes native, extension and discovery views separately', () => {
     const catalog = createRuntimeCapabilityCatalog();
     expect(catalog.native).toHaveLength(20);
-    expect(catalog.extensions).toHaveLength(10);
+    expect(catalog.extensions).toHaveLength(11);
     expect(catalog.discoverySeeds.length).toBeGreaterThanOrEqual(5);
   });
 });

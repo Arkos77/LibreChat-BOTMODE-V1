@@ -166,4 +166,30 @@ describe('resolveRegisteredResources', () => {
       }),
     ).rejects.toThrow('No authorized resources provide capability: video.generate');
   });
+  it('keeps disabled hardware design candidates fail-closed until the host activates and resolves one', async () => {
+    const registry = new CapabilityResourceRegistry();
+    registry.register(
+      descriptor('hardware-template', {
+        capabilities: ['hardware.design', 'hardware.bom'],
+        executionMode: 'local-runtime',
+        enabled: false,
+      }),
+    );
+
+    const resolve = jest.fn(() => ({
+      id: 'hardware-template',
+      capabilities: ['hardware.design', 'hardware.bom'],
+      executionMode: 'local-runtime' as const,
+      signals: { available: true },
+    }));
+
+    await expect(
+      routeRegisteredCapability({
+        registry,
+        capability: 'hardware.design',
+        resolve,
+      }),
+    ).rejects.toThrow('No authorized resources provide capability: hardware.design');
+    expect(resolve).not.toHaveBeenCalled();
+  });
 });
