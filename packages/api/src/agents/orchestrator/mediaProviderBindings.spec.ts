@@ -1,4 +1,5 @@
 import {
+  CANONICAL_MEDIA_CAPABILITIES,
   createGovernedMediaProvider,
   createMediaCapabilityResources,
   EXECUTABLE_MEDIA_TOOL_BINDINGS,
@@ -35,6 +36,28 @@ describe('governed media provider bindings', () => {
       mediaKinds: ['3d'],
       capabilities: expect.arrayContaining(['3d.generate']),
     });
+  });
+
+  it('defines the complete stable media capability vocabulary without inventing providers', () => {
+    expect(CANONICAL_MEDIA_CAPABILITIES).toEqual([
+      'image.generate',
+      'image.edit',
+      'video.generate',
+      'voice.generate',
+      'audio.generate',
+      'music.generate',
+      'avatar.generate',
+      '3d.generate',
+      'live.compose',
+    ]);
+
+    const resources = createMediaCapabilityResources('2026-10-06T00:00:00.000Z');
+    expect(resources.some((resource) => resource.capabilities.includes('music.generate'))).toBe(
+      false,
+    );
+    expect(resources.some((resource) => resource.capabilities.includes('live.compose'))).toBe(
+      false,
+    );
   });
 
   it('projects configured media providers into the generic capability registry contract', () => {

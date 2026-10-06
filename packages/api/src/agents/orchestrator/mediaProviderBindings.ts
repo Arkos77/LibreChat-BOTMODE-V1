@@ -9,6 +9,20 @@ import {
 
 export type MediaProviderBindingStatus = 'TOOL_RUNTIME' | 'MCP_CONFIGURED' | 'TEMPLATE';
 
+export const CANONICAL_MEDIA_CAPABILITIES = [
+  'image.generate',
+  'image.edit',
+  'video.generate',
+  'voice.generate',
+  'audio.generate',
+  'music.generate',
+  'avatar.generate',
+  '3d.generate',
+  'live.compose',
+] as const;
+
+export type CanonicalMediaCapability = (typeof CANONICAL_MEDIA_CAPABILITIES)[number];
+
 export interface MediaProviderBinding {
   id: string;
   status: MediaProviderBindingStatus;
