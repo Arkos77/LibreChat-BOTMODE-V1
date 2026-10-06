@@ -99,6 +99,45 @@ export const CAPABILITY_DISCOVERY_SEEDS: readonly CapabilityDiscoverySeed[] = [
     status: 'REFERENCE',
     capabilities: ['vertical-pack', 'finance'],
   },
+  {
+    id: 'seed:orcarouter',
+    name: 'Adaptive model-routing reference',
+    category: 'provider-router',
+    sourceRef: 'https://www.orcarouter.ai/',
+    status: 'REFERENCE',
+    capabilities: ['provider-routing', 'health-scoring', 'routing-receipts', 'cache-awareness'],
+  },
+  {
+    id: 'seed:tinypages',
+    name: 'TinyPages marketing MCP candidate',
+    category: 'software-adapter',
+    sourceRef: 'https://tinypages.co/mcp',
+    status: 'CANDIDATE',
+    capabilities: [
+      'marketing-mcp',
+      'landing-pages',
+      'products',
+      'email-marketing',
+      'forms',
+      'publishing',
+    ],
+  },
+  {
+    id: 'seed:openblueprint',
+    name: 'OpenBlueprint hardware-design candidate',
+    category: 'software-adapter',
+    sourceRef: 'https://github.com/noobianlabs/openblueprint',
+    status: 'CANDIDATE',
+    capabilities: ['hardware-design', 'bom', 'wiring', 'assembly', 'build-instructions'],
+  },
+  {
+    id: 'seed:drael',
+    name: 'Drael OpenAI-compatible provider candidate',
+    category: 'provider-router',
+    sourceRef: 'https://drael.sh/docs',
+    status: 'CANDIDATE',
+    capabilities: ['openai-compatible', 'cloud-llm', 'vision', 'provider-manual'],
+  },
 ];
 
 export function createBuiltinExtensionResources(): CapabilityResourceDescriptor[] {

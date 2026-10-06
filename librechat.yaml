@@ -185,6 +185,19 @@
         "modelDisplayLabel": "MiniMax"
       },
       {
+        "name": "Drael",
+        "apiKey": "user_provided",
+        "baseURL": "https://drael.sh/v1",
+        "models": {
+          "fetch": true,
+          "default": [
+            "drael-v1"
+          ]
+        },
+        "titleConvo": true,
+        "modelDisplayLabel": "Drael"
+      },
+      {
         "name": "Ollama",
         "apiKey": "user_provided",
         "baseURL": "http://localhost:11434/v1",
@@ -296,6 +309,16 @@
       "serverInstructions": true,
       "title": "Higgsfield",
       "description": "Official Higgsfield MCP for image, video, character and audio generation. Automated generations consume Higgsfield credits.",
+      "timeout": 30000
+    },
+    "notion": {
+      "type": "streamable-http",
+      "url": "https://mcp.notion.com/mcp",
+      "startup": false,
+      "requiresOAuth": true,
+      "serverInstructions": true,
+      "title": "Notion",
+      "description": "Official Notion MCP for documentation import/export. BOT MODE remains the source of truth; writes require explicit user intent.",
       "timeout": 30000
     }
   }

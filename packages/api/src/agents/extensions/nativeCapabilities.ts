@@ -65,6 +65,24 @@ export const VERIFIED_EXTERNAL_CAPABILITIES: readonly CapabilityResourceDescript
     enabled: true,
     provenance: { source: 'env:ELEVENLABS_API_KEY', verifiedAt: new Date().toISOString() },
   },
+  {
+    id: 'source:skipthedrive',
+    kind: 'source',
+    name: 'SkipTheDrive Remote Jobs',
+    capabilities: ['opportunity:jobs', 'remote-jobs', 'source:web'],
+    accessMethod: 'public-web',
+    networkRequirement: 'internet',
+    permission: 'research-policy',
+    trustLevel: 'public-source',
+    legalUsage: 'provider-terms-review',
+    refreshPolicy: 'query-on-demand',
+    enabled: true,
+    tools: ['web_search'],
+    provenance: {
+      source: 'https://www.skipthedrive.com/',
+      verifiedAt: new Date().toISOString(),
+    },
+  },
 ];
 
 export const PENDING_E2E_PROVIDER_CAPABILITIES: readonly CapabilityResourceDescriptor[] = [
