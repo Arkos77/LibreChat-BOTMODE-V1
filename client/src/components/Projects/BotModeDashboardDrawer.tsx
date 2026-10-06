@@ -1,10 +1,10 @@
 import { Fragment, useRef, useState } from 'react';
 import { Button, FileUpload } from '@librechat/client';
 import { EToolResources } from 'librechat-data-provider';
-import { Bot, ChevronDown, FileText, Paperclip, X } from 'lucide-react';
+import { Bot, ChevronDown, FileText, Gauge, Paperclip, X } from 'lucide-react';
 import { Dialog, DialogPanel, DialogTitle, Transition, TransitionChild } from '@headlessui/react';
 import type { TConversation } from 'librechat-data-provider';
-import { useBotModeProjectProjectionQuery } from '~/data-provider';
+import { useBotModeBudgetQuery, useBotModeProjectProjectionQuery } from '~/data-provider';
 import { useFileHandlingNoChatContext } from '~/hooks/Files';
 import BotModeProjectPanel from './BotModeProjectPanel';
 import { useChatContext } from '~/Providers';
@@ -28,6 +28,9 @@ export default function BotModeDashboardDrawer({
   const conversationId = activeConversation?.conversationId ?? '';
   const { data: projection } = useBotModeProjectProjectionQuery(projectId, {
     enabled: open && Boolean(projectId),
+  });
+  const { data: modelBudget } = useBotModeBudgetQuery({
+    enabled: open,
   });
 
   const { handleFileChange } = useFileHandlingNoChatContext(undefined, {
@@ -142,6 +145,54 @@ export default function BotModeDashboardDrawer({
               </DialogTitle>
 
               <div className="min-h-0 flex-1 overflow-y-auto">
+                <section className="border-b border-border-light px-5 py-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <Gauge className="h-4 w-4 text-text-secondary" aria-hidden="true" />
+                    <div>
+                      <div className="text-sm font-semibold text-text-primary">
+                        {localize('com_ui_bot_mode_budget_title')}
+                      </div>
+                      <div className="text-xs text-text-secondary">
+                        {modelBudget?.enabled
+                          ? localize(
+                              modelBudget.spendingPolicy === 'free_only'
+                                ? 'com_ui_bot_mode_budget_free_only'
+                                : 'com_ui_bot_mode_budget_free_first',
+                            )
+                          : localize('com_ui_bot_mode_budget_disabled')}
+                      </div>
+                    </div>
+                  </div>
+                  {modelBudget && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-xl border border-border-light bg-surface-secondary/40 p-3">
+                        <div className="text-xs text-text-secondary">
+                          {localize('com_ui_bot_mode_budget_today')}
+                        </div>
+                        <div className="mt-1 text-base font-semibold tabular-nums text-text-primary">
+                          {'$'}
+                          {modelBudget.daily?.spentUsd.toFixed(2) ?? '0.00'}
+                          {modelBudget.daily?.limitUsd != null
+                            ? ' / $' + modelBudget.daily.limitUsd.toFixed(2)
+                            : ''}
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-border-light bg-surface-secondary/40 p-3">
+                        <div className="text-xs text-text-secondary">
+                          {localize('com_ui_bot_mode_budget_month')}
+                        </div>
+                        <div className="mt-1 text-base font-semibold tabular-nums text-text-primary">
+                          {'$'}
+                          {modelBudget.monthly?.spentUsd.toFixed(2) ?? '0.00'}
+                          {modelBudget.monthly?.limitUsd != null
+                            ? ' / $' + modelBudget.monthly.limitUsd.toFixed(2)
+                            : ''}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </section>
+
                 <section className="border-b border-border-light">
                   <button
                     type="button"

@@ -1,3 +1,5 @@
+const { mergeBudgetRoutingConstraints } = require('./modelBudget');
+
 function sameProvider(left, right) {
   return (
     typeof left === 'string' &&
@@ -53,6 +55,8 @@ function normalizePolicy(policy, originalAgent) {
       explicitBindings: true,
       routingConstraints: policy.routingConstraints,
       allowFailover: policy.allowFailover === true,
+      routingMode: policy.routingMode ?? 'static',
+      requestTimeoutMs: policy.requestTimeoutMs,
     };
   }
 
@@ -74,6 +78,8 @@ function normalizePolicy(policy, originalAgent) {
     explicitBindings: false,
     routingConstraints: policy.routingConstraints,
     allowFailover: policy.allowFailover === true,
+    routingMode: policy.routingMode ?? 'static',
+    requestTimeoutMs: policy.requestTimeoutMs,
   };
 }
 
@@ -94,6 +100,7 @@ async function resolveHostModelRouting({
   timestamp,
   decisionId,
   traceEventId,
+  budgetState,
 }) {
   const entries = config?.filter((entry) => matchesAgentPolicy(entry, originalAgent)) ?? [];
   if (entries.length === 0) return primaryConfig;
@@ -103,8 +110,19 @@ async function resolveHostModelRouting({
     throw new Error('Host model routing requires durable decision provenance');
   }
 
-  const { bindings, preferredBindingId, explicitBindings, routingConstraints, allowFailover } =
-    normalizePolicy(policy, originalAgent);
+  const {
+    bindings,
+    preferredBindingId,
+    explicitBindings,
+    routingConstraints,
+    allowFailover,
+    routingMode,
+    requestTimeoutMs,
+  } = normalizePolicy(policy, originalAgent);
+  const effectiveRoutingConstraints = mergeBudgetRoutingConstraints(
+    routingConstraints,
+    budgetState,
+  );
   if (
     bindings.length < 2 ||
     bindings.length > 4 ||
@@ -169,8 +187,10 @@ async function resolveHostModelRouting({
         agentId: originalAgent.id,
         bindings: resolvedBindings,
         preferredBindingId,
-        routingConstraints,
+        routingConstraints: effectiveRoutingConstraints,
         allowFailover,
+        routingMode,
+        requestTimeoutMs,
         traceId,
         timestamp,
         decisionId,
@@ -195,8 +215,10 @@ async function resolveHostModelRouting({
         routingSignals: Object.fromEntries(
           resolvedBindings.map((binding) => [binding.id, binding.signals ?? {}]),
         ),
-        routingConstraints,
+        routingConstraints: effectiveRoutingConstraints,
         allowFailover,
+        routingMode,
+        requestTimeoutMs,
         traceId,
         timestamp,
         decisionId,

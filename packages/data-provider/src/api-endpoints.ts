@@ -170,6 +170,7 @@ export const projects = (params: q.ProjectListParams = {}) => {
 export const projectById = (id: string) => `${projectsRoot}/${encodeURIComponent(id)}`;
 
 export const projectBotMode = (id: string) => `${projectsRoot}/${encodeURIComponent(id)}/bot-mode`;
+export const botModeBudget = () => projectsRoot + '/bot-mode/budget';
 
 export const projectConversation = (conversationId: string) =>
   `${projectsRoot}/conversations/${encodeURIComponent(conversationId)}`;

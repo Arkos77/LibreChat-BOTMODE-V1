@@ -7,6 +7,8 @@ export interface AuthorizedResourceSignals {
   contextWindow?: number;
   /** Host estimate in its own budget unit. Router never charges or reserves it. */
   estimatedCost?: number;
+  /** Host-authoritative pricing class used only for routing policy. */
+  pricingTier?: 'free' | 'paid';
   /** Host-observed or estimated latency. */
   latencyMs?: number;
   /** Higher is better. May come from benchmarks or historical QA. */
@@ -54,6 +56,8 @@ export interface AuthorizedModelCandidate extends AuthorizedResourceCandidate {
   binding: AgentInputs;
 }
 
+export type SpendingPolicy = 'free_only' | 'free_first' | 'paid_allowed';
+
 export interface RoutingConstraints {
   requiredContextTokens?: number;
   maxEstimatedCost?: number;
@@ -61,6 +65,8 @@ export interface RoutingConstraints {
   allowedPrivacy?: readonly string[];
   requiredCapabilities?: readonly string[];
   allowedExecutionModes?: readonly ResourceExecutionMode[];
+  /** Cost-admission policy; omitted preserves historical routing semantics. */
+  spendingPolicy?: SpendingPolicy;
 }
 
 export interface RoutingDecisionContext {
@@ -158,6 +164,9 @@ function rejectCode(
   ) {
     return 'EXECUTION_MODE';
   }
+  if (constraints.spendingPolicy === 'free_only' && signals.pricingTier !== 'free') {
+    return 'BUDGET';
+  }
   if (signals.available === false) {
     return 'UNAVAILABLE';
   }
@@ -210,6 +219,7 @@ function compareAscending(left: number | undefined, right: number | undefined): 
 
 function deterministicOrder<T extends AuthorizedResourceCandidate>(
   candidates: ReadonlyArray<T>,
+  constraints: RoutingConstraints,
 ): T[] {
   return [...candidates].sort((left, right) => {
     const freshnessRank = (value: AuthorizedResourceSignals['freshness']): number => {
@@ -221,6 +231,15 @@ function deterministicOrder<T extends AuthorizedResourceCandidate>(
     };
     let order = freshnessRank(left.signals?.freshness) - freshnessRank(right.signals?.freshness);
     if (order !== 0) return order;
+    if (constraints.spendingPolicy === 'free_first') {
+      const priceRank = (value: AuthorizedResourceSignals['pricingTier']): number => {
+        if (value === 'free') return 0;
+        if (value === 'paid') return 1;
+        return 2;
+      };
+      order = priceRank(left.signals?.pricingTier) - priceRank(right.signals?.pricingTier);
+      if (order !== 0) return order;
+    }
     order = compareDescending(left.signals?.qualityScore, right.signals?.qualityScore);
     if (order !== 0) return order;
     order = compareDescending(left.signals?.oracleScore, right.signals?.oracleScore);
@@ -298,7 +317,7 @@ export async function rankAuthorizedResources<T extends AuthorizedResourceCandid
     throw new Error('No admissible authorized resource candidates');
   }
 
-  const deterministic = deterministicOrder(admissible);
+  const deterministic = deterministicOrder(admissible, constraints);
   let ordered = deterministic;
   let source: ResourceRoutingDecision['source'] = 'deterministic';
   let decisionProviderId: DecisionProviderId | undefined;

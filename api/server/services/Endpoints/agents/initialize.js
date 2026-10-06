@@ -86,6 +86,7 @@ const {
 } = require('./backgroundCompletion');
 const { recordSkillImprovementProposal } = require('./improvementSkillProposal');
 const { resolveHostModelRouting } = require('./hostModelRouting');
+const { readModelBudgetState } = require('./modelBudget');
 const { randomUUID } = require('crypto');
 const { logViolation } = require('~/cache');
 const db = require('~/models');
@@ -882,6 +883,14 @@ const initializeClient = async ({
   );
 
   const initialPrimaryConfig = primaryConfig;
+  const modelBudgetConfig = appConfig?.endpoints?.[EModelEndpoint.agents]?.modelBudget;
+  const modelBudgetState =
+    hostModelRouting && modelBudgetConfig
+      ? await readModelBudgetState({
+          userId: req.user.id,
+          config: modelBudgetConfig,
+        })
+      : undefined;
   primaryConfig = await resolveHostModelRouting({
     config: hostModelRouting,
     originalAgent: originalPrimaryAgent,
@@ -947,6 +956,7 @@ const initializeClient = async ({
     timestamp: new Date().toISOString(),
     decisionId: randomUUID(),
     traceEventId: randomUUID(),
+    budgetState: modelBudgetState,
   });
 
   if (primaryConfig !== initialPrimaryConfig) {

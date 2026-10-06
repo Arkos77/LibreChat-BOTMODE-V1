@@ -1575,5 +1575,11 @@
   "com_ui_bot_mode_idea_specialists": "Spécialistes BOT MODE",
   "com_ui_bot_mode_idea_recent_activity": "Dernière activité",
   "com_ui_bot_mode_idea_mission_conversations": "{{count}} conversations de mission",
-  "com_ui_bot_mode_idea_analysis_runs": "analyses enregistrées"
+  "com_ui_bot_mode_idea_analysis_runs": "analyses enregistrées",
+  "com_ui_bot_mode_budget_title": "Budget modèles",
+  "com_ui_bot_mode_budget_today": "Aujourd’hui",
+  "com_ui_bot_mode_budget_month": "Ce mois",
+  "com_ui_bot_mode_budget_free_first": "FREE-FIRST — payant autorisé en repli",
+  "com_ui_bot_mode_budget_free_only": "FREE-ONLY — plafond presque atteint",
+  "com_ui_bot_mode_budget_disabled": "Compteur désactivé"
 }

@@ -149,6 +149,123 @@ describe('host P11 model decision', () => {
     expect(result.event.payload.selectedOption).toBe('model-b:free');
   });
 
+  it('keeps static preference semantics by default', async () => {
+    const result = await decideHostModel({
+      ...input,
+      preferredModel: 'model-b:free',
+      routingSignals: {
+        'model-a:free': {
+          pricingTier: 'free',
+          qualityScore: 1,
+          estimatedCost: 0,
+          latencyMs: 10,
+        },
+        'model-b:free': {
+          pricingTier: 'paid',
+          qualityScore: 0.1,
+          estimatedCost: 10,
+          latencyMs: 1000,
+        },
+      },
+      routingConstraints: { spendingPolicy: 'free_first' },
+    });
+
+    expect(result.selectedModel).toBe('model-b:free');
+    expect(result.record.provider).toBe('RuleDecisionProvider');
+  });
+
+  it('uses adaptive deterministic routing instead of static preference', async () => {
+    const result = await decideHostModel({
+      ...input,
+      preferredModel: 'model-b:free',
+      routingMode: 'adaptive',
+      routingSignals: {
+        'model-a:free': {
+          pricingTier: 'free',
+          qualityScore: 0.6,
+          estimatedCost: 0,
+          latencyMs: 20,
+        },
+        'model-b:free': {
+          pricingTier: 'paid',
+          qualityScore: 0.99,
+          estimatedCost: 0.01,
+          latencyMs: 5,
+        },
+      },
+      routingConstraints: { spendingPolicy: 'free_first' },
+    });
+
+    expect(result.selectedModel).toBe('model-a:free');
+    expect(result.record.provider).toBe('deterministic');
+    expect(result.event.payload.provider).toBe('deterministic');
+  });
+
+  it('uses retryable zero-chunk fallbacks and a bounded timeout only in adaptive mode', async () => {
+    const result = await decideHostModel({
+      ...input,
+      routingMode: 'adaptive',
+      requestTimeoutMs: 15000,
+      allowFailover: true,
+      preferredModel: undefined,
+      routingSignals: {
+        'model-a:free': { pricingTier: 'free' },
+        'model-b:free': { pricingTier: 'free' },
+      },
+      routingConstraints: { spendingPolicy: 'free_first' },
+    });
+
+    expect(result.modelParameters).toEqual(
+      expect.objectContaining({
+        model: 'model-a:free',
+        timeout: 15000,
+        fallbacks: [
+          expect.objectContaining({
+            provider: 'OpenRouter',
+            clientOptions: expect.objectContaining({
+              model: 'model-b:free',
+              timeout: 15000,
+            }),
+            retryOn: 'MODEL_RETRYABLE_ZERO_CHUNK',
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('keeps strict rate-limit-only failover in static mode', async () => {
+    const result = await decideHostModel({
+      ...input,
+      routingMode: 'static',
+      requestTimeoutMs: 15000,
+      allowFailover: true,
+      preferredModel: 'model-a:free',
+    });
+
+    expect(result.modelParameters.timeout).toBeUndefined();
+    expect(result.modelParameters.fallbacks).toEqual([
+      expect.objectContaining({
+        retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
+      }),
+    ]);
+    expect(result.modelParameters.fallbacks[0].clientOptions.timeout).toBeUndefined();
+  });
+
+  it('fails closed when free_only has no free admissible model', async () => {
+    await expect(
+      decideHostModel({
+        ...input,
+        routingMode: 'adaptive',
+        preferredModel: undefined,
+        routingSignals: {
+          'model-a:free': { pricingTier: 'paid' },
+          'model-b:free': { pricingTier: 'paid' },
+        },
+        routingConstraints: { spendingPolicy: 'free_only' },
+      }),
+    ).rejects.toThrow('No admissible authorized resource candidates');
+  });
+
   it('installs only host-authorized resolved fallbacks when controlled failover is enabled', async () => {
     const result = await decideHostModel({
       ...input,

@@ -5,6 +5,7 @@ const db = require('~/models');
 const {
   createBotModeProjectProjection,
 } = require('~/server/services/Projects/botModeProjectProjection');
+const { readModelBudgetState } = require('~/server/services/Endpoints/agents/modelBudget');
 
 const router = express.Router();
 const handlers = createProjectHandlers({
@@ -21,6 +22,19 @@ router.use(requireJwtAuth);
 router.get('/', handlers.listProjects);
 router.post('/', handlers.createProject);
 router.put('/conversations/:conversationId', handlers.assignConversationToProject);
+router.get('/bot-mode/budget', async (req, res) => {
+  try {
+    const state = await readModelBudgetState({
+      userId: req.user.id,
+      config: req.config?.endpoints?.agents?.modelBudget,
+    });
+    return res.status(200).json(state);
+  } catch (error) {
+    console.error('[projects] Error reading BOT MODE model budget', error);
+    return res.status(500).json({ error: 'Error reading BOT MODE model budget' });
+  }
+});
+
 router.get('/:projectId/bot-mode', async (req, res) => {
   try {
     const projection = await createBotModeProjectProjection({

@@ -251,6 +251,8 @@ describe('host model routing', () => {
           'a:free': { qualityScore: 0.4, estimatedCost: 1, latencyMs: 90 },
           'b:free': { qualityScore: 0.9, estimatedCost: 2, latencyMs: 80 },
         },
+        routingMode: 'adaptive',
+        requestTimeoutMs: 15000,
         routingConstraints: { maxEstimatedCost: 3, maxLatencyMs: 100 },
       },
     ];
@@ -275,6 +277,8 @@ describe('host model routing', () => {
     expect(request.decide).toHaveBeenCalledWith(
       expect.objectContaining({
         preferredModel: undefined,
+        routingMode: 'adaptive',
+        requestTimeoutMs: 15000,
         routingConstraints: { maxEstimatedCost: 3, maxLatencyMs: 100 },
         routingSignals: {
           'a:free': { qualityScore: 0.4, estimatedCost: 1, latencyMs: 90 },

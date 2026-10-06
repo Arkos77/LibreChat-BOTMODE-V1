@@ -116,6 +116,49 @@ describe('rankAuthorizedResources', () => {
     expect(b.orderedCandidateIds).toEqual(['known', 'unknown']);
   });
 
+  it('prioritizes free candidates under free_first before quality and latency', async () => {
+    const result = await rankAuthorizedResources(
+      [
+        resource('paid-fast', {
+          signals: {
+            pricingTier: 'paid',
+            qualityScore: 1,
+            estimatedCost: 0.001,
+            latencyMs: 1,
+          },
+        }),
+        resource('free-slower', {
+          signals: {
+            pricingTier: 'free',
+            qualityScore: 0.5,
+            estimatedCost: 0,
+            latencyMs: 100,
+          },
+        }),
+      ],
+      { constraints: { spendingPolicy: 'free_first' } },
+    );
+
+    expect(result.orderedCandidateIds).toEqual(['free-slower', 'paid-fast']);
+  });
+
+  it('rejects paid and unknown-price candidates under free_only', async () => {
+    const result = await rankAuthorizedResources(
+      [
+        resource('free', { signals: { pricingTier: 'free' } }),
+        resource('paid', { signals: { pricingTier: 'paid' } }),
+        resource('unknown', { signals: {} }),
+      ],
+      { constraints: { spendingPolicy: 'free_only' } },
+    );
+
+    expect(result.selectedCandidateId).toBe('free');
+    expect(result.rejected).toEqual([
+      { candidateId: 'paid', code: 'BUDGET' },
+      { candidateId: 'unknown', code: 'BUDGET' },
+    ]);
+  });
+
   it('rejects an inadmissible candidate returned by a Decision Provider', async () => {
     const provider: DecisionProvider = { decide: () => ['blocked'] };
     await expect(

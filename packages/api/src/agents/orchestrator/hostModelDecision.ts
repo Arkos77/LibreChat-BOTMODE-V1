@@ -19,6 +19,8 @@ type LegacyInput = {
   routingConstraints?: import('./routing').RoutingConstraints;
   routingSignals?: Record<string, import('./routing').AuthorizedResourceSignals>;
   allowFailover?: boolean;
+  routingMode?: 'static' | 'adaptive';
+  requestTimeoutMs?: number;
   traceId: string;
   timestamp: string;
   decisionId: string;
@@ -39,6 +41,8 @@ type BindingInput = {
   preferredBindingId?: string;
   routingConstraints?: import('./routing').RoutingConstraints;
   allowFailover?: boolean;
+  routingMode?: 'static' | 'adaptive';
+  requestTimeoutMs?: number;
   traceId: string;
   timestamp: string;
   decisionId: string;
@@ -65,6 +69,8 @@ function normalizeBindings(input: Input): {
   preferredBindingId?: string;
   routingConstraints?: import('./routing').RoutingConstraints;
   allowFailover: boolean;
+  routingMode: 'static' | 'adaptive';
+  requestTimeoutMs?: number;
 } {
   if (hasBindingInput(input)) {
     const bindings = input.bindings.map((binding) => ({
@@ -112,6 +118,8 @@ function normalizeBindings(input: Input): {
       preferredBindingId,
       routingConstraints: input.routingConstraints,
       allowFailover: input.allowFailover === true,
+      routingMode: input.routingMode ?? 'static',
+      requestTimeoutMs: input.requestTimeoutMs,
     };
   }
 
@@ -184,7 +192,14 @@ function normalizeBindings(input: Input): {
   ) {
     throw new Error('Host model decision rejects hidden native fallbacks');
   }
-  return { bindings, preferredBindingId: preferredModel, routingConstraints, allowFailover };
+  return {
+    bindings,
+    preferredBindingId: preferredModel,
+    routingConstraints,
+    allowFailover,
+    routingMode: input.routingMode ?? 'static',
+    requestTimeoutMs: input.requestTimeoutMs,
+  };
 }
 
 /** A host-authorized model pool; selection never grants access. Controlled SDK failover is opt-in and binding-scoped. */
@@ -200,8 +215,14 @@ export async function decideHostModel(input: Input): Promise<{
     throw new Error('Host model decision requires agent, trace and decision identities');
   }
 
-  const { bindings, preferredBindingId, routingConstraints, allowFailover } =
-    normalizeBindings(input);
+  const {
+    bindings,
+    preferredBindingId,
+    routingConstraints,
+    allowFailover,
+    routingMode,
+    requestTimeoutMs,
+  } = normalizeBindings(input);
   const candidates: AuthorizedModelCandidate[] = bindings.map((binding) => ({
     id: binding.id,
     executionMode: 'model',
@@ -225,10 +246,12 @@ export async function decideHostModel(input: Input): Promise<{
   const routing = await routeAuthorizedModelBindings(
     candidates,
     { constraints: routingConstraints },
-    {
-      id: 'RuleDecisionProvider',
-      decide: () => (preferredBindingId == null ? [] : [preferredBindingId]),
-    },
+    routingMode === 'static'
+      ? {
+          id: 'RuleDecisionProvider',
+          decide: () => (preferredBindingId == null ? [] : [preferredBindingId]),
+        }
+      : undefined,
   );
   const selected = bindings.find((binding) => binding.id === routing.selectedCandidateId);
   if (!selected) {
@@ -242,7 +265,7 @@ export async function decideHostModel(input: Input): Promise<{
       description: 'Host-authorized model binding',
     })),
     selectedOption: routing.selectedCandidateId,
-    provider: 'RuleDecisionProvider',
+    provider: routing.source === 'decision-provider' ? 'RuleDecisionProvider' : 'deterministic',
     context: { traceId: input.traceId, agentId: input.agentId },
     timestamp: input.timestamp,
   });
@@ -255,6 +278,9 @@ export async function decideHostModel(input: Input): Promise<{
     selectedModel: selected.model,
     modelParameters: {
       ...selected.options,
+      ...(routingMode === 'adaptive' && requestTimeoutMs != null
+        ? { timeout: requestTimeoutMs }
+        : {}),
       ...(allowFailover
         ? {
             fallbacks: routing.orderedCandidateIds
@@ -263,8 +289,16 @@ export async function decideHostModel(input: Input): Promise<{
                 const binding = bindings.find((item) => item.id === id)!;
                 return {
                   provider: binding.runtimeProvider,
-                  clientOptions: { ...binding.options },
-                  retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
+                  clientOptions: {
+                    ...binding.options,
+                    ...(routingMode === 'adaptive' && requestTimeoutMs != null
+                      ? { timeout: requestTimeoutMs }
+                      : {}),
+                  },
+                  retryOn:
+                    routingMode === 'adaptive'
+                      ? 'MODEL_RETRYABLE_ZERO_CHUNK'
+                      : 'MODEL_RATE_LIMIT_ZERO_CHUNK',
                   ...(binding.contextWindow != null
                     ? { maxContextTokens: binding.contextWindow }
                     : {}),

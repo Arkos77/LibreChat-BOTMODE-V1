@@ -4,6 +4,7 @@ import type {
   ProjectListParams,
   ProjectListResponse,
   TBotModeProjectProjection,
+  TBotModeBudgetState,
   TChatProject,
 } from 'librechat-data-provider';
 import type {
@@ -64,6 +65,21 @@ export const useBotModeProjectProjectionQuery = (
       enabled: Boolean(projectId),
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
+      ...config,
+    },
+  );
+};
+
+export const useBotModeBudgetQuery = (
+  config?: UseQueryOptions<TBotModeBudgetState>,
+): QueryObserverResult<TBotModeBudgetState, unknown> => {
+  return useQuery<TBotModeBudgetState>(
+    [QueryKeys.botModeBudget],
+    () => dataService.getBotModeBudget(),
+    {
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+      staleTime: 30 * 1000,
       ...config,
     },
   );

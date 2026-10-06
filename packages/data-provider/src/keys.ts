@@ -52,6 +52,7 @@ export enum QueryKeys {
   projects = 'projects',
   project = 'project',
   projectBotMode = 'projectBotMode',
+  botModeBudget = 'botModeBudget',
   projectConversations = 'projectConversations',
   categories = 'categories',
   randomPrompts = 'randomPrompts',

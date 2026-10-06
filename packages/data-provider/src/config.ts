@@ -1122,6 +1122,19 @@ export const agentsEndpointSchema = baseEndpointSchema
       /** Operator-authorized model bindings for one saved agent. Rechecked on every run and resume.
        *  The legacy OpenRouter `models` form remains supported; `bindings` enables explicit
        *  provider/model identities without carrying credentials or runtime client options. */
+      /** BOT MODE provider-spend policy. USD usage is read from persisted message usage;
+       * no second billing ledger is created. */
+      modelBudget: z
+        .object({
+          dailyUsd: z.number().positive().optional(),
+          monthlyUsd: z.number().positive().optional(),
+          freeOnlyRatio: z.number().min(0).max(1).optional().default(0.95),
+        })
+        .strict()
+        .refine((value) => value.dailyUsd != null || value.monthlyUsd != null, {
+          message: 'modelBudget requires dailyUsd or monthlyUsd',
+        })
+        .optional(),
       hostModelRouting: z
         .array(
           z.union([
@@ -1131,6 +1144,32 @@ export const agentsEndpointSchema = baseEndpointSchema
                 agentName: z.string().min(1).max(128).optional(),
                 models: z.array(z.string().min(1).max(256)).min(2).max(4),
                 preferredModel: z.string().min(1).max(256).optional(),
+                routingSignals: z
+                  .record(
+                    z.string(),
+                    z
+                      .object({
+                        estimatedCost: z.number().nonnegative().optional(),
+                        latencyMs: z.number().nonnegative().optional(),
+                        qualityScore: z.number().finite().optional(),
+                        oracleScore: z.number().finite().optional(),
+                        benchmarkScore: z.number().finite().optional(),
+                        pricingTier: z.enum(['free', 'paid']).optional(),
+                        freshness: z.enum(['ACTIVE', 'STALE', 'DEPRECATED', 'RETIRED']).optional(),
+                      })
+                      .strict(),
+                  )
+                  .optional(),
+                routingMode: z.enum(['static', 'adaptive']).optional(),
+                requestTimeoutMs: z.number().int().min(1000).max(120000).optional(),
+                routingConstraints: z
+                  .object({
+                    maxEstimatedCost: z.number().nonnegative().optional(),
+                    maxLatencyMs: z.number().nonnegative().optional(),
+                    spendingPolicy: z.enum(['free_only', 'free_first', 'paid_allowed']).optional(),
+                  })
+                  .strict()
+                  .optional(),
                 allowFailover: z.boolean().optional(),
               })
               .strict()
@@ -1155,12 +1194,36 @@ export const agentsEndpointSchema = baseEndpointSchema
                         id: z.string().min(1).max(256),
                         provider: z.string().min(1).max(256),
                         model: z.string().min(1).max(256),
+                        signals: z
+                          .object({
+                            estimatedCost: z.number().nonnegative().optional(),
+                            latencyMs: z.number().nonnegative().optional(),
+                            qualityScore: z.number().finite().optional(),
+                            oracleScore: z.number().finite().optional(),
+                            benchmarkScore: z.number().finite().optional(),
+                            pricingTier: z.enum(['free', 'paid']).optional(),
+                            freshness: z
+                              .enum(['ACTIVE', 'STALE', 'DEPRECATED', 'RETIRED'])
+                              .optional(),
+                          })
+                          .strict()
+                          .optional(),
                       })
                       .strict(),
                   )
                   .min(2)
                   .max(4),
                 preferredBindingId: z.string().min(1).max(256).optional(),
+                routingMode: z.enum(['static', 'adaptive']).optional(),
+                requestTimeoutMs: z.number().int().min(1000).max(120000).optional(),
+                routingConstraints: z
+                  .object({
+                    maxEstimatedCost: z.number().nonnegative().optional(),
+                    maxLatencyMs: z.number().nonnegative().optional(),
+                    spendingPolicy: z.enum(['free_only', 'free_first', 'paid_allowed']).optional(),
+                  })
+                  .strict()
+                  .optional(),
                 allowFailover: z.boolean().optional(),
               })
               .strict()

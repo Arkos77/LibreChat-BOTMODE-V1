@@ -2650,5 +2650,11 @@
   "com_ui_bot_mode_idea_specialists": "BOT MODE specialists",
   "com_ui_bot_mode_idea_recent_activity": "Recent activity",
   "com_ui_bot_mode_idea_mission_conversations": "{{count}} mission conversations",
-  "com_ui_bot_mode_idea_analysis_runs": "recorded analyses"
+  "com_ui_bot_mode_idea_analysis_runs": "recorded analyses",
+  "com_ui_bot_mode_budget_title": "Model budget",
+  "com_ui_bot_mode_budget_today": "Today",
+  "com_ui_bot_mode_budget_month": "This month",
+  "com_ui_bot_mode_budget_free_first": "FREE-FIRST — paid fallback allowed",
+  "com_ui_bot_mode_budget_free_only": "FREE-ONLY — budget threshold reached",
+  "com_ui_bot_mode_budget_disabled": "Budget meter disabled"
 }

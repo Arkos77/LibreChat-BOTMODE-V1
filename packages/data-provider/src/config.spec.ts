@@ -1125,6 +1125,8 @@ describe('host model routing configuration', () => {
               agentName: 'BOT MODE Worker',
               models: ['model-a:free', 'model-b:free'],
               preferredModel: 'model-a:free',
+              routingMode: 'adaptive',
+              requestTimeoutMs: 15000,
               allowFailover: true,
             },
           ],
@@ -1132,6 +1134,24 @@ describe('host model routing configuration', () => {
       },
     };
     expect(configSchema.safeParse(byName).success).toBe(true);
+
+    expect(
+      configSchema.safeParse({
+        ...byName,
+        endpoints: {
+          agents: {
+            hostModelRouting: [
+              {
+                agentName: 'BOT MODE Worker',
+                models: ['model-a:free', 'model-b:free'],
+                routingMode: 'adaptive',
+                requestTimeoutMs: 999,
+              },
+            ],
+          },
+        },
+      }).success,
+    ).toBe(false);
 
     expect(
       configSchema.safeParse({

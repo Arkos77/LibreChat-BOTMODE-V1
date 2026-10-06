@@ -219,3 +219,14 @@ compile to StandardGraph and require the same exact-output observation contract 
 - Contract: retains cooperative `pause_requested`/`paused` plus `pause`/`resume`, and adds host-only `SubagentTaskRuntime.rehydrate()` for control state already proven durable by the host. A replacement owner can restore the same task identity, remain paused before provider/tool work, freeze the task timeout, then resume the same task/thread.
 
 This remains task-control and durable-recovery capability only; it does not grant HITL authority. The host must verify durable checkpoint lineage before calling `rehydrate()`. Historical SDK artifacts remain retained for provenance.
+
+## Adaptive zero-chunk timeout failover SDK — current artifact
+
+- Package: `@librechat/agents` 3.7.17.
+- Source commit: `145865e` (`fix(agents): fail over stalled zero-chunk models`).
+- Artifact: `librechat-agents-3.7.17-145865e.tgz`.
+- SHA-256: `5937a2be89c761b7ccb9749e2ed9f15343dae887b5f1d84debc55307b691ac2b`.
+- npm integrity: `sha512-ZDi1UtGTIYNgmWHgOI/jUibMrbRjyzzKyMvOMyHVTbo807pRc/E9MYIYsFLlXJh6THMVrT4Wnk5toJAKPtZXzg==`.
+- Validation: `fallbackOverflow.test.ts` 22/22 PASS; ESLint targeted PASS; `tsdown` PASS; `git diff --check` PASS.
+- Known unrelated SDK build note: the full build still stops at the pre-existing `src/hooks/effectAuthority.ts:77` TS2367 after bundling succeeds.
+- Contract: `MODEL_RATE_LIMIT_ZERO_CHUNK` remains rate-limit-only. `MODEL_RETRYABLE_ZERO_CHUNK` additionally admits explicit provider overloads and explicit timeout errors, only before any model chunk. Ordinary errors, context overflow, stream-limit aborts and post-chunk failures remain fail-closed.

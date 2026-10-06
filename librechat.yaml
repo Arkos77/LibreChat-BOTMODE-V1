@@ -22,23 +22,29 @@
         {
           "agentName": "BOT MODE Worker",
           "bindings": [
-            { "id": "99-or-free", "provider": "OpenRouter", "model": "openrouter/free" },
-            { "id": "01-lightning", "provider": "OpenRouter", "model": "nvidia/nemotron-3.5-lightning:free" },
+            { "id": "99-or-free", "provider": "OpenRouter", "model": "openrouter/free", "signals": { "pricingTier": "free" } },
+            { "id": "01-lightning", "provider": "OpenRouter", "model": "nvidia/nemotron-3.5-lightning:free", "signals": { "pricingTier": "free" } },
             { "id": "02-gemini", "provider": "Gemini", "model": "models/gemini-3.5-flash" },
-            { "id": "03-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free" }
+            { "id": "03-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free", "signals": { "pricingTier": "free" } }
           ],
           "preferredBindingId": "01-lightning",
+          "routingMode": "adaptive",
+          "requestTimeoutMs": 15000,
+          "routingConstraints": { "spendingPolicy": "free_first" },
           "allowFailover": true
         },
         {
           "agentName": "RECHERCHE",
           "bindings": [
-            { "id": "99-or-free", "provider": "OpenRouter", "model": "openrouter/free" },
-            { "id": "01-lightning", "provider": "OpenRouter", "model": "nvidia/nemotron-3.5-lightning:free" },
+            { "id": "99-or-free", "provider": "OpenRouter", "model": "openrouter/free", "signals": { "pricingTier": "free" } },
+            { "id": "01-lightning", "provider": "OpenRouter", "model": "nvidia/nemotron-3.5-lightning:free", "signals": { "pricingTier": "free" } },
             { "id": "02-gemini", "provider": "Gemini", "model": "models/gemini-3.5-flash" },
-            { "id": "03-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free" }
+            { "id": "03-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free", "signals": { "pricingTier": "free" } }
           ],
           "preferredBindingId": "01-lightning",
+          "routingMode": "adaptive",
+          "requestTimeoutMs": 15000,
+          "routingConstraints": { "spendingPolicy": "free_first" },
           "allowFailover": true
         },
         {

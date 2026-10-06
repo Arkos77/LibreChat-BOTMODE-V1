@@ -989,6 +989,10 @@ export function getBotModeProjectProjection(
   return request.get(endpoints.projectBotMode(projectId));
 }
 
+export function getBotModeBudget(): Promise<t.TBotModeBudgetState> {
+  return request.get(endpoints.botModeBudget());
+}
+
 export function updateProject(payload: t.TUpdateChatProjectRequest): Promise<t.TChatProject> {
   const { projectId, ...data } = payload;
   return request.patch(endpoints.projectById(projectId), data);

@@ -2398,3 +2398,9 @@ SAFE REAL-TIME WEB TOOL FIX — 6 OCTOBRE 2026
 - **VALIDÉ — fast-path factuel général** : pour une requête demandant un seul fait externe actuel simple, BOT MODE effectue au maximum UN `web_search` dans le run, exploite les multiples résultats de cette recherche et répond immédiatement. Pas de deuxième recherche pour simple confirmation ; approfondissement seulement si demande sensible, complexe ou explicitement approfondie.
 - **VALIDÉ — routing performance Worker/RECHERCHE** : modèle préféré changé vers `nvidia/nemotron-3.5-lightning:free`, modèle conçu pour exécution agentique à haut débit et supportant le tool calling. Pool limité à 4 bindings conformément au contrat host : le binding sauvegardé `openrouter/free` reste physiquement premier, mais les identifiants déterministes imposent l'ordre de décision/fallback `01-lightning` → `02-gemini` → `03-super` → `99-or-free`; `or-ultra` est retiré de Worker/RECHERCHE. Une première tentative avec `signals.latencyMs` a été rejetée par le schéma de `librechat.yaml` (`Unrecognized key(s): signals`) et a été retirée immédiatement ; aucune bypass de validation n'est utilisée. Gemini reste fallback et les spécialistes complexes conservent leurs modèles existants.
 - Preuves : seed syntax PASS, `librechat.yaml` JSON PASS, Prettier PASS, ESLint PASS, system prompt test PASS, hostModelRouting 8/8 PASS, API build PASS. Commit : `992458ff perf(botmode): add fast factual web path`.
+
+## Adaptive free-first + bounded timeout — 2026-10-06
+- Worker/RECHERCHE: adaptive, OpenRouter free-first, requestTimeoutMs=15000.
+- Budget USD réutilise metadata.usage.cost; aucune seconde comptabilité.
+- SDK 145865e: retryable zéro-chunk = rate-limit + surcharge + timeout; rate-limit-only reste strict.
+- Preuves: SDK fallback 22/22, host+budget 12/12, Decision/Router 27/27, config PASS, API/data-provider builds PASS.

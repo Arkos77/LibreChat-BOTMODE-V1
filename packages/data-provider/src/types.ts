@@ -416,6 +416,26 @@ export type TChatProject = {
   updatedAt: string;
 };
 
+export type TBotModeBudgetPeriod = {
+  spentUsd: number;
+  limitUsd?: number;
+  ratio?: number;
+};
+
+export type TBotModeBudgetState = {
+  enabled: boolean;
+  spendingPolicy: 'free_only' | 'free_first' | 'paid_allowed';
+  utilizationRatio: number;
+  freeOnlyRatio?: number;
+  daily?: TBotModeBudgetPeriod;
+  monthly?: TBotModeBudgetPeriod;
+  period?: {
+    dayStart: string;
+    monthStart: string;
+    asOf: string;
+  };
+};
+
 export type TBotModeProjectUsage = {
   input: number;
   output: number;
