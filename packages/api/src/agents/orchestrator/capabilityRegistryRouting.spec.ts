@@ -1,6 +1,6 @@
 import type { CapabilityResourceDescriptor } from './capabilityRegistry';
 import type { AuthorizedResourceCandidate } from './routing';
-import { resolveRegisteredResources } from './capabilityRegistryRouting';
+import { resolveRegisteredResources, routeRegisteredCapability } from './capabilityRegistryRouting';
 import { CapabilityResourceRegistry } from './capabilityRegistry';
 
 const descriptor = (
@@ -96,5 +96,74 @@ describe('resolveRegisteredResources', () => {
 
     expect(resolve).toHaveBeenCalledTimes(1);
     expect(registry.get('a')?.enabled).toBe(true);
+  });
+
+  it('routes an authorized capability through the existing generic ranking policy', async () => {
+    const registry = new CapabilityResourceRegistry();
+    registry.register(
+      descriptor('paid-best', {
+        capabilities: ['video.generate'],
+        executionMode: 'external-provider',
+        signals: { available: true, pricingTier: 'paid', qualityScore: 1 },
+      }),
+    );
+    registry.register(
+      descriptor('free-fast', {
+        capabilities: ['video.generate'],
+        executionMode: 'external-provider',
+        signals: {
+          available: true,
+          pricingTier: 'free',
+          qualityScore: 0.8,
+          latencyMs: 100,
+        },
+      }),
+    );
+    registry.register(
+      descriptor('free-slower', {
+        capabilities: ['video.generate'],
+        executionMode: 'external-provider',
+        signals: {
+          available: true,
+          pricingTier: 'free',
+          qualityScore: 0.6,
+          latencyMs: 500,
+        },
+      }),
+    );
+
+    const result = await routeRegisteredCapability({
+      registry,
+      capability: 'video.generate',
+      constraints: { spendingPolicy: 'free_first' },
+      resolve: (item) => ({
+        id: item.id,
+        capabilities: [...item.capabilities],
+        executionMode: item.executionMode,
+        signals: item.signals ? { ...item.signals } : undefined,
+      }),
+    });
+
+    expect(result.selectedCandidateId).toBe('free-fast');
+    expect(result.orderedCandidateIds).toEqual(['free-fast', 'free-slower', 'paid-best']);
+    expect(result.fallbackCandidateIds).toEqual(['free-slower', 'paid-best']);
+  });
+
+  it('fails closed when no host-authorized resource provides the capability', async () => {
+    const registry = new CapabilityResourceRegistry();
+    registry.register(
+      descriptor('video', {
+        capabilities: ['video.generate'],
+        executionMode: 'external-provider',
+      }),
+    );
+
+    await expect(
+      routeRegisteredCapability({
+        registry,
+        capability: 'video.generate',
+        resolve: () => undefined,
+      }),
+    ).rejects.toThrow('No authorized resources provide capability: video.generate');
   });
 });

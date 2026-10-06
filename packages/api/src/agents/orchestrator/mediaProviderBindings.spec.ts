@@ -1,22 +1,63 @@
 import {
   createGovernedMediaProvider,
+  createMediaCapabilityResources,
+  EXECUTABLE_MEDIA_TOOL_BINDINGS,
   GOVERNED_MEDIA_PROVIDER_BINDINGS,
   mediaBindingSupports,
 } from './mediaProviderBindings';
 
 describe('governed media provider bindings', () => {
-  it('declares the multi-engine provider matrix', () => {
+  it('declares the multi-engine provider matrix without claiming templates are executable', () => {
     expect(GOVERNED_MEDIA_PROVIDER_BINDINGS.map((binding) => binding.id)).toEqual([
       'openai:image-gen',
       'gemini:image-gen',
+      'higgsfield:media',
       'elevenlabs:tts',
       'minimax:video',
       'ltx:video',
       'tripo:3d',
     ]);
+    expect(EXECUTABLE_MEDIA_TOOL_BINDINGS.map((binding) => binding.id)).toEqual([
+      'openai:image-gen',
+      'gemini:image-gen',
+    ]);
     expect(
-      GOVERNED_MEDIA_PROVIDER_BINDINGS.find((binding) => binding.id === 'tripo:3d')?.mediaKinds,
-    ).toEqual(['3d']);
+      GOVERNED_MEDIA_PROVIDER_BINDINGS.find((binding) => binding.id === 'higgsfield:media'),
+    ).toMatchObject({
+      status: 'MCP_CONFIGURED',
+      mcpServer: 'higgsfield',
+      mediaKinds: ['image', 'audio', 'video'],
+    });
+    expect(
+      GOVERNED_MEDIA_PROVIDER_BINDINGS.find((binding) => binding.id === 'tripo:3d'),
+    ).toMatchObject({
+      status: 'TEMPLATE',
+      mediaKinds: ['3d'],
+      capabilities: expect.arrayContaining(['3d.generate']),
+    });
+  });
+
+  it('projects configured media providers into the generic capability registry contract', () => {
+    const resources = createMediaCapabilityResources('2026-10-06T00:00:00.000Z');
+    expect(resources.find((resource) => resource.id === 'media:openai:image-gen')).toMatchObject({
+      enabled: true,
+      kind: 'tool',
+      executionMode: 'tool',
+      capabilities: expect.arrayContaining(['image.generate', 'image.edit']),
+      tools: ['image_gen_oai'],
+    });
+    expect(resources.find((resource) => resource.id === 'media:higgsfield:media')).toMatchObject({
+      enabled: true,
+      kind: 'external-provider',
+      executionMode: 'external-provider',
+      capabilities: expect.arrayContaining(['image.generate', 'video.generate', 'avatar.generate']),
+      mcpServers: ['higgsfield'],
+    });
+    expect(resources.find((resource) => resource.id === 'media:minimax:video')).toMatchObject({
+      enabled: false,
+      accessMethod: 'provider-template',
+      capabilities: expect.arrayContaining(['video.generate']),
+    });
   });
 
   it('creates a provider without coupling the router to provider SDKs', async () => {
@@ -42,5 +83,19 @@ describe('governed media provider bindings', () => {
       uri: 'mem://image_gen_oai',
       metadata: { prompt: 'test image' },
     });
+  });
+
+  it('refuses to instantiate MCP/config templates as local tool providers', () => {
+    const higgsfield = GOVERNED_MEDIA_PROVIDER_BINDINGS.find(
+      (item) => item.id === 'higgsfield:media',
+    )!;
+    const minimax = GOVERNED_MEDIA_PROVIDER_BINDINGS.find((item) => item.id === 'minimax:video')!;
+
+    expect(() => createGovernedMediaProvider(higgsfield, jest.fn())).toThrow(
+      'Media binding is not an executable tool runtime: higgsfield:media',
+    );
+    expect(() => createGovernedMediaProvider(minimax, jest.fn())).toThrow(
+      'Media binding is not an executable tool runtime: minimax:video',
+    );
   });
 });

@@ -5,6 +5,7 @@ import {
   createActivatedCapabilityRegistry,
   createRuntimeCapabilityCatalog,
   NATIVE_BOTMODE_CAPABILITIES,
+  MEDIA_PROVIDER_CAPABILITIES,
 } from './nativeCapabilities';
 
 describe('native capability activation', () => {
@@ -15,6 +16,13 @@ describe('native capability activation', () => {
     expect(PENDING_E2E_PROVIDER_CAPABILITIES[0].providerId).toBe('anthropic');
     expect(PENDING_E2E_PROVIDER_CAPABILITIES[0].enabled).toBe(false);
     expect(VERIFIED_EXTERNAL_CAPABILITIES).toHaveLength(5);
+    expect(MEDIA_PROVIDER_CAPABILITIES).toHaveLength(7);
+    expect(
+      MEDIA_PROVIDER_CAPABILITIES.filter((resource) => resource.enabled).map((r) => r.id),
+    ).toEqual(['media:openai:image-gen', 'media:gemini:image-gen', 'media:higgsfield:media']);
+    expect(
+      MEDIA_PROVIDER_CAPABILITIES.filter((resource) => !resource.enabled).map((r) => r.id),
+    ).toEqual(['media:elevenlabs:tts', 'media:minimax:video', 'media:ltx:video', 'media:tripo:3d']);
     expect(VERIFIED_EXTERNAL_CAPABILITIES).toContainEqual(
       expect.objectContaining({
         id: 'source:skipthedrive',
@@ -38,6 +46,9 @@ describe('native capability activation', () => {
       'external:firecrawl',
       'external:serper',
       'external:tavily',
+      'media:gemini:image-gen',
+      'media:higgsfield:media',
+      'media:openai:image-gen',
       'native:artifacts',
       'native:background-tasks',
       'native:execute-code',
@@ -53,7 +64,7 @@ describe('native capability activation', () => {
 
   it('exposes native, extension and discovery views separately', () => {
     const catalog = createRuntimeCapabilityCatalog();
-    expect(catalog.native).toHaveLength(13);
+    expect(catalog.native).toHaveLength(20);
     expect(catalog.extensions).toHaveLength(10);
     expect(catalog.discoverySeeds.length).toBeGreaterThanOrEqual(5);
   });

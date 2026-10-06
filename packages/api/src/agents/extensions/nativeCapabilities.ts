@@ -3,6 +3,7 @@ import {
   type CapabilityResourceDescriptor,
 } from '../orchestrator/capabilityRegistry';
 import { CAPABILITY_DISCOVERY_SEEDS, createBuiltinExtensionResources } from './extensionCatalog';
+import { createMediaCapabilityResources } from '../orchestrator/mediaProviderBindings';
 
 export const VERIFIED_EXTERNAL_CAPABILITIES: readonly CapabilityResourceDescriptor[] = [
   {
@@ -123,6 +124,9 @@ export const ACTIVE_PROVIDER_CAPABILITIES: readonly CapabilityResourceDescriptor
   },
 ];
 
+export const MEDIA_PROVIDER_CAPABILITIES: readonly CapabilityResourceDescriptor[] =
+  createMediaCapabilityResources();
+
 export const NATIVE_BOTMODE_CAPABILITIES: readonly CapabilityResourceDescriptor[] = [
   {
     id: 'native:web-search',
@@ -235,6 +239,7 @@ export function createRuntimeCapabilityCatalog(): RuntimeCapabilityCatalog {
       ...NATIVE_BOTMODE_CAPABILITIES,
       ...ACTIVE_PROVIDER_CAPABILITIES,
       ...VERIFIED_EXTERNAL_CAPABILITIES,
+      ...MEDIA_PROVIDER_CAPABILITIES,
     ].map((resource) => ({
       ...resource,
       capabilities: [...resource.capabilities],
@@ -254,6 +259,7 @@ export function createActivatedCapabilityRegistry(): CapabilityResourceRegistry 
     ...NATIVE_BOTMODE_CAPABILITIES,
     ...ACTIVE_PROVIDER_CAPABILITIES,
     ...VERIFIED_EXTERNAL_CAPABILITIES,
+    ...MEDIA_PROVIDER_CAPABILITIES,
   ])
     registry.register(resource);
   for (const resource of createBuiltinExtensionResources()) registry.register(resource);
