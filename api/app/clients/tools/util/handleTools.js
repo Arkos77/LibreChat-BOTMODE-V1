@@ -443,7 +443,10 @@ const loadTools = async ({
       );
       requestedTools[tool] = async () => {
         toolContextMap[tool] = buildWebSearchContext();
-        dynamicToolContextMap[tool] = buildWebSearchDynamicContext(options.req?.turnStartedAt);
+        dynamicToolContextMap[tool] = buildWebSearchDynamicContext(
+          options.req?.turnStartedAt,
+          options.req?.body?.timezone,
+        );
         return createSearchTool({
           ...result.authResult,
           httpAgent,

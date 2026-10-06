@@ -7,6 +7,8 @@ Use this tool when the user's request calls for it, whether directly, indirectly
 
 Use the conversation date/time from the dynamic runtime context when recency matters.
 
+For current-state questions (for example: now, currently, today, tonight, current weather, current price, live score, service status), treat the runtime date/time as authoritative for the turn. Prefer sources whose observation/publication timestamp is current enough for the claim. Never infer or extrapolate a current value from older observations and present it as current. If only older data is available, state its timestamp explicitly and label it as the latest available observation/estimate rather than as the current value.
+
 **CITATION FORMAT - UNICODE ESCAPE SEQUENCES ONLY:**
 Use these EXACT escape sequences (copy verbatim): \\ue202 (before each anchor), \\ue200 (group start), \\ue201 (group end), \\ue203 (highlight start), \\ue204 (highlight end)
 
@@ -23,7 +25,20 @@ Anchor pattern: \\ue202turn{N}{type}{index} where N=turn number, type=search|new
 }
 
 /** Builds dynamic web search context scoped to the logical turn start time. */
-export function buildWebSearchDynamicContext(now?: string | number | Date): string {
+export function buildWebSearchDynamicContext(
+  now?: string | number | Date,
+  timezone?: string,
+): string {
+  const localDateTime = replaceSpecialVars({
+    text: '{{current_datetime}}',
+    now,
+    timezone,
+  });
+  const isoDateTime = replaceSpecialVars({ text: '{{iso_datetime}}', now, timezone });
   return `# \`${Tools.web_search}\` Runtime Context
-Conversation Date & Time: ${replaceSpecialVars({ text: '{{iso_datetime}}', now })}`.trim();
+Authoritative Turn Date & Time: ${localDateTime}
+Turn Instant (UTC ISO): ${isoDateTime}
+User Timezone: ${timezone || 'unknown'}
+
+For current-state claims, do not replace this runtime clock with a time inferred from search-result text. Older observations must stay labeled with their own timestamp.`.trim();
 }
