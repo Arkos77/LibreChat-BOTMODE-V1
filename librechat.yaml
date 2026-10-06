@@ -27,7 +27,7 @@
             { "id": "or-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free" },
             { "id": "gemini-flash", "provider": "Gemini", "model": "models/gemini-3.5-flash" }
           ],
-          "preferredBindingId": "or-ultra",
+          "preferredBindingId": "gemini-flash",
           "allowFailover": true
         },
         {
@@ -38,7 +38,7 @@
             { "id": "or-ultra", "provider": "OpenRouter", "model": "nvidia/nemotron-3-ultra-550b-a55b:free" },
             { "id": "gemini-flash", "provider": "Gemini", "model": "models/gemini-3.5-flash" }
           ],
-          "preferredBindingId": "or-super",
+          "preferredBindingId": "gemini-flash",
           "allowFailover": true
         },
         {
