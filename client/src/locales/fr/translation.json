@@ -1581,5 +1581,10 @@
   "com_ui_bot_mode_budget_month": "Ce mois",
   "com_ui_bot_mode_budget_free_first": "FREE-FIRST — payant autorisé en repli",
   "com_ui_bot_mode_budget_free_only": "FREE-ONLY — plafond presque atteint",
-  "com_ui_bot_mode_budget_disabled": "Compteur désactivé"
+  "com_ui_bot_mode_budget_disabled": "Compteur désactivé",
+  "com_ui_bot_mode_routing_title": "Routage récent",
+  "com_ui_bot_mode_routing_hint": "Modèles, latence, coût et bascules observés.",
+  "com_ui_bot_mode_routing_fallback": "fallback",
+  "com_ui_bot_mode_routing_empty": "Aucun receipt de routage disponible pour ce projet.",
+  "com_ui_bot_mode_routing_latency_unit": "ms"
 }

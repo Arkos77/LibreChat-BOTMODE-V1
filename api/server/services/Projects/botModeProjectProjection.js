@@ -3,6 +3,7 @@ const MAX_MESSAGES_PER_CONVERSATION = 200;
 const MAX_MTO_OBSERVATIONS_PER_TRACE = 100;
 const MAX_PROJECT_MEMORIES = 100;
 const MAX_PROJECT_SOURCES = 200;
+const MAX_MODEL_RECEIPTS_PER_CONVERSATION = 20;
 
 const EMPTY_USAGE = Object.freeze({
   input: 0,
@@ -54,6 +55,34 @@ function publicObservation(record) {
     observation.identity = record.identity;
   }
   return observation;
+}
+
+function publicModelReceipt(value) {
+  if (!value || typeof value !== 'object') return null;
+  const selectedProvider =
+    typeof value.selectedProvider === 'string' ? value.selectedProvider : undefined;
+  const selectedModel = typeof value.selectedModel === 'string' ? value.selectedModel : undefined;
+  if (!selectedProvider || !selectedModel) return null;
+  const total = value.total && typeof value.total === 'object' ? value.total : {};
+  return {
+    selectedProvider,
+    selectedModel,
+    ...(typeof value.resolvedProvider === 'string'
+      ? { resolvedProvider: value.resolvedProvider }
+      : {}),
+    ...(typeof value.resolvedModel === 'string' ? { resolvedModel: value.resolvedModel } : {}),
+    fallbackUsed: value.fallbackUsed === true,
+    ...(typeof value.routingMode === 'string' ? { routingMode: value.routingMode } : {}),
+    ...(typeof value.spendingPolicy === 'string' ? { spendingPolicy: value.spendingPolicy } : {}),
+    total: {
+      inputTokens: finite(total.inputTokens),
+      outputTokens: finite(total.outputTokens),
+      costUsd: finite(total.costUsd),
+      costKnown: total.costKnown === true,
+      latencyMs: finite(total.latencyMs),
+      latencyKnown: total.latencyKnown === true,
+    },
+  };
 }
 
 function publicResultContent(value) {
@@ -164,6 +193,7 @@ async function createBotModeProjectProjection({ userId, tenantId, projectId, dep
     const traces = [];
     const plans = [];
     const results = [];
+    const modelReceipts = [];
 
     for (const message of messages) {
       if (message?.isCreatedByUser === true) {
@@ -172,6 +202,14 @@ async function createBotModeProjectProjection({ userId, tenantId, projectId, dep
 
       const messageUsage = publicUsage(message?.metadata?.usage);
       addUsage(usage, messageUsage);
+
+      const modelReceipt = publicModelReceipt(message?.metadata?.hostModelUsage);
+      if (modelReceipt) {
+        modelReceipts.push({
+          messageId: message.messageId,
+          receipt: modelReceipt,
+        });
+      }
 
       const plan = publicPlan(message?.metadata?.botModePlan);
       if (plan) {
@@ -214,6 +252,7 @@ async function createBotModeProjectProjection({ userId, tenantId, projectId, dep
       traces,
       plans,
       results,
+      modelReceipts: modelReceipts.slice(-MAX_MODEL_RECEIPTS_PER_CONVERSATION),
     });
   }
 

@@ -1,7 +1,7 @@
 import { Fragment, useRef, useState } from 'react';
 import { Button, FileUpload } from '@librechat/client';
 import { EToolResources } from 'librechat-data-provider';
-import { Bot, ChevronDown, FileText, Gauge, Paperclip, X } from 'lucide-react';
+import { Bot, ChevronDown, FileText, Gauge, GitBranch, Paperclip, X } from 'lucide-react';
 import { Dialog, DialogPanel, DialogTitle, Transition, TransitionChild } from '@headlessui/react';
 import type { TConversation } from 'librechat-data-provider';
 import { useBotModeBudgetQuery, useBotModeProjectProjectionQuery } from '~/data-provider';
@@ -45,6 +45,10 @@ export default function BotModeDashboardDrawer({
   }
 
   const projectedSources = projection?.sources ?? [];
+  const recentModelReceipts = (projection?.conversations ?? [])
+    .flatMap((projectedConversation) => projectedConversation.modelReceipts ?? [])
+    .slice(-5)
+    .reverse();
   const sourceFiles = [
     ...projectedSources.map((source) => ({
       fileId: source.fileId,
@@ -189,6 +193,71 @@ export default function BotModeDashboardDrawer({
                             : ''}
                         </div>
                       </div>
+                    </div>
+                  )}
+                </section>
+
+                <section className="border-b border-border-light px-5 py-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <GitBranch className="h-4 w-4 text-text-secondary" aria-hidden="true" />
+                    <div>
+                      <div className="text-sm font-semibold text-text-primary">
+                        {localize('com_ui_bot_mode_routing_title')}
+                      </div>
+                      <div className="text-xs text-text-secondary">
+                        {localize('com_ui_bot_mode_routing_hint')}
+                      </div>
+                    </div>
+                  </div>
+                  {recentModelReceipts.length > 0 ? (
+                    <div className="space-y-2">
+                      {recentModelReceipts.map(({ messageId, receipt }, index) => (
+                        <div
+                          key={messageId ?? `routing-${index}`}
+                          className="rounded-xl border border-border-light bg-surface-secondary/30 px-3 py-2.5"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate text-xs font-medium text-text-primary">
+                                {receipt.selectedProvider} · {receipt.selectedModel}
+                              </div>
+                              {receipt.fallbackUsed && receipt.resolvedModel && (
+                                <div className="mt-0.5 truncate text-[11px] text-text-secondary">
+                                  → {receipt.resolvedProvider ?? receipt.selectedProvider} ·{' '}
+                                  {receipt.resolvedModel}
+                                </div>
+                              )}
+                            </div>
+                            <div className="shrink-0 text-right text-[11px] tabular-nums text-text-secondary">
+                              {receipt.total.latencyKnown && (
+                                <div>
+                                  {Math.round(receipt.total.latencyMs)}{' '}
+                                  {localize('com_ui_bot_mode_routing_latency_unit')}
+                                </div>
+                              )}
+                              {receipt.total.costKnown && (
+                                <div>
+                                  {'$'}
+                                  {receipt.total.costUsd < 0.01
+                                    ? receipt.total.costUsd.toFixed(4)
+                                    : receipt.total.costUsd.toFixed(2)}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-x-2 text-[10px] text-text-tertiary">
+                            {receipt.routingMode && <span>{receipt.routingMode}</span>}
+                            {receipt.spendingPolicy && <span>{receipt.spendingPolicy}</span>}
+                            {receipt.fallbackUsed && (
+                              <span>{localize('com_ui_bot_mode_routing_fallback')}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-border-light px-3 py-4 text-xs text-text-secondary">
+                      {localize('com_ui_bot_mode_routing_empty')}
                     </div>
                   )}
                 </section>

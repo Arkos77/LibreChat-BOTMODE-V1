@@ -2656,5 +2656,10 @@
   "com_ui_bot_mode_budget_month": "This month",
   "com_ui_bot_mode_budget_free_first": "FREE-FIRST — paid fallback allowed",
   "com_ui_bot_mode_budget_free_only": "FREE-ONLY — budget threshold reached",
-  "com_ui_bot_mode_budget_disabled": "Budget meter disabled"
+  "com_ui_bot_mode_budget_disabled": "Budget meter disabled",
+  "com_ui_bot_mode_routing_title": "Recent routing",
+  "com_ui_bot_mode_routing_hint": "Observed models, latency, cost and fallbacks.",
+  "com_ui_bot_mode_routing_fallback": "fallback",
+  "com_ui_bot_mode_routing_empty": "No routing receipt is available for this project yet.",
+  "com_ui_bot_mode_routing_latency_unit": "ms"
 }

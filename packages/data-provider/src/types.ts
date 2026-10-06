@@ -496,12 +496,36 @@ export type TBotModeProjectResult = {
   content: string;
 };
 
+export type TBotModeModelReceipt = {
+  selectedProvider: string;
+  selectedModel: string;
+  resolvedProvider?: string;
+  resolvedModel?: string;
+  fallbackUsed: boolean;
+  routingMode?: string;
+  spendingPolicy?: string;
+  total: {
+    inputTokens: number;
+    outputTokens: number;
+    costUsd: number;
+    costKnown: boolean;
+    latencyMs: number;
+    latencyKnown: boolean;
+  };
+};
+
+export type TBotModeModelReceiptEntry = {
+  messageId?: string;
+  receipt: TBotModeModelReceipt;
+};
+
 export type TBotModeProjectConversation = {
   conversationId: string;
   usage: TBotModeProjectUsage;
   traces: TBotModeProjectTrace[];
   plans: TBotModeProjectPlanEntry[];
   results: TBotModeProjectResult[];
+  modelReceipts: TBotModeModelReceiptEntry[];
 };
 
 export type TBotModeProjectProjection = {
