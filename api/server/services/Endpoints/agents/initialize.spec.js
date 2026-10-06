@@ -501,6 +501,58 @@ describe('initializeClient — processAgent ACL gate', () => {
     expect(JSON.stringify(records)).not.toContain('fixture-secret');
   });
 
+  it('revalidates a stable agentName routing policy during initialization', async () => {
+    const makeOption = () => ({
+      agent: Promise.resolve({
+        id: PRIMARY_ID,
+        name: 'BOT MODE Worker',
+        provider: 'OpenRouter',
+        model: 'a:free',
+        tools: [],
+      }),
+      model_parameters: { model: 'a:free' },
+      endpoint: 'agents',
+    });
+    mockValidateAgentModel.mockResolvedValue({ isValid: true });
+    mockInitializeAgent.mockImplementation(async ({ agent }) => ({
+      ...makePrimaryConfig([]),
+      provider: 'openrouter',
+      model: agent.model,
+      model_parameters: { model: agent.model, apiKey: 'fixture-secret' },
+      endpointTokenConfig: { selectedFor: agent.model },
+    }));
+    const req = makeReq();
+    req.config.endpoints.agents = {
+      hostModelRouting: [
+        {
+          agentName: 'BOT MODE Worker',
+          models: ['a:free', 'b:free'],
+          preferredModel: 'b:free',
+          allowFailover: true,
+        },
+      ],
+    };
+
+    await initializeClient({
+      req,
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption: makeOption(),
+      mtoTraceId: 'trace-model-choice-by-name',
+    });
+
+    expect(agentClientArgs.agent.model).toBe('b:free');
+    expect(agentClientArgs.agent.model_parameters).toMatchObject({
+      model: 'b:free',
+      fallbacks: [
+        expect.objectContaining({
+          provider: 'OpenRouter',
+          retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
+        }),
+      ],
+    });
+  });
+
   it('applies host routing signals and controlled failover from initialization policy', async () => {
     mockValidateAgentModel.mockResolvedValue({ isValid: true });
     mockInitializeAgent.mockImplementation(async ({ agent }) => ({
@@ -817,11 +869,13 @@ describe('initializeClient — processAgent ACL gate', () => {
         jobCreatedAt: 1234,
       }),
     );
-    expect(createAttachmentEmitter).toHaveBeenCalledWith({
-      res: {},
-      streamId: 'conv_1',
-      jobCreatedAt: 1234,
-    });
+    expect(createAttachmentEmitter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        res: {},
+        streamId: 'conv_1',
+        jobCreatedAt: 1234,
+      }),
+    );
     /** The PTC trace emitter is generation-fenced like every other resumable
      *  emitter; a stale epoch would leak one run's inner calls into the next. */
     expect(createPtcProgressEmitter).toHaveBeenCalledWith({

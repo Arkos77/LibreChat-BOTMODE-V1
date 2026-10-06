@@ -21,68 +21,68 @@
       "hostModelRouting": [
         {
           "agentName": "BOT MODE Worker",
-          "models": [
-            "openrouter/free",
-            "nvidia/nemotron-3-ultra-550b-a55b:free",
-            "nvidia/nemotron-3-super-120b-a12b:free",
-            "nvidia/nemotron-3.5-lightning:free"
+          "bindings": [
+            { "id": "or-free", "provider": "OpenRouter", "model": "openrouter/free" },
+            { "id": "or-ultra", "provider": "OpenRouter", "model": "nvidia/nemotron-3-ultra-550b-a55b:free" },
+            { "id": "or-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free" },
+            { "id": "gemini-flash", "provider": "Gemini", "model": "gemini-3.5-flash" }
           ],
-          "preferredModel": "nvidia/nemotron-3-ultra-550b-a55b:free",
+          "preferredBindingId": "or-ultra",
           "allowFailover": true
         },
         {
           "agentName": "RECHERCHE",
-          "models": [
-            "openrouter/free",
-            "nvidia/nemotron-3-ultra-550b-a55b:free",
-            "nvidia/nemotron-3-super-120b-a12b:free",
-            "nvidia/nemotron-3.5-lightning:free"
+          "bindings": [
+            { "id": "or-free", "provider": "OpenRouter", "model": "openrouter/free" },
+            { "id": "or-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free" },
+            { "id": "or-ultra", "provider": "OpenRouter", "model": "nvidia/nemotron-3-ultra-550b-a55b:free" },
+            { "id": "gemini-flash", "provider": "Gemini", "model": "gemini-3.5-flash" }
           ],
-          "preferredModel": "nvidia/nemotron-3-super-120b-a12b:free",
+          "preferredBindingId": "or-super",
           "allowFailover": true
         },
         {
           "agentName": "ANALYSE",
-          "models": [
-            "openrouter/free",
-            "nvidia/nemotron-3-ultra-550b-a55b:free",
-            "nvidia/nemotron-3-super-120b-a12b:free",
-            "nvidia/nemotron-3.5-lightning:free"
+          "bindings": [
+            { "id": "or-free", "provider": "OpenRouter", "model": "openrouter/free" },
+            { "id": "or-ultra", "provider": "OpenRouter", "model": "nvidia/nemotron-3-ultra-550b-a55b:free" },
+            { "id": "or-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free" },
+            { "id": "gemini-flash", "provider": "Gemini", "model": "gemini-3.5-flash" }
           ],
-          "preferredModel": "nvidia/nemotron-3-ultra-550b-a55b:free",
+          "preferredBindingId": "or-ultra",
           "allowFailover": true
         },
         {
           "agentName": "CODE",
-          "models": [
-            "openrouter/free",
-            "poolside/laguna-s-2.1:free",
-            "cohere/north-mini-code:free",
-            "nvidia/nemotron-3-super-120b-a12b:free"
+          "bindings": [
+            { "id": "or-free", "provider": "OpenRouter", "model": "openrouter/free" },
+            { "id": "or-laguna", "provider": "OpenRouter", "model": "poolside/laguna-s-2.1:free" },
+            { "id": "or-north-code", "provider": "OpenRouter", "model": "cohere/north-mini-code:free" },
+            { "id": "gemini-flash", "provider": "Gemini", "model": "gemini-3.5-flash" }
           ],
-          "preferredModel": "poolside/laguna-s-2.1:free",
+          "preferredBindingId": "or-laguna",
           "allowFailover": true
         },
         {
           "agentName": "DOCUMENTS",
-          "models": [
-            "openrouter/free",
-            "nvidia/nemotron-3-ultra-550b-a55b:free",
-            "nvidia/nemotron-3-super-120b-a12b:free",
-            "nvidia/nemotron-3.5-lightning:free"
+          "bindings": [
+            { "id": "or-free", "provider": "OpenRouter", "model": "openrouter/free" },
+            { "id": "or-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free" },
+            { "id": "or-ultra", "provider": "OpenRouter", "model": "nvidia/nemotron-3-ultra-550b-a55b:free" },
+            { "id": "gemini-flash", "provider": "Gemini", "model": "gemini-3.5-flash" }
           ],
-          "preferredModel": "nvidia/nemotron-3-super-120b-a12b:free",
+          "preferredBindingId": "or-super",
           "allowFailover": true
         },
         {
           "agentName": "RÉDACTION",
-          "models": [
-            "openrouter/free",
-            "nvidia/nemotron-3.5-lightning:free",
-            "nvidia/nemotron-3-super-120b-a12b:free",
-            "nvidia/nemotron-3-ultra-550b-a55b:free"
+          "bindings": [
+            { "id": "or-free", "provider": "OpenRouter", "model": "openrouter/free" },
+            { "id": "or-lightning", "provider": "OpenRouter", "model": "nvidia/nemotron-3.5-lightning:free" },
+            { "id": "or-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free" },
+            { "id": "gemini-flash", "provider": "Gemini", "model": "gemini-3.5-flash" }
           ],
-          "preferredModel": "nvidia/nemotron-3.5-lightning:free",
+          "preferredBindingId": "or-lightning",
           "allowFailover": true
         }
       ]
@@ -127,7 +127,9 @@
         "baseURL": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "models": {
           "fetch": true,
-          "default": []
+          "default": [
+            "gemini-3.5-flash"
+          ]
         },
         "titleConvo": true,
         "modelDisplayLabel": "Gemini"

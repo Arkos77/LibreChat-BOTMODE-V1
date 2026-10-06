@@ -831,7 +831,11 @@ const initializeClient = async ({
   const hostModelRouting = selectedModelSpec
     ? undefined
     : appConfig?.endpoints?.[EModelEndpoint.agents]?.hostModelRouting;
-  const originalPrimaryAgent = hostModelRouting?.some((entry) => entry.agentId === primaryAgent.id)
+  const originalPrimaryAgent = hostModelRouting?.some(
+    (entry) =>
+      entry.agentId === primaryAgent.id ||
+      (typeof entry.agentName === 'string' && entry.agentName === primaryAgent.name),
+  )
     ? structuredClone(primaryAgent)
     : primaryAgent;
   let primaryConfig = await initializeAgent(
