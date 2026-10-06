@@ -1129,6 +1129,7 @@ describe('stable/dynamic system instructions', () => {
     expect(instructions).toContain('observation ou mesure actuelle');
     expect(instructions).toContain('prévision, estimation, agrégat, valeur historique');
     expect(instructions).toContain('Ne transforme jamais une catégorie en une autre');
+    expect(instructions).toContain('au maximum UN appel `web_search`');
   });
 
   it('keeps static tool and agent instructions separate from dynamic runtime tail', async () => {
