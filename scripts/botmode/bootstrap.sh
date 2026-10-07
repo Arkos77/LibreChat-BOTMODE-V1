@@ -8,9 +8,7 @@ PROFILE_REQUEST="auto"
 CHECK_ONLY=0
 START_STACK=1
 PULL_IMAGE=1
-BOTMODE_COMMIT_SHA="$(git rev-parse --short=12 HEAD)"
-BOTMODE_DEFAULT_IMAGE="ghcr.io/arkos77/librechat-botmode-v1:sha-${BOTMODE_COMMIT_SHA}"
-BOTMODE_IMAGE_VALUE="${BOTMODE_IMAGE:-$BOTMODE_DEFAULT_IMAGE}"
+BOTMODE_IMAGE_VALUE="${BOTMODE_IMAGE:-}"
 
 usage() {
   cat <<'USAGE'
@@ -62,6 +60,12 @@ need() {
 need git
 need docker
 
+BOTMODE_COMMIT_SHA="$(git rev-parse --short=12 HEAD)"
+BOTMODE_DEFAULT_IMAGE="ghcr.io/arkos77/librechat-botmode-v1:sha-${BOTMODE_COMMIT_SHA}"
+if [ -z "$BOTMODE_IMAGE_VALUE" ]; then
+  BOTMODE_IMAGE_VALUE="$BOTMODE_DEFAULT_IMAGE"
+fi
+
 docker compose version >/dev/null 2>&1 || {
   echo "Docker Compose v2 is required (docker compose)." >&2
   exit 3
@@ -88,14 +92,21 @@ elif [ "$OS" = "Darwin" ]; then
   TOTAL_MEM_MB=$(( $(sysctl -n hw.memsize) / 1024 / 1024 ))
 fi
 
-CPU_AVX="unknown"
-if [ "$OS" = "Linux" ] && [ -r /proc/cpuinfo ]; then
-  if grep -qm1 -w avx /proc/cpuinfo; then CPU_AVX="yes"; else CPU_AVX="no"; fi
-elif [ "$OS" = "Darwin" ]; then
-  if sysctl -a 2>/dev/null | grep -Eiq 'machdep\.cpu\.(features|leaf7_features).*AVX'; then
-    CPU_AVX="yes"
-  fi
-fi
+CPU_AVX="n/a"
+case "$ARCH" in
+  x86_64|amd64)
+    CPU_AVX="unknown"
+    if [ "$OS" = "Linux" ] && [ -r /proc/cpuinfo ]; then
+      if grep -qm1 -w avx /proc/cpuinfo; then CPU_AVX="yes"; else CPU_AVX="no"; fi
+    elif [ "$OS" = "Darwin" ]; then
+      if sysctl -a 2>/dev/null | grep -Eiq 'machdep\.cpu\.(features|leaf7_features).*AVX'; then
+        CPU_AVX="yes"
+      else
+        CPU_AVX="no"
+      fi
+    fi
+    ;;
+esac
 
 PROFILE="$PROFILE_REQUEST"
 if [ "$PROFILE" = "auto" ]; then
