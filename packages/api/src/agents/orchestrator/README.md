@@ -99,19 +99,9 @@ routing and per-invocation balance admission are therefore closed. This does
 not provide an atomic reservation or hard concurrent spending cap for metered
 provider calls.
 
-Controlled production failover therefore remains open. The native SDK
-`tryFallbackProviders(...)` path can run after a primary invocation error that
-occurs after streaming has already started, and the current graph seam exposes
-no proven fail-closed marker that the provider never started and produced no
-external effect. The host must not enable that fallback path merely because the
-alternatives were previously validated. A future controlled failover must prove
-a zero-effect/pre-provider boundary, then revalidate/re-authorize the alternate,
-apply budget admission, and persist fresh provenance before that alternate may
-execute; it must not replay the whole graph/run after partial execution.
-The host now carries each natively resolved maxContextTokens value into the
-routing candidate as the truthful contextWindow signal. Dynamic pre-run
-quality/cost/latency signals remain open rather than being synthesized from
-unproven metrics.
+Controlled production failover is now bounded to native zero-chunk retry modes. Static routing permits only `MODEL_RATE_LIMIT_ZERO_CHUNK`; adaptive routing permits `MODEL_RETRYABLE_ZERO_CHUNK` with the configured bounded timeout. Every fallback is an already resolved and host-authorized binding with its own model-bound admission callback, so no undeclared provider/model can enter through SDK fallback configuration. Once user-visible/model output has begun, these retry modes do not authorize a provider switch or replay of the surrounding graph/run.
+
+The host carries each natively resolved `maxContextTokens` value into the routing candidate as the truthful `contextWindow` signal. Adaptive routing also consumes bounded host-observed latency, success/fallback and prompt-cache reuse signals derived from persisted routing receipts. Quality/benchmark and estimated-cost signals remain host-supplied metadata; they are never fabricated from absent telemetry.
 
 A generic tool, workflow or local runtime is therefore not disguised as an
 `AgentInputs` fallback. Those resources remain in the capability/resource layer
@@ -479,7 +469,7 @@ visibility, addressing, or use of the existing durable control path.
 
 BOT MODE uses one `CapabilityResourceRegistry` and one generic authorized-resource router. Registry entries are descriptive only: an enabled descriptor still becomes routable only after an explicit host resolver returns an authorized candidate. Capability routing therefore fails closed when no authorized resource is available and does not create a second permission or execution authority.
 
-The stable media capability vocabulary is `image.generate`, `image.edit`, `video.generate`, `voice.generate`, `audio.generate`, `music.generate`, `avatar.generate`, `3d.generate`, and `live.compose`. Provider bindings are separate from that vocabulary. OpenAI/Gemini image tools and configured Higgsfield resources are represented by governed bindings; ElevenLabs, MiniMax, LTX and Tripo entries remain templates until their runtime/auth is verified. `music.generate` and `live.compose` are valid architectural capabilities but intentionally have no provider marked available yet.
+The stable media capability vocabulary is `image.generate`, `image.edit`, `video.generate`, `voice.generate`, `audio.generate`, `music.generate`, `avatar.generate`, `3d.generate`, and `live.compose`. Provider bindings are separate from that vocabulary. OpenAI/Gemini image tools and configured Higgsfield resources are represented by governed bindings. ElevenLabs TTS/Music, MiniMax, LTX and Tripo remain disabled provider templates until their runtime/auth is verified. `live.compose` is represented by a disabled local GStreamer runtime template. Templates are descriptive only and never become routable/executable until host verification and authorization explicitly enable a real runtime.
 
 Hardware engineering is separate from media generation. The `hardware:openblueprint` extension declares `hardware.design`, BOM, wiring, assembly and build-instruction capabilities but is disabled by default. Until a real CAD/hardware runtime passes host admission and authorization, routing `hardware.design` remains fail-closed. 3D asset generation stays in the media pipeline and does not imply hardware-design authority.
 
