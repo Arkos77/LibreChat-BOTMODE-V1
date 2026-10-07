@@ -123,8 +123,11 @@ jobs:
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             primary="${{ inputs.tag }}"
             latest=""
-          else
+          elif [ "${GITHUB_REF_NAME}" = "main" ]; then
             primary="edge"
+            latest=""
+          else
+            primary="candidate-${GITHUB_SHA::12}"
             latest=""
           fi
 
@@ -158,6 +161,22 @@ jobs:
           docker buildx imagetools create             "${tags[@]}"             "${digests[@]/#/$IMAGE@sha256:}"
 
           docker buildx imagetools inspect "$IMAGE:$PRIMARY"
+
+  anonymous-pull:
+    name: Verify public GHCR pull
+    runs-on: ubuntu-latest
+    needs: merge
+    timeout-minutes: 10
+
+    steps:
+      - name: Pull candidate without registry authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/librechat-botmode-v1:sha-${GITHUB_SHA::12}"
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          docker pull "$image"
+          echo "BOTMODE_GHCR_ANONYMOUS_PULL=PASS"
 
   smoke-lite:
     name: Smoke Lite runtime
