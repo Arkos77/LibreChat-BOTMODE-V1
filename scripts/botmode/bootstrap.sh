@@ -20,6 +20,7 @@ Options:
   --lite          Force the low-memory / non-AVX profile.
   --full          Force the full profile.
   --check-only    Validate the host and Compose configuration only.
+  --start         Explicitly start the stack (default; kept for compatibility).
   --no-start      Prepare and pull images, but do not start containers.
   --no-pull       Do not pull the BOTMODE image before starting.
   --image IMAGE   Override the BOTMODE runtime image.
@@ -35,6 +36,7 @@ while [ "$#" -gt 0 ]; do
     --lite) PROFILE_REQUEST="lite" ;;
     --full) PROFILE_REQUEST="full" ;;
     --check-only) CHECK_ONLY=1; START_STACK=0; PULL_IMAGE=0 ;;
+    --start) START_STACK=1 ;;
     --no-start) START_STACK=0 ;;
     --no-pull) PULL_IMAGE=0 ;;
     --image)
