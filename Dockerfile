@@ -1,17 +1,20 @@
 # v0.8.8-rc2
 
 # Base node image
-FROM node:24.16.0-alpine AS node
+FROM node:24.16.0-bookworm-slim AS node
 
-RUN apk upgrade --no-cache
-RUN apk add --no-cache jemalloc
-RUN apk add --no-cache python3 py3-pip uv
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates python3 python3-pip libjemalloc2 \
+    && JEMALLOC_PATH="$(find /usr/lib -name libjemalloc.so.2 -print -quit)" \
+    && test -n "$JEMALLOC_PATH" \
+    && ln -sf "$JEMALLOC_PATH" /usr/lib/libjemalloc.so.2 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Set environment variable to use jemalloc
+# Use a stable, architecture-independent jemalloc path.
 ENV LD_PRELOAD=/usr/lib/libjemalloc.so.2
 
-# Add `uv` for extended MCP support
-COPY --from=ghcr.io/astral-sh/uv:0.9.5-python3.12-alpine /usr/local/bin/uv /usr/local/bin/uvx /bin/
+# Add `uv` for extended MCP support.
+COPY --from=ghcr.io/astral-sh/uv:0.9.5 /uv /uvx /bin/
 RUN uv --version
 
 # Set configurable max-old-space-size with default
@@ -61,6 +64,17 @@ RUN \
     npm prune --production; \
     npm cache clean --force
 
+# BOTMODE's governed browser executor imports Playwright at API startup.
+# Keep the runtime dependency and its matching Chromium executable in the image.
+USER root
+ARG PLAYWRIGHT_VERSION=1.62.1
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npm install --no-save --package-lock=false --omit=dev "playwright@${PLAYWRIGHT_VERSION}" \
+    && npx playwright install --with-deps chromium \
+    && node -e "const { chromium } = require('playwright'); const fs = require('fs'); const p = chromium.executablePath(); if (!fs.existsSync(p)) { throw new Error('Playwright Chromium missing: ' + p); } console.log('BOTMODE_PLAYWRIGHT=' + p);" \
+    && npm cache clean --force
+USER node
+
 # Optional build metadata surfaced in Settings -> About for support triage.
 # Declared here (after the heavy install/build steps) so that commit/date
 # changing on every CI run does not bust the cache for dependency install
@@ -73,7 +87,9 @@ ENV BUILD_COMMIT=${BUILD_COMMIT}
 ENV BUILD_BRANCH=${BUILD_BRANCH}
 ENV BUILD_DATE=${BUILD_DATE}
 
-LABEL org.opencontainers.image.source="https://github.com/Arkos77/LibreChat-BOTMODE-V1"       org.opencontainers.image.title="LibreChat BOTMODE V1"       org.opencontainers.image.description="LibreChat BOTMODE runtime built from the Arkos77 BOTMODE repository"
+LABEL org.opencontainers.image.source="https://github.com/Arkos77/LibreChat-BOTMODE-V1" \
+      org.opencontainers.image.title="LibreChat BOTMODE V1" \
+      org.opencontainers.image.description="LibreChat BOTMODE runtime built from the Arkos77 BOTMODE repository"
 
 # Node API setup
 EXPOSE 3080
