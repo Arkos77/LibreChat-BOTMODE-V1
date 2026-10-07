@@ -100,7 +100,7 @@ The V1 release gate therefore now also requires:
 
 - BOTMODE-owned GHCR image built from this repository;
 - runtime bootstrap with no npm install/build path on target hosts;
-- automatic Lite selection for low-memory or non-AVX Linux hosts;
+- automatic Lite selection for low-memory hosts or x86_64 hosts without AVX;
 - MongoDB 4.4.29 in Lite;
 - Docker-managed runtime data volumes;
 - mounted `librechat.yaml`;

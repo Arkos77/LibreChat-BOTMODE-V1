@@ -2,7 +2,7 @@
 
 **LibreChat BOTMODE V1** is a multi-agent orchestration layer built on top of [LibreChat](https://github.com/danny-avila/LibreChat). It turns LibreChat into a governed workspace for durable missions, specialist agents, background work, RAG/memory, model routing, media capabilities, MCP tools, evidence collection, QA and controlled publication.
 
-> Status: **V1 release candidate**. The current public development branch is `bot-mode-p4-closed`; `main` will become the stable BOTMODE branch after final release validation.
+> Status: **V1 release candidate**. Runtime-distribution fixes are being validated on `botmode-v1-runtime-fix`; `main` remains the stable release branch until the final candidate passes.
 
 ## What BOTMODE adds
 
