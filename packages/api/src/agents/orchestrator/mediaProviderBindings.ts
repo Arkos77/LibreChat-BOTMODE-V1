@@ -7,7 +7,11 @@ import {
   type MediaProviderResult,
 } from './mediaGeneration';
 
-export type MediaProviderBindingStatus = 'TOOL_RUNTIME' | 'MCP_CONFIGURED' | 'TEMPLATE';
+export type MediaProviderBindingStatus =
+  | 'TOOL_RUNTIME'
+  | 'MCP_CONFIGURED'
+  | 'TEMPLATE'
+  | 'LOCAL_RUNTIME_TEMPLATE';
 
 export const CANONICAL_MEDIA_CAPABILITIES = [
   'image.generate',
@@ -85,11 +89,24 @@ export const GOVERNED_MEDIA_PROVIDER_BINDINGS: readonly MediaProviderBinding[] =
     capabilities: ['video.generate', 'media:video'],
   },
   {
+    id: 'elevenlabs:music',
+    status: 'TEMPLATE',
+    toolName: 'elevenlabs_music',
+    mediaKinds: ['audio'],
+    capabilities: ['music.generate', 'audio.generate', 'media:music', 'media:audio'],
+  },
+  {
     id: 'tripo:3d',
     status: 'TEMPLATE',
     toolName: 'tripo_3d',
     mediaKinds: ['3d'],
     capabilities: ['3d.generate', 'media:3d'],
+  },
+  {
+    id: 'local:gstreamer-compose',
+    status: 'LOCAL_RUNTIME_TEMPLATE',
+    mediaKinds: ['audio', 'video'],
+    capabilities: ['live.compose', 'media:audio', 'media:video'],
   },
 ];
 
@@ -98,6 +115,7 @@ export const EXECUTABLE_MEDIA_TOOL_BINDINGS: readonly MediaProviderBinding[] =
 
 function mediaAccessMethod(binding: MediaProviderBinding): string {
   if (binding.status === 'MCP_CONFIGURED') return 'mcp';
+  if (binding.status === 'LOCAL_RUNTIME_TEMPLATE') return 'local-runtime-template';
   if (binding.status === 'TEMPLATE') return 'provider-template';
   return 'native-tool';
 }
@@ -106,6 +124,7 @@ function mediaProvenanceSource(binding: MediaProviderBinding): string {
   if (binding.status === 'MCP_CONFIGURED') {
     return 'librechat:mcp:' + binding.mcpServer;
   }
+  if (binding.status === 'LOCAL_RUNTIME_TEMPLATE') return 'botmode:local-runtime-template';
   if (binding.status === 'TEMPLATE') return 'botmode:media-provider-template';
   return 'librechat:tool:' + binding.toolName;
 }
@@ -114,17 +133,27 @@ export function createMediaCapabilityResources(
   verifiedAt: string = new Date().toISOString(),
 ): CapabilityResourceDescriptor[] {
   return GOVERNED_MEDIA_PROVIDER_BINDINGS.map((binding) => {
-    const isTemplate = binding.status === 'TEMPLATE';
+    const isLocalRuntimeTemplate = binding.status === 'LOCAL_RUNTIME_TEMPLATE';
+    const isTemplate = binding.status === 'TEMPLATE' || isLocalRuntimeTemplate;
     const isMcp = binding.status === 'MCP_CONFIGURED';
+    let kind: CapabilityResourceDescriptor['kind'];
+    if (isLocalRuntimeTemplate) {
+      kind = 'local-runtime';
+    } else if (isMcp || isTemplate) {
+      kind = 'external-provider';
+    } else {
+      kind = 'tool';
+    }
+    const executionMode = kind;
     return {
       id: 'media:' + binding.id,
-      kind: isMcp || isTemplate ? 'external-provider' : 'tool',
+      kind,
       name: binding.id,
       capabilities: [...binding.capabilities],
-      executionMode: isMcp || isTemplate ? 'external-provider' : 'tool',
-      providerId: binding.id,
+      executionMode,
+      ...(isLocalRuntimeTemplate ? {} : { providerId: binding.id }),
       accessMethod: mediaAccessMethod(binding),
-      networkRequirement: 'internet',
+      networkRequirement: isLocalRuntimeTemplate ? 'optional' : 'internet',
       permission: 'host-policy',
       trustLevel: isTemplate ? 'declared' : 'configured-provider',
       legalUsage: 'provider-terms-review',

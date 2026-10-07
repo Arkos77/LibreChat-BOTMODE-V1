@@ -16,7 +16,9 @@ describe('governed media provider bindings', () => {
       'elevenlabs:tts',
       'minimax:video',
       'ltx:video',
+      'elevenlabs:music',
       'tripo:3d',
+      'local:gstreamer-compose',
     ]);
     expect(EXECUTABLE_MEDIA_TOOL_BINDINGS.map((binding) => binding.id)).toEqual([
       'openai:image-gen',
@@ -52,12 +54,22 @@ describe('governed media provider bindings', () => {
     ]);
 
     const resources = createMediaCapabilityResources('2026-10-06T00:00:00.000Z');
-    expect(resources.some((resource) => resource.capabilities.includes('music.generate'))).toBe(
-      false,
-    );
-    expect(resources.some((resource) => resource.capabilities.includes('live.compose'))).toBe(
-      false,
-    );
+    expect(
+      resources.find((resource) => resource.capabilities.includes('music.generate')),
+    ).toMatchObject({
+      id: 'media:elevenlabs:music',
+      enabled: false,
+      accessMethod: 'provider-template',
+    });
+    expect(
+      resources.find((resource) => resource.capabilities.includes('live.compose')),
+    ).toMatchObject({
+      id: 'media:local:gstreamer-compose',
+      enabled: false,
+      kind: 'local-runtime',
+      executionMode: 'local-runtime',
+      accessMethod: 'local-runtime-template',
+    });
   });
 
   it('projects configured media providers into the generic capability registry contract', () => {
@@ -113,12 +125,18 @@ describe('governed media provider bindings', () => {
       (item) => item.id === 'higgsfield:media',
     )!;
     const minimax = GOVERNED_MEDIA_PROVIDER_BINDINGS.find((item) => item.id === 'minimax:video')!;
+    const gstreamer = GOVERNED_MEDIA_PROVIDER_BINDINGS.find(
+      (item) => item.id === 'local:gstreamer-compose',
+    )!;
 
     expect(() => createGovernedMediaProvider(higgsfield, jest.fn())).toThrow(
       'Media binding is not an executable tool runtime: higgsfield:media',
     );
     expect(() => createGovernedMediaProvider(minimax, jest.fn())).toThrow(
       'Media binding is not an executable tool runtime: minimax:video',
+    );
+    expect(() => createGovernedMediaProvider(gstreamer, jest.fn())).toThrow(
+      'Media binding is not an executable tool runtime: local:gstreamer-compose',
     );
   });
 });
