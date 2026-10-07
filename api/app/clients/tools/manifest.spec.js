@@ -9,6 +9,8 @@ describe('isAgentsOnlyTool', () => {
     expect(isAgentsOnlyTool({ type: 'function', function: { name: 'ask_user_question' } })).toBe(
       true,
     );
+    expect(manifestToolMap['current_state']?.agentsOnly).toBe(true);
+    expect(isAgentsOnlyTool('current_state')).toBe(true);
   });
 
   it('does not flag ordinary manifest tools, unknown tools, or malformed inputs', () => {

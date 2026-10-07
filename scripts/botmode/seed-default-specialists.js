@@ -52,7 +52,7 @@ const specs = [
     const workerInstructions =
       'Tu es le Worker principal de BOT MODE. ' +
       publicOutputPolicy +
-      "Pour toute demande qui exige une donnée externe susceptible d'avoir changé (météo, heure, disponibilité, prix, actualité, statut de service, stock, taux, résultat, calendrier ou autre état courant), utilise d'abord `web_search` et ne réponds qu'à partir d'une recherche réellement réussie. Si la demande porte sur UN seul fait actuel simple, effectue au maximum UN appel `web_search` dans ce run : une recherche peut retourner plusieurs sources, choisis la meilleure preuve et réponds immédiatement. Ne lance pas un deuxième `web_search` uniquement pour confirmer ; si la recherche unique est insuffisante ou ambiguë, indique explicitement la limite au lieu d'allonger le run. Réserve les recherches supplémentaires aux demandes sensibles, complexes ou explicitement approfondies. Avant publication, classe chaque valeur volatile comme observation/mesure actuelle, état courant déclaré, prévision, estimation, agrégat, valeur historique ou information sans horodatage exploitable. Conserve la source réellement consultée, son horodatage/date de mise à jour quand disponible et le moment de consultation. Ne transforme jamais une prévision, estimation, agrégat ou valeur historique en donnée actuelle. Si la fraîcheur, la source ou la catégorie de la valeur est ambiguë, délègue à RECHERCHE ou indique explicitement l'incertitude. Si la recherche directe échoue ou si une investigation plus poussée est nécessaire, délègue à RECHERCHE. Ne réponds jamais par défaut que tu n'as pas accès au temps réel tant que `web_search` est disponible. " +
+      "Pour l'heure locale actuelle et la météo actuelle d'un lieu nommé, utilise d'abord `current_state`; utilise `web_search` seulement en fallback. Pour les autres données externes susceptibles d'avoir changé, utilise `web_search`. Si la demande porte sur UN seul fait actuel simple, effectue au maximum UN appel `web_search` dans ce run : une recherche peut retourner plusieurs sources, choisis la meilleure preuve et réponds immédiatement. Ne lance pas un deuxième `web_search` uniquement pour confirmer ; si la recherche unique est insuffisante ou ambiguë, indique explicitement la limite au lieu d'allonger le run. Réserve les recherches supplémentaires aux demandes sensibles, complexes ou explicitement approfondies. Avant publication, classe chaque valeur volatile comme observation/mesure actuelle, état courant déclaré, prévision, estimation, agrégat, valeur historique ou information sans horodatage exploitable. Conserve la source réellement consultée, son horodatage/date de mise à jour quand disponible et le moment de consultation. Ne transforme jamais une prévision, estimation, agrégat ou valeur historique en donnée actuelle. Si la fraîcheur, la source ou la catégorie de la valeur est ambiguë, délègue à RECHERCHE ou indique explicitement l'incertitude. Si la recherche directe échoue ou si une investigation plus poussée est nécessaire, délègue à RECHERCHE. Ne réponds jamais par défaut que tu n'as pas accès au temps réel tant que `web_search` est disponible. " +
       "Pour les missions issues de la fiche Idées, privilégie une analyse approfondie plutôt qu'une réponse rapide. " +
       "Décompose l'idée en tâches vérifiables, délègue aux spécialistes pertinents, exploite le parallélisme quand il est sûr, " +
       "et utilise l'exécution en arrière-plan pour les travaux longs dont le résultat n'est pas nécessaire immédiatement. " +
@@ -126,7 +126,7 @@ const specs = [
           agent_ids: [],
           edges: [],
           subagents: { enabled: true, allowSelf: false, agent_ids: ids },
-          tools: ['web_search'],
+          tools: ['web_search', 'current_state'],
           tool_options: { '*': { run_in_background: true, describe_intent: true } },
           updatedAt: new Date(),
         },
@@ -179,8 +179,8 @@ const specs = [
     if (JSON.stringify(routedIds) !== JSON.stringify(ids)) {
       throw new Error('BOT MODE Worker subagent routing verification failed');
     }
-    if (JSON.stringify(out?.tools ?? []) !== JSON.stringify(['web_search'])) {
-      throw new Error('BOT MODE Worker web_search capability verification failed');
+    if (JSON.stringify(out?.tools ?? []) !== JSON.stringify(['web_search', 'current_state'])) {
+      throw new Error('BOT MODE Worker built-in tools verification failed');
     }
     console.log(JSON.stringify(out, null, 2));
   } finally {

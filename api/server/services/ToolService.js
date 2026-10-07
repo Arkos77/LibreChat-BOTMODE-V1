@@ -757,10 +757,7 @@ async function loadToolDefinitionsWrapper({
   accessibleMcpServerNames,
 }) {
   const runtimeRequestBody = requestBody ?? req.body;
-  const fastCurrentStateRequested = runtimeRequestBody?.botModeExecutionMode === 'fast';
-  const currentStateEligible =
-    fastCurrentStateRequested || agent.tools?.includes(Tools.web_search) === true;
-  if ((!agent.tools || agent.tools.length === 0) && !currentStateEligible) {
+  if (!agent.tools || agent.tools.length === 0) {
     return { toolDefinitions: [] };
   }
 
@@ -797,9 +794,7 @@ async function loadToolDefinitionsWrapper({
       agentId: agent.id,
       conversationId: runtimeRequestBody?.conversationId,
     });
-  const runtimeTools = currentStateEligible
-    ? [...new Set([...(agent.tools ?? []), CURRENT_STATE_TOOL_NAME])]
-    : agent.tools;
+  const runtimeTools = agent.tools;
   const hasMCPTools = runtimeTools?.some((tool) => tool?.includes(Constants.mcp_delimiter));
   const mcpPermissionContext = createMCPPermissionContext(req);
   const canUseMCP = hasMCPTools ? await mcpPermissionContext.canUseServers(req.user) : true;
@@ -1550,10 +1545,7 @@ async function loadAgentTools({
     }
   }
 
-  const fastCurrentStateRequested = (requestBody ?? req.body)?.botModeExecutionMode === 'fast';
-  const currentStateEligible =
-    fastCurrentStateRequested || agent.tools?.includes(Tools.web_search) === true;
-  if ((!agent.tools || agent.tools.length === 0) && !currentStateEligible) {
+  if (!agent.tools || agent.tools.length === 0) {
     return { toolDefinitions: [] };
   } else if (
     agent.tools &&
@@ -1583,9 +1575,7 @@ async function loadAgentTools({
   };
   const areToolsEnabled = checkCapability(AgentCapabilities.tools);
   const actionsEnabled = checkCapability(AgentCapabilities.actions);
-  const runtimeTools = currentStateEligible
-    ? [...new Set([...(agent.tools ?? []), CURRENT_STATE_TOOL_NAME])]
-    : agent.tools;
+  const runtimeTools = agent.tools;
   const hasMCPTools = runtimeTools?.some((tool) => tool?.includes(Constants.mcp_delimiter));
   const mcpPermissionContext = createMCPPermissionContext(req);
   const canUseMCP = hasMCPTools ? await mcpPermissionContext.canUseServers(req.user) : true;

@@ -98,6 +98,13 @@
     "authConfig": []
   },
   {
+    "name": "Current State",
+    "pluginKey": "current_state",
+    "description": "Resolve current local time and current weather for a named place using the BOT MODE structured current-state resolver.",
+    "agentsOnly": true,
+    "authConfig": []
+  },
+  {
     "name": "Stable Diffusion",
     "pluginKey": "stable-diffusion",
     "description": "Generate photo-realistic images given any text input.",

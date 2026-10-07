@@ -96,7 +96,11 @@ jest.mock('~/config', () => ({
 
 const { Calculator } = require('@librechat/agents');
 const { Tools, Constants } = require('librechat-data-provider');
-const { ASK_USER_QUESTION_TOOL_NAME, SET_MEMORY_TOOL_NAME } = require('@librechat/api');
+const {
+  ASK_USER_QUESTION_TOOL_NAME,
+  CURRENT_STATE_TOOL_NAME,
+  SET_MEMORY_TOOL_NAME,
+} = require('@librechat/api');
 
 const { User } = require('~/db/models');
 const PluginService = require('~/server/services/PluginService');
@@ -372,6 +376,16 @@ describe('Tool Handlers', () => {
       });
       expect(loadedTools).toHaveLength(1);
       expect(loadedTools[0].name).toBe(ASK_USER_QUESTION_TOOL_NAME);
+    });
+
+    it('loads current_state through the standard built-in tool path', async () => {
+      const { loadedTools } = await loadTools({
+        user: fakeUser._id,
+        tools: [CURRENT_STATE_TOOL_NAME],
+        useSpecs: true,
+      });
+      expect(loadedTools).toHaveLength(1);
+      expect(loadedTools[0].name).toBe(CURRENT_STATE_TOOL_NAME);
     });
 
     it('threads the explicit chat project into inline memory tools', async () => {

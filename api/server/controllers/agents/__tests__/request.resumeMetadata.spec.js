@@ -1957,30 +1957,6 @@ describe('ResumableAgentController resume metadata', () => {
     expect(requestBody.messageId).not.toBe(req.body.messageId);
   });
 
-  it('preserves the BOT MODE fast execution hint in the normalized runtime body', async () => {
-    const initializeClient = jest.fn().mockRejectedValue(new Error('stop after MCP discovery'));
-    const req = {
-      user: { id: 'user-123' },
-      body: {
-        text: 'Quelle heure et quelle température fait-il à Moscou ?',
-        messageId: 'incoming-client-message',
-        parentMessageId: 'previous-response',
-        conversationId: 'conversation-123',
-        botModeExecutionMode: 'fast',
-        endpointOption: { endpoint: 'agents', modelOptions: { model: 'gpt-4.1' } },
-      },
-      config: {},
-    };
-
-    await AgentController(req, createResumableResponse(), jest.fn(), initializeClient, null);
-
-    const [{ requestBody }] = initializeClient.mock.calls[0];
-    expect(requestBody.botModeExecutionMode).toBe('fast');
-    expect(mockGenerationJobManager.createJob.mock.calls[0][3].initialMetadata.mcpRequestBody).toBe(
-      requestBody,
-    );
-  });
-
   it('uses the effective overridden conversation in the MCP request body', async () => {
     const initializeClient = jest.fn().mockRejectedValue(new Error('stop after MCP discovery'));
     const req = {

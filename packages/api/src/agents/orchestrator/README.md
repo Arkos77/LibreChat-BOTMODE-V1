@@ -485,7 +485,7 @@ Hardware engineering is separate from media generation. The `hardware:openbluepr
 
 ## FAST current-state resolution
 
-Ordinary BOT MODE FAST turns can use the native `current_state` tool for simple current local-time and weather lookups. The client marks only FAST BOT MODE turns; the controller preserves that hint in the normalized runtime body, and ToolService injects `current_state` without modifying the persisted agent tool list.
+BOT MODE exposes `current_state` as a standard LibreChat built-in tool. It is declared in the tool manifest, loaded through the normal built-in tool path, and attached explicitly to the persisted BOT MODE Worker alongside `web_search`; availability no longer depends on a FAST request hint or ToolService injection.
 
 The resolver remains under the existing Capability Router. `time.current` routes to `native:runtime-clock`; `location.resolve` and `weather.current` route to `external:open-meteo-current-state`. The Open-Meteo adapter uses bounded HTTP timeouts, a 24-hour geocoding cache, a 5-minute weather cache, and a freshness gate. Its current weather payload is labeled `model-current` rather than as a station observation. A stale or failed structured result returns `fallbackRequired: true`, at which point `web_search` may resolve only the missing or stale fact.
 
