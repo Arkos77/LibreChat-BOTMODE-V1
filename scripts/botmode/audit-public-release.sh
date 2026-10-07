@@ -72,21 +72,29 @@ PATTERNS=(
 COMBINED_PATTERN=$(IFS="|"; echo "${PATTERNS[*]}")
 RISK=0
 
-while IFS= read -r path; do
-  [ -n "$path" ] || continue
-  case "$path" in
+is_reviewed_fixture() {
+  case "$1" in
     .env.example|\
     packages/api/src/cdn/__tests__/cloudfront-cookies.test.ts|\
     packages/api/src/cdn/__tests__/cloudfront.test.ts|\
     packages/api/src/mcp/__tests__/mcp.spec.ts|\
     packages/api/src/utils/key.test.ts)
-      printf 'REVIEWED_FIXTURE_PATH=%s\n' "$path"
+      return 0
       ;;
     *)
-      printf 'UNEXPECTED_SECRET_PATTERN_PATH=%s\n' "$path" >&2
-      RISK=1
+      return 1
       ;;
   esac
+}
+
+while IFS= read -r path; do
+  [ -n "$path" ] || continue
+  if is_reviewed_fixture "$path"; then
+    printf 'REVIEWED_FIXTURE_PATH=%s\n' "$path"
+  else
+    printf 'UNEXPECTED_SECRET_PATTERN_PATH=%s\n' "$path" >&2
+    RISK=1
+  fi
 done < <(git grep -Il -E "$COMBINED_PATTERN" HEAD -- . 2>/dev/null | sed 's#^[^:]*:##' | sort -u || true)
 
 while IFS= read -r path; do
@@ -101,12 +109,19 @@ while IFS= read -r path; do
 done < <(git ls-files | grep -E '(^|/)\.env($|\.)' || true)
 
 for pattern in "${PATTERNS[@]}"; do
-  if git log "$BASE"..HEAD --format='%H' -G "$pattern" -- . 2>/dev/null | grep -q .; then
-    printf 'HISTORY_SECRET_PATTERN=%s\n' "$pattern" >&2
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    if is_reviewed_fixture "$path"; then
+      printf 'REVIEWED_HISTORY_FIXTURE_PATH=%s\n' "$path"
+    else
+      printf 'HISTORY_SECRET_PATTERN=%s\n' "$pattern" >&2
+      printf 'HISTORY_PATH=%s\n' "$path" >&2
+      RISK=1
+    fi
+  done < <(
     git log "$BASE"..HEAD --name-only --format= -G "$pattern" -- . 2>/dev/null \
-      | sed '/^$/d' | sort -u | sed 's/^/HISTORY_PATH=/' >&2
-    RISK=1
-  fi
+      | sed '/^$/d' | sort -u
+  )
 done
 
 if git log "$BASE"..HEAD --format='%B' \
