@@ -1,4 +1,4 @@
-import { chromium, type Browser } from 'playwright';
+import type { Browser } from 'playwright';
 import { canExecuteBrowserGrant, type BrowserExecutionGrant } from './browserSecurity';
 
 export interface BrowserActionInput {
@@ -80,6 +80,16 @@ async function executeOnPage(
   };
 }
 
+async function launchBrowser(): Promise<Browser> {
+  try {
+    const { chromium } = await import('playwright');
+    return await chromium.launch({ headless: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Browser runtime unavailable: ${message}`);
+  }
+}
+
 export class BrowserExecutionSession {
   private context!: Awaited<ReturnType<Browser['newContext']>>;
   private page!: Awaited<ReturnType<Browser['newPage']>>;
@@ -131,7 +141,7 @@ export async function executeBrowserGrant(
     assertDestination(grant, requireText('url', input.url));
   }
 
-  const browser = deps.browser ?? (await chromium.launch({ headless: true }));
+  const browser = deps.browser ?? (await launchBrowser());
   const ownsBrowser = deps.browser == null;
   const session = await new BrowserExecutionSession(browser, ownsBrowser).init();
   try {
