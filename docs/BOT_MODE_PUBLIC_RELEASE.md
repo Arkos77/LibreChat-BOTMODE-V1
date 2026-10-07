@@ -59,3 +59,14 @@ Un audit de pré-clôture sur `cebf06ff` a validé :
 - fichiers locaux non suivis au moment de l’audit : 0.
 
 L’audit doit être relancé sur le HEAD final juste avant création de l’archive ou du dépôt public ; sa sortie finale fait foi.
+
+## État de l'audit des dépendances au 7 octobre 2026
+
+Avant publication, les mises à jour compatibles avec les ranges existants ont été appliquées au lockfile pour corriger notamment `proxy-addr`, le SDK MCP, `compression`, `js-yaml`, `sharp`, `undici`, `brace-expansion`, `fast-uri` et `source-map-js`. Nodemailer a été porté à 10.0.15 et sa suite SMTP ciblée passe 6/6.
+
+`npm audit --omit=dev` ne signale plus aucune vulnérabilité critique. Il reste 9 vulnérabilités `high`, regroupées dans deux migrations qui ne sont pas forcées pendant la clôture :
+
+- la chaîne Firebase/Firestore, dont l'intégration BOT MODE utilise Firebase App/Storage et non Firestore ; même Firebase 12.19.0 conserve actuellement une dépendance Firestore vers `@grpc/grpc-js ~1.9.0` ;
+- la chaîne de build Tailwind CSS 3.x, dont le correctif proposé implique une migration majeure vers Tailwind 4.
+
+Ne pas utiliser `npm audit fix --force` pour masquer cette dette : ces migrations doivent être traitées séparément avec tests de compatibilité complets ou une correction upstream.
