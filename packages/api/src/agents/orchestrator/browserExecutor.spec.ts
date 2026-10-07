@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { chromium } from 'playwright';
 import { createBrowserExecutionGrant, type BrowserExecutionGrant } from './browserSecurity';
 import { BrowserExecutionSession, executeBrowserGrant } from './browserExecutor';
@@ -10,7 +11,7 @@ describe('browser executor', () => {
   ) {
     const browser = await chromium.launch({
       headless: true,
-      executablePath: process.env.HOME + '/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome',
+      executablePath: chromium.executablePath(),
     });
     try {
       await fn(browser);
@@ -19,7 +20,9 @@ describe('browser executor', () => {
     }
   }
 
-  it(
+  const browserIt = existsSync(chromium.executablePath()) ? it : it.skip;
+
+  browserIt(
     'executes OPEN and CLICK against a real browser context',
     async () => {
       await withBrowser(async (browser) => {

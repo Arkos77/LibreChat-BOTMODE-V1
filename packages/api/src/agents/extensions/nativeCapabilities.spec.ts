@@ -16,13 +16,20 @@ describe('native capability activation', () => {
     expect(PENDING_E2E_PROVIDER_CAPABILITIES[0].providerId).toBe('anthropic');
     expect(PENDING_E2E_PROVIDER_CAPABILITIES[0].enabled).toBe(false);
     expect(VERIFIED_EXTERNAL_CAPABILITIES).toHaveLength(6);
-    expect(MEDIA_PROVIDER_CAPABILITIES).toHaveLength(7);
+    expect(MEDIA_PROVIDER_CAPABILITIES).toHaveLength(9);
     expect(
       MEDIA_PROVIDER_CAPABILITIES.filter((resource) => resource.enabled).map((r) => r.id),
     ).toEqual(['media:openai:image-gen', 'media:gemini:image-gen', 'media:higgsfield:media']);
     expect(
       MEDIA_PROVIDER_CAPABILITIES.filter((resource) => !resource.enabled).map((r) => r.id),
-    ).toEqual(['media:elevenlabs:tts', 'media:minimax:video', 'media:ltx:video', 'media:tripo:3d']);
+    ).toEqual([
+      'media:elevenlabs:tts',
+      'media:minimax:video',
+      'media:ltx:video',
+      'media:elevenlabs:music',
+      'media:tripo:3d',
+      'media:local:gstreamer-compose',
+    ]);
     expect(VERIFIED_EXTERNAL_CAPABILITIES).toContainEqual(
       expect.objectContaining({
         id: 'source:skipthedrive',
@@ -66,7 +73,7 @@ describe('native capability activation', () => {
 
   it('exposes native, extension and discovery views separately', () => {
     const catalog = createRuntimeCapabilityCatalog();
-    expect(catalog.native).toHaveLength(22);
+    expect(catalog.native).toHaveLength(24);
     expect(catalog.extensions).toHaveLength(11);
     expect(catalog.discoverySeeds.length).toBeGreaterThanOrEqual(5);
   });
