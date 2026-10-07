@@ -20,40 +20,36 @@ describe('browser executor', () => {
     }
   }
 
-  it(
-    'executes OPEN and CLICK against a real browser context',
-    async () => {
-      if (!existsSync(chromium.executablePath())) {
-        return;
-      }
-      await withBrowser(async (browser) => {
-        const grant: BrowserExecutionGrant = createBrowserExecutionGrant({
-          grantId: 'g-open',
-          taskId: 'task-open',
-          action: 'OPEN',
-          networkMode: 'WEB',
-          status: 'ACTIVE',
-          expiresAt: '2099-01-01T00:00:00.000Z',
-        });
-        const url =
-          'data:text/html,<html><head><title>BOT MODE Lab</title></head><body><button id="go">go</button></body></html>';
-        const session = await new BrowserExecutionSession(browser).init();
-        try {
-          const result = await session.execute(grant, { url }, now);
-          expect(result.title).toBe('BOT MODE Lab');
-          const click = await session.execute(
-            { ...grant, action: 'CLICK' },
-            { selector: '#go' },
-            now,
-          );
-          expect(click.url).toContain('data:text/html');
-        } finally {
-          await session.close();
-        }
+  it('executes OPEN and CLICK against a real browser context', async () => {
+    if (!existsSync(chromium.executablePath())) {
+      return;
+    }
+    await withBrowser(async (browser) => {
+      const grant: BrowserExecutionGrant = createBrowserExecutionGrant({
+        grantId: 'g-open',
+        taskId: 'task-open',
+        action: 'OPEN',
+        networkMode: 'WEB',
+        status: 'ACTIVE',
+        expiresAt: '2099-01-01T00:00:00.000Z',
       });
-    },
-    30_000,
-  );
+      const url =
+        'data:text/html,<html><head><title>BOT MODE Lab</title></head><body><button id="go">go</button></body></html>';
+      const session = await new BrowserExecutionSession(browser).init();
+      try {
+        const result = await session.execute(grant, { url }, now);
+        expect(result.title).toBe('BOT MODE Lab');
+        const click = await session.execute(
+          { ...grant, action: 'CLICK' },
+          { selector: '#go' },
+          now,
+        );
+        expect(click.url).toContain('data:text/html');
+      } finally {
+        await session.close();
+      }
+    });
+  }, 30_000);
 
   it('fails closed for expired grants and non-local LOCAL_LAB navigation', async () => {
     const expired: BrowserExecutionGrant = createBrowserExecutionGrant({
