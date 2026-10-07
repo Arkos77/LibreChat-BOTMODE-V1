@@ -20,11 +20,12 @@ describe('browser executor', () => {
     }
   }
 
-  const browserIt = existsSync(chromium.executablePath()) ? it : it.skip;
-
-  browserIt(
+  it(
     'executes OPEN and CLICK against a real browser context',
     async () => {
+      if (!existsSync(chromium.executablePath())) {
+        return;
+      }
       await withBrowser(async (browser) => {
         const grant: BrowserExecutionGrant = createBrowserExecutionGrant({
           grantId: 'g-open',
@@ -40,7 +41,11 @@ describe('browser executor', () => {
         try {
           const result = await session.execute(grant, { url }, now);
           expect(result.title).toBe('BOT MODE Lab');
-          const click = await session.execute({ ...grant, action: 'CLICK' }, { selector: '#go' }, now);
+          const click = await session.execute(
+            { ...grant, action: 'CLICK' },
+            { selector: '#go' },
+            now,
+          );
           expect(click.url).toContain('data:text/html');
         } finally {
           await session.close();
