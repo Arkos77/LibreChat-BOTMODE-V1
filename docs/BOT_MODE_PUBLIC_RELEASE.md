@@ -47,11 +47,15 @@ Sur la machine de développement, `.env`, `.env.backup-*` et `.env.temp` sont ig
 
 Le script d’audit ne pousse rien et ne modifie aucun remote.
 
-## Preuve du 5 octobre 2026
+## Preuve du 7 octobre 2026
+
+Un audit de pré-clôture sur `cebf06ff` a validé :
 
 - base upstream commune : `f9f1b2fb` ;
-- 330 commits BOT MODE uniques audités ;
+- 373 commits BOT MODE uniques audités ;
 - 0 commit contenant une forme longue GitHub PAT/OpenAI/Google/Slack ou clé privée ;
 - messages de commit : PASS ;
-- archive de test `git archive` : 45 MiB ;
-- fichiers `.env`, `.env.backup` ou `.env.temp` dans l’archive : 0.
+- fichiers `.env`, `.env.backup` ou `.env.temp` suivis hors exemples autorisés : 0 ;
+- fichiers locaux non suivis au moment de l’audit : 0.
+
+L’audit doit être relancé sur le HEAD final juste avant création de l’archive ou du dépôt public ; sa sortie finale fait foi.

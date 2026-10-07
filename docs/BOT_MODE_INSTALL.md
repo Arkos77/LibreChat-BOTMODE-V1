@@ -63,18 +63,16 @@ Le Chromebook sera la cible finale de validation depuis zéro. Crostini suit le 
 - aucun second scheduler/runtime BOT MODE ;
 - le démarrage des conteneurs est explicite avec `--start`.
 
-## Preuve locale du 5 octobre 2026
+## Preuve locale du 7 octobre 2026
 
-Un clone isolé du HEAD `446c783`, sans `.env` et sans `node_modules`, a été créé sous `~/backups/botmode-repro-check-20261005/LibreChat`.
+La reproductibilité du HEAD `cebf06ff` a été revalidée sur la machine de référence après la clôture architecture/MCP/providers. Le profil `full` a correctement refusé le démarrage avec 3 823 MiB de RAM (< 4 GiB), puis le profil `--lite` a été utilisé comme prévu.
 
 Résultats :
 
-- `npm ci` : PASS, 2 980 paquets installés depuis le lockfile ;
-- `scripts/botmode/verify-reproducibility.sh` : 38/38 tests PASS ;
-- `npm run build:packages` : PASS ;
-- build client CI : PASS ;
-- `docker compose config --quiet` : PASS avec `.env.example` copié temporairement en `.env` et UID/GID locaux ;
-- aucun `.env` conservé dans le clone de preuve ;
-- worktree du clone propre après validation.
+- `scripts/botmode/bootstrap.sh --lite --skip-install` : builds packages + client PASS ;
+- `docker compose ... config --quiet` : PASS ;
+- `scripts/botmode/verify-reproducibility.sh` : 42/42 tests PASS ;
+- aucun démarrage de stack demandé par le bootstrap ;
+- aucun secret ajouté à Git.
 
 Cette preuve valide le checkout, le lockfile, les builds et la configuration Compose sur la machine actuelle. La preuve matérielle finale sur une vraie machine nettoyée reste le futur test Chromebook.
