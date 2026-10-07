@@ -758,7 +758,9 @@ async function loadToolDefinitionsWrapper({
 }) {
   const runtimeRequestBody = requestBody ?? req.body;
   const fastCurrentStateRequested = runtimeRequestBody?.botModeExecutionMode === 'fast';
-  if ((!agent.tools || agent.tools.length === 0) && !fastCurrentStateRequested) {
+  const currentStateEligible =
+    fastCurrentStateRequested || agent.tools?.includes(Tools.web_search) === true;
+  if ((!agent.tools || agent.tools.length === 0) && !currentStateEligible) {
     return { toolDefinitions: [] };
   }
 
@@ -795,10 +797,9 @@ async function loadToolDefinitionsWrapper({
       agentId: agent.id,
       conversationId: runtimeRequestBody?.conversationId,
     });
-  const runtimeTools =
-    runtimeRequestBody?.botModeExecutionMode === 'fast'
-      ? [...new Set([...(agent.tools ?? []), CURRENT_STATE_TOOL_NAME])]
-      : agent.tools;
+  const runtimeTools = currentStateEligible
+    ? [...new Set([...(agent.tools ?? []), CURRENT_STATE_TOOL_NAME])]
+    : agent.tools;
   const hasMCPTools = runtimeTools?.some((tool) => tool?.includes(Constants.mcp_delimiter));
   const mcpPermissionContext = createMCPPermissionContext(req);
   const canUseMCP = hasMCPTools ? await mcpPermissionContext.canUseServers(req.user) : true;
@@ -1550,7 +1551,9 @@ async function loadAgentTools({
   }
 
   const fastCurrentStateRequested = (requestBody ?? req.body)?.botModeExecutionMode === 'fast';
-  if ((!agent.tools || agent.tools.length === 0) && !fastCurrentStateRequested) {
+  const currentStateEligible =
+    fastCurrentStateRequested || agent.tools?.includes(Tools.web_search) === true;
+  if ((!agent.tools || agent.tools.length === 0) && !currentStateEligible) {
     return { toolDefinitions: [] };
   } else if (
     agent.tools &&
@@ -1580,11 +1583,9 @@ async function loadAgentTools({
   };
   const areToolsEnabled = checkCapability(AgentCapabilities.tools);
   const actionsEnabled = checkCapability(AgentCapabilities.actions);
-  const runtimeRequestBody = requestBody ?? req.body;
-  const runtimeTools =
-    runtimeRequestBody?.botModeExecutionMode === 'fast'
-      ? [...new Set([...(agent.tools ?? []), CURRENT_STATE_TOOL_NAME])]
-      : agent.tools;
+  const runtimeTools = currentStateEligible
+    ? [...new Set([...(agent.tools ?? []), CURRENT_STATE_TOOL_NAME])]
+    : agent.tools;
   const hasMCPTools = runtimeTools?.some((tool) => tool?.includes(Constants.mcp_delimiter));
   const mcpPermissionContext = createMCPPermissionContext(req);
   const canUseMCP = hasMCPTools ? await mcpPermissionContext.canUseServers(req.user) : true;

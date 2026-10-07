@@ -701,8 +701,8 @@ describe('ToolService - Action Capability Gating', () => {
     });
   });
 
-  describe('loadAgentTools BOT MODE fast current-state injection', () => {
-    it('injects current_state only for fast BOT MODE turns without changing persisted agent tools', async () => {
+  describe('loadAgentTools current-state injection', () => {
+    it('injects current_state for fast BOT MODE turns without changing persisted agent tools', async () => {
       const req = createMockReq([AgentCapabilities.tools]);
       req.body = {};
       mockGetEndpointsConfig.mockResolvedValue(createEndpointsConfig([AgentCapabilities.tools]));
@@ -731,6 +731,27 @@ describe('ToolService - Action Capability Gating', () => {
 
       expect(mockLoadToolDefinitions).toHaveBeenCalledWith(
         expect.objectContaining({ tools: ['calculator'] }),
+        expect.any(Object),
+      );
+    });
+
+    it('adds current_state alongside web_search even when the FAST URL hint is absent', async () => {
+      const req = createMockReq([AgentCapabilities.tools, AgentCapabilities.web_search]);
+      req.body = {};
+      mockGetEndpointsConfig.mockResolvedValue(
+        createEndpointsConfig([AgentCapabilities.tools, AgentCapabilities.web_search]),
+      );
+
+      await loadAgentTools({
+        req,
+        res: {},
+        agent: { id: 'agent_web', tools: [Tools.web_search] },
+        requestBody: {},
+        definitionsOnly: true,
+      });
+
+      expect(mockLoadToolDefinitions).toHaveBeenCalledWith(
+        expect.objectContaining({ tools: [Tools.web_search, 'current_state'] }),
         expect.any(Object),
       );
     });
