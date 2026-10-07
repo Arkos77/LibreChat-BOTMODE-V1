@@ -1,23 +1,22 @@
 # BOT MODE — installation reproductible
 
-Ce chemin prépare LibreChat/BOT MODE sans modifier les données existantes ni installer de paquets système avec sudo.
+Ce chemin exécute l'image BOTMODE publiée depuis le code de ce dépôt. Une machine cible n'a pas besoin de compiler LibreChat.
 
 ## Cibles
 
 - Linux / Xubuntu : support direct.
 - ChromeOS : via Crostini/Linux.
-- macOS : support direct avec Docker Desktop ou un runtime Docker compatible.
-- Windows : utiliser WSL2 et suivre le chemin Linux ; le bootstrap natif Windows n’est pas déclaré supporté.
+- macOS : Docker Desktop ou runtime Docker compatible.
+- Windows : WSL2 ; le chemin natif Windows n'est pas déclaré supporté pour V1.
 
-## Prérequis
+## Prérequis runtime
 
 - Git
-- Node.js 24.x (la version de référence est dans `.nvmrc`)
-- npm
-- Docker avec Compose v2 (`docker compose`)
+- Docker
+- Docker Compose v2
 - démon Docker démarré
 
-Le bootstrap refuse de lancer sudo et ne tente pas d’installer automatiquement ces prérequis système.
+Node.js 24 et npm restent nécessaires pour le développement source et les tests du dépôt, mais pas pour installer/exécuter l'image publiée.
 
 ## Installation
 
@@ -27,51 +26,98 @@ cd LibreChat-BOTMODE-V1
 ./install.sh
 ```
 
-Si `.env` est absent, le bootstrap copie `.env.example` vers `.env` et applique des permissions restrictives. Il ne remplace jamais un `.env` existant.
+Le bootstrap :
 
-Après le bootstrap, renseigner uniquement les credentials réellement nécessaires dans `.env`. Ne jamais committer ce fichier.
+1. détecte plateforme, mémoire et AVX ;
+2. sélectionne automatiquement `full` ou `lite` ;
+3. crée `.env` depuis `.env.example` s'il est absent, sans écraser un fichier existant ;
+4. valide Docker Compose ;
+5. tire `ghcr.io/arkos77/librechat-botmode-v1:edge` par défaut ;
+6. démarre la stack.
 
-Pour démarrer la stack après configuration :
+Le profil Lite est sélectionné automatiquement sous 4 GiB de RAM ou sur Linux sans AVX. Il utilise MongoDB 4.4.29 et désactive les services locaux lourds (RAG, pgvector, Meilisearch, admin panel). Il affirme aussi le mode scheduler mono-processus.
+
+Forcer Lite :
 
 ```bash
-./scripts/botmode/bootstrap.sh --start --skip-install --skip-build
+./install.sh --lite
 ```
 
-Le démarrage Docker reste opt-in. Sans `--start`, le script valide seulement l’installation, les builds, Compose et les tests BOT MODE.
+Forcer Full :
 
-## Options utiles
+```bash
+./install.sh --full
+```
+
+Préparer sans démarrer :
+
+```bash
+./install.sh --no-start
+```
+
+## Cycle de vie
+
+```bash
+./start.sh
+./stop.sh
+./update.sh
+./doctor.sh
+```
+
+`start.sh` ne relance ni `npm ci`, ni build, ni tests. `update.sh` effectue un `git pull --ff-only`, tire l'image runtime et redémarre la stack selon le profil détecté.
+
+## Image runtime BOTMODE
+
+La stack BOTMODE utilise :
 
 ```text
---check-only    Vérifie uniquement les prérequis.
---start         Démarre Docker Compose après validation.
---skip-install  Saute npm ci.
---skip-build    Saute les builds packages/client.
---skip-verify   Saute les tests de reproductibilité BOT MODE.
+ghcr.io/arkos77/librechat-botmode-v1:<tag>
 ```
 
-## Chromebook
+Cette image est construite depuis le `Dockerfile` du dépôt. Le runtime BOTMODE ne doit pas utiliser l'image API upstream `registry.librechat.ai/danny-avila/librechat-dev:latest`.
 
-Le Chromebook sera la cible finale de validation depuis zéro. Crostini suit le chemin Linux. Sur une machine à faible mémoire, ne pas considérer le profil complet comme acquis : les modèles locaux et services optionnels lourds doivent rester désactivables et un profil allégé devra être utilisé ou finalisé avant le démarrage permanent.
+Le workflow `.github/workflows/botmode-image.yml` publie une image multi-architecture `linux/amd64` + `linux/arm64` dans GHCR.
 
-## Invariants de sécurité
+## Données et permissions
 
-- aucun `sudo` dans le bootstrap ;
-- aucun effacement de données ;
-- aucun remplacement d’un `.env` existant ;
+Les données MongoDB et les répertoires runtime de LibreChat utilisent des volumes Docker nommés. Cela évite de dépendre des UID/GID du système hôte, notamment sous ChromeOS Crostini/containerless.
+
+`.env` et `librechat.yaml` restent montés depuis le dépôt en lecture seule dans le conteneur API.
+
+## Configuration
+
+Après création de `.env`, renseigner uniquement les credentials réellement utilisés. Ne jamais committer `.env`.
+
+Le fichier `librechat.yaml` du dépôt est monté automatiquement dans `/app/librechat.yaml`.
+
+## Vérifications développeur
+
+Pour vérifier le code source local :
+
+```bash
+./scripts/botmode/verify-runtime-distribution.sh
+./scripts/botmode/verify-reproducibility.sh
+```
+
+Le second chemin nécessite Node.js/npm et les dépendances installées.
+
+## Invariants
+
+- aucune réinstallation npm lors d'un simple démarrage ;
+- aucun remplacement silencieux d'un `.env` existant ;
 - aucun secret dans Git ;
-- aucun second scheduler/runtime BOT MODE ;
-- le démarrage des conteneurs est explicite avec `--start`.
+- image API construite depuis le code BOTMODE ;
+- profil Lite compatible avec les CPU x86_64 sans AVX ;
+- un seul scheduler/owner durable ;
+- aucune suppression automatique des volumes de données.
 
-## Preuve locale du 7 octobre 2026
+## Validation Chromebook
 
-La reproductibilité du HEAD `cebf06ff` a été revalidée sur la machine de référence après la clôture architecture/MCP/providers. Le profil `full` a correctement refusé le démarrage avec 3 823 MiB de RAM (< 4 GiB), puis le profil `--lite` a été utilisé comme prévu.
+Le premier test propre a mis en évidence quatre défauts de distribution désormais couverts par cette architecture :
 
-Résultats :
+- OOM provoqué par un second `npm ci` sur 2,7 GiB de RAM ;
+- MongoDB 8 incompatible avec un CPU sans AVX ;
+- permissions de bind mounts sous Crostini/containerless ;
+- lancement d'une image LibreChat upstream au lieu du code BOTMODE cloné.
 
-- `scripts/botmode/bootstrap.sh --lite --skip-install` : builds packages + client PASS ;
-- `docker compose ... config --quiet` : PASS ;
-- `scripts/botmode/verify-reproducibility.sh` : 42/42 tests PASS ;
-- aucun démarrage de stack demandé par le bootstrap ;
-- aucun secret ajouté à Git.
-
-Cette preuve valide le checkout, le lockfile, les builds et la configuration Compose sur la machine actuelle. La preuve matérielle finale sur une vraie machine nettoyée reste le futur test Chromebook.
+Le prochain test Chromebook doit repartir de zéro uniquement après publication d'une image BOTMODE candidate.

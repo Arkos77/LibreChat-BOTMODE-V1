@@ -1,0 +1,214 @@
+name: BOTMODE Runtime Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag to publish
+        required: false
+        default: edge
+  push:
+    branches:
+      - main
+      - botmode-v1-runtime-fix
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: botmode-runtime-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build (${{ matrix.arch }})
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set image name
+        shell: bash
+        run: |
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/librechat-botmode-v1" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          target: node
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=botmode-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=botmode-${{ matrix.arch }}
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_BRANCH=${{ github.ref_name }}
+
+      - name: Export digest
+        shell: bash
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          test -n "$DIGEST"
+          touch "/tmp/digests/${DIGEST#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: botmode-digest-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Publish multi-arch manifest
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 15
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v7
+        with:
+          pattern: botmode-digest-*
+          merge-multiple: true
+          path: /tmp/digests
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Resolve image tags
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/librechat-botmode-v1"
+          sha_tag="sha-${GITHUB_SHA::12}"
+
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            primary="${GITHUB_REF_NAME}"
+            latest="latest"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            primary="${{ inputs.tag }}"
+            latest=""
+          else
+            primary="edge"
+            latest=""
+          fi
+
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "primary=$primary" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=$sha_tag" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push manifest
+        working-directory: /tmp/digests
+        shell: bash
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          PRIMARY: ${{ steps.meta.outputs.primary }}
+          SHA_TAG: ${{ steps.meta.outputs.sha_tag }}
+          LATEST: ${{ steps.meta.outputs.latest }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          digests=(*)
+          if [ "${#digests[@]}" -ne 2 ]; then
+            echo "Expected two architecture digests, found ${#digests[@]}." >&2
+            exit 1
+          fi
+
+          tags=(-t "$IMAGE:$PRIMARY" -t "$IMAGE:$SHA_TAG")
+          if [ -n "$LATEST" ]; then
+            tags+=(-t "$IMAGE:$LATEST")
+          fi
+
+          docker buildx imagetools create             "${tags[@]}"             "${digests[@]/#/$IMAGE@sha256:}"
+
+          docker buildx imagetools inspect "$IMAGE:$PRIMARY"
+
+  smoke-lite:
+    name: Smoke Lite runtime
+    runs-on: ubuntu-latest
+    needs: merge
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Start Lite candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          export BOTMODE_IMAGE="ghcr.io/$owner/librechat-botmode-v1:sha-${GITHUB_SHA::12}"
+          export BOTMODE_HOST_PORT=3090
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml up -d
+
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3090/api/config >/tmp/botmode-config.json; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$ready" -ne 1 ]; then
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs --tail 200 api mongodb
+            exit 1
+          fi
+
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps
+          if docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs api | grep -q 'Exiting due to invalid configuration'; then
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs --tail 200 api
+            exit 1
+          fi
+
+          echo "BOTMODE_LITE_SMOKE=PASS"
+
+      - name: Cleanup
+        if: always()
+        run: docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down -v

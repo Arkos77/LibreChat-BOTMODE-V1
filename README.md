@@ -55,11 +55,13 @@ Final answer / artifact
 
 ### Requirements
 
+Runtime hosts need:
+
 - Git
-- Node.js 24.x
-- npm
 - Docker
 - Docker Compose v2
+
+Node.js/npm are required only for source development and local verification, not for running the published BOTMODE image.
 
 ### Install
 
@@ -69,18 +71,27 @@ cd LibreChat-BOTMODE-V1
 ./install.sh
 ```
 
-The installer does **not** use `sudo`, does not overwrite an existing `.env`, and does not delete application data. It validates the host, installs Node dependencies, builds the packages/client, validates Docker Compose and runs BOTMODE reproducibility tests.
+The installer auto-selects the **Lite** profile on hosts with less than 4 GiB RAM or on Linux CPUs without AVX. It creates `.env` if needed, validates Docker/Compose, pulls the BOTMODE runtime image from GHCR, and starts the stack.
 
-To install and start the stack in the same run:
-
-```bash
-./install.sh --start
-```
-
-On a low-memory system:
+Force Lite explicitly with:
 
 ```bash
 ./install.sh --lite
+```
+
+Prepare and pull without starting:
+
+```bash
+./install.sh --no-start
+```
+
+Day-to-day lifecycle commands:
+
+```bash
+./start.sh
+./stop.sh
+./update.sh
+./doctor.sh
 ```
 
 After `.env` is created, add only the provider/API credentials you actually use. Never commit `.env`.

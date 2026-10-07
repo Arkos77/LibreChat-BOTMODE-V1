@@ -73,6 +73,8 @@ ENV BUILD_COMMIT=${BUILD_COMMIT}
 ENV BUILD_BRANCH=${BUILD_BRANCH}
 ENV BUILD_DATE=${BUILD_DATE}
 
+LABEL org.opencontainers.image.source="https://github.com/Arkos77/LibreChat-BOTMODE-V1"       org.opencontainers.image.title="LibreChat BOTMODE V1"       org.opencontainers.image.description="LibreChat BOTMODE runtime built from the Arkos77 BOTMODE repository"
+
 # Node API setup
 EXPOSE 3080
 ENV HOST=0.0.0.0

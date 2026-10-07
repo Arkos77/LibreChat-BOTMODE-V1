@@ -83,3 +83,28 @@ A V1 release candidate may proceed when all of the following are true:
 - README/install docs match the actual commands
 - GitHub `main` points at the validated BOTMODE release candidate
 - branch/ruleset security is enabled where supported
+
+
+## Clean-machine runtime findings (7 October 2026)
+
+The first clean Chromebook/Crostini pass validated the public checkout and source reproducibility at `4075169b`: package/client builds completed and the dedicated BOTMODE suite passed 42/42 tests.
+
+The runtime phase then exposed distribution defects that source-only verification could not detect:
+
+- a second `npm ci` triggered by `--start` exhausted the 2.7 GiB host and was killed by the kernel OOM killer;
+- MongoDB 8 cannot run on the target CPU because AVX is absent;
+- host bind mounts produced runtime permission failures under containerless Crostini;
+- most importantly, the Compose runtime referenced the upstream LibreChat development image rather than an image built from this BOTMODE repository.
+
+The V1 release gate therefore now also requires:
+
+- BOTMODE-owned GHCR image built from this repository;
+- runtime bootstrap with no npm install/build path on target hosts;
+- automatic Lite selection for low-memory or non-AVX Linux hosts;
+- MongoDB 4.4.29 in Lite;
+- Docker-managed runtime data volumes;
+- mounted `librechat.yaml`;
+- single-process scheduler assertion in Lite;
+- successful clean-machine runtime test from the published candidate image.
+
+Do not tag `v1.0.0` until this runtime distribution gate passes.

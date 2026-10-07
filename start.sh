@@ -2,4 +2,4 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")" && pwd)
 cd "$ROOT"
-exec ./scripts/botmode/bootstrap.sh "$@"
+exec ./scripts/botmode/bootstrap.sh --no-pull "$@"

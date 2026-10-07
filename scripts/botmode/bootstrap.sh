@@ -4,41 +4,44 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$ROOT"
 
-START_STACK=0
+PROFILE_REQUEST="auto"
 CHECK_ONLY=0
-SKIP_INSTALL=0
-SKIP_BUILD=0
-SKIP_VERIFY=0
-LITE=0
+START_STACK=1
+PULL_IMAGE=1
+BOTMODE_IMAGE_VALUE="${BOTMODE_IMAGE:-ghcr.io/arkos77/librechat-botmode-v1:edge}"
 
 usage() {
-  cat <<'EOF'
+  cat <<'USAGE'
 Usage: scripts/botmode/bootstrap.sh [options]
 
-Safe BOT MODE bootstrap for Linux/ChromeOS Crostini/macOS.
+Runtime installer for LibreChat BOTMODE V1.
 
 Options:
-  --check-only    Validate prerequisites only; change nothing.
-  --start         Start the Docker Compose stack after validation.
-  --lite          Use the low-memory API + MongoDB profile.
-  --skip-install  Skip npm ci.
-  --skip-build    Skip package/client builds.
-  --skip-verify   Skip BOT MODE reproducibility tests.
+  --lite          Force the low-memory / non-AVX profile.
+  --full          Force the full profile.
+  --check-only    Validate the host and Compose configuration only.
+  --no-start      Prepare and pull images, but do not start containers.
+  --no-pull       Do not pull the BOTMODE image before starting.
+  --image IMAGE   Override the BOTMODE runtime image.
   -h, --help      Show this help.
 
-The script never runs sudo, never overwrites an existing .env, and never
-deletes application data.
-EOF
+Target hosts require Git, Docker and Docker Compose v2. Node/npm are not
+required to run the published BOTMODE image.
+USAGE
 }
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --check-only) CHECK_ONLY=1 ;;
-    --start) START_STACK=1 ;;
-    --lite) LITE=1 ;;
-    --skip-install) SKIP_INSTALL=1 ;;
-    --skip-build) SKIP_BUILD=1 ;;
-    --skip-verify) SKIP_VERIFY=1 ;;
+    --lite) PROFILE_REQUEST="lite" ;;
+    --full) PROFILE_REQUEST="full" ;;
+    --check-only) CHECK_ONLY=1; START_STACK=0; PULL_IMAGE=0 ;;
+    --no-start) START_STACK=0 ;;
+    --no-pull) PULL_IMAGE=0 ;;
+    --image)
+      shift
+      [ "$#" -gt 0 ] || { echo "--image requires a value" >&2; exit 2; }
+      BOTMODE_IMAGE_VALUE="$1"
+      ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -53,8 +56,6 @@ need() {
 }
 
 need git
-need node
-need npm
 need docker
 
 docker compose version >/dev/null 2>&1 || {
@@ -64,6 +65,7 @@ docker compose version >/dev/null 2>&1 || {
 
 if ! docker info >/dev/null 2>&1; then
   echo "Docker is installed but its daemon is not reachable." >&2
+  echo "On Crostini, open a shell with Docker group access (for example: newgrp docker)." >&2
   exit 3
 fi
 
@@ -75,51 +77,42 @@ case "$OS" in
   *) echo "Unsupported operating system: $OS" >&2; exit 3 ;;
 esac
 
-EXPECTED_NODE=$(tr -d '[:space:]' < .nvmrc)
-EXPECTED_MAJOR=${EXPECTED_NODE%%.*}
-CURRENT_NODE=$(node -p "process.versions.node")
-CURRENT_MAJOR=${CURRENT_NODE%%.*}
-if [ "$CURRENT_MAJOR" != "$EXPECTED_MAJOR" ]; then
-  echo "Node $EXPECTED_NODE.x major is required; found $CURRENT_NODE." >&2
+TOTAL_MEM_MB=0
+if [ "$OS" = "Linux" ] && [ -r /proc/meminfo ]; then
+  TOTAL_MEM_MB=$(( $(awk '/^MemTotal:/ {print $2}' /proc/meminfo) / 1024 ))
+elif [ "$OS" = "Darwin" ]; then
+  TOTAL_MEM_MB=$(( $(sysctl -n hw.memsize) / 1024 / 1024 ))
+fi
+
+CPU_AVX="unknown"
+if [ "$OS" = "Linux" ] && [ -r /proc/cpuinfo ]; then
+  if grep -qm1 -w avx /proc/cpuinfo; then CPU_AVX="yes"; else CPU_AVX="no"; fi
+elif [ "$OS" = "Darwin" ]; then
+  if sysctl -a 2>/dev/null | grep -Eiq 'machdep\.cpu\.(features|leaf7_features).*AVX'; then
+    CPU_AVX="yes"
+  fi
+fi
+
+PROFILE="$PROFILE_REQUEST"
+if [ "$PROFILE" = "auto" ]; then
+  PROFILE="full"
+  if [ "$TOTAL_MEM_MB" -gt 0 ] && [ "$TOTAL_MEM_MB" -lt 4096 ]; then PROFILE="lite"; fi
+  if [ "$CPU_AVX" = "no" ]; then PROFILE="lite"; fi
+fi
+
+if [ "$PROFILE" = "full" ] && [ "$CPU_AVX" = "no" ]; then
+  echo "Full profile requires AVX because MongoDB 5.0+ requires AVX. Use --lite." >&2
+  exit 3
+fi
+if [ "$PROFILE" = "full" ] && [ "$TOTAL_MEM_MB" -gt 0 ] && [ "$TOTAL_MEM_MB" -lt 4096 ]; then
+  echo "Full profile requires at least 4 GiB RAM. Use --lite." >&2
   exit 3
 fi
 
-if [ "$OS" = 'Linux' ] && [ -r /proc/meminfo ]; then
-  TOTAL_MEM_KB=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
-  TOTAL_MEM_MB=$((TOTAL_MEM_KB / 1024))
-elif [ "$OS" = 'Darwin' ]; then
-  TOTAL_MEM_MB=$(( $(sysctl -n hw.memsize) / 1024 / 1024 ))
-else
-  TOTAL_MEM_MB=0
-fi
-
-COMPOSE_ARGS=(-f docker-compose.yml)
-if [ "$LITE" -eq 1 ]; then
+COMPOSE_ARGS=(-f docker-compose.botmode.yml)
+if [ "$PROFILE" = "lite" ]; then
   COMPOSE_ARGS+=(-f docker-compose.botmode-lite.yml)
-  PROFILE='lite'
-else
-  PROFILE='full'
 fi
-
-printf 'BOTMODE_PLATFORM=%s\n' "$PLATFORM"
-printf 'BOTMODE_ARCH=%s\n' "$ARCH"
-printf 'BOTMODE_NODE=%s\n' "$CURRENT_NODE"
-printf 'BOTMODE_MEMORY_MB=%s\n' "$TOTAL_MEM_MB"
-printf 'BOTMODE_PROFILE=%s\n' "$PROFILE"
-printf 'BOTMODE_DOCKER=PASS\n'
-printf 'BOTMODE_COMPOSE=PASS\n'
-
-if [ "$LITE" -eq 0 ] && [ "$TOTAL_MEM_MB" -gt 0 ] && [ "$TOTAL_MEM_MB" -lt 4096 ]; then
-  echo 'Full profile requires at least 4 GiB RAM for this bootstrap. Use --lite on low-memory systems.' >&2
-  [ "$CHECK_ONLY" -eq 1 ] || exit 3
-fi
-
-if [ "$CHECK_ONLY" -eq 1 ]; then
-  printf 'BOTMODE_BOOTSTRAP_CHECK=PASS\n'
-  exit 0
-fi
-
-git diff --check
 
 if [ ! -f .env ]; then
   cp .env.example .env
@@ -129,30 +122,30 @@ else
   printf 'BOTMODE_ENV_EXISTING=YES\n'
 fi
 
-if [ "$SKIP_INSTALL" -eq 0 ]; then
-  npm ci
-else
-  printf 'BOTMODE_NPM_INSTALL=SKIPPED\n'
+export BOTMODE_IMAGE="$BOTMODE_IMAGE_VALUE"
+docker compose "${COMPOSE_ARGS[@]}" config --quiet
+
+printf 'BOTMODE_PLATFORM=%s\n' "$PLATFORM"
+printf 'BOTMODE_ARCH=%s\n' "$ARCH"
+printf 'BOTMODE_MEMORY_MB=%s\n' "$TOTAL_MEM_MB"
+printf 'BOTMODE_CPU_AVX=%s\n' "$CPU_AVX"
+printf 'BOTMODE_PROFILE=%s\n' "$PROFILE"
+printf 'BOTMODE_IMAGE=%s\n' "$BOTMODE_IMAGE"
+printf 'BOTMODE_DOCKER=PASS\n'
+printf 'BOTMODE_COMPOSE=PASS\n'
+
+if [ "$CHECK_ONLY" -eq 1 ]; then
+  printf 'BOTMODE_BOOTSTRAP_CHECK=PASS\n'
+  exit 0
 fi
 
-if [ "$SKIP_BUILD" -eq 0 ]; then
-  npm run build:packages
-  npm run build:client
-else
-  printf 'BOTMODE_BUILD=SKIPPED\n'
-fi
-
-env UID="$(id -u)" GID="$(id -g)" docker compose "${COMPOSE_ARGS[@]}" config --quiet
-printf 'BOTMODE_COMPOSE_CONFIG=PASS\n'
-
-if [ "$SKIP_VERIFY" -eq 0 ]; then
-  ./scripts/botmode/verify-reproducibility.sh
-else
-  printf 'BOTMODE_VERIFY=SKIPPED\n'
+if [ "$PULL_IMAGE" -eq 1 ]; then
+  docker pull "$BOTMODE_IMAGE"
+  printf 'BOTMODE_IMAGE_PULL=PASS\n'
 fi
 
 if [ "$START_STACK" -eq 1 ]; then
-  env UID="$(id -u)" GID="$(id -g)" docker compose "${COMPOSE_ARGS[@]}" up -d
+  docker compose "${COMPOSE_ARGS[@]}" up -d
   printf 'BOTMODE_STACK=STARTED\n'
 else
   printf 'BOTMODE_STACK=NOT_STARTED\n'
