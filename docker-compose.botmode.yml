@@ -4,6 +4,7 @@ services:
   api:
     image: ${BOTMODE_IMAGE:-ghcr.io/arkos77/librechat-botmode-v1:edge}
     restart: always
+    shm_size: "256m"
     ports:
       - "${BOTMODE_HOST_PORT:-3080}:3080"
     depends_on:
