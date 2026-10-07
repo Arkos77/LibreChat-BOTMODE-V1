@@ -8,7 +8,9 @@ PROFILE_REQUEST="auto"
 CHECK_ONLY=0
 START_STACK=1
 PULL_IMAGE=1
-BOTMODE_IMAGE_VALUE="${BOTMODE_IMAGE:-ghcr.io/arkos77/librechat-botmode-v1:edge}"
+BOTMODE_COMMIT_SHA="$(git rev-parse --short=12 HEAD)"
+BOTMODE_DEFAULT_IMAGE="ghcr.io/arkos77/librechat-botmode-v1:sha-${BOTMODE_COMMIT_SHA}"
+BOTMODE_IMAGE_VALUE="${BOTMODE_IMAGE:-$BOTMODE_DEFAULT_IMAGE}"
 
 usage() {
   cat <<'USAGE'

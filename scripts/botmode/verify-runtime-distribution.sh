@@ -3,7 +3,8 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$ROOT"
 
-export BOTMODE_IMAGE="${BOTMODE_IMAGE:-ghcr.io/arkos77/librechat-botmode-v1:edge}"
+BOTMODE_COMMIT_SHA="$(git rev-parse --short=12 HEAD)"
+export BOTMODE_IMAGE="${BOTMODE_IMAGE:-ghcr.io/arkos77/librechat-botmode-v1:sha-${BOTMODE_COMMIT_SHA}}"
 
 docker compose -f docker-compose.botmode.yml config --quiet
 docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml config --quiet

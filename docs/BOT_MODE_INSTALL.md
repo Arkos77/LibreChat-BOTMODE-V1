@@ -32,7 +32,7 @@ Le bootstrap :
 2. sélectionne automatiquement `full` ou `lite` ;
 3. crée `.env` depuis `.env.example` s'il est absent, sans écraser un fichier existant ;
 4. valide Docker Compose ;
-5. tire `ghcr.io/arkos77/librechat-botmode-v1:edge` par défaut ;
+5. résout le commit Git courant et tire par défaut `ghcr.io/arkos77/librechat-botmode-v1:sha-<commit>` ;
 6. démarre la stack.
 
 Le profil Lite est sélectionné automatiquement sous 4 GiB de RAM ou sur Linux sans AVX. Il utilise MongoDB 4.4.29 et désactive les services locaux lourds (RAG, pgvector, Meilisearch, admin panel). Il affirme aussi le mode scheduler mono-processus.
@@ -74,7 +74,7 @@ La stack BOTMODE utilise :
 ghcr.io/arkos77/librechat-botmode-v1:<tag>
 ```
 
-Cette image est construite depuis le `Dockerfile` du dépôt. Le runtime BOTMODE ne doit pas utiliser l'image API upstream `registry.librechat.ai/danny-avila/librechat-dev:latest`.
+Cette image est construite depuis le `Dockerfile` du dépôt. L'installateur utilise par défaut le tag immuable `sha-<commit>` correspondant exactement au checkout local ; `BOTMODE_IMAGE` / `--image` reste disponible pour un override explicite. Le runtime BOTMODE ne doit pas utiliser l'image API upstream `registry.librechat.ai/danny-avila/librechat-dev:latest`.
 
 Le workflow `.github/workflows/botmode-image.yml` publie une image multi-architecture `linux/amd64` + `linux/arm64` dans GHCR.
 

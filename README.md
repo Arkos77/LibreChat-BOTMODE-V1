@@ -71,7 +71,7 @@ cd LibreChat-BOTMODE-V1
 ./install.sh
 ```
 
-The installer auto-selects the **Lite** profile on hosts with less than 4 GiB RAM or on Linux CPUs without AVX. It creates `.env` if needed, validates Docker/Compose, pulls the BOTMODE runtime image from GHCR, and starts the stack.
+The installer auto-selects the **Lite** profile on hosts with less than 4 GiB RAM or on Linux CPUs without AVX. It creates `.env` if needed, validates Docker/Compose, pulls the BOTMODE runtime image whose `sha-<commit>` tag matches the checked-out Git commit, and starts the stack. This prevents the configuration/scripts from silently drifting away from the runtime image.
 
 Force Lite explicitly with:
 
