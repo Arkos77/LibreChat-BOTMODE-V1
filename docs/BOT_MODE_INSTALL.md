@@ -22,10 +22,9 @@ Le bootstrap refuse de lancer sudo et ne tente pas d’installer automatiquement
 ## Installation
 
 ```bash
-git clone <DEPOT_BOTMODE> LibreChat
-cd LibreChat
-./scripts/botmode/bootstrap.sh --check-only
-./scripts/botmode/bootstrap.sh
+git clone --depth 1 https://github.com/Arkos77/LibreChat-BOTMODE-V1.git
+cd LibreChat-BOTMODE-V1
+./install.sh
 ```
 
 Si `.env` est absent, le bootstrap copie `.env.example` vers `.env` et applique des permissions restrictives. Il ne remplace jamais un `.env` existant.
