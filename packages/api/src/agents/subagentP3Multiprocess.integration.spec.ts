@@ -169,7 +169,7 @@ describe('subagent P3 genuine multi-process recovery', () => {
           },
         },
         childCheckpoint,
-        { source: 'input', step: -1, writes: null, parents: {} },
+        { source: 'input', step: -1, parents: {} },
       );
 
       const parentCheckpoint = emptyCheckpoint();
@@ -220,7 +220,7 @@ describe('subagent P3 genuine multi-process recovery', () => {
           },
         },
         parentCheckpoint,
-        { source: 'input', step: -1, writes: null, parents: {} },
+        { source: 'input', step: -1, parents: {} },
       );
 
       a.child.kill('SIGKILL');
