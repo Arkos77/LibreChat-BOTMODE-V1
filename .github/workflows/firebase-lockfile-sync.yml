@@ -1,0 +1,48 @@
+name: Regenerate Firebase migration lockfile
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  lockfile:
+    if: github.ref == 'refs/heads/botmode-v1-firebase-security-fix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Refresh lockfile without executing package scripts
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Verify production Firebase packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'JS'
+          const p=require('./package-lock.json');
+          const modules=p.packages ?? {};
+          if (modules['node_modules/firebase']) throw new Error('Firebase umbrella package still installed');
+          if (modules['node_modules/@firebase/firestore']) throw new Error('Firestore unexpectedly installed');
+          for (const name of ['@firebase/app','@firebase/storage']) {
+            if (!modules['node_modules/'+name]) throw new Error('Missing '+name);
+          }
+          console.log('LOCKFILE_FIREBASE_COMPONENTS=PASS');
+          JS
+      - name: Commit only reproducible package lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- package-lock.json; then
+            echo 'LOCKFILE_UNCHANGED'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- package-lock.json
+          git commit -m 'build(deps): synchronize lockfile for modular Firebase'
+          git push origin HEAD:botmode-v1-firebase-security-fix
