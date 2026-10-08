@@ -162,7 +162,17 @@ describe('initializeClient — processAgent ACL gate', () => {
     user: { id: testUser._id.toString(), role: 'USER' },
     body: { conversationId: 'conv_1', files: [] },
     resolvedConversation: null,
-    config: { endpoints: {} },
+    config: {
+      endpoints: {
+        custom: [
+          {
+            name: 'OpenRouter',
+            baseURL: 'https://openrouter.example.test/api/v1',
+            apiKey: 'fixture-secret',
+          },
+        ],
+      },
+    },
     _resumableStreamId: null,
   });
 
@@ -557,7 +567,7 @@ describe('initializeClient — processAgent ACL gate', () => {
     mockValidateAgentModel.mockResolvedValue({ isValid: true });
     mockInitializeAgent.mockImplementation(async ({ agent }) => ({
       ...makePrimaryConfig([]),
-      provider: 'openai',
+      provider: 'openAI',
       model: agent.model,
       model_parameters: { model: agent.model, apiKey: 'fixture-secret' },
       endpointTokenConfig: { selectedFor: agent.model },
@@ -571,13 +581,13 @@ describe('initializeClient — processAgent ACL gate', () => {
           bindings: [
             {
               id: 'primary',
-              provider: 'openai',
+              provider: 'openAI',
               model: 'gpt-4',
               signals: { qualityScore: 0.3, estimatedCost: 1.5, latencyMs: 200 },
             },
             {
               id: 'alternate',
-              provider: 'openai',
+              provider: 'openAI',
               model: 'b:free',
               signals: { qualityScore: 0.9, estimatedCost: 2, latencyMs: 100 },
             },
@@ -601,7 +611,7 @@ describe('initializeClient — processAgent ACL gate', () => {
       model: 'b:free',
       fallbacks: [
         {
-          provider: 'openai',
+          provider: 'openAI',
           clientOptions: { model: 'gpt-4' },
         },
       ],
