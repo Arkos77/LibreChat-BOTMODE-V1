@@ -1,0 +1,63 @@
+name: Firebase App and Storage compatibility preflight
+
+on:
+  push:
+    branches:
+      - botmode-v1-firebase-security-fix
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  modular-sdk-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install exact Firebase components in isolated directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/firebase-component-smoke"
+          cd "$RUNNER_TEMP/firebase-component-smoke"
+          npm init -y >/dev/null
+          npm install --ignore-scripts --no-audit --no-fund --save-exact @firebase/app@0.10.16 @firebase/storage@0.13.4
+      - name: Check module exports and offline storage initialization
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/firebase-component-smoke"
+          node <<'JS'
+          const assert = require('node:assert/strict');
+          const appSdk = require('@firebase/app');
+          const storageSdk = require('@firebase/storage');
+          for (const name of ['initializeApp', 'deleteApp']) {
+            assert.equal(typeof appSdk[name], 'function', name);
+          }
+          for (const name of ['getStorage', 'ref', 'uploadBytes', 'getDownloadURL', 'deleteObject']) {
+            assert.equal(typeof storageSdk[name], 'function', name);
+          }
+          const app = appSdk.initializeApp(
+            { apiKey: 'fake-key', projectId: 'fake-project', appId: '1:123:web:abc', storageBucket: 'fake-project.appspot.com' },
+            'botmode-sdk-compatibility-smoke'
+          );
+          const storage = storageSdk.getStorage(app);
+          const reference = storageSdk.ref(storage, 'images/test-user/offline-check.txt');
+          assert.equal(reference.fullPath, 'images/test-user/offline-check.txt');
+          appSdk.deleteApp(app).then(() => console.log('FIREBASE_APP_STORAGE_OFFLINE_SMOKE=PASS'))
+            .catch(error => { console.error(error); process.exitCode = 1; });
+          JS
+      - name: Confirm Firestore and gRPC are not pulled in
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/firebase-component-smoke"
+          if npm ls @firebase/firestore @grpc/grpc-js --all --parseable | grep -E '/(@firebase/firestore|@grpc/grpc-js)$'; then
+            echo 'FIRESTORE_OR_GRPC_UNEXPECTEDLY_PRESENT=FAIL'
+            exit 1
+          fi
+          echo 'FIRESTORE_AND_GRPC_ABSENT=PASS'
