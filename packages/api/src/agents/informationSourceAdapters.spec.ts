@@ -50,7 +50,7 @@ describe('information source adapters', () => {
     const adapter = new YouTubeInformationWatchAdapter({
       apiKey: 'test-key',
       query: 'BOT MODE',
-      fetchImpl: (async (input) => {
+      fetchImpl: (async (input: Parameters<typeof fetch>[0]) => {
         expect(String(input)).toContain('q=BOT+MODE');
         return new Response(JSON.stringify({ items: [{ id: 1 }, { id: 2 }] }), {
           status: 200,
@@ -77,7 +77,7 @@ describe('information source adapters', () => {
       token: 'test-token',
       query: 'BOT MODE',
       limit: 10,
-      fetchImpl: (async (input) => {
+      fetchImpl: (async (input: Parameters<typeof fetch>[0]) => {
         expect(String(input)).toContain('q=BOT+MODE');
         expect(String(input)).toContain('limit=10');
         return new Response(JSON.stringify({ status: 'ok', response: { count: 7, items: [{}] } }), {
@@ -106,7 +106,7 @@ describe('information source adapters', () => {
       query: 'BOT MODE',
       subreddit: 'opensource',
       limit: 10,
-      fetchImpl: (async (input, init) => {
+      fetchImpl: (async (input: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]) => {
         const url = String(input);
         expect(url).toContain('/r/opensource/search');
         expect(url).toContain('q=BOT+MODE');
@@ -141,7 +141,7 @@ describe('information source adapters', () => {
       channelId: '123456789012345678',
       requireMessageContent: false,
       limit: 2,
-      fetchImpl: (async (input, init) => {
+      fetchImpl: (async (input: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]) => {
         expect(String(input)).toContain('/api/v10/channels/123456789012345678/messages?limit=2');
         expect(init?.headers).toEqual(
           expect.objectContaining({ authorization: 'Bot test-bot-token' }),

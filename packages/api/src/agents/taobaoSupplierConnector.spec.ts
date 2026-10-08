@@ -9,7 +9,10 @@ describe('Taobao supplier connector', () => {
     const connector = new TaobaoSupplierConnector({
       credentialProvider,
       now: () => new Date('2026-10-04T09:00:00.000Z'),
-      fetchImpl: (async (_input, init) => {
+      fetchImpl: (async (
+        _input: Parameters<typeof fetch>[0],
+        init: Parameters<typeof fetch>[1],
+      ) => {
         expect(init?.method).toBe('POST');
         const body = String(init?.body);
         expect(body).toContain('method=alibaba.pur.supplier.get');

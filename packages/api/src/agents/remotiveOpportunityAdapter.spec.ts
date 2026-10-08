@@ -3,7 +3,7 @@ import { RemotiveOpportunityAdapter } from './remotiveOpportunityAdapter';
 describe('Remotive opportunity adapter', () => {
   it('maps the public Remotive JSON shape', async () => {
     const adapter = new RemotiveOpportunityAdapter({
-      fetchImpl: (async (input, init) => {
+      fetchImpl: (async (input: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]) => {
         expect(String(input)).toContain('search=engineer');
         expect(String(input)).toContain('limit=2');
         expect(init?.headers).toEqual(

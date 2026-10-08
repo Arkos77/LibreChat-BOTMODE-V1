@@ -3,7 +3,10 @@ import { TaobaoProductMarketConnector } from './chinaProductConnector';
 describe('China product connector', () => {
   it('maps the public Taobao product-market response without inventing supplier verification', async () => {
     const connector = new TaobaoProductMarketConnector({
-      fetchImpl: (async (_input, init) => {
+      fetchImpl: (async (
+        _input: Parameters<typeof fetch>[0],
+        init: Parameters<typeof fetch>[1],
+      ) => {
         expect(init?.method).toBe('POST');
         const body = String(init?.body);
         expect(body).toContain('method=taobao.itemmarket.item.searching');
