@@ -2015,7 +2015,7 @@ export async function createRun({
       persistMissionOracleResult,
     );
     graphConfig = nativePlan.graphConfig;
-    graphConfig.signal = signal;
+    (graphConfig as typeof graphConfig & { signal?: AbortSignal }).signal = signal;
 
     /**
      * Native task nodes intentionally use task-scoped `nodeId`s as SDK agent identities.
