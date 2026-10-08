@@ -6,6 +6,7 @@ on:
     paths:
       - api/package.json
       - packages/api/package.json
+      - .github/workflows/firebase-lockfile-sync.yml
 
 permissions:
   contents: write
