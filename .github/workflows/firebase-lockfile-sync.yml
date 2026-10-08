@@ -1,6 +1,11 @@
 name: Regenerate Firebase migration lockfile
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - botmode-v1-firebase-security-fix
+    paths:
+      - api/package.json
+      - packages/api/package.json
 
 permissions:
   contents: write
