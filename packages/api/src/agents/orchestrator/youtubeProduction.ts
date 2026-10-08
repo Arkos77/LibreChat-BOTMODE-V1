@@ -169,7 +169,7 @@ export function createYouTubeDataApiPublisher(input: {
               Authorization: `Bearer ${input.accessToken}`,
               'Content-Type': thumbnail.mimeType,
             },
-            body: thumbnail.bytes,
+            body: new Uint8Array(thumbnail.bytes),
           },
         );
         if (!thumbnailResponse.ok)

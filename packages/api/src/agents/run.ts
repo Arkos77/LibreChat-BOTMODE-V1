@@ -2179,11 +2179,8 @@ export async function createRun({
   const asksUserQuestions =
     hitlCapable && !askToolAdminDisabled && agents.some(agentRequestsAskUserQuestion);
   const durableSubagentCheckpointRecovery =
-    (
-      subagentTasks?.store as
-        | (typeof subagentTasks.store & { supportsDurableCheckpointRecovery?: boolean })
-        | undefined
-    )?.supportsDurableCheckpointRecovery === true;
+    (subagentTasks?.store as { supportsDurableCheckpointRecovery?: boolean } | undefined)
+      ?.supportsDurableCheckpointRecovery === true;
   if (hitl || asksUserQuestions || eventActorCheckpointing || durableSubagentCheckpointRecovery) {
     const checkpointer = await getAgentCheckpointer(agentsEndpointConfig?.checkpointer);
     graphConfig.compileOptions = { ...graphConfig.compileOptions, checkpointer };
