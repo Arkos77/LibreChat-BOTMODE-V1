@@ -12,6 +12,17 @@ import {
 import { subagentStatusDotClass, subagentStatusLabelKey } from '~/components/Chat/Subagents/status';
 import { useLocalize } from '~/hooks';
 
+const MISSION_STATE_LABEL_KEYS = {
+  idle: 'com_ui_bot_mode_project_state_idle',
+  attention: 'com_ui_bot_mode_project_state_attention',
+  authorized: 'com_ui_bot_mode_project_state_authorized',
+  committed: 'com_ui_bot_mode_project_state_committed',
+  recovery: 'com_ui_bot_mode_project_state_recovery',
+  verified: 'com_ui_bot_mode_project_state_verified',
+  running: 'com_ui_bot_mode_project_state_running',
+  settled: 'com_ui_bot_mode_project_state_settled',
+} as const;
+
 const MTO_STEPS = [
   'REQUESTED',
   'PLANNED',
@@ -161,7 +172,7 @@ export default function BotModeProjectPanel({
       ].includes(type),
     );
   const hasSettled = latestMtoType === 'SETTLED';
-  const missionState = (() => {
+  const missionState = ((): keyof typeof MISSION_STATE_LABEL_KEYS => {
     if (plans.length === 0 && !hasSettled) return 'idle';
     if (hasRejectedOracle) return 'attention';
     if (hasSettled) return 'settled';
@@ -222,7 +233,7 @@ export default function BotModeProjectPanel({
                       : 'text-lg font-semibold tracking-tight text-text-primary'
                   }
                 >
-                  {localize(`com_ui_bot_mode_project_state_${missionState}`)}
+                  {localize(MISSION_STATE_LABEL_KEYS[missionState])}
                 </h2>
                 <span
                   className="rounded-full border border-border-light bg-surface-secondary px-2 py-0.5 text-xs font-medium text-text-secondary"
