@@ -1,9 +1,7 @@
-import { createControlPlaneProjection } from './controlPlane';
 import type { ControlPlaneProjection } from './controlPlane';
+import { createControlPlaneProjection } from './controlPlane';
 
-const projection = (
-  overrides: Partial<ControlPlaneProjection> = {},
-): ControlPlaneProjection => ({
+const projection = (overrides: Partial<ControlPlaneProjection> = {}): ControlPlaneProjection => ({
   goal: {
     goalId: 'goal-1',
     objective: 'Launch project',
@@ -44,8 +42,8 @@ describe('control plane projection', () => {
   it('creates an immutable-by-copy Goal → Project → Task projection', () => {
     const source = projection();
     const result = createControlPlaneProjection(source);
-    result.goal.constraints.push('changed');
-    result.tasks[0].dependsOn.push('changed');
+    (result.goal.constraints as string[]).push('changed');
+    (result.tasks[0].dependsOn as string[]).push('changed');
     expect(source.goal.constraints).toEqual(['budget-bound']);
     expect(source.tasks[0].dependsOn).toEqual([]);
   });

@@ -5,6 +5,15 @@ const mockCreateSchedulesService = jest.fn(() => ({
 
 jest.mock('@librechat/api', () => ({
   createSchedulesService: (...args) => mockCreateSchedulesService(...args),
+  getActivatedCapabilityRegistry: jest.fn(() => ({})),
+  getOpportunityWatchRunner: jest.fn(() => ({})),
+  getInformationWatchRunner: jest.fn(() => ({})),
+  getDefaultInformationWatchAdapters: jest.fn(() => []),
+  JobicyOpportunityAdapter: jest.fn(),
+  RemotiveOpportunityAdapter: jest.fn(),
+  discoverOpportunitySignals: jest.fn(),
+  reconcileCodeEnvironmentLifecycle: jest.fn(),
+  observeResolvedModelCatalog: jest.fn(),
 }));
 jest.mock('mongoose', () => ({ models: {} }));
 jest.mock('~/server/services/Config/app', () => ({ getAppConfig: jest.fn() }));

@@ -22,6 +22,7 @@ function clientForProjection() {
     },
     pendingApproval: null,
     jobCreatedAt: 123,
+    persistTransientMissionOracleEvidence: jest.fn().mockResolvedValue(undefined),
   };
 }
 

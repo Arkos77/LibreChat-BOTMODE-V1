@@ -88,7 +88,9 @@ describe('P11 governed media generation', () => {
         evaluate: () => ({ status: 'VERIFIED', criteria: ['mime'], evidenceIds: ['qa'] }),
       },
       artifactStore: { persist: async (artifact) => artifact },
-      onEvent: async (event) => events.push(event.payload?.type ?? event.type),
+      onEvent: async (event) => {
+        events.push(event.payload?.type ?? event.type);
+      },
     });
     expect(calls).toEqual(['media-task-1:media:1', 'media-task-1:media:2']);
     expect(result.fallbackUsed).toBe(true);
@@ -177,12 +179,17 @@ describe('P11 governed media generation', () => {
   });
 
   it('adapts registered image generation tools without coupling the pipeline to a provider SDK', async () => {
-    const execute = jest.fn(
-      async ({ toolName, args }: { toolName: string; args: { prompt: string } }) => ({
-        mimeType: 'image/png',
-        uri: `mem://${toolName}/${args.prompt}`,
-      }),
-    );
+    const execute = jest.fn(async ({ toolName, args }: { toolName: string; args: unknown }) => {
+      if (
+        typeof args !== 'object' ||
+        args === null ||
+        !('prompt' in args) ||
+        typeof args.prompt !== 'string'
+      ) {
+        throw new Error('Expected a media tool prompt');
+      }
+      return { mimeType: 'image/png', uri: `mem://${toolName}/${args.prompt}` };
+    });
     const openai = createToolGenerationProvider({
       id: 'openai:image_gen_oai',
       toolName: 'image_gen_oai',

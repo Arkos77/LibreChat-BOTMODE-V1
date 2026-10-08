@@ -18,7 +18,7 @@ export interface NativeMissionPlan {
 }
 
 function messageCandidate(
-  output: BaseGraphState['agentOutputs'][string] | undefined,
+  output: NonNullable<BaseGraphState['agentOutputs']>[string] | undefined,
 ): string | undefined {
   return typeof output?.content === 'string' && output.content.trim() !== ''
     ? output.content

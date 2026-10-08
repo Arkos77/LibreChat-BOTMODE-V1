@@ -5,6 +5,7 @@ import ChatView from '../ChatView';
 let mockConversation: Record<string, unknown> | null;
 
 jest.mock('react-router-dom', () => ({
+  useSearchParams: () => [new URLSearchParams(), jest.fn()],
   useParams: () => ({ conversationId: 'child-thread' }),
 }));
 

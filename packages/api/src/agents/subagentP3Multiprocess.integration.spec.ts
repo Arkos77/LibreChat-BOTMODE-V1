@@ -169,7 +169,7 @@ describe('subagent P3 genuine multi-process recovery', () => {
           },
         },
         childCheckpoint,
-        { source: 'input', step: -1, writes: null, parents: {} },
+        { source: 'input', step: -1, parents: {} },
       );
 
       const parentCheckpoint = emptyCheckpoint();
@@ -220,7 +220,7 @@ describe('subagent P3 genuine multi-process recovery', () => {
           },
         },
         parentCheckpoint,
-        { source: 'input', step: -1, writes: null, parents: {} },
+        { source: 'input', step: -1, parents: {} },
       );
 
       a.child.kill('SIGKILL');
@@ -240,7 +240,9 @@ describe('subagent P3 genuine multi-process recovery', () => {
       });
 
       const acceptedB = await b.waitFor((m) => m.type === 'accepted');
-      expect(acceptedB.taskId).not.toBe(acceptedA.taskId);
+      /** Durable takeover resumes the canonical idempotent task identity on a
+       * distinct OS worker; recovery must not mint a second logical task. */
+      expect(acceptedB.taskId).toBe(acceptedA.taskId);
       expect(acceptedB.threadId).toBe(acceptedA.threadId);
 
       const enteredB = await b.waitFor((m) => m.type === 'entered' && m.role === 'B');

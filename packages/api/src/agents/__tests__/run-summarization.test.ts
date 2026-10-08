@@ -212,7 +212,9 @@ async function callAndCapture(
     compactionSemanticIndex: opts.compactionSemanticIndex,
     subagentTasks: opts.subagentTasks,
     modelCallbacks: opts.modelCallbacks,
-    modelCallbackFactory: opts.modelCallbackFactory,
+    modelCallbackFactory: opts.modelCallbackFactory as unknown as Parameters<
+      typeof createRun
+    >[0]['modelCallbackFactory'],
     user: opts.user,
     tenantId: opts.tenantId,
     streaming: true,
@@ -3425,7 +3427,7 @@ describe('createRun P6 orchestrator topology', () => {
         toolUseId: 'tool-p6-byom',
         executingAgentId: plan.tasks[0].nodeId,
       },
-    });
+    } as Parameters<typeof executeHooks>[0]);
 
     expect(result.decision).toBe('ask');
   });

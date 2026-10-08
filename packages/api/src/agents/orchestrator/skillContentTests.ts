@@ -38,6 +38,7 @@ export function runSkillContentTests(input: SkillContentTestInput): SkillContent
   if (producerAgentId === checkerAgentId)
     throw new Error('Skill tests require an independent checker');
   const payload = input.payload ?? input.update;
+  if (payload === undefined) throw new Error('Skill tests require a payload');
   if (createImprovementPayloadDigest(payload) !== payloadDigest)
     throw new Error('Skill tests payload digest mismatch');
   if (!Array.isArray(input.tests) || input.tests.length < 1 || input.tests.length > 32)
