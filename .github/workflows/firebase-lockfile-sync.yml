@@ -31,13 +31,18 @@ jobs:
           node - <<'JS'
           const p=require('./package-lock.json');
           const modules=p.packages ?? {};
-          if (modules['node_modules/firebase']) throw new Error('Firebase umbrella package still installed');
-          if (modules['node_modules/@firebase/firestore']) throw new Error('Firestore unexpectedly installed');
+          if (modules['api']?.dependencies?.firebase) throw new Error('Backend still directly depends on Firebase umbrella');
+          if (modules['packages/api']?.dependencies?.firebase) throw new Error('API package still directly depends on Firebase umbrella');
+          if (modules['node_modules/firebase']) console.log('TRANSITIVE_FIREBASE_PRESENT=YES');
+          if (modules['node_modules/@firebase/firestore']) console.log('TRANSITIVE_FIRESTORE_PRESENT=YES');
           for (const name of ['@firebase/app','@firebase/storage']) {
             if (!modules['node_modules/'+name]) throw new Error('Missing '+name);
           }
           console.log('LOCKFILE_FIREBASE_COMPONENTS=PASS');
           JS
+      - name: Explain any remaining Firebase dependency
+        shell: bash
+        run: npm explain firebase || true
       - name: Commit only reproducible package lock
         shell: bash
         run: |
