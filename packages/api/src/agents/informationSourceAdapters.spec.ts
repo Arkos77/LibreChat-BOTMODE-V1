@@ -20,7 +20,7 @@ describe('information source adapters', () => {
       fetchImpl: (async () =>
         new Response('<rss><channel><item/><item/></channel></rss>', {
           status: 200,
-        })) as typeof fetch,
+        })) as unknown as typeof fetch,
     });
     await expect(adapter.check()).resolves.toMatchObject({
       sourceId: 'fmhy',
@@ -33,7 +33,7 @@ describe('information source adapters', () => {
     const adapter = new RssInformationWatchAdapter({
       descriptor: FMHY_INFORMATION_SOURCE,
       feedUrl: 'https://example.com/feed.xml',
-      fetchImpl: (async () => new Response('', { status: 503 })) as typeof fetch,
+      fetchImpl: (async () => new Response('', { status: 503 })) as unknown as typeof fetch,
     });
     await expect(adapter.check()).rejects.toThrow('HTTP 503');
   });
@@ -56,7 +56,7 @@ describe('information source adapters', () => {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
-      }) as typeof fetch,
+      }) as unknown as typeof fetch,
     });
     await expect(adapter.check()).resolves.toMatchObject({
       sourceId: 'youtube',
@@ -84,7 +84,7 @@ describe('information source adapters', () => {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
-      }) as typeof fetch,
+      }) as unknown as typeof fetch,
     });
     await expect(adapter.check()).resolves.toMatchObject({
       sourceId: 'tgstat',
@@ -119,7 +119,7 @@ describe('information source adapters', () => {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
-      }) as typeof fetch,
+      }) as unknown as typeof fetch,
     });
     await expect(adapter.check()).resolves.toMatchObject({
       sourceId: 'reddit',
@@ -150,7 +150,7 @@ describe('information source adapters', () => {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
-      }) as typeof fetch,
+      }) as unknown as typeof fetch,
     });
     await expect(adapter.check()).resolves.toMatchObject({
       sourceId: 'discord',

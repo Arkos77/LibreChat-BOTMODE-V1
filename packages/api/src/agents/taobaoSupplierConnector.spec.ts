@@ -25,7 +25,7 @@ describe('Taobao supplier connector', () => {
           }),
           { status: 200 },
         );
-      }) as typeof fetch,
+      }) as unknown as typeof fetch,
     });
 
     await expect(connector.getSupplier({ supplierId: 'sup-1' })).resolves.toEqual({
@@ -40,7 +40,7 @@ describe('Taobao supplier connector', () => {
   it('fails closed when credentials are missing', async () => {
     const connector = new TaobaoSupplierConnector({
       credentialProvider: { get: async () => undefined },
-      fetchImpl: (async () => new Response('', { status: 200 })) as typeof fetch,
+      fetchImpl: (async () => new Response('', { status: 200 })) as unknown as typeof fetch,
     });
     await expect(connector.getSupplier({ supplierId: 'sup-1' })).rejects.toThrow(
       /credentials are unavailable/,
@@ -50,7 +50,7 @@ describe('Taobao supplier connector', () => {
   it('fails closed on upstream errors', async () => {
     const connector = new TaobaoSupplierConnector({
       credentialProvider,
-      fetchImpl: (async () => new Response('', { status: 401 })) as typeof fetch,
+      fetchImpl: (async () => new Response('', { status: 401 })) as unknown as typeof fetch,
     });
     await expect(connector.getSupplier({ supplierId: 'sup-1' })).rejects.toThrow(
       'Taobao supplier HTTP 401',
