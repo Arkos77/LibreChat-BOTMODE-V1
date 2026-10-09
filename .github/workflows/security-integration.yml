@@ -70,5 +70,18 @@ jobs:
           }
           console.log('HIGH_SEVERITY_COUNT='+audit.metadata?.vulnerabilities?.high);
           JS
+      - name: Inspect production-only Tailwind reachability
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== PACKAGE DECLARATIONS ==='
+          node <<'JS'
+          for (const name of ['./client/package.json','./packages/client/package.json','./api/package.json']) {
+            const p=require(name);
+            console.log(JSON.stringify({workspace:p.name,tailwindDependency:p.dependencies?.tailwindcss||null,tailwindDevDependency:p.devDependencies?.tailwindcss||null,nodemonDependency:p.dependencies?.nodemon||null,nodemonDevDependency:p.devDependencies?.nodemon||null}));
+          }
+          JS
+          echo '=== PRODUCTION TREE ==='
+          npm ls --omit=dev tailwindcss braces chokidar micromatch fast-glob --all --depth=4 || true
       - name: Production vulnerability baseline
         run: npm audit --omit=dev --audit-level=critical
