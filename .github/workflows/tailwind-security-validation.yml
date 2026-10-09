@@ -34,8 +34,6 @@ jobs:
           npm run build --workspace @librechat/data-schemas
           npm run build --workspace @librechat/client
           npm run build --workspace @librechat/frontend
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=critical
       - name: Commit updated lockfile on isolated branch
         run: |
           if ! git diff --quiet -- package-lock.json; then
@@ -45,3 +43,6 @@ jobs:
             git commit -m 'build(deps): sync Tailwind security lockfile'
             git push
           fi
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=critical
