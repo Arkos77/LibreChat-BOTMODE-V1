@@ -73,6 +73,30 @@ jobs:
               echo "Postgres incorrect password was accepted" >&2; exit 1
             fi
           fi
+      - name: Verify authenticated restart with preserved volumes
+        env:
+          BOTMODE_MONGO_PASSWORD: ci-only-mongo-credential
+          POSTGRES_PASSWORD: ci-only-postgres-credential
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          set -euo pipefail
+          args=(-f docker-compose.botmode.yml)
+          if [ "$PROFILE" = lite ]; then args+=(-f docker-compose.botmode-lite.yml); fi
+          docker compose "${args[@]}" restart mongodb
+          if [ "$PROFILE" = full ]; then docker compose "${args[@]}" restart vectordb; fi
+          ready=0
+          for attempt in $(seq 1 60); do
+            if docker compose "${args[@]}" exec -T mongodb sh -ec '
+              if command -v mongosh >/dev/null; then cli=mongosh; else cli=mongo; fi
+              "$cli" --quiet --authenticationDatabase admin -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --eval "db.adminCommand({ping:1}).ok" | grep -q 1
+            ' >/dev/null 2>&1; then
+              if [ "$PROFILE" = lite ] || docker compose "${args[@]}" exec -T vectordb sh -ec '
+                PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$(hostname -i)" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT 1" | grep -q 1
+              ' >/dev/null 2>&1; then ready=1; break; fi
+            fi
+            sleep 2
+          done
+          test "$ready" = 1
       - name: Diagnose failures
         if: failure()
         env:
