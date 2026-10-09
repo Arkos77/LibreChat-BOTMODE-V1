@@ -64,6 +64,46 @@ jobs:
           npm run build --workspace @librechat/data-schemas
           npm run build --workspace librechat-data-provider
           npm exec --workspace @librechat/api -- jest --runInBand --coverage=false --runTestsByPath src/cdn/__tests__/s3.test.ts src/cdn/__tests__/cloudfront.test.ts
+      - name: Check modular Firebase CRUD operations without network
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'JS'
+          const assert = require('node:assert/strict');
+          const { initializeApp, deleteApp } = require('@firebase/app');
+          const { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } = require('@firebase/storage');
+          const app = initializeApp(
+            { apiKey: 'fake-key', projectId: 'fake-project', appId: '1:123:web:abc', storageBucket: 'fake-project.appspot.com' },
+            'botmode-crud-contract'
+          );
+          const storage = getStorage(app);
+          const originalFetch = globalThis.fetch;
+          const visited = [];
+          globalThis.fetch = async (input, init) => {
+            const url = typeof input === 'string' ? input : input.url;
+            const method = init?.method ?? input?.method ?? 'GET';
+            visited.push({ url, method });
+            if (method === 'POST' && url.includes('/o?')) {
+              return new Response(JSON.stringify({name:'images/test-user/file.txt',bucket:'fake-project.appspot.com',downloadTokens:'test-token'}), {status:200,headers:{'content-type':'application/json'}});
+            }
+            if (method === 'GET' && url.includes('/o/')) {
+              return new Response(JSON.stringify({name:'images/test-user/file.txt',bucket:'fake-project.appspot.com',downloadTokens:'test-token'}), {status:200,headers:{'content-type':'application/json'}});
+            }
+            if (method === 'DELETE' && url.includes('/o/')) return new Response(null,{status:204});
+            throw new Error('Unexpected Firebase request: '+method+' '+url);
+          };
+          (async () => {
+            const target=ref(storage,'images/test-user/file.txt');
+            assert.equal(target.fullPath,'images/test-user/file.txt');
+            await uploadBytes(target,new Uint8Array([65,66,67]));
+            const url=await getDownloadURL(target);
+            assert.ok(url.includes('/o/'));
+            await deleteObject(target);
+            assert.ok(visited.some(x=>x.method==='POST'));
+            assert.ok(visited.some(x=>x.method==='DELETE'));
+            console.log('FIREBASE_CRUD_CONTRACT=PASS');
+          })().finally(async()=>{globalThis.fetch=originalFetch;await deleteApp(app);}).catch(err=>{console.error(err);process.exitCode=1;});
+          JS
       - name: Confirm Firestore and gRPC are not pulled in
         shell: bash
         run: |
