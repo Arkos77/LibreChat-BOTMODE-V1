@@ -260,6 +260,19 @@ const useNewConvo = (index = 0) => {
 
         const getParams = (nextConversation: TConversation) => {
           const nextParams = new URLSearchParams(searchParams);
+          // A manual agent choice supersedes stale endpoint/model parameters
+          // from a previous New Chat link. Keeping them would re-select the
+          // old model on navigation or reload, even with an authorized agent.
+          if (
+            nextConversation.conversationId === Constants.NEW_CONVO &&
+            isAgentsEndpoint(nextConversation.endpoint) &&
+            nextConversation.agent_id &&
+            !nextConversation.spec
+          ) {
+            for (const key of ['endpoint', 'endpointType', 'model', 'agent_id', 'assistant_id']) {
+              nextParams.delete(key);
+            }
+          }
           nextParams.delete('projectId');
           if (
             nextConversation.conversationId === Constants.NEW_CONVO &&

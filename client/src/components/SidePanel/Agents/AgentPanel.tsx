@@ -637,9 +637,10 @@ export default function AgentPanel() {
   );
 
   const handleSelectAgent = useCallback(() => {
-    if (agent_id) {
-      // Avoid a second query and two staged composer resets: the builder
-      // already holds the authorized agent details when Select is enabled.
+    // Never fall back to an asynchronous lookup after a builder Select click:
+    // an immediate send could otherwise use the previously active model.
+    // Only a loaded, matching authorized agent can be selected from here.
+    if (agent_id && agentQuery.data?.id === agent_id) {
       void onSelectAgent(agent_id, agentQuery.data);
     }
   }, [agent_id, agentQuery.data, onSelectAgent]);
@@ -692,7 +693,11 @@ export default function AgentPanel() {
                 </Button>
                 <Button
                   variant="submit"
-                  disabled={isEphemeralAgent(agent_id) || agentQuery.isInitialLoading}
+                  disabled={
+                    isEphemeralAgent(agent_id) ||
+                    agentQuery.isInitialLoading ||
+                    agentQuery.data?.id !== agent_id
+                  }
                   onClick={(e) => {
                     e.preventDefault();
                     handleSelectAgent();
