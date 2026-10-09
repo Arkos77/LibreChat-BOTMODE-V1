@@ -1,6 +1,6 @@
 import { renderHook, act } from '@testing-library/react';
 import { EModelEndpoint } from 'librechat-data-provider';
-import type { TConversation } from 'librechat-data-provider';
+import type { Agent, TConversation } from 'librechat-data-provider';
 
 const mockNewConversation = jest.fn();
 const mockFetchQuery = jest.fn();
@@ -104,7 +104,7 @@ describe('useSelectAgent', () => {
   });
 
   it('commits the builder-selected agent once without refetching or retaining the previous model', async () => {
-    const selectedAgent = { id: 'agent-1', name: 'Builder Agent', model: 'mock-model-a' };
+    const selectedAgent = { id: 'agent-1', name: 'Builder Agent', model: 'mock-model-a' } as Agent;
     const { result } = renderHook(() => useSelectAgent());
 
     await act(async () => {
