@@ -103,6 +103,22 @@ describe('useSelectAgent', () => {
     errorSpy.mockRestore();
   });
 
+  it('commits the builder-selected agent once without refetching or retaining the previous model', async () => {
+    const selectedAgent = { id: 'agent-1', name: 'Builder Agent', model: 'mock-model-a' };
+    const { result } = renderHook(() => useSelectAgent());
+
+    await act(async () => {
+      await result.current.onSelect('agent-1', selectedAgent);
+    });
+
+    expect(mockFetchQuery).not.toHaveBeenCalled();
+    expect(mockNewConversation).toHaveBeenCalledTimes(1);
+    expect(mockNewConversation.mock.calls[0][0].preset).toMatchObject({
+      endpoint: EModelEndpoint.agents,
+      agent_id: 'agent-1',
+    });
+  });
+
   it('keeps the composer for the assistants path as well', async () => {
     mockGetConversation.mockResolvedValue({
       endpoint: EModelEndpoint.assistants,
