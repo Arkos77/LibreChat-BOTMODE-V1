@@ -219,7 +219,7 @@ if [ "$START_STACK" -eq 1 ]; then
       "$cli" --quiet --authenticationDatabase admin -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --eval "db.adminCommand({ping:1}).ok" | grep -q 1
     ' >/dev/null 2>&1; then
       if [ "$PROFILE" = "lite" ] || docker compose "${COMPOSE_ARGS[@]}" exec -T vectordb sh -ec '
-        PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT 1" | grep -q 1
+        PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$(hostname -i | awk '{print $1}')" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT 1" | grep -q 1
       ' >/dev/null 2>&1; then
         db_verified=1
         break
