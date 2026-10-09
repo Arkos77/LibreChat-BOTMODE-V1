@@ -44,6 +44,24 @@ jobs:
       - name: Explain any remaining Firebase dependency
         shell: bash
         run: npm explain firebase || true
+      - name: Verify clean installation and dependency ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          echo '=== RESOLVED FIREBASE DEPENDENCIES ==='
+          npm ls firebase @firebase/firestore @grpc/grpc-js @firebase/app @firebase/storage --all --depth=4 || true
+          echo '=== DIRECT MODULE CONTRACT ==='
+          node - <<'JS'
+          const assert = require('node:assert/strict');
+          const a=require('@firebase/app');
+          const s=require('@firebase/storage');
+          assert.equal(typeof a.initializeApp,'function');
+          assert.equal(typeof s.getStorage,'function');
+          assert.equal(typeof s.uploadBytes,'function');
+          assert.equal(typeof s.deleteObject,'function');
+          console.log('MODULAR_RUNTIME_EXPORTS=PASS');
+          JS
       - name: Commit only reproducible package lock
         shell: bash
         run: |
