@@ -119,6 +119,23 @@ describe('useSelectAgent', () => {
     });
   });
 
+  it('commits a builder selection before the next microtask', () => {
+    const selectedAgent = { id: 'agent-1', name: 'Builder Agent', model: 'mock-model-a' } as Agent;
+    const { result } = renderHook(() => useSelectAgent());
+
+    act(() => {
+      // Do not await: an immediate message send must see the selected agent.
+      void result.current.onSelect('agent-1', selectedAgent);
+    });
+
+    expect(mockNewConversation).toHaveBeenCalledTimes(1);
+    expect(mockNewConversation.mock.calls[0][0].preset).toMatchObject({
+      endpoint: EModelEndpoint.agents,
+      agent_id: 'agent-1',
+    });
+    expect(mockFetchQuery).not.toHaveBeenCalled();
+  });
+
   it('keeps the composer for the assistants path as well', async () => {
     mockGetConversation.mockResolvedValue({
       endpoint: EModelEndpoint.assistants,
