@@ -23,8 +23,11 @@ Node.js 24 et npm restent nécessaires pour le développement source et les test
 ```bash
 git clone --depth 1 https://github.com/Arkos77/LibreChat-BOTMODE-V1.git
 cd LibreChat-BOTMODE-V1
+# Installation stable : utiliser uniquement un commit ou tag dont l'image GHCR sha-<commit> est publiée.
 ./install.sh
 ```
+
+**Important :** tant que la PR #14 n'est pas fusionnée, la branche par défaut ne contient pas nécessairement les correctifs de consolidation. Pour tester la candidate, utiliser un checkout explicite de la branche `botmode-v1-consolidation-ci-20261009`, vérifier son SHA, puis publier et vérifier l'image GHCR `sha-<12 premiers caractères du SHA>` correspondante **avant** d'exécuter `./install.sh`. Ne jamais remplacer silencieusement une image manquante par `edge` ou par l'image upstream.
 
 Le bootstrap :
 
