@@ -55,6 +55,7 @@ import { useResetChatBadges } from './useChatBadges';
 import { useApplyModelSpecEffects } from './Agents';
 import { useAgentsMapContext } from '~/Providers';
 import { usePauseGlobalAudio } from './Audio';
+import { resolveNewConversationTemplate } from '~/utils/resolveNewConversationTemplate';
 import { useHasAccess } from '~/hooks';
 import store from '~/store';
 
@@ -361,14 +362,14 @@ const useNewConvo = (index = 0) => {
         resetBadges();
       }
 
-      const templateConvoId = _template.conversationId ?? '';
       const paramEndpoint =
         isParamEndpoint(_template.endpoint ?? '', _template.endpointType ?? '') === true ||
         isParamEndpoint(_preset?.endpoint ?? '', _preset?.endpointType ?? '');
-      const template =
-        paramEndpoint === true && templateConvoId && templateConvoId === Constants.NEW_CONVO
-          ? { endpoint: _template.endpoint, chatProjectId: _template.chatProjectId }
-          : _template;
+      const template = resolveNewConversationTemplate({
+        template: _template,
+        preset: _preset,
+        paramEndpoint,
+      });
 
       const conversation = {
         conversationId: Constants.NEW_CONVO as string,
