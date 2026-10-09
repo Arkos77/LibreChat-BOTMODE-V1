@@ -54,7 +54,7 @@ async function createAgent(page: Page, name: string, description?: string): Prom
   });
 }
 
-async function selectAgent(page: Page, agentName: string) {
+async function selectAgent(page: Page, agentName: string, expectedAgentId: string) {
   await modelTrigger(page).click();
   await page.getByRole('option', { name: 'My Agents' }).click();
   await page.getByRole('option', { name: agentName }).click();
@@ -71,14 +71,14 @@ async function selectAgent(page: Page, agentName: string) {
           }
           try {
             const stored = JSON.parse(raw) as { endpoint?: string; agent_id?: string };
-            return stored.endpoint === 'agents' && Boolean(stored.agent_id);
+            return stored.endpoint === 'agents' ? (stored.agent_id ?? null) : null;
           } catch {
-            return false;
+            return null;
           }
         }, `${LocalStorageKeys.LAST_CONVO_SETUP}_0`),
       { timeout: 15000 },
     )
-    .toBe(true);
+    .toBe(expectedAgentId);
 }
 
 async function selectEphemeralModel(page: Page) {
@@ -120,10 +120,10 @@ test.describe('soft default model spec', () => {
     await expect(modelTrigger(page)).toContainText(SOFT_DEFAULT_LABEL, { timeout: 15000 });
 
     const agentName = uniqueName('E2E Soft Agent');
-    await createAgent(page, agentName);
+    const agent = await createAgent(page, agentName);
     await page.goto(NEW_CHAT_PATH, { timeout: 10000 });
 
-    await selectAgent(page, agentName);
+    await selectAgent(page, agentName, agent.id);
 
     await page.reload({ timeout: 10000 });
     await expect(modelTrigger(page)).toContainText(agentName, { timeout: 15000 });
@@ -205,10 +205,10 @@ test.describe('soft default model spec', () => {
     await expect(modelTrigger(page)).toContainText(SOFT_DEFAULT_LABEL, { timeout: 15000 });
 
     const agentName = uniqueName('E2E Agents Only');
-    await createAgent(page, agentName);
+    const agent = await createAgent(page, agentName);
     await page.goto(NEW_CHAT_PATH, { timeout: 10000 });
 
-    await selectAgent(page, agentName);
+    await selectAgent(page, agentName, agent.id);
     await sendAndAwaitReply(page, 'agents-only agent conversation');
 
     await newChat(page);
@@ -268,9 +268,9 @@ test.describe('soft default model spec', () => {
 
     const agentName = uniqueName('E2E URL Spec Agent');
     const agentDescription = 'Powered by E2E Mock';
-    await createAgent(page, agentName, agentDescription);
+    const agent = await createAgent(page, agentName, agentDescription);
     await page.goto(NEW_CHAT_PATH, { timeout: 10000 });
-    await selectAgent(page, agentName);
+    await selectAgent(page, agentName, agent.id);
 
     // Mirrors refreshing the agent tab: the restored selection is re-stamped as the
     // last conversation setup.
@@ -315,7 +315,7 @@ test.describe('soft default model spec', () => {
     const agentName = uniqueName('E2E Stale Agent');
     const agent = await createAgent(page, agentName);
     await page.goto(NEW_CHAT_PATH, { timeout: 10000 });
-    await selectAgent(page, agentName);
+    await selectAgent(page, agentName, agent.id);
 
     await page.reload({ timeout: 10000 });
     await expect(modelTrigger(page)).toContainText(agentName, { timeout: 15000 });
@@ -329,9 +329,9 @@ test.describe('soft default model spec', () => {
     // A live selection must still outrank the soft default after the fix: recreate,
     // select, and confirm the carry-forward behavior is intact on a cold load.
     const survivorName = uniqueName('E2E Live Agent');
-    await createAgent(page, survivorName);
+    const survivor = await createAgent(page, survivorName);
     await page.goto(NEW_CHAT_PATH, { timeout: 10000 });
-    await selectAgent(page, survivorName);
+    await selectAgent(page, survivorName, survivor.id);
     await page.goto(NEW_CHAT_PATH, { timeout: 10000 });
     await expect(modelTrigger(page)).toContainText(survivorName, { timeout: 15000 });
   });
