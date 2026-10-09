@@ -1,0 +1,48 @@
+name: Tailwind 3 Security Validation
+on:
+  push:
+    branches: [botmode-v1-tailwind-security-fix]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Regenerate npm lockfile without scripts
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Validate resolved Tailwind version
+        run: |
+          node <<'JS'
+          const assert=require('node:assert/strict');
+          const p=require('./package-lock.json');
+          assert.equal(p.packages['node_modules/tailwindcss'].version,'3.4.19');
+          console.log('TAILWIND_PIN=PASS');
+          JS
+      - name: Clean install
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build frontend
+        run: |
+          npm run build --workspace librechat-data-provider
+          npm run build --workspace @librechat/data-schemas
+          npm run build --workspace @librechat/client
+          npm run build --workspace @librechat/frontend
+      - name: Commit updated lockfile on isolated branch
+        run: |
+          if ! git diff --quiet -- package-lock.json; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add package-lock.json
+            git commit -m 'build(deps): sync Tailwind security lockfile'
+            git push
+          fi
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=critical
