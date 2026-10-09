@@ -22,14 +22,17 @@ export default function useSelectAgent() {
   const getConversation = useGetConversation(0);
 
   const updateConversation = useCallback(
-    async (
+    (
       agent: Partial<Agent>,
       template: Partial<TPreset | TConversation>,
       /** The passes that follow the first one only carry freshly fetched agent details into the
        * composer the first pass opened, so a paste started meanwhile keeps its draft. */
       keepComposerState = false,
     ) => {
-      const conversation = await getConversation();
+      // useGetConversation is synchronous (Recoil snapshot). Awaiting its value
+      // defers the first conversation update until a microtask after the Select
+      // click, allowing an immediate send to use the previous endpoint/model.
+      const conversation = getConversation();
       logger.log('conversation', 'Updating conversation with agent', agent);
       if (isAssistantsEndpoint(conversation?.endpoint)) {
         newConversation({
