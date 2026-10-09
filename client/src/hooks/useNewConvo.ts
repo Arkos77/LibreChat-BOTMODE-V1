@@ -47,6 +47,7 @@ import {
   logger,
 } from '~/utils';
 import { useDeleteFilesMutation, useGetEndpointsQuery, useGetStartupConfig } from '~/data-provider';
+import { resolveNewConversationTemplate } from '~/utils/resolveNewConversationTemplate';
 import { supersedeNavigation } from './Conversations/useNavigateToConvo';
 import useGetConversation from './Conversations/useGetConversation';
 import useAssistantListMap from './Assistants/useAssistantListMap';
@@ -55,7 +56,6 @@ import { useResetChatBadges } from './useChatBadges';
 import { useApplyModelSpecEffects } from './Agents';
 import { useAgentsMapContext } from '~/Providers';
 import { usePauseGlobalAudio } from './Audio';
-import { resolveNewConversationTemplate } from '~/utils/resolveNewConversationTemplate';
 import { useHasAccess } from '~/hooks';
 import store from '~/store';
 
