@@ -269,7 +269,7 @@ const useNewConvo = (index = 0) => {
             nextConversation.agent_id &&
             !nextConversation.spec
           ) {
-            for (const key of ['endpoint', 'endpointType', 'model', 'agent_id', 'assistant_id']) {
+            for (const key of ['endpoint', 'endpointType', 'model', 'agent_id', 'assistant_id', 'spec']) {
               nextParams.delete(key);
             }
           }

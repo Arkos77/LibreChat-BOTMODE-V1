@@ -119,6 +119,42 @@ describe('useSelectAgent', () => {
     });
   });
 
+  it('clears a previous soft model spec and model when explicitly selecting an agent', async () => {
+    mockGetConversation.mockReturnValue({
+      endpoint: EModelEndpoint.openAI,
+      spec: 'e2e-soft-default',
+      model: 'old-model',
+    } as TConversation);
+    const selectedAgent = { id: 'agent-1', name: 'Builder Agent' } as Agent;
+    const { result } = renderHook(() => useSelectAgent());
+
+    await act(async () => {
+      await result.current.onSelect('agent-1', selectedAgent);
+    });
+
+    expect(mockGetDefaultConversation).toHaveBeenCalledWith({
+      conversation: expect.objectContaining({
+        agent_id: 'agent-1',
+        spec: undefined,
+        model: undefined,
+      }),
+      preset: expect.objectContaining({
+        endpoint: EModelEndpoint.agents,
+        agent_id: 'agent-1',
+        spec: undefined,
+        model: undefined,
+      }),
+    });
+    expect(mockNewConversation.mock.calls[0][0].preset).toEqual(
+      expect.objectContaining({
+        endpoint: EModelEndpoint.agents,
+        agent_id: 'agent-1',
+        spec: undefined,
+        model: undefined,
+      }),
+    );
+  });
+
   it('commits a builder selection before the next microtask', () => {
     const selectedAgent = { id: 'agent-1', name: 'Builder Agent', model: 'mock-model-a' } as Agent;
     const { result } = renderHook(() => useSelectAgent());

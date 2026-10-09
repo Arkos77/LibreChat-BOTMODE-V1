@@ -43,12 +43,18 @@ export default function useSelectAgent() {
         return;
       }
       const currentConvo = getDefaultConversation({
-        conversation: { ...(conversation ?? {}), agent_id: agent.id },
-        preset: template,
+        conversation: {
+          ...(conversation ?? {}),
+          agent_id: agent.id,
+          // The previous model spec must not survive an explicit agent choice.
+          spec: undefined,
+          model: undefined,
+        },
+        preset: { ...template, spec: undefined, model: undefined },
       });
       newConversation({
         template: currentConvo,
-        preset: template as Partial<TPreset>,
+        preset: { ...template, spec: undefined, model: undefined } as Partial<TPreset>,
         keepComposerState,
       });
     },
@@ -66,6 +72,8 @@ export default function useSelectAgent() {
           endpoint: EModelEndpoint.agents,
           agent_id: value,
           conversationId: Constants.NEW_CONVO as string,
+          spec: undefined,
+          model: undefined,
         });
         return;
       }
@@ -95,6 +103,8 @@ export default function useSelectAgent() {
         endpoint: EModelEndpoint.agents,
         agent_id: agent.id,
         conversationId: Constants.NEW_CONVO as string,
+        spec: undefined,
+        model: undefined,
       };
 
       await updateConversation({ id: agent.id }, template);
