@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { LocalStorageKeys } from 'librechat-data-provider';
 import type { TStartupConfig } from 'librechat-data-provider';
 import type { Page } from '@playwright/test';
 import { getPrimaryE2EUser } from '../../setup/users.mock';
@@ -58,6 +59,26 @@ async function selectAgent(page: Page, agentName: string) {
   await page.getByRole('option', { name: 'My Agents' }).click();
   await page.getByRole('option', { name: agentName }).click();
   await expect(modelTrigger(page)).toContainText(agentName);
+  // A selector label alone may be optimistic. Ensure the actual conversation
+  // selection has been durably stamped before exercising cold-load restore.
+  await expect
+    .poll(
+      () =>
+        page.evaluate((key) => {
+          const raw = localStorage.getItem(key);
+          if (!raw) {
+            return false;
+          }
+          try {
+            const stored = JSON.parse(raw) as { endpoint?: string; agent_id?: string };
+            return stored.endpoint === 'agents' && Boolean(stored.agent_id);
+          } catch {
+            return false;
+          }
+        }, `${LocalStorageKeys.LAST_CONVO_SETUP}_0`),
+      { timeout: 15000 },
+    )
+    .toBe(true);
 }
 
 async function selectEphemeralModel(page: Page) {

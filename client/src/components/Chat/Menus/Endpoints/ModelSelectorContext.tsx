@@ -268,11 +268,16 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
       } else if (endpoint.value) {
         onSelectEndpoint?.(endpoint.value, { model });
       }
-      setSelectedValues({
-        endpoint: endpoint.value,
-        model,
-        modelSpec: '',
-      });
+      // Agent labels must reflect the committed conversation, not an optimistic
+      // selector-only state that can disappear on an immediate cold reload.
+      // useSelectorEffects updates this from the Recoil conversation atom.
+      if (!isAgentsEndpoint(endpoint.value)) {
+        setSelectedValues({
+          endpoint: endpoint.value,
+          model,
+          modelSpec: '',
+        });
+      }
 
       const modelDisplayName = getModelDisplayName(endpoint, model);
       const announcement = localize('com_ui_model_selected', { 0: modelDisplayName });
