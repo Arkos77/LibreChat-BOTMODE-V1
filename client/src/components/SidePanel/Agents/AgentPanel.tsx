@@ -638,9 +638,11 @@ export default function AgentPanel() {
 
   const handleSelectAgent = useCallback(() => {
     if (agent_id) {
-      onSelectAgent(agent_id);
+      // Avoid a second query and two staged composer resets: the builder
+      // already holds the authorized agent details when Select is enabled.
+      void onSelectAgent(agent_id, agentQuery.data);
     }
-  }, [agent_id, onSelectAgent]);
+  }, [agent_id, agentQuery.data, onSelectAgent]);
 
   const canEditAgent = useMemo(() => {
     if (!agentQuery.data?.id) {
