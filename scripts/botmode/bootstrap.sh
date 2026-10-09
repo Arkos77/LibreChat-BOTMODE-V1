@@ -137,6 +137,53 @@ else
   printf 'BOTMODE_ENV_EXISTING=YES\n'
 fi
 
+# Bootstrap database credentials without printing them. Existing databases must never
+# be silently switched to authentication or a different password.
+read_env_value() {
+  local key="$1" line
+  line=$(grep -E "^\${key}=" .env | tail -n 1 || true)
+  printf '%s' "${line#*=}"
+}
+set_env_value() {
+  local key="$1" value="$2"
+  printf '%s=%s\\n' "$key" "$value" >> .env
+}
+mongo_pass=$(read_env_value BOTMODE_MONGO_PASSWORD)
+pg_pass=$(read_env_value POSTGRES_PASSWORD)
+if [ -z "$mongo_pass" ] || [ -z "$pg_pass" ]; then
+  if [ "$CHECK_ONLY" -eq 1 ]; then
+    echo "Missing BOTMODE_MONGO_PASSWORD or POSTGRES_PASSWORD in .env; run ./install.sh --no-start first." >&2
+    exit 4
+  fi
+  need openssl
+  if [ -z "$mongo_pass" ]; then
+    mongo_pass=$(openssl rand -hex 32)
+    set_env_value BOTMODE_MONGO_PASSWORD "$mongo_pass"
+  fi
+  if [ -z "$pg_pass" ]; then
+    pg_pass=$(openssl rand -hex 32)
+    set_env_value POSTGRES_PASSWORD "$pg_pass"
+  fi
+  chmod 600 .env
+fi
+
+# Docker's database initialization credentials only apply to empty data
+# directories. Refuse to guess whether pre-existing volumes were initialized
+# with authentication; the operator must run an explicit migration.
+if [ "$CHECK_ONLY" -eq 0 ]; then
+  for db_volume in botmode-mongo-data botmode-pgdata; do
+    volume_name="librechat-botmode_${db_volume}"
+    if docker volume inspect "$volume_name" >/dev/null 2>&1; then
+      if [ ! -f ".botmode-database-auth-initialized" ]; then
+        echo "Existing database volume $volume_name: automatic auth migration is unsafe." >&2
+        echo "Back up and migrate existing data explicitly before proceeding." >&2
+        exit 5
+      fi
+    fi
+  done
+fi
+export BOTMODE_MONGO_PASSWORD="$mongo_pass"
+export POSTGRES_PASSWORD="$pg_pass"
 export BOTMODE_IMAGE="$BOTMODE_IMAGE_VALUE"
 docker compose "${COMPOSE_ARGS[@]}" config --quiet
 
