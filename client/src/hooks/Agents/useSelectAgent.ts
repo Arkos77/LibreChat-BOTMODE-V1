@@ -53,7 +53,19 @@ export default function useSelectAgent() {
   );
 
   const onSelect = useCallback(
-    async (value: string) => {
+    async (value: string, selectedAgent?: Agent) => {
+      // The Agent Builder has already fetched this agent through the authorized
+      // details query. Commit its selection in one pass before a new chat can
+      // submit against the previously active endpoint/model. Do not fetch it
+      // again or reset the same composer twice.
+      if (selectedAgent?.id === value) {
+        await updateConversation(selectedAgent, {
+          endpoint: EModelEndpoint.agents,
+          agent_id: value,
+          conversationId: Constants.NEW_CONVO as string,
+        });
+        return;
+      }
       // The builder can fetch an agent before the shared agents map hydrates.
       // Never silently ignore an explicit selection in that window. Fetching
       // by ID also preserves authorization: a missing/revoked agent cannot
