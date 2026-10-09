@@ -170,11 +170,13 @@ fi
 # Docker's database initialization credentials only apply to empty data
 # directories. Refuse to guess whether pre-existing volumes were initialized
 # with authentication; the operator must run an explicit migration.
+need openssl
+auth_stamp=$(printf 'mongo=%s\npostgres=%s\n' "$mongo_pass" "$pg_pass" | openssl dgst -sha256 | awk '{print $NF}')
 if [ "$CHECK_ONLY" -eq 0 ]; then
   for db_volume in botmode-mongo-data botmode-pgdata; do
     volume_name="librechat-botmode_${db_volume}"
     if docker volume inspect "$volume_name" >/dev/null 2>&1; then
-      if [ ! -f ".botmode-database-auth-initialized" ]; then
+      if [ ! -f ".botmode-database-auth-initialized" ] || [ "$(cat .botmode-database-auth-initialized)" != "v2:$auth_stamp" ]; then
         echo "Existing database volume $volume_name: automatic auth migration is unsafe." >&2
         echo "Back up and migrate existing data explicitly before proceeding." >&2
         exit 5
@@ -208,7 +210,28 @@ fi
 
 if [ "$START_STACK" -eq 1 ]; then
   docker compose "${COMPOSE_ARGS[@]}" up -d
-  touch .botmode-database-auth-initialized
+  # "up -d" only confirms container creation, not working database credentials.
+  # Require authenticated reads before trusting the local volume marker.
+  db_verified=0
+  for attempt in $(seq 1 60); do
+    if docker compose "${COMPOSE_ARGS[@]}" exec -T mongodb sh -ec '
+      if command -v mongosh >/dev/null 2>&1; then cli=mongosh; else cli=mongo; fi
+      "$cli" --quiet --authenticationDatabase admin -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --eval "db.adminCommand({ping:1}).ok" | grep -q 1
+    ' >/dev/null 2>&1; then
+      if [ "$PROFILE" = "lite" ] || docker compose "${COMPOSE_ARGS[@]}" exec -T vectordb sh -ec '
+        PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT 1" | grep -q 1
+      ' >/dev/null 2>&1; then
+        db_verified=1
+        break
+      fi
+    fi
+    sleep 2
+  done
+  if [ "$db_verified" -ne 1 ]; then
+    echo "Database authentication verification failed; no initialization marker was written." >&2
+    exit 6
+  fi
+  printf 'v2:%s\\n' "$auth_stamp" > .botmode-database-auth-initialized
   chmod 600 .botmode-database-auth-initialized
   printf 'BOTMODE_STACK=STARTED\n'
 else
