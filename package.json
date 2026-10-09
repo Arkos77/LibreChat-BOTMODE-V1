@@ -185,6 +185,7 @@
     "typescript-eslint": "^8.60.1"
   },
   "overrides": {
+    "handlebars": "4.7.10",
     "minimatch@3": {
       "brace-expansion": "^1.1.16"
     },
