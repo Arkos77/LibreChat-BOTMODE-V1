@@ -4,18 +4,18 @@ on:
     branches: [botmode-v1-security-integration]
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 jobs:
   integration:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: true
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Verify committed lockfile installs without regeneration
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Synchronize dependency lockfile
         run: |
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
@@ -46,15 +46,8 @@ jobs:
           npm run build --workspace @librechat/frontend
       - name: CDN regression suites
         run: npm exec --workspace @librechat/api -- jest --runInBand --coverage=false --runTestsByPath src/cdn/__tests__/s3.test.ts src/cdn/__tests__/cloudfront.test.ts
-      - name: Commit combined reproducible lockfile
-        run: |
-          if ! git diff --quiet -- package-lock.json; then
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add package-lock.json
-            git commit -m 'build(deps): sync combined security lockfile'
-            git push
-          fi
+      - name: Assert committed lockfile is reproducible
+        run: git diff --exit-code -- package-lock.json
       - name: Identify exact high-severity dependency owners
         shell: bash
         run: |
@@ -83,5 +76,15 @@ jobs:
           JS
           echo '=== PRODUCTION TREE ==='
           npm ls --omit=dev tailwindcss braces chokidar micromatch fast-glob --all --depth=4 || true
+      - name: Report all dependency vulnerabilities including dev
+        shell: bash
+        run: |
+          npm audit --json > "$RUNNER_TEMP/full-security-audit.json" || true
+          node - "$RUNNER_TEMP/full-security-audit.json" <<'JS'
+          const fs=require('node:fs');
+          const a=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
+          console.log('FULL_AUDIT_COUNTS='+JSON.stringify(a.metadata?.vulnerabilities||{}));
+          console.log('PRODUCTION_ALERTS_ARE_TRACKED_SEPARATELY');
+          JS
       - name: Production vulnerability baseline
         run: npm audit --omit=dev --audit-level=critical
