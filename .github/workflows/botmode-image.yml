@@ -200,6 +200,11 @@ jobs:
         run: |
           set -euo pipefail
           cp .env.example .env
+          chmod 600 .env
+          export BOTMODE_MONGO_PASSWORD=ci-only-mongo-password
+          export POSTGRES_PASSWORD=ci-only-postgres-password
+          echo 'BOTMODE_MONGO_PASSWORD=ci-only-mongo-password' >> .env
+          echo 'POSTGRES_PASSWORD=ci-only-postgres-password' >> .env
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           export BOTMODE_IMAGE="ghcr.io/$owner/librechat-botmode-v1:sha-${GITHUB_SHA::12}"
           export BOTMODE_HOST_PORT=3090
