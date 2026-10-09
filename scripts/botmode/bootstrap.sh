@@ -141,12 +141,12 @@ fi
 # be silently switched to authentication or a different password.
 read_env_value() {
   local key="$1" line
-  line=$(grep -E "^\${key}=" .env | tail -n 1 || true)
+  line=$(grep -E "^${key}=" .env | tail -n 1 || true)
   printf '%s' "${line#*=}"
 }
 set_env_value() {
   local key="$1" value="$2"
-  printf '%s=%s\\n' "$key" "$value" >> .env
+  printf '%s=%s\n' "$key" "$value" >> .env
 }
 mongo_pass=$(read_env_value BOTMODE_MONGO_PASSWORD)
 pg_pass=$(read_env_value POSTGRES_PASSWORD)
@@ -208,6 +208,8 @@ fi
 
 if [ "$START_STACK" -eq 1 ]; then
   docker compose "${COMPOSE_ARGS[@]}" up -d
+  touch .botmode-database-auth-initialized
+  chmod 600 .botmode-database-auth-initialized
   printf 'BOTMODE_STACK=STARTED\n'
 else
   printf 'BOTMODE_STACK=NOT_STARTED\n'
