@@ -86,6 +86,15 @@ describe('useSelectAgent', () => {
       endpoint: EModelEndpoint.agents,
       agent_id: 'agent-1',
     });
+    expect(mockNewConversation.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        buildDefault: false,
+        template: expect.objectContaining({
+          endpoint: EModelEndpoint.agents,
+          agent_id: 'agent-1',
+        }),
+      }),
+    );
   });
 
   it('does not activate an agent when its authorized fetch fails', async () => {
@@ -151,6 +160,17 @@ describe('useSelectAgent', () => {
         agent_id: 'agent-1',
         spec: undefined,
         model: undefined,
+      }),
+    );
+    expect(mockNewConversation.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        buildDefault: false,
+        template: expect.objectContaining({
+          endpoint: EModelEndpoint.agents,
+          agent_id: 'agent-1',
+          spec: undefined,
+          model: undefined,
+        }),
       }),
     );
   });

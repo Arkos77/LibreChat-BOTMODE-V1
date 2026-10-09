@@ -53,8 +53,18 @@ export default function useSelectAgent() {
         preset: { ...template, spec: undefined, model: undefined },
       });
       newConversation({
-        template: currentConvo,
+        template: {
+          ...currentConvo,
+          endpoint: EModelEndpoint.agents,
+          agent_id: agent.id,
+          spec: undefined,
+          model: undefined,
+        },
         preset: { ...template, spec: undefined, model: undefined } as Partial<TPreset>,
+        // This agent has already been loaded via the authorized builder/query.
+        // Preserve its explicit identity instead of running default-model
+        // rehydration again, which can restore the former soft spec.
+        buildDefault: false,
         keepComposerState,
       });
     },
