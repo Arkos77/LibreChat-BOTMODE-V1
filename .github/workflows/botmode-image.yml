@@ -13,6 +13,7 @@ on:
       - botmode-v1-runtime-fix
     tags:
       - 'v*'
+      - 'candidate-botmode-v1-*'
 
 permissions:
   contents: read
@@ -119,7 +120,8 @@ jobs:
 
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             primary="${GITHUB_REF_NAME}"
-            latest="latest"
+            latest=""
+            if [[ "${GITHUB_REF_NAME}" == v* ]]; then latest="latest"; fi
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             primary="${{ inputs.tag }}"
             latest=""
