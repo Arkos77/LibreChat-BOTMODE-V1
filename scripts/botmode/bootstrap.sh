@@ -173,7 +173,9 @@ fi
 need openssl
 auth_stamp=$(printf 'mongo=%s\npostgres=%s\n' "$mongo_pass" "$pg_pass" | openssl dgst -sha256 | awk '{print $NF}')
 if [ "$CHECK_ONLY" -eq 0 ]; then
-  for db_volume in botmode-mongo-data botmode-pgdata; do
+  db_volumes=(botmode-mongo-data)
+  if [ "$PROFILE" = "full" ]; then db_volumes+=(botmode-pgdata); fi
+  for db_volume in "${db_volumes[@]}"; do
     volume_name="librechat-botmode_${db_volume}"
     if docker volume inspect "$volume_name" >/dev/null 2>&1; then
       if [ ! -f ".botmode-database-auth-initialized" ] || [ "$(cat .botmode-database-auth-initialized)" != "v2:$auth_stamp" ]; then
