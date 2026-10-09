@@ -70,6 +70,39 @@ describe('useSelectAgent', () => {
     consoleError.mockRestore();
   });
 
+  it('selects an authorized agent before the shared agents map hydrates', async () => {
+    const { useAgentsMapContext } = jest.requireMock('~/Providers/AgentsMapContext');
+    (useAgentsMapContext as jest.Mock).mockReturnValueOnce(undefined);
+    mockFetchQuery.mockResolvedValue({ id: 'agent-1', name: 'Fetched Agent' });
+    const { result } = renderHook(() => useSelectAgent());
+
+    await act(async () => {
+      await result.current.onSelect('agent-1');
+    });
+
+    expect(mockFetchQuery).toHaveBeenCalledTimes(1);
+    expect(mockNewConversation).toHaveBeenCalledTimes(2);
+    expect(mockNewConversation.mock.calls[0][0].preset).toMatchObject({
+      endpoint: EModelEndpoint.agents,
+      agent_id: 'agent-1',
+    });
+  });
+
+  it('does not activate an agent when its authorized fetch fails', async () => {
+    const { useAgentsMapContext } = jest.requireMock('~/Providers/AgentsMapContext');
+    (useAgentsMapContext as jest.Mock).mockReturnValueOnce(undefined);
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockFetchQuery.mockRejectedValue(new Error('unauthorized'));
+    const { result } = renderHook(() => useSelectAgent());
+
+    await act(async () => {
+      await result.current.onSelect('agent-1');
+    });
+
+    expect(mockNewConversation).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
   it('keeps the composer for the assistants path as well', async () => {
     mockGetConversation.mockResolvedValue({
       endpoint: EModelEndpoint.assistants,
