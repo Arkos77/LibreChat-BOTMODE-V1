@@ -37,7 +37,7 @@ import useSelectAgent from '../useSelectAgent';
 describe('useSelectAgent', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetConversation.mockResolvedValue({ endpoint: EModelEndpoint.agents } as TConversation);
+    mockGetConversation.mockReturnValue({ endpoint: EModelEndpoint.agents } as TConversation);
     mockGetDefaultConversation.mockImplementation(
       ({ conversation }: { conversation: Partial<TConversation> }) => conversation,
     );
@@ -137,7 +137,7 @@ describe('useSelectAgent', () => {
   });
 
   it('keeps the composer for the assistants path as well', async () => {
-    mockGetConversation.mockResolvedValue({
+    mockGetConversation.mockReturnValue({
       endpoint: EModelEndpoint.assistants,
     } as TConversation);
     mockFetchQuery.mockResolvedValue({ id: 'agent-1', name: 'Full Agent' });
