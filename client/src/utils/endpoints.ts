@@ -490,7 +490,7 @@ export function getStoredAgentSelectionPreset(
   startupConfig?: t.TStartupConfig,
   endpointsConfig?: t.TEndpointsConfig,
   agentsMap?: t.TAgentsMap,
-): Partial<t.TPreset> | undefined {
+): t.TPreset | undefined {
   const stored = parseStoredModelSelection(
     localStorage.getItem(LocalStorageKeys.LAST_CONVO_SETUP + '_0'),
   );
