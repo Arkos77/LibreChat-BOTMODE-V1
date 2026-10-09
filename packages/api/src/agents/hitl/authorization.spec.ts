@@ -156,6 +156,23 @@ test('all authorization registrations require decisions, including unfiltered ho
   expect(result.decision).toBe('deny');
 });
 
+test('non-restrictive fixture hook cannot override static ask approval', async () => {
+  registerToolApprovalHook(() => async () => ({ decision: 'allow' as const }));
+  const wiring = buildHITLRunWiring({
+    enabled: true,
+    mode: 'bypass',
+    ask: ['approval_probe_mcp_e2e-memory'],
+  })!;
+  const result = await executeHooks({
+    registry: wiring.hooks,
+    input: {
+      hook_event_name: 'PreToolUse',
+      toolName: 'approval_probe_mcp_e2e-memory',
+    } as PreToolUseHookInput,
+  });
+  expect(result.decision).toBe('ask');
+});
+
 describe.each(['read_file', 'bash_tool'])('out-of-scope %s', (toolName) => {
   test.each(['allow', 'ask', 'deny'] as const)('preserves baseline %s', async (decision) => {
     const unrelated = jest.fn(async () => ({ decision: 'deny' as const }));
