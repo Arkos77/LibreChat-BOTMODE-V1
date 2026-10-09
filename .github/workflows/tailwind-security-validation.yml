@@ -32,6 +32,7 @@ jobs:
         run: |
           npm run build --workspace librechat-data-provider
           npm run build --workspace @librechat/data-schemas
+          npm run build --workspace @librechat/client
           npm run build --workspace @librechat/frontend
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=critical
