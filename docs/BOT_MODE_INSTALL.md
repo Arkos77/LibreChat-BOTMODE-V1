@@ -29,6 +29,20 @@ cd LibreChat-BOTMODE-V1
 
 **Important :** tant que la PR #14 n'est pas fusionnée, la branche par défaut ne contient pas nécessairement les correctifs de consolidation. Pour tester la candidate, utiliser un checkout explicite de la branche `botmode-v1-consolidation-ci-20261009`, vérifier son SHA, puis publier et vérifier l'image GHCR `sha-<12 premiers caractères du SHA>` correspondante **avant** d'exécuter `./install.sh`. Ne jamais remplacer silencieusement une image manquante par `edge` ou par l'image upstream.
 
+### Prévalidation de la candidate PR #14 (sans installation)
+
+Ne pas utiliser la commande de clonage stable ci-dessus pour valider une PR encore non fusionnée. Pour examiner exactement la candidate :
+
+```bash
+git clone --branch botmode-v1-consolidation-ci-20261009 --single-branch \
+  https://github.com/Arkos77/LibreChat-BOTMODE-V1.git
+cd LibreChat-BOTMODE-V1
+git rev-parse HEAD
+```
+
+Le tag exigé sera `ghcr.io/arkos77/librechat-botmode-v1:sha-$(git rev-parse --short=12 HEAD)`.
+**Ne pas lancer l'installation tant que ce tag n'a pas été effectivement publié et que le test de téléchargement anonyme et les smokes de l'image n'ont pas réussi.** Ne pas remplacer le tag par `edge` : cela supprimerait la garantie de reproductibilité.
+
 Le bootstrap :
 
 1. détecte plateforme, mémoire et AVX ;
