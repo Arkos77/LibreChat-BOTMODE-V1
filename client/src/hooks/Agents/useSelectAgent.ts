@@ -54,8 +54,25 @@ export default function useSelectAgent() {
 
   const onSelect = useCallback(
     async (value: string) => {
-      const agent = agentsMap?.[value];
+      // The builder can fetch an agent before the shared agents map hydrates.
+      // Never silently ignore an explicit selection in that window. Fetching
+      // by ID also preserves authorization: a missing/revoked agent cannot
+      // become the active conversation simply because the panel displayed it.
+      const cachedAgent = agentsMap?.[value];
+      let agent = cachedAgent;
       if (!agent) {
+        try {
+          agent = await queryClient.fetchQuery([QueryKeys.agent, value], () =>
+            dataService.getAgentById({ agent_id: value }),
+          );
+        } catch (error) {
+          if (!(error as { silent?: boolean } | undefined)?.silent) {
+            console.error('Error loading agent for selection:', error);
+          }
+          return;
+        }
+      }
+      if (agent?.id !== value) {
         return;
       }
 
@@ -68,12 +85,12 @@ export default function useSelectAgent() {
       await updateConversation({ id: agent.id }, template);
 
       try {
-        const fullAgent = await queryClient.fetchQuery([QueryKeys.agent, agent.id], () =>
-          dataService.getAgentById({
-            agent_id: agent.id,
-          }),
-        );
-        if (fullAgent) {
+        const fullAgent = cachedAgent
+          ? await queryClient.fetchQuery([QueryKeys.agent, agent.id], () =>
+              dataService.getAgentById({ agent_id: agent.id }),
+            )
+          : agent;
+        if (fullAgent?.id === agent.id) {
           await updateConversation(fullAgent, { ...template, agent_id: fullAgent.id }, true);
         }
       } catch (error) {
