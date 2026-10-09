@@ -29,6 +29,28 @@ jobs:
           echo 'MEILI_MASTER_KEY=ci-only-meili-key' >> .env
       - name: Validate both Compose profiles
         run: ./scripts/botmode/verify-runtime-distribution.sh
+      - name: Retry temporary Docker Hub pull failures
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          set -euo pipefail
+          images=(mongo:8.0.20)
+          if [ "$PROFILE" = lite ]; then
+            images=(mongo:4.4.29)
+          else
+            images+=(pgvector/pgvector:0.8.0-pg15-trixie)
+          fi
+          for image in "${images[@]}"; do
+            pulled=0
+            for attempt in 1 2 3 4; do
+              if docker pull "$image"; then pulled=1; break; fi
+              if [ "$attempt" -lt 4 ]; then sleep $((attempt * 15)); fi
+            done
+            if [ "$pulled" -ne 1 ]; then
+              echo "::error::Unable to download required CI image $image"
+              exit 1
+            fi
+          done
       - name: Start only databases
         env:
           BOTMODE_MONGO_PASSWORD: ci-only-mongo-credential
