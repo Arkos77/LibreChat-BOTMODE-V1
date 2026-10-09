@@ -1,0 +1,56 @@
+name: Combined Firebase and Tailwind Security Integration
+on:
+  push:
+    branches: [botmode-v1-security-integration]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Synchronize dependency lockfile
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Verify security dependency graph
+        run: |
+          node <<'JS'
+          const assert=require('node:assert/strict');
+          const l=require('./package-lock.json').packages;
+          assert.equal(l['node_modules/tailwindcss']?.version,'3.4.19');
+          assert.equal(l['node_modules/handlebars']?.version,'4.7.10');
+          assert.equal(l['node_modules/dompurify']?.version,'3.4.16');
+          assert.ok(l['node_modules/@firebase/storage']);
+          assert.ok(l['node_modules/@firebase/app']);
+          assert.ok(!l['node_modules/firebase']);
+          assert.ok(!l['node_modules/@firebase/firestore']);
+          console.log('COMBINED_SECURITY_DEPS=PASS');
+          JS
+      - name: Clean npm installation
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build LibreChat workspaces and frontend
+        run: |
+          npm run build --workspace librechat-data-provider
+          npm run build --workspace @librechat/data-schemas
+          npm run build --workspace @librechat/client
+          npm run build --workspace @librechat/api
+          npm run build --workspace @librechat/frontend
+      - name: CDN regression suites
+        run: npm exec --workspace @librechat/api -- jest --runInBand --coverage=false --runTestsByPath src/cdn/__tests__/s3.test.ts src/cdn/__tests__/cloudfront.test.ts
+      - name: Commit combined reproducible lockfile
+        run: |
+          if ! git diff --quiet -- package-lock.json; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add package-lock.json
+            git commit -m 'build(deps): sync combined security lockfile'
+            git push
+          fi
+      - name: Production vulnerability baseline
+        run: npm audit --omit=dev --audit-level=critical
