@@ -185,6 +185,8 @@
     "typescript-eslint": "^8.60.1"
   },
   "overrides": {
+    "dompurify": "3.4.16",
+    "handlebars": "4.7.10",
     "minimatch@3": {
       "brace-expansion": "^1.1.16"
     },
@@ -236,7 +238,7 @@
     "hono": "^4.13.13",
     "@hono/node-server": "^2.0.11",
     "monaco-editor": {
-      "dompurify": "3.4.14"
+      "dompurify": "3.4.16"
     },
     "test-exclude": "^8.0.0",
     "js-yaml": "^4.2.0",
