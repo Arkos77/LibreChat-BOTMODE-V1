@@ -57,6 +57,11 @@ jobs:
           set -euo pipefail
           npm ci --ignore-scripts --no-audit --no-fund
           npm run build --workspace @librechat/api
+      - name: Run existing CDN regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm exec --workspace @librechat/api -- jest --runInBand --coverage=false --runTestsByPath src/cdn/__tests__/s3.test.ts src/cdn/__tests__/cloudfront.test.ts
       - name: Confirm Firestore and gRPC are not pulled in
         shell: bash
         run: |
