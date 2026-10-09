@@ -51,6 +51,12 @@ jobs:
           appSdk.deleteApp(app).then(() => console.log('FIREBASE_APP_STORAGE_OFFLINE_SMOKE=PASS'))
             .catch(error => { console.error(error); process.exitCode = 1; });
           JS
+      - name: Compile LibreChat API workspace on clean install
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build --workspace @librechat/api
       - name: Confirm Firestore and gRPC are not pulled in
         shell: bash
         run: |
