@@ -61,6 +61,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          npm run build --workspace @librechat/data-schemas
           npm exec --workspace @librechat/api -- jest --runInBand --coverage=false --runTestsByPath src/cdn/__tests__/s3.test.ts src/cdn/__tests__/cloudfront.test.ts
       - name: Confirm Firestore and gRPC are not pulled in
         shell: bash
