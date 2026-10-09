@@ -55,5 +55,20 @@ jobs:
             git commit -m 'build(deps): sync combined security lockfile'
             git push
           fi
+      - name: Identify exact high-severity dependency owners
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ls braces chokidar micromatch fast-glob postcss-selector-parser postcss-nested katex mermaid rehype-katex --all --depth=3 || true
+          npm audit --omit=dev --json > "$RUNNER_TEMP/security-audit.json" || true
+          node - "$RUNNER_TEMP/security-audit.json" <<'JS'
+          const fs=require('node:fs');
+          const audit=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
+          for (const [name,v] of Object.entries(audit.vulnerabilities||{})) {
+            if (v.severity !== 'high' && v.severity !== 'critical') continue;
+            console.log(JSON.stringify({name,severity:v.severity,range:v.range,via:v.via,effects:v.effects,fixAvailable:v.fixAvailable}));
+          }
+          console.log('HIGH_SEVERITY_COUNT='+audit.metadata?.vulnerabilities?.high);
+          JS
       - name: Production vulnerability baseline
         run: npm audit --omit=dev --audit-level=critical
