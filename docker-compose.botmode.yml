@@ -19,7 +19,7 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=3080
-      - MONGO_URI=mongodb://mongodb:27017/LibreChat
+      - MONGO_URI=mongodb://botmode_admin:${BOTMODE_MONGO_PASSWORD:?Set BOTMODE_MONGO_PASSWORD in .env}@mongodb:27017/LibreChat?authSource=admin
       - MEILI_HOST=http://meilisearch:7700
       - LIBRECHAT_TEMP_CREDENTIALS_PATH=/app/data/.env.temp
       - RAG_PORT=${RAG_PORT:-8000}
@@ -60,7 +60,10 @@ services:
     restart: always
     volumes:
       - botmode-mongo-data:/data/db
-    command: mongod --noauth
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: botmode_admin
+      MONGO_INITDB_ROOT_PASSWORD: ${BOTMODE_MONGO_PASSWORD:?Set BOTMODE_MONGO_PASSWORD in .env}
+    command: ["mongod", "--auth"]
 
   meilisearch:
     image: getmeili/meilisearch:v1.35.1
@@ -78,7 +81,7 @@ services:
     environment:
       POSTGRES_DB: mydatabase
       POSTGRES_USER: myuser
-      POSTGRES_PASSWORD: mypassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
       - botmode-pgdata:/var/lib/postgresql/data
 
@@ -91,6 +94,9 @@ services:
       - .env
     environment:
       - DB_HOST=vectordb
+      - POSTGRES_DB=mydatabase
+      - POSTGRES_USER=myuser
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       - RAG_PORT=${RAG_PORT:-8000}
 
 volumes:
