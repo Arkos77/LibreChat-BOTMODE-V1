@@ -22,14 +22,17 @@ export default function useSelectAgent() {
   const getConversation = useGetConversation(0);
 
   const updateConversation = useCallback(
-    async (
+    (
       agent: Partial<Agent>,
       template: Partial<TPreset | TConversation>,
       /** The passes that follow the first one only carry freshly fetched agent details into the
        * composer the first pass opened, so a paste started meanwhile keeps its draft. */
       keepComposerState = false,
     ) => {
-      const conversation = await getConversation();
+      // useGetConversation is synchronous (Recoil snapshot). Awaiting its value
+      // defers the first conversation update until a microtask after the Select
+      // click, allowing an immediate send to use the previous endpoint/model.
+      const conversation = getConversation();
       logger.log('conversation', 'Updating conversation with agent', agent);
       if (isAssistantsEndpoint(conversation?.endpoint)) {
         newConversation({
@@ -53,9 +56,38 @@ export default function useSelectAgent() {
   );
 
   const onSelect = useCallback(
-    async (value: string) => {
-      const agent = agentsMap?.[value];
+    async (value: string, selectedAgent?: Agent) => {
+      // The Agent Builder has already fetched this agent through the authorized
+      // details query. Commit its selection in one pass before a new chat can
+      // submit against the previously active endpoint/model. Do not fetch it
+      // again or reset the same composer twice.
+      if (selectedAgent?.id === value) {
+        await updateConversation(selectedAgent, {
+          endpoint: EModelEndpoint.agents,
+          agent_id: value,
+          conversationId: Constants.NEW_CONVO as string,
+        });
+        return;
+      }
+      // The builder can fetch an agent before the shared agents map hydrates.
+      // Never silently ignore an explicit selection in that window. Fetching
+      // by ID also preserves authorization: a missing/revoked agent cannot
+      // become the active conversation simply because the panel displayed it.
+      const cachedAgent = agentsMap?.[value];
+      let agent = cachedAgent;
       if (!agent) {
+        try {
+          agent = await queryClient.fetchQuery([QueryKeys.agent, value], () =>
+            dataService.getAgentById({ agent_id: value }),
+          );
+        } catch (error) {
+          if (!(error as { silent?: boolean } | undefined)?.silent) {
+            console.error('Error loading agent for selection:', error);
+          }
+          return;
+        }
+      }
+      if (agent?.id !== value) {
         return;
       }
 
@@ -68,12 +100,12 @@ export default function useSelectAgent() {
       await updateConversation({ id: agent.id }, template);
 
       try {
-        const fullAgent = await queryClient.fetchQuery([QueryKeys.agent, agent.id], () =>
-          dataService.getAgentById({
-            agent_id: agent.id,
-          }),
-        );
-        if (fullAgent) {
+        const fullAgent = cachedAgent
+          ? await queryClient.fetchQuery([QueryKeys.agent, agent.id], () =>
+              dataService.getAgentById({ agent_id: agent.id }),
+            )
+          : agent;
+        if (fullAgent?.id === agent.id) {
           await updateConversation(fullAgent, { ...template, agent_id: fullAgent.id }, true);
         }
       } catch (error) {
