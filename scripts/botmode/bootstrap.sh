@@ -231,7 +231,7 @@ if [ "$START_STACK" -eq 1 ]; then
     echo "Database authentication verification failed; no initialization marker was written." >&2
     exit 6
   fi
-  printf 'v2:%s\\n' "$auth_stamp" > .botmode-database-auth-initialized
+  printf 'v2:%s\n' "$auth_stamp" > .botmode-database-auth-initialized
   chmod 600 .botmode-database-auth-initialized
   printf 'BOTMODE_STACK=STARTED\n'
 else
