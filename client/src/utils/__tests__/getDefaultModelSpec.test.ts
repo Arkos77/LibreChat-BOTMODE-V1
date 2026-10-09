@@ -706,7 +706,7 @@ describe('getStoredAgentSelectionPreset', () => {
   const startupConfig = createStartupConfig([createModelSpec('soft', { softDefault: true })], {
     addedEndpoints: [EModelEndpoint.agents],
   });
-  const accessibleAgentMap = { agent_123: { id: 'agent_123', name: 'Available' } } as unknown as TAgentsMap;
+  const accessibleAgentMap = { agent_123: { id: 'agent_123' } } as unknown as TAgentsMap;
 
   it('restores a manually selected accessible agent on cold load', () => {
     persistAgentSelection('agent_123');
