@@ -3,7 +3,7 @@ import { resolveNewConversationTemplate } from './resolveNewConversationTemplate
 
 describe('resolveNewConversationTemplate', () => {
   const selection = {
-    conversationId: Constants.NEW_CONVO,
+    conversationId: Constants.NEW_CONVO as string,
     endpoint: EModelEndpoint.agents,
     agent_id: 'agent-authorized',
     chatProjectId: null,
