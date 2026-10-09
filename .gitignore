@@ -201,3 +201,6 @@ redis-config/certs/*.pem
 redis-config/certs/*.key
 redis-config/data/
 redis-config/logs/
+
+# Local BOTMODE database initialization state (never distribute)
+.botmode-database-auth-initialized
