@@ -157,7 +157,7 @@ fi
 if [ "$CHECK_ONLY" -eq 0 ]; then
   if [ "$(id -u)" -eq 0 ]; then
     chown 1000:1000 .env
-  elif [ "$(stat -c %u .env)" != "1000" ]; then
+  elif [ "$(if [ "$OS" = "Darwin" ]; then stat -f %u .env; else stat -c %u .env; fi)" != "1000" ]; then
     echo "The runtime runs as UID 1000 and cannot read this private .env (owner differs)." >&2
     echo "Run the installer with sudo, or provision .env ownership as UID 1000." >&2
     exit 4
