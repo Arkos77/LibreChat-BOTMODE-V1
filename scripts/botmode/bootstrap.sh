@@ -137,6 +137,28 @@ else
   printf 'BOTMODE_ENV_EXISTING=YES\n'
 fi
 
+# Pin the exact image in the Compose dotenv file. Otherwise a later bare
+# "docker compose up" silently falls back to the mutable :edge image.
+# Keep --check-only strictly read-only.
+if [ "$CHECK_ONLY" -eq 0 ]; then
+  tmp_env=$(mktemp "$ROOT/.env.botmode.XXXXXX")
+  chmod 600 "$tmp_env"
+  awk -v image="$BOTMODE_IMAGE_VALUE" '
+    /^BOTMODE_IMAGE=/ { if (!written++) print "BOTMODE_IMAGE=" image; next }
+    { print }
+    END { if (!written) print "BOTMODE_IMAGE=" image }
+  ' .env > "$tmp_env"
+  mv "$tmp_env" .env
+fi
+
+# The published runtime runs as node (UID 1000). A root-owned mode-600
+# dotenv created by sudo is unreadable to the application. Do not loosen
+# permissions for other users or expose secrets in logs.
+if [ "$CHECK_ONLY" -eq 0 ]; then
+  chown 1000:1000 .env
+  chmod 600 .env
+fi
+
 # Bootstrap database credentials without printing them. Existing databases must never
 # be silently switched to authentication or a different password.
 read_env_value() {
