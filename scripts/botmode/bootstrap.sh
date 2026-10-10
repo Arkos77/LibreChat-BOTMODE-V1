@@ -155,7 +155,13 @@ fi
 # dotenv created by sudo is unreadable to the application. Do not loosen
 # permissions for other users or expose secrets in logs.
 if [ "$CHECK_ONLY" -eq 0 ]; then
-  chown 1000:1000 .env
+  if [ "$(id -u)" -eq 0 ]; then
+    chown 1000:1000 .env
+  elif [ "$(stat -c %u .env)" != "1000" ]; then
+    echo "The runtime runs as UID 1000 and cannot read this private .env (owner differs)." >&2
+    echo "Run the installer with sudo, or provision .env ownership as UID 1000." >&2
+    exit 4
+  fi
   chmod 600 .env
 fi
 
