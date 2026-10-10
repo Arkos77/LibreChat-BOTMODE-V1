@@ -81,7 +81,7 @@ Préparer sans démarrer :
 ./doctor.sh
 ```
 
-`start.sh` ne relance ni `npm ci`, ni build, ni tests. `update.sh` effectue un `git pull --ff-only`, tire l'image runtime et redémarre la stack selon le profil détecté.
+`start.sh` ne relance ni `npm ci`, ni build, ni tests. `update.sh` refuse un checkout détaché (tag/commit), des modifications locales ou une branche sans upstream. Sur une branche propre suivie, il effectue `git pull --ff-only`, puis tire l'image du nouveau commit et redémarre la stack. Pour une release candidate figée, sélectionner explicitement la version suivante après validation de son image GHCR et sauvegarde des données : ne pas exécuter `update.sh` depuis un tag.
 
 ## Image runtime BOTMODE
 
