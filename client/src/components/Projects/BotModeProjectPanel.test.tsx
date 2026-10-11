@@ -188,10 +188,12 @@ describe('BotModeProjectPanel', () => {
 
   it('selects the BOT MODE Worker instead of the first listed agent', () => {
     mockUseListAgentsQuery.mockReturnValue({
-      data: { data: [
-        { id: 'another-agent', name: 'Other Agent' },
-        { id: 'agent-worker', name: 'BOT MODE Worker' },
-      ] },
+      data: {
+        data: [
+          { id: 'another-agent', name: 'Other Agent' },
+          { id: 'agent-worker', name: 'BOT MODE Worker' },
+        ],
+      },
     });
     render(<BotModeProjectPanel projectId="project-a" conversations={[]} />);
     fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }));
