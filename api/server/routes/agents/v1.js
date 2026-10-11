@@ -182,7 +182,7 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
       ANALYSE: [],
       CODE: ['execute_code'],
       DOCUMENTS: ['file_search'],
-      'RÉDACTION': [],
+      RÉDACTION: [],
     };
     const created = [];
     const missingCapabilities = [];
