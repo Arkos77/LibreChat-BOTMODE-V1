@@ -205,8 +205,11 @@ export default function BotModeProjectPanel({
         return;
       }
       const [provider, models] = configured;
-      await dataService.initializeBotModeAgents({ provider, model: models[0] });
+      const result = await dataService.initializeBotModeAgents({ provider, model: models[0] });
       await queryClient.invalidateQueries([QueryKeys.agents]);
+      if (!result.capabilitiesComplete) {
+        setSetupError('Agents créés, mais certains outils ne sont pas disponibles ou autorisés.');
+      }
     } catch (_error) {
       setSetupError('Initialisation BOT MODE impossible. Vérifiez le modèle et les permissions.');
     } finally {
