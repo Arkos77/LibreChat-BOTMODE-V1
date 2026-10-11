@@ -198,8 +198,7 @@ export default function BotModeProjectPanel({
     try {
       const catalog = await dataService.getModels();
       const configured = Object.entries(catalog).find(
-        ([provider, models]) =>
-          provider !== 'agents' && Array.isArray(models) && models.length > 0,
+        ([provider, models]) => provider !== 'agents' && Array.isArray(models) && models.length > 0,
       );
       if (!configured) {
         setSetupError('Aucun modèle configuré : ajoutez une clé API ou un fournisseur local.');
@@ -209,7 +208,7 @@ export default function BotModeProjectPanel({
       await dataService.initializeBotModeAgents({ provider, model: models[0] });
       await queryClient.invalidateQueries([QueryKeys.agents]);
     } catch (_error) {
-      setSetupError("Initialisation BOT MODE impossible. Vérifiez le modèle et les permissions.");
+      setSetupError('Initialisation BOT MODE impossible. Vérifiez le modèle et les permissions.');
     } finally {
       setSetupPending(false);
     }
@@ -289,7 +288,11 @@ export default function BotModeProjectPanel({
                   {setupPending ? 'Initialisation…' : 'Initialiser BOT MODE'}
                 </Button>
               )}
-              {setupError && <span role="alert" className="text-xs text-red-600">{setupError}</span>}
+              {setupError && (
+                <span role="alert" className="text-xs text-red-600">
+                  {setupError}
+                </span>
+              )}
             </div>
           </div>
 
