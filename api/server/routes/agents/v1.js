@@ -82,7 +82,7 @@ router.get('/botmode/setup-status', checkAgentAccess, async (req, res) => {
       missing,
       duplicates,
     });
-  } catch (error) {
+  } catch (_error) {
     return res.status(500).json({ error: 'Unable to inspect BOT MODE setup' });
   }
 });
