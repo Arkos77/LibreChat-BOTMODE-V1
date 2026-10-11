@@ -1,5 +1,9 @@
 const { MongoClient, ObjectId } = require('mongodb');
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
+// Legacy direct-DB migration is never an implicit install/bootstrap action.
+if (!process.argv.includes('--apply')) {
+  throw new Error('Legacy specialist seeding requires explicit --apply; use native agent onboarding for new installs');
+}
 const ownerArg = process.argv.indexOf('--user-id');
 const ownerId = ownerArg >= 0 ? process.argv[ownerArg + 1] : null;
 if (!ownerId || !ObjectId.isValid(ownerId)) {
