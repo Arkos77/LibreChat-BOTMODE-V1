@@ -17,10 +17,10 @@ jobs:
       - name: Checkout pinned PR14 candidate
         uses: actions/checkout@v5
         with:
-          ref: c579c7d608c5f0c81f5f07c8927e83dda1c6f7e5
+          ref: 0b89aa2c26b41574ebf6db6ad9b6a3ae7b6f1cd8
           persist-credentials: false
       - name: Verify immutable source revision
-        run: test "$(git rev-parse HEAD)" = "c579c7d608c5f0c81f5f07c8927e83dda1c6f7e5"
+        run: test "$(git rev-parse HEAD)" = "0b89aa2c26b41574ebf6db6ad9b6a3ae7b6f1cd8"
       - uses: actions/setup-node@v5
         with:
           node-version: '24.16.0'
