@@ -5,8 +5,10 @@ const {
   Permissions,
   PermissionBits,
   ResourceType,
+  PrincipalType,
+  AccessRoleIds,
 } = require('librechat-data-provider');
-const { getResourcePermissionsMap } = require('~/server/services/PermissionService');
+const { getResourcePermissionsMap, grantPermission } = require('~/server/services/PermissionService');
 const { configMiddleware, canAccessAgentResource } = require('~/server/middleware');
 const v1 = require('~/server/controllers/agents/v1');
 const { getRoleByName, getAgents } = require('~/models');
@@ -140,10 +142,30 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
         })
         .map((agent) => agent.name);
       if (inaccessible.length > 0) {
-        return res.status(409).json({
-          error: 'Existing BOT MODE agents need owner permission repair',
-          agents: inaccessible,
+        // Existing agents were queried by immutable author ID. Repair only
+        // that authenticated author's owner ACL through LibreChat's service.
+        for (const agent of existing.filter((item) => inaccessible.includes(item.name))) {
+          await grantPermission({
+            principalType: PrincipalType.USER,
+            principalId: req.user.id,
+            resourceType: ResourceType.AGENT,
+            resourceId: agent._id,
+            accessRoleId: AccessRoleIds.AGENT_OWNER,
+            grantedBy: req.user.id,
+          });
+        }
+        const repaired = await getResourcePermissionsMap({
+          userId: req.user.id,
+          role: req.user.role,
+          resourceType: ResourceType.AGENT,
+          resourceIds: existing.map((agent) => agent._id),
         });
+        const required = PermissionBits.VIEW | PermissionBits.EDIT;
+        if (existing.some((agent) => ((repaired.get(String(agent._id)) ?? 0) & required) !== required)) {
+          return res.status(409).json({
+            error: 'Existing BOT MODE agents still lack owner permissions',
+          });
+        }
       }
     }
 
