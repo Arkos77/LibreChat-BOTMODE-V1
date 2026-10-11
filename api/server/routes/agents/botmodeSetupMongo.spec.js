@@ -1,6 +1,8 @@
 /** Real MongoDB route-state test. Native create/update and permission service are
  * deliberate DB-backed adapters; this is NOT a fully native HTTP integration. */
 const mongoose = require('mongoose');
+const express = require('express');
+const supertest = require('supertest');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const { agentSchema, aclEntrySchema } = require('@librechat/data-schemas');
 const { PermissionBits, PrincipalType, ResourceType, PrincipalModel } = require('librechat-data-provider');
@@ -116,6 +118,36 @@ test('setup route commits six distinct agents, owner ACL and stable second initi
   await inspect(req(), state);
   expect(state.code).toBe(200);
   expect(state.payload).toMatchObject({
+    inventoryComplete: true, permissionsComplete: true, delegationConfigured: true,
+  });
+});
+
+test('HTTP POST and GET travel through Express with a test-authenticated owner', async () => {
+  const app = express();
+  app.use(express.json());
+  // Explicit test-only identity injection: NOT production authentication.
+  app.use((request, _response, next) => {
+    request.user = { id: String(ownerId), role: 'USER' };
+    next();
+  });
+  app.use('/agents', router);
+  const first = await supertest(app).post('/agents/botmode/setup').send({
+    provider: 'openai', model: 'test-model',
+  });
+  expect(first.status).toBe(200);
+  expect(first.body.created).toHaveLength(6);
+  expect(await Agent.countDocuments({ author: ownerId })).toBe(6);
+
+  const second = await supertest(app).post('/agents/botmode/setup').send({
+    provider: 'openai', model: 'test-model',
+  });
+  expect(second.status).toBe(200);
+  expect(second.body.created).toHaveLength(0);
+  expect(await Agent.countDocuments({ author: ownerId })).toBe(6);
+
+  const inventory = await supertest(app).get('/agents/botmode/setup-status');
+  expect(inventory.status).toBe(200);
+  expect(inventory.body).toMatchObject({
     inventoryComplete: true, permissionsComplete: true, delegationConfigured: true,
   });
 });
