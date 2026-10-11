@@ -912,7 +912,9 @@ const createAgentHandler = async (req, res) => {
       // Never report a usable agent when its owner ACL setup failed.
       // Keep the record intact for safe permission repair rather than deleting
       // an agent that another request might already reference.
-      return res.status(500).json({ error: 'Agent created but owner permissions could not be assigned' });
+      return res
+        .status(500)
+        .json({ error: 'Agent created but owner permissions could not be assigned' });
     }
 
     res.status(201).json(agent);
