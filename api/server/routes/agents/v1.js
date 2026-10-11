@@ -150,6 +150,16 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
     const created = [];
     for (const name of names) {
       if (existing.some((agent) => agent.name === name)) continue;
+      // Recheck immediately before creation so a concurrent onboarding that
+      // has already committed is not needlessly duplicated.
+      const current = await getAgents({ author: req.user.id, name });
+      if (current.length !== 0) {
+        return res.status(409).json({
+          error: 'BOT MODE setup changed during initialization; retry after inspection',
+          failedAgent: name,
+          created,
+        });
+      }
       const body = {
         name,
         provider: provider.trim(),
@@ -185,6 +195,19 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
         });
       }
       created.push({ name, id: payload.id });
+    }
+    // Cross-process writes can race the pre-insert check. Never claim success
+    // until the final inventory is unique for this authenticated owner.
+    const finalAgents = await getAgents({ author: req.user.id, name: { $in: names } });
+    const invalid = names.filter(
+      (name) => finalAgents.filter((agent) => agent.name === name).length !== 1,
+    );
+    if (invalid.length > 0) {
+      return res.status(409).json({
+        error: 'BOT MODE setup inventory changed; manual review required',
+        invalid,
+        created,
+      });
     }
     return res.status(200).json({ created, existing: existing.map((agent) => agent.name) });
   } catch (_error) {
