@@ -344,6 +344,23 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
         created,
       });
     }
+    // Inventory and ACL success are insufficient when the Worker cannot
+    // actually delegate to the five specialists.
+    const finalWorker = finalAgents.find((agent) => agent.name === 'BOT MODE Worker');
+    const finalSpecialistIds = finalAgents
+      .filter((agent) => agent.name !== 'BOT MODE Worker')
+      .map((agent) => agent.id);
+    const configuredIds = finalWorker?.subagents?.agent_ids ?? [];
+    if (
+      finalWorker?.subagents?.enabled !== true ||
+      finalSpecialistIds.length !== 5 ||
+      !finalSpecialistIds.every((id) => configuredIds.includes(id))
+    ) {
+      return res.status(409).json({
+        error: 'BOT MODE Worker delegation is not fully configured',
+        created,
+      });
+    }
     return res.status(200).json({
       created,
       existing: existing.map((agent) => agent.name),
