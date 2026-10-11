@@ -28,7 +28,15 @@ export async function observeResolvedModelCatalog(
   const checkedAt = source.checkedAt ?? new Date().toISOString();
   const sourcePrefix = source.sourcePrefix ?? 'librechat:model-catalog';
   const modelsConfig = await source.loadModels();
-  // A transient empty or malformed discovery response is not evidence that all\n  // models were retired. Preserve the last known catalog and fail closed.\n  const validProviders = Object.entries(modelsConfig ?? {}).filter(\n    ([, models]) => Array.isArray(models) && models.some((id) => typeof id === 'string' && id.trim() !== ''),\n  );\n  if (validProviders.length === 0) {\n    throw new Error('Model discovery returned no usable models; existing catalog retained');\n  }\n  const observations: ModelWatchObservation[] = [];
+  // A transient empty or malformed discovery response is not evidence that all
+  // models were retired. Preserve the last known catalog and fail closed.
+  const validProviders = Object.entries(modelsConfig ?? {}).filter(
+    ([, models]) => Array.isArray(models) && models.some((id) => typeof id === 'string' && id.trim() !== ''),
+  );
+  if (validProviders.length === 0) {
+    throw new Error('Model discovery returned no usable models; existing catalog retained');
+  }
+  const observations: ModelWatchObservation[] = [];
   const discoveredModelIds: string[] = [];
   const seenResourceIds = new Set<string>();
 
@@ -70,7 +78,11 @@ export async function observeResolvedModelCatalog(
     }
   }
 
-  // A provider omitted from a partial discovery result has unknown status, not RETIRED.\n  // Only retire models belonging to providers explicitly present with a usable list.\n  const observedProviders = new Set(validProviders.map(([providerId]) => providerId));\n  const retiredResourceIds: string[] = [];\n  for (const resource of registry.list({ kind: 'model' })) {
+  // A provider omitted from a partial discovery result has unknown status, not RETIRED.
+  // Only retire models belonging to providers explicitly present with a usable list.
+  const observedProviders = new Set(validProviders.map(([providerId]) => providerId));
+  const retiredResourceIds: string[] = [];
+  for (const resource of registry.list({ kind: 'model' })) {
     if (
       resource.provenance?.source?.startsWith(sourcePrefix) &&
       resource.providerId != null && observedProviders.has(resource.providerId) &&
