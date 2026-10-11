@@ -174,7 +174,18 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
       }
     }
 
+    // Requested tools are only proposals: createAgent filters them against
+    // the authenticated user's actual tool and MCP permissions.
+    const requestedTools = {
+      'BOT MODE Worker': ['web_search'],
+      RECHERCHE: ['web_search'],
+      ANALYSE: [],
+      CODE: ['execute_code'],
+      DOCUMENTS: ['file_search'],
+      'RÉDACTION': [],
+    };
     const created = [];
+    const missingCapabilities = [];
     for (const name of names) {
       if (existing.some((agent) => agent.name === name)) continue;
       // Recheck immediately before creation so a concurrent onboarding that
@@ -199,7 +210,7 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
           name === 'BOT MODE Worker'
             ? 'Tu es le Worker principal BOT MODE. Délègue uniquement selon les autorisations.'
             : `Tu es le spécialiste ${name} de BOT MODE. Réponds en français.`,
-        tools: [],
+        tools: requestedTools[name],
       };
       let statusCode = 200;
       let payload;
@@ -221,7 +232,12 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
           created,
         });
       }
-      created.push({ name, id: payload.id });
+      const grantedTools = Array.isArray(payload.tools) ? payload.tools : [];
+      const deniedTools = requestedTools[name].filter((tool) => !grantedTools.includes(tool));
+      if (deniedTools.length > 0) {
+        missingCapabilities.push({ name, deniedTools });
+      }
+      created.push({ name, id: payload.id, grantedTools });
     }
     // Cross-process writes can race the pre-insert check. Never claim success
     // until the final inventory is unique for this authenticated owner.
@@ -258,7 +274,12 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
         created,
       });
     }
-    return res.status(200).json({ created, existing: existing.map((agent) => agent.name) });
+    return res.status(200).json({
+      created,
+      existing: existing.map((agent) => agent.name),
+      capabilitiesComplete: missingCapabilities.length === 0,
+      missingCapabilities,
+    });
   } catch (_error) {
     return res.status(500).json({ error: 'BOT MODE agent initialization failed' });
   }
