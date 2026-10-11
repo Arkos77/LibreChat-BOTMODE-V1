@@ -17,10 +17,10 @@ jobs:
       - name: Checkout immutable PR14 candidate
         uses: actions/checkout@v5
         with:
-          ref: b90b06aff4681c2d258a667a1e7e69226fdc1f62
+          ref: 4727adf130acf981f88269b0927ffaf2d4facf04
           persist-credentials: false
       - name: Check revision
-        run: test "$(git rev-parse HEAD)" = "b90b06aff4681c2d258a667a1e7e69226fdc1f62"
+        run: test "$(git rev-parse HEAD)" = "4727adf130acf981f88269b0927ffaf2d4facf04"
       - uses: actions/setup-node@v5
         with:
           node-version: '24.16.0'
@@ -35,7 +35,7 @@ jobs:
         working-directory: api
         env:
           NODE_ENV: test
-        run: npx jest server/controllers/agents/v1.spec.js server/routes/agents/botmodeSetupValidation.spec.js --runInBand --coverage=false
+        run: npx jest server/controllers/agents/v1.spec.js server/routes/agents/botmodeSetupValidation.spec.js server/services/PermissionService.spec.js --runInBand --coverage=false
       - name: Mark actual tested boundary
         if: always()
         run: |
