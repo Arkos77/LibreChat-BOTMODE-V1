@@ -1,0 +1,62 @@
+name: BOTMODE V1 Exact Candidate Runtime Gate
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/botmode-v1-exact-candidate-runtime.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  exact-candidate-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout immutable PR14 candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ea24f476164153735b5f5c95fe9c7861d4f97a1f
+          persist-credentials: false
+      - name: Prove checked-out revision
+        run: test "$(git rev-parse HEAD)" = 'ea24f476164153735b5f5c95fe9c7861d4f97a1f'
+      - name: Build actual PR14 API runtime image locally
+        run: |
+          set -euo pipefail
+          docker build --target node --build-arg BUILD_COMMIT="$(git rev-parse HEAD)" -t botmode-pr14-exact:local -f Dockerfile .
+      - name: Boot isolated candidate with disposable MongoDB
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          chmod 600 .env
+          {
+            echo 'BOTMODE_MONGO_PASSWORD=ci-isolated-only'
+            echo 'POSTGRES_PASSWORD=ci-isolated-only'
+          } >> .env
+          export BOTMODE_MONGO_PASSWORD=ci-isolated-only
+          export POSTGRES_PASSWORD=ci-isolated-only
+          export BOTMODE_IMAGE=botmode-pr14-exact:local
+          export BOTMODE_HOST_PORT=3090
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml up -d
+          ready=0
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:3090/api/config -o /tmp/botmode-e2e-api-config.json >/dev/null 2>&1; then
+              ready=1; break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps
+            echo "::error::Exact PR14 API was not ready"
+            exit 1
+          fi
+          echo 'BOTMODE_PR14_RUNTIME_BOOT=PASS'
+          echo '### Gate scope: exact PR14 runtime boot with disposable MongoDB' >> "$GITHUB_STEP_SUMMARY"
+          echo 'The API started. Worker delegation, Oracle and publication are NOT proven yet.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Always destroy disposable stack
+        if: always()
+        env:
+          BOTMODE_MONGO_PASSWORD: ci-isolated-only
+          POSTGRES_PASSWORD: ci-isolated-only
+          BOTMODE_IMAGE: botmode-pr14-exact:local
+        run: docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
