@@ -199,6 +199,24 @@ describe('Agent Controllers - Mass Assignment Protection', () => {
   });
 
   describe('createAgentHandler', () => {
+    test('does not report success when the owner ACL grant fails', async () => {
+      const { grantPermission } = require('~/server/services/PermissionService');
+      grantPermission.mockRejectedValueOnce(new Error('ACL unavailable'));
+      mockReq.body = {
+        name: 'Unprovisioned Owner',
+        provider: 'openai',
+        model: 'gpt-4',
+      };
+
+      await createAgentHandler(mockReq, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.status).not.toHaveBeenCalledWith(201);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        error: 'Agent created but owner permissions could not be assigned',
+      });
+    });
+
     test('removes programmatic tool options when Code Interpreter capability is disabled', async () => {
       mockReq.body = {
         name: 'Invalid Programmatic Agent',
