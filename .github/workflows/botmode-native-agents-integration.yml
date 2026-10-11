@@ -41,6 +41,11 @@ jobs:
         env:
           NODE_ENV: test
         run: npx jest src/middleware/access.spec.ts --runInBand --coverage=false
+      - name: Verify native authentication middleware and JWT strategy contracts
+        working-directory: api
+        env:
+          NODE_ENV: test
+        run: npx jest server/middleware/__tests__/requireJwtAuth.spec.js strategies/jwtStrategy.spec.js --runInBand --coverage=false
       - name: Mark actual tested boundary
         if: always()
         run: |
