@@ -2,6 +2,11 @@
  * This deliberately does not claim to be a real MongoDB or HTTP auth integration test.
  */
 const mockAgents = [];
+const mockAccess = jest.fn((req, res, next, permissions) => {
+  if (!req.user?.id) return res.status(401).json({ error: 'Authentication required' });
+  if (permissions.includes('CREATE') && !req.user.canCreate) return res.status(403).json({ error: 'Forbidden' });
+  next();
+});
 const mockPermissions = new Map();
 let mockNextId = 0;
 const mockGetAgents = jest.fn(async (query) =>
@@ -31,7 +36,7 @@ const mockUpdateAgent = jest.fn(async (req, res) => {
   res.status(200).json(agent);
 });
 jest.mock('@librechat/api', () => ({
-  generateCheckAccess: () => (_req, _res, next) => next(),
+  generateCheckAccess: ({ permissions }) => (req, res, next) => mockAccess(req, res, next, permissions),
 }));
 jest.mock('~/server/middleware', () => ({
   configMiddleware: (_req, _res, next) => next(),
@@ -64,6 +69,8 @@ jest.mock('./actions', () => require('express').Router());
 jest.mock('./tools', () => require('express').Router());
 
 const { v1: router } = require('./v1');
+const express = require('express');
+const supertest = require('supertest');
 
 function response() {
   return {
@@ -77,7 +84,7 @@ const setupLayer = router.stack.find((layer) => layer.route?.path === '/botmode/
 const statusLayer = router.stack.find((layer) => layer.route?.path === '/botmode/setup-status');
 const setup = setupLayer.route.stack.at(-1).handle;
 const inspect = statusLayer.route.stack.at(-1).handle;
-const request = () => ({ user: { id: 'owner-1', role: 'USER' }, body: { provider: 'openai', model: 'test-model' }, params: {} });
+const request = () => ({ user: { id: 'owner-1', role: 'USER', canCreate: true }, body: { provider: 'openai', model: 'test-model' }, params: {} });
 
 beforeEach(() => {
   mockAgents.length = 0;
@@ -131,4 +138,28 @@ test('refuses duplicate inventory without mutating existing records', async () =
   expect(result.code).toBe(409);
   expect(mockAgents).toHaveLength(2);
   expect(mockCreateAgent).not.toHaveBeenCalled();
+});
+
+test('HTTP permission boundary blocks anonymous and non-creator setup requests', async () => {
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    const identity = req.headers['x-test-identity'];
+    if (identity === 'viewer') req.user = { id: 'owner-2', role: 'USER', canCreate: false };
+    if (identity === 'creator') req.user = { id: 'owner-2', role: 'USER', canCreate: true };
+    next();
+  });
+  app.use('/agents', router);
+  const anonymous = await supertest(app).post('/agents/botmode/setup').send({ provider: 'openai', model: 'test-model' });
+  expect(anonymous.status).toBe(401);
+  const viewer = await supertest(app).post('/agents/botmode/setup').set('x-test-identity', 'viewer').send({ provider: 'openai', model: 'test-model' });
+  expect(viewer.status).toBe(403);
+  expect(mockAgents).toHaveLength(0);
+  const allowed = await supertest(app).post('/agents/botmode/setup').set('x-test-identity', 'creator').send({ provider: 'openai', model: 'test-model' });
+  expect(allowed.status).toBe(200);
+  expect(mockAgents).toHaveLength(6);
+  const forbiddenStatus = await supertest(app).get('/agents/botmode/setup-status');
+  expect(forbiddenStatus.status).toBe(401);
+  const viewerStatus = await supertest(app).get('/agents/botmode/setup-status').set('x-test-identity', 'viewer');
+  expect(viewerStatus.status).toBe(200);
 });
