@@ -1,0 +1,44 @@
+name: BOTMODE Native Agent Controller Integration
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/botmode-native-agents-integration.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-agent-controller-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout immutable PR14 candidate
+        uses: actions/checkout@v5
+        with:
+          ref: 38c6a3f682f2ac4db0be2e10fd360e1cac623fc7
+          persist-credentials: false
+      - name: Check revision
+        run: test "$(git rev-parse HEAD)" = "38c6a3f682f2ac4db0be2e10fd360e1cac623fc7"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - run: npm ci
+      - name: Build dependency packages
+        run: |
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:api
+      - name: Run actual native agent controller tests against temporary MongoDB
+        working-directory: api
+        env:
+          NODE_ENV: test
+        run: npx jest server/controllers/agents/v1.spec.js server/routes/agents/botmodeSetupValidation.spec.js --runInBand --coverage=false
+      - name: Mark actual tested boundary
+        if: always()
+        run: |
+          echo '### Scope: real MongoMemoryServer in native controller tests' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Existing controller tests exercise persisted agents, authorization failure paths and subagent validation.' >> "$GITHUB_STEP_SUMMARY"
+          echo '**Still required:** authenticated POST /agents/botmode/setup end-to-end, six records and actual ACL, repeated initialization, and live mission.' >> "$GITHUB_STEP_SUMMARY"
