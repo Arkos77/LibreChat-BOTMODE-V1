@@ -15,6 +15,7 @@ const {
 const { configMiddleware, canAccessAgentResource } = require('~/server/middleware');
 const v1 = require('~/server/controllers/agents/v1');
 const { getRoleByName, getAgents } = require('~/models');
+const { loadModels } = require('~/server/controllers/ModelController');
 const actions = require('./actions');
 const tools = require('./tools');
 
@@ -129,6 +130,12 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
 
   const names = ['BOT MODE Worker', 'RECHERCHE', 'ANALYSE', 'CODE', 'DOCUMENTS', 'RÉDACTION'];
   try {
+    // Resolve against this authenticated request, including user API keys.
+    // A client-provided name is not proof of model availability.
+    const resolvedModels = await loadModels(req);
+    if (!Array.isArray(resolvedModels[provider]) || !resolvedModels[provider].includes(model)) {
+      return res.status(400).json({ error: 'Selected provider/model is not available to this user' });
+    }
     const existing = await getAgents({ author: req.user.id, name: { $in: names } });
     const duplicates = names.filter(
       (name) => existing.filter((agent) => agent.name === name).length > 1,
