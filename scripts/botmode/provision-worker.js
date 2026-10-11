@@ -27,7 +27,9 @@ async function main() {
     const existing = await agents.findOne({ $or: [{ name: 'BOT MODE Worker' }, { id: 'botmode-worker' }] });
     if (existing) {
       if (String(existing.author) !== String(author)) throw new Error('Worker belongs to another user');
-      console.log('BOTMODE_WORKER=EXISTS');
+      const ownedAcl = await db.collection('aclentries').findOne({ principalType: 'user', principalId: author, resourceId: existing._id, resourceType: 'agent' });
+      if (!ownedAcl) throw new Error('Worker exists without owner ACL; refusing false success');
+      console.log('BOTMODE_WORKER=EXISTS_WITH_OWNER_ACL');
       return;
     }
     const role = await db.collection('accessroles').findOne({ accessRoleId: 'agent_owner' });
@@ -40,6 +42,7 @@ async function main() {
       tools: [], agent_ids: [], edges: [], versions: [],
       createdAt: now, updatedAt: now,
     };
+    // Fail closed if another process creates the Worker between the existence check and insert.
     const result = await agents.insertOne(doc);
     await db.collection('aclentries').updateOne(
       { principalType: 'user', principalId: author, principalModel: 'User', resourceId: result.insertedId, resourceType: 'agent' },
