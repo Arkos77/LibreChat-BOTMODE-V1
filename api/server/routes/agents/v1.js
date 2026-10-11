@@ -1,6 +1,7 @@
 const express = require('express');
 const { generateCheckAccess } = require('@librechat/api');
-const { PermissionTypes, Permissions, PermissionBits } = require('librechat-data-provider');
+const { PermissionTypes, Permissions, PermissionBits, ResourceType } = require('librechat-data-provider');
+const { getResourcePermissionsMap } = require('~/server/services/PermissionService');
 const { configMiddleware, canAccessAgentResource } = require('~/server/middleware');
 const v1 = require('~/server/controllers/agents/v1');
 const { getRoleByName, getAgents } = require('~/models');
@@ -55,6 +56,19 @@ router.get('/botmode/setup-status', checkAgentAccess, async (req, res) => {
   try {
     const names = ['BOT MODE Worker', 'RECHERCHE', 'ANALYSE', 'CODE', 'DOCUMENTS', 'RÉDACTION'];
     const agents = await getAgents({ author: req.user.id, name: { $in: names } });
+    const permissions = await getResourcePermissionsMap({
+      userId: req.user.id,
+      role: req.user.role,
+      resourceType: ResourceType.AGENT,
+      resourceIds: agents.map((agent) => agent._id),
+    });
+    const missingOwnerAccess = agents
+      .filter((agent) => {
+        const bits = permissions.get(String(agent._id)) ?? 0;
+        return (bits & (PermissionBits.VIEW | PermissionBits.EDIT)) !==
+          (PermissionBits.VIEW | PermissionBits.EDIT);
+      })
+      .map((agent) => agent.name);
     const present = names.filter((name) => agents.some((agent) => agent.name === name));
     const missing = names.filter((name) => !present.includes(name));
     const duplicates = names.filter(
@@ -62,6 +76,8 @@ router.get('/botmode/setup-status', checkAgentAccess, async (req, res) => {
     );
     return res.status(200).json({
       inventoryComplete: missing.length === 0 && duplicates.length === 0,
+      permissionsComplete: missingOwnerAccess.length === 0,
+      missingOwnerAccess,
       present,
       missing,
       duplicates,
