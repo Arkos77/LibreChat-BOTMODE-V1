@@ -70,10 +70,10 @@ export async function observeResolvedModelCatalog(
     }
   }
 
-  const retiredResourceIds: string[] = [];
-  for (const resource of registry.list({ kind: 'model' })) {
+  // A provider omitted from a partial discovery result has unknown status, not RETIRED.\n  // Only retire models belonging to providers explicitly present with a usable list.\n  const observedProviders = new Set(validProviders.map(([providerId]) => providerId));\n  const retiredResourceIds: string[] = [];\n  for (const resource of registry.list({ kind: 'model' })) {
     if (
       resource.provenance?.source?.startsWith(sourcePrefix) &&
+      resource.providerId != null && observedProviders.has(resource.providerId) &&
       !seenResourceIds.has(resource.id)
     ) {
       retiredResourceIds.push(resource.id);
