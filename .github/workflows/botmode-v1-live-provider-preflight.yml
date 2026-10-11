@@ -4,6 +4,11 @@ name: BOTMODE V1 Live Provider Preflight
 on:
   workflow_dispatch:
     inputs:
+      check_gemini:
+        description: "Verify Gemini (optional; can fail independently of OpenRouter)"
+        required: true
+        default: false
+        type: boolean
       gemini_model:
         description: "Gemini API model identifier (not the LibreChat display label)"
         required: true
@@ -35,11 +40,12 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GEMINI_MODEL: ${{ inputs.gemini_model }}
+          CHECK_GEMINI: ${{ inputs.check_gemini }}
           CHECK_OPENROUTER: ${{ inputs.check_openrouter }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${GEMINI_API_KEY:-}" ]; then
+          if [ "${CHECK_GEMINI}" = "true" ] && [ -z "${GEMINI_API_KEY:-}" ]; then
             echo "::error::Missing repository Actions secret GEMINI_API_KEY"
             exit 1
           fi
@@ -67,7 +73,8 @@ jobs:
               print(f"{label}: inference response validated (contents redacted)")
           failures=[]
           model=os.environ["GEMINI_MODEL"]
-          try:
+          if os.environ["CHECK_GEMINI"].lower()=="true":
+           try:
               req=urllib.request.Request("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",
                   headers={"x-goog-api-key":os.environ["GEMINI_API_KEY"]})
               with urllib.request.urlopen(req,timeout=35) as resp:
@@ -99,9 +106,9 @@ jobs:
                       last_404=True
               if last_404:
                   raise RuntimeError("All tried Gemini models returned HTTP 404")
-          except (Exception,SystemExit) as exc:
-              print("Gemini validation failed:",str(exc) if isinstance(exc,SystemExit) else type(exc).__name__)
-              failures.append("Gemini")
+           except (Exception,SystemExit) as exc:
+               print("Gemini validation failed:",str(exc) if isinstance(exc,SystemExit) else type(exc).__name__)
+               failures.append("Gemini")
           if os.environ["CHECK_OPENROUTER"].lower()=="true":
               token=os.environ.get("OPENROUTER_API_KEY","")
               if not token:
