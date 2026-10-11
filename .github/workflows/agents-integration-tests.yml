@@ -115,6 +115,12 @@ jobs:
         if: steps.cache-api.outputs.cache-hit != 'true'
         run: npm run build:api
 
+      - name: Verify completion wakeup and mission Oracle gates
+        working-directory: packages/api
+        env:
+          NODE_ENV: test
+        run: npx jest src/agents/subagentCompletionWakeup.spec.ts src/agents/orchestrator/missionOracle.spec.ts --runInBand --coverage=false
+
       - name: Run agents integration tests
         working-directory: packages/api
         env:
