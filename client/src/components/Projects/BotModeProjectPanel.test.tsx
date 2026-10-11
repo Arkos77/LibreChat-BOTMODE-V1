@@ -187,7 +187,8 @@ describe('BotModeProjectPanel', () => {
       data: { data: [{ id: 'another-agent', name: 'Other Agent' }] },
     });
     render(<BotModeProjectPanel projectId="project-a" conversations={[]} />);
-    expect(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'com_ui_bot_mode_project_launch' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Initialiser BOT MODE' })).toBeEnabled();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
