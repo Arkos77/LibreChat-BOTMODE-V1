@@ -51,6 +51,14 @@ jest.mock('~/server/controllers/ModelController', () => ({
 jest.mock('~/server/controllers/agents/v1', () => ({
   createAgent: (...args) => mockCreateAgent(...args),
   updateAgent: (...args) => mockUpdateAgent(...args),
+  getAgentCategories: jest.fn(),
+  getAgent: jest.fn(),
+  getAgentVersions: jest.fn(),
+  duplicateAgent: jest.fn(),
+  revertAgentVersion: jest.fn(),
+  getListAgents: jest.fn(),
+  uploadAgentAvatar: jest.fn(),
+  deleteAgent: jest.fn(),
 }));
 jest.mock('./actions', () => require('express').Router());
 jest.mock('./tools', () => require('express').Router());
