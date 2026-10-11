@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { dataService, QueryKeys } from 'librechat-data-provider';
 import { v4 } from 'uuid';
 import { Button } from '@librechat/client';
 import { useNavigate } from 'react-router-dom';
@@ -127,6 +130,9 @@ export default function BotModeProjectPanel({
 }) {
   const localize = useLocalize();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [setupPending, setSetupPending] = useState(false);
+  const [setupError, setSetupError] = useState('');
   const { data: agents } = useListAgentsQuery();
   const {
     data: projection,
@@ -184,6 +190,30 @@ export default function BotModeProjectPanel({
   })();
   // Never launch an arbitrary agent when the BOT MODE Worker is unavailable.
   const primaryAgent = agents?.data?.find((agent) => agent.name === 'BOT MODE Worker');
+
+  const initializeAgents = async () => {
+    if (setupPending) return;
+    setSetupPending(true);
+    setSetupError('');
+    try {
+      const catalog = await dataService.getModels();
+      const configured = Object.entries(catalog).find(
+        ([provider, models]) =>
+          provider !== 'agents' && Array.isArray(models) && models.length > 0,
+      );
+      if (!configured) {
+        setSetupError('Aucun modèle configuré : ajoutez une clé API ou un fournisseur local.');
+        return;
+      }
+      const [provider, models] = configured;
+      await dataService.initializeBotModeAgents({ provider, model: models[0] });
+      await queryClient.invalidateQueries([QueryKeys.agents]);
+    } catch (_error) {
+      setSetupError("Initialisation BOT MODE impossible. Vérifiez le modèle et les permissions.");
+    } finally {
+      setSetupPending(false);
+    }
+  };
 
   const launchMission = () => {
     if (!primaryAgent?.id) {
@@ -249,9 +279,18 @@ export default function BotModeProjectPanel({
                 })}
               </p>
             </div>
-            <Button type="button" size="sm" disabled={!primaryAgent?.id} onClick={launchMission}>
-              {localize('com_ui_bot_mode_project_launch')}
-            </Button>
+            <div className="flex flex-col items-end gap-2">
+              {primaryAgent?.id ? (
+                <Button type="button" size="sm" onClick={launchMission}>
+                  {localize('com_ui_bot_mode_project_launch')}
+                </Button>
+              ) : (
+                <Button type="button" size="sm" disabled={setupPending} onClick={initializeAgents}>
+                  {setupPending ? 'Initialisation…' : 'Initialiser BOT MODE'}
+                </Button>
+              )}
+              {setupError && <span role="alert" className="text-xs text-red-600">{setupError}</span>}
+            </div>
           </div>
 
           <div className="mt-5 grid grid-cols-6 gap-1.5" aria-label="Mission progress">
