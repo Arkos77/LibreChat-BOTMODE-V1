@@ -23,4 +23,20 @@ const inspectAgentInventory = (agents, expectedNames) => {
   return { missing, duplicates, complete: missing.length === 0 && duplicates.length === 0 };
 };
 
-module.exports = { validateModelSelection, inspectAgentInventory };
+const validateWorkerDelegation = (agents, expectedSpecialists) => {
+  const worker = agents.find((agent) => agent.name === 'BOT MODE Worker');
+  const targetIds = expectedSpecialists.map(
+    (name) => agents.find((agent) => agent.name === name)?.id,
+  );
+  if (!worker || targetIds.some((id) => typeof id !== 'string' || !id)) return false;
+  const actualIds = worker.subagents?.agent_ids;
+  return (
+    worker.subagents?.enabled === true &&
+    Array.isArray(actualIds) &&
+    actualIds.length === targetIds.length &&
+    new Set(actualIds).size === targetIds.length &&
+    targetIds.every((id) => actualIds.includes(id))
+  );
+};
+
+module.exports = { validateModelSelection, inspectAgentInventory, validateWorkerDelegation };
