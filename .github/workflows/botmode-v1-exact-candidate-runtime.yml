@@ -50,9 +50,18 @@ jobs:
             echo "::error::Exact PR14 API was not ready"
             exit 1
           fi
+          # Test the real mounted route without a token, not a simulated router.
+          unauth_status=$(curl -sS -o /tmp/botmode-unauth.json -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' \
+            -d '{}' http://127.0.0.1:3090/api/agents/botmode/setup)
+          if [ "$unauth_status" != "401" ]; then
+            echo "::error::Unauthenticated BOTMODE setup expected HTTP 401, got $unauth_status"
+            exit 1
+          fi
+          echo 'BOTMODE_PR14_UNAUTHENTICATED_SETUP=401_PASS'
           echo 'BOTMODE_PR14_RUNTIME_BOOT=PASS'
           echo '### Gate scope: exact PR14 runtime boot with disposable MongoDB' >> "$GITHUB_STEP_SUMMARY"
-          echo 'The API started. Worker delegation, Oracle and publication are NOT proven yet.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'The API started and unauthenticated onboarding was denied with HTTP 401. Authenticated provisioning, delegation, Oracle and publication are NOT proven yet.' >> "$GITHUB_STEP_SUMMARY"
       - name: Always destroy disposable stack
         if: always()
         env:
