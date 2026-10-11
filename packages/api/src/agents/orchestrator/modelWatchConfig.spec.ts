@@ -44,6 +44,23 @@ describe('observeResolvedModelCatalog', () => {
     });
   });
 
+  it('does not retire another provider omitted from partial discovery', async () => {
+    const registry = new CapabilityResourceRegistry();
+    await observeResolvedModelCatalog(registry, {
+      sourcePrefix: 'test-watch',
+      loadModels: () => ({ openrouter: ['model-a'], anthropic: ['model-b'] }),
+    });
+    const result = await observeResolvedModelCatalog(registry, {
+      sourcePrefix: 'test-watch',
+      loadModels: () => ({ openrouter: ['model-a'] }),
+    });
+    expect(result.retiredResourceIds).toEqual([]);
+    expect(registry.get('model:anthropic:model-b')).toMatchObject({
+      enabled: true,
+      modelId: 'model-b',
+    });
+  });
+
   it('detects a model that disappeared from the resolved catalog', async () => {
     const registry = new CapabilityResourceRegistry();
     await observeResolvedModelCatalog(registry, {
