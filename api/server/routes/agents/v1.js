@@ -3,7 +3,7 @@ const { generateCheckAccess } = require('@librechat/api');
 const { PermissionTypes, Permissions, PermissionBits } = require('librechat-data-provider');
 const { configMiddleware, canAccessAgentResource } = require('~/server/middleware');
 const v1 = require('~/server/controllers/agents/v1');
-const { getRoleByName } = require('~/models');
+const { getRoleByName, getAgents } = require('~/models');
 const actions = require('./actions');
 const tools = require('./tools');
 
@@ -45,6 +45,31 @@ router.get('/categories', v1.getAgentCategories);
  * @returns {Agent} 201 - Success response - application/json
  */
 router.post('/', checkAgentCreate, configMiddleware, v1.createAgent);
+
+/**
+ * Authenticated, read-only BOT MODE onboarding preflight.
+ * Scoped to the current owner; does not infer ownership from agent names.
+ * Creation must still pass through POST /agents and its native ACL checks.
+ */
+router.get('/botmode/setup-status', checkAgentAccess, async (req, res) => {
+  try {
+    const names = ['BOT MODE Worker', 'RECHERCHE', 'ANALYSE', 'CODE', 'DOCUMENTS', 'RÉDACTION'];
+    const agents = await getAgents({ author: req.user.id, name: { $in: names } });
+    const present = names.filter((name) => agents.some((agent) => agent.name === name));
+    const missing = names.filter((name) => !present.includes(name));
+    const duplicates = names.filter(
+      (name) => agents.filter((agent) => agent.name === name).length > 1,
+    );
+    return res.status(200).json({
+      ready: missing.length === 0 && duplicates.length === 0,
+      present,
+      missing,
+      duplicates,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: 'Unable to inspect BOT MODE setup' });
+  }
+});
 
 /**
  * Retrieves basic agent information (VIEW permission required).
