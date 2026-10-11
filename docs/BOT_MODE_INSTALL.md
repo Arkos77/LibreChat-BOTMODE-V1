@@ -146,3 +146,40 @@ Le premier test propre a mis en évidence quatre défauts de distribution désor
 - lancement d'une image LibreChat upstream au lieu du code BOTMODE cloné.
 
 Le prochain test Chromebook doit repartir de zéro uniquement après publication d'une image BOTMODE candidate.
+
+## Provisionnement des agents BOT MODE (installation existante)
+
+Ce provisionnement n'est **pas** déclenché par `bootstrap.sh` : il nécessite le
+choix explicite du compte LibreChat existant et d'un provider/modèle réellement
+configurés. Ne pas réinitialiser MongoDB ni les volumes.
+
+Depuis le répertoire de la candidate en fonctionnement, lancer le diagnostic
+en lecture seule dans le conteneur API :
+
+```bash
+docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml \
+  exec -T api node scripts/botmode/inspect-agent-bootstrap.js
+```
+
+Pour provisionner le Worker si aucun agent BOT MODE n'existe, relever d'abord
+l'`_id` MongoDB du compte utilisateur choisi de façon authentifiée, puis exécuter
+la commande suivante avec **cet ID uniquement**, un provider et un modèle
+configurés. Ne jamais copier de mot de passe ni de clé API dans cette commande.
+
+```bash
+docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml \
+  exec -T api node scripts/botmode/provision-worker.js \
+  --apply --user-id '<OBJECT_ID_UTILISATEUR>' --provider '<PROVIDER>' --model '<MODEL>'
+```
+
+Le provisionneur refuse les utilisateurs inexistants, les comptes tenant-scoped,
+les doublons appartenant à une autre personne et les rôles ACL manquants. Un
+Worker existant appartenant au même utilisateur est laissé intact. Ce chemin
+ne configure pas encore les cinq spécialistes : le script préexistant
+`seed-default-specialists.js` ne doit être exécuté qu'après une vérification
+des effets de ses mises à jour sur la base en place. Un nouvel agent ne garantit
+pas non plus qu'un provider ou ses outils soient fonctionnels ; le test de
+mission reste obligatoire.
+
+Le script d'inspection permet de vérifier les agents et ACL présents, mais ne
+constitue pas une preuve que le lancement d'une mission réussira.
