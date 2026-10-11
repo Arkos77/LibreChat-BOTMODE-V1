@@ -80,7 +80,7 @@ jobs:
             if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET unavailable in runtime');
             process.stdout.write(jwt.sign({ id: String(id) }, process.env.JWT_SECRET, { expiresIn: '2m' }));
             await mongoose.disconnect();
-          })().catch(() => process.exit(1));
+          })().catch((error) => { console.error('CI principal creation:', error?.code || error?.name || 'UNKNOWN'); process.exit(1); });
           NODE
           chmod 600 /tmp/botmode-e2e-test-token
           test -s /tmp/botmode-e2e-test-token
