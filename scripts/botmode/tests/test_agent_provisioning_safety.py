@@ -11,7 +11,7 @@ class ProvisioningSafety(unittest.TestCase):
         for fragment in ["args.includes('--apply')", "args.includes('--user-id')",
                          "findOne({ _id: author })", "accessRoleId: 'agent_owner'",
                          "resourceType: 'agent'", "$setOnInsert",
-                         "Worker belongs to another user"]:
+                         "Worker belongs to another user", "Worker exists without owner ACL"]:
             self.assertIn(fragment, script)
         self.assertNotIn('deleteMany(', script)
         self.assertNotIn('dropDatabase(', script)
