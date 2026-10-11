@@ -1,5 +1,14 @@
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb');
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
+// Legacy direct-DB migration is never an implicit install/bootstrap action.
+if (!process.argv.includes('--apply')) {
+  throw new Error('Legacy specialist seeding requires explicit --apply; use native agent onboarding for new installs');
+}
+const ownerArg = process.argv.indexOf('--user-id');
+const ownerId = ownerArg >= 0 ? process.argv[ownerArg + 1] : null;
+if (!ownerId || !ObjectId.isValid(ownerId)) {
+  throw new Error('Explicit --user-id OBJECT_ID required for specialist seeding');
+}
 const uri = process.env.MONGO_URI;
 if (!uri) throw new Error('MONGO_URI missing');
 const serusEnabled = Boolean(process.env.SERUS_API_KEY?.trim());
@@ -43,7 +52,7 @@ const specs = [
   try {
     const db = client.db();
     const agents = db.collection('agents');
-    const worker = await agents.findOne({ name: 'BOT MODE Worker' });
+    const worker = await agents.findOne({ name: 'BOT MODE Worker', author: new ObjectId(ownerId) });
     if (!worker) throw new Error('BOT MODE Worker not found');
     const now = new Date();
     const ids = [];
@@ -61,19 +70,11 @@ const specs = [
     for (const [name, desc, instructions, tools] of specs) {
       let a = await agents.findOne({ name });
       if (a) {
-        await agents.updateOne(
-          { _id: a._id },
-          {
-            $set: {
-              description: desc,
-              instructions: `${publicOutputPolicy}${instructions}`,
-              tools,
-              metadata: { ...(a.metadata || {}), botmode: true, specialist: true },
-              updatedAt: new Date(),
-            },
-          },
-        );
-        a = await agents.findOne({ _id: a._id });
+        if (String(a.author) !== String(worker.author)) {
+          throw new Error(`Specialist name collision with another owner: ${name}`);
+        }
+        // Preserve any existing instructions, tool grants, model and metadata.
+        // Never overwrite an agent merely because its name matches a default.
       } else {
         const id = `botmode-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
         const version = {
@@ -113,6 +114,11 @@ const specs = [
       }
       console.log(`READY ${name} ${a.id}`);
       ids.push(a.id);
+    }
+    // Existing Worker configuration is user-owned: changing tools or routing
+    // requires the normal authenticated agent update/authorization path.
+    if (worker.subagents?.enabled || (worker.tools?.length ?? 0) > 0) {
+      throw new Error('Worker already configured; refusing destructive reseed');
     }
     await agents.updateOne(
       { _id: worker._id },

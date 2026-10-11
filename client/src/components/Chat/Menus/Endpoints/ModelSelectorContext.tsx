@@ -172,7 +172,6 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
     setSelectedValues,
   });
 
-
   const [searchValue, setSearchValueState] = useState('');
   const [endpointSearchValues, setEndpointSearchValues] = useState<Record<string, string>>({});
 
@@ -268,6 +267,8 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
       } else if (endpoint.value) {
         onSelectEndpoint?.(endpoint.value, { model });
       }
+      // The selector reflects the user's immediate explicit choice while the
+      // conversation state commits; cold-load persistence is asserted separately.
       setSelectedValues({
         endpoint: endpoint.value,
         model,

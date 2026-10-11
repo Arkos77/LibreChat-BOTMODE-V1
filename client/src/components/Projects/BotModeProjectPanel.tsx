@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { v4 } from 'uuid';
 import { Button } from '@librechat/client';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { dataService, QueryKeys } from 'librechat-data-provider';
 import { Activity, CircleDashed, Clock3, ListTree, Radio, ShieldCheck, Wallet } from 'lucide-react';
 import type { ParentSubagentSummary, TConversation } from 'librechat-data-provider';
 import {
@@ -127,6 +130,11 @@ export default function BotModeProjectPanel({
 }) {
   const localize = useLocalize();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [setupPending, setSetupPending] = useState(false);
+  const [setupError, setSetupError] = useState('');
+  const [setupModels, setSetupModels] = useState<Array<{ provider: string; model: string }>>([]);
+  const [selectedSetupModel, setSelectedSetupModel] = useState('');
   const { data: agents } = useListAgentsQuery();
   const {
     data: projection,
@@ -182,7 +190,54 @@ export default function BotModeProjectPanel({
     if (verifiedObservations.length > 0) return 'verified';
     return 'running';
   })();
-  const primaryAgent = agents?.data?.[0];
+  // Never launch an arbitrary agent when the BOT MODE Worker is unavailable.
+  const primaryAgent = agents?.data?.find((agent) => agent.name === 'BOT MODE Worker');
+
+  const initializeAgents = async () => {
+    if (setupPending) return;
+    setSetupPending(true);
+    setSetupError('');
+    try {
+      const catalog = await dataService.getModels();
+      const configured = Object.entries(catalog).flatMap(([provider, models]) =>
+        provider !== 'agents' && Array.isArray(models)
+          ? models
+              .filter((model): model is string => typeof model === 'string' && model.trim() !== '')
+              .map((model) => ({ provider, model }))
+          : [],
+      );
+      if (configured.length === 0) {
+        setSetupError('Aucun modèle configuré : ajoutez une clé API ou un fournisseur local.');
+        return;
+      }
+      if (configured.length > 1 && setupModels.length === 0) {
+        setSetupModels(configured);
+        setSetupError('Sélectionnez un modèle avant de lancer l’initialisation.');
+        return;
+      }
+      const selected =
+        configured.length === 1 ? configured[0] : setupModels[Number(selectedSetupModel)];
+      if (
+        !selected ||
+        !configured.some(
+          (item) => item.provider === selected.provider && item.model === selected.model,
+        )
+      ) {
+        setSetupModels(configured);
+        setSetupError('Sélectionnez un modèle disponible pour continuer.');
+        return;
+      }
+      const result = await dataService.initializeBotModeAgents(selected);
+      await queryClient.invalidateQueries([QueryKeys.agents]);
+      if (!result.capabilitiesComplete) {
+        setSetupError('Agents créés, mais certains outils ne sont pas disponibles ou autorisés.');
+      }
+    } catch (_error) {
+      setSetupError('Initialisation BOT MODE impossible. Vérifiez le modèle et les permissions.');
+    } finally {
+      setSetupPending(false);
+    }
+  };
 
   const launchMission = () => {
     if (!primaryAgent?.id) {
@@ -248,9 +303,45 @@ export default function BotModeProjectPanel({
                 })}
               </p>
             </div>
-            <Button type="button" size="sm" disabled={!primaryAgent?.id} onClick={launchMission}>
-              {localize('com_ui_bot_mode_project_launch')}
-            </Button>
+            <div className="flex flex-col items-end gap-2">
+              {primaryAgent?.id ? (
+                <Button type="button" size="sm" onClick={launchMission}>
+                  {localize('com_ui_bot_mode_project_launch')}
+                </Button>
+              ) : (
+                <>
+                  {setupModels.length > 1 && (
+                    <select
+                      aria-label="Modèle BOT MODE"
+                      className="max-w-64 rounded border border-border-light bg-surface-primary p-2 text-sm"
+                      value={selectedSetupModel}
+                      onChange={(event) => setSelectedSetupModel(event.target.value)}
+                      disabled={setupPending}
+                    >
+                      <option value="">{localize('com_ui_select_model')}</option>
+                      {setupModels.map(({ provider, model }, index) => (
+                        <option key={`${provider}:${model}`} value={String(index)}>
+                          {provider} — {model}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={setupPending || (setupModels.length > 1 && selectedSetupModel === '')}
+                    onClick={initializeAgents}
+                  >
+                    {setupPending ? 'Initialisation…' : 'Initialiser BOT MODE'}
+                  </Button>
+                </>
+              )}
+              {setupError && (
+                <span role="alert" className="text-xs text-red-600">
+                  {setupError}
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="mt-5 grid grid-cols-6 gap-1.5" aria-label="Mission progress">

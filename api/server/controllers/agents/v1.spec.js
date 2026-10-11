@@ -199,6 +199,24 @@ describe('Agent Controllers - Mass Assignment Protection', () => {
   });
 
   describe('createAgentHandler', () => {
+    test('does not report success when the owner ACL grant fails', async () => {
+      const { grantPermission } = require('~/server/services/PermissionService');
+      grantPermission.mockRejectedValueOnce(new Error('ACL unavailable'));
+      mockReq.body = {
+        name: 'Unprovisioned Owner',
+        provider: 'openai',
+        model: 'gpt-4',
+      };
+
+      await createAgentHandler(mockReq, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.status).not.toHaveBeenCalledWith(201);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        error: 'Agent created but owner permissions could not be assigned',
+      });
+    });
+
     test('removes programmatic tool options when Code Interpreter capability is disabled', async () => {
       mockReq.body = {
         name: 'Invalid Programmatic Agent',
@@ -4510,6 +4528,105 @@ describe('Agent Controllers - Mass Assignment Protection', () => {
       });
       const persisted = await Agent.findOne({ id: agentId }).lean();
       expect(persisted.name).toBe('Current Router');
+    });
+  });
+
+  describe('BOT MODE native controller creation contract', () => {
+    test('creates six agents through the real createAgent controller and persists owner ACL grants', async () => {
+      const { grantPermission } = require('~/server/services/PermissionService');
+      const owner = await createOwner();
+      grantPermission.mockImplementation(async ({ resourceId, resourceType }) => {
+        await AclEntry.create({
+          principalType: PrincipalType.USER,
+          principalModel: PrincipalModel.USER,
+          principalId: owner._id,
+          resourceType,
+          resourceId,
+          permBits: OWNER_PERMISSION_BITS,
+          grantedBy: owner._id,
+        });
+      });
+      const names = ['BOT MODE Worker', 'RECHERCHE', 'ANALYSE', 'CODE', 'DOCUMENTS', 'RÉDACTION'];
+      for (const name of names) {
+        mockReq.user.id = String(owner._id);
+        mockReq.body = { name, provider: 'openai', model: 'gpt-4', tools: [] };
+        mockRes.status.mockClear();
+        mockRes.json.mockClear();
+        await createAgentHandler(mockReq, mockRes);
+        expect(mockRes.status).toHaveBeenCalledWith(201);
+      }
+      const stored = await Agent.find({ author: owner._id }).lean();
+      const grants = await AclEntry.find({ principalId: owner._id, resourceType: ResourceType.AGENT }).lean();
+      expect(stored).toHaveLength(6);
+      expect(new Set(stored.map((a) => a.name))).toEqual(new Set(names));
+      expect(grants).toHaveLength(6);
+      expect(new Set(grants.map((g) => String(g.resourceId)))).toEqual(
+        new Set(stored.map((a) => String(a._id))),
+      );
+      expect(grants.every((g) => (g.permBits & (PermissionBits.VIEW | PermissionBits.EDIT)) ===
+        (PermissionBits.VIEW | PermissionBits.EDIT))).toBe(true);
+    });
+  });
+
+  describe('BOT MODE six-agent MongoDB persistence contract', () => {
+    test('stores exactly six owner-scoped agents, owner ACL records and five worker delegates', async () => {
+      const owner = await createOwner();
+      const names = ['BOT MODE Worker', 'RECHERCHE', 'ANALYSE', 'CODE', 'DOCUMENTS', 'RÉDACTION'];
+      const specialists = [];
+      for (const name of names.slice(1)) {
+        const agent = await Agent.create({
+          id: `agent_${nanoid()}`,
+          author: owner._id,
+          name,
+          provider: 'openai',
+          model: 'gpt-4',
+          tools: [],
+        });
+        await grantAgentOwner({ agent, owner });
+        specialists.push(agent);
+      }
+      const worker = await Agent.create({
+        id: `agent_${nanoid()}`,
+        author: owner._id,
+        name: names[0],
+        provider: 'openai',
+        model: 'gpt-4',
+        tools: [],
+        subagents: {
+          enabled: true,
+          allowSelf: false,
+          agent_ids: specialists.map((agent) => agent.id),
+        },
+      });
+      await grantAgentOwner({ agent: worker, owner });
+
+      const persisted = await Agent.find({ author: owner._id, name: { $in: names } }).lean();
+      const grants = await AclEntry.find({
+        principalType: PrincipalType.USER,
+        principalId: owner._id,
+        resourceType: ResourceType.AGENT,
+      }).lean();
+      expect(persisted).toHaveLength(6);
+      expect(new Set(persisted.map((agent) => agent.name)).size).toBe(6);
+      expect(new Set(persisted.map((agent) => agent.id)).size).toBe(6);
+      expect(grants).toHaveLength(6);
+      for (const agent of persisted) {
+        expect(grants.some((grant) =>
+          String(grant.resourceId) === String(agent._id) &&
+          (grant.permBits & (PermissionBits.VIEW | PermissionBits.EDIT)) ===
+            (PermissionBits.VIEW | PermissionBits.EDIT)
+        )).toBe(true);
+      }
+      const storedWorker = persisted.find((agent) => agent.name === names[0]);
+      expect(storedWorker.subagents.enabled).toBe(true);
+      expect(new Set(storedWorker.subagents.agent_ids)).toEqual(
+        new Set(specialists.map((agent) => agent.id)),
+      );
+
+      const firstIds = persisted.map((agent) => agent.id).sort();
+      const secondRead = await Agent.find({ author: owner._id, name: { $in: names } }).lean();
+      expect(secondRead.map((agent) => agent.id).sort()).toEqual(firstIds);
+      expect(await Agent.countDocuments({ author: owner._id })).toBe(6);
     });
   });
 });
