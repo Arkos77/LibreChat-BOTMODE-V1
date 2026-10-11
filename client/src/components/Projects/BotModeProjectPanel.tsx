@@ -1,19 +1,19 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { dataService, QueryKeys } from 'librechat-data-provider';
 import { v4 } from 'uuid';
+import { useLocalize } from '~/hooks';
 import { Button } from '@librechat/client';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { dataService, QueryKeys } from 'librechat-data-provider';
 import { Activity, CircleDashed, Clock3, ListTree, Radio, ShieldCheck, Wallet } from 'lucide-react';
-import type { ParentSubagentSummary, TConversation } from 'librechat-data-provider';
+import { subagentStatusDotClass, subagentStatusLabelKey } from '~/components/Chat/Subagents/status';
 import {
   useBotModeProjectProjectionQuery,
   useListAgentsQuery,
   useParentSubagentsQuery,
   useSubagentControlMutation,
 } from '~/data-provider';
-import { subagentStatusDotClass, subagentStatusLabelKey } from '~/components/Chat/Subagents/status';
-import { useLocalize } from '~/hooks';
+import type { ParentSubagentSummary, TConversation } from 'librechat-data-provider';
 
 const MISSION_STATE_LABEL_KEYS = {
   idle: 'com_ui_bot_mode_project_state_idle',
