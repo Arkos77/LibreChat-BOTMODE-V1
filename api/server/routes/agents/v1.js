@@ -1,6 +1,11 @@
 const express = require('express');
 const { generateCheckAccess } = require('@librechat/api');
-const { PermissionTypes, Permissions, PermissionBits, ResourceType } = require('librechat-data-provider');
+const {
+  PermissionTypes,
+  Permissions,
+  PermissionBits,
+  ResourceType,
+} = require('librechat-data-provider');
 const { getResourcePermissionsMap } = require('~/server/services/PermissionService');
 const { configMiddleware, canAccessAgentResource } = require('~/server/middleware');
 const v1 = require('~/server/controllers/agents/v1');
@@ -65,8 +70,10 @@ router.get('/botmode/setup-status', checkAgentAccess, async (req, res) => {
     const missingOwnerAccess = agents
       .filter((agent) => {
         const bits = permissions.get(String(agent._id)) ?? 0;
-        return (bits & (PermissionBits.VIEW | PermissionBits.EDIT)) !==
-          (PermissionBits.VIEW | PermissionBits.EDIT);
+        return (
+          (bits & (PermissionBits.VIEW | PermissionBits.EDIT)) !==
+          (PermissionBits.VIEW | PermissionBits.EDIT)
+        );
       })
       .map((agent) => agent.name);
     const present = names.filter((name) => agents.some((agent) => agent.name === name));
@@ -111,7 +118,9 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
       (name) => existing.filter((agent) => agent.name === name).length > 1,
     );
     if (duplicates.length > 0) {
-      return res.status(409).json({ error: 'Duplicate BOT MODE agents require review', duplicates });
+      return res
+        .status(409)
+        .json({ error: 'Duplicate BOT MODE agents require review', duplicates });
     }
 
     const created = [];
