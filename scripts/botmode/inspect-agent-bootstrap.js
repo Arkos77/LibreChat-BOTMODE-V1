@@ -32,7 +32,7 @@ async function main() {
       expectedAgents: expected,
       missingAgents: expected.filter((name) => !existing.some((agent) => agent.name === name)),
       duplicateNames,
-      readyForMission: duplicateNames.length === 0 && expected.every((name) =>
+      agentProvisioningComplete: duplicateNames.length === 0 && expected.every((name) =>
         details.some((agent) => agent.name === name && agent.ownerAclPresent && agent.authorPresent),
       ) && roles.some((role) => role.accessRoleId === 'agent_owner'),
       roleIds: roles.map((role) => role.accessRoleId),
