@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ParentSubagentIndex, TConversation } from 'librechat-data-provider';
 import BotModeProjectPanel from './BotModeProjectPanel';
 
@@ -8,6 +8,17 @@ const mockUseBotModeProjectProjectionQuery = jest.fn();
 const mockControlMutate = jest.fn();
 const mockUseListAgentsQuery = jest.fn();
 const mockNavigate = jest.fn();
+const mockGetModels = jest.fn();
+const mockInitialize = jest.fn();
+
+jest.mock('librechat-data-provider', () => ({
+  ...jest.requireActual('librechat-data-provider'),
+  dataService: {
+    ...jest.requireActual('librechat-data-provider').dataService,
+    getModels: (...args: unknown[]) => mockGetModels(...args),
+    initializeBotModeAgents: (...args: unknown[]) => mockInitialize(...args),
+  },
+}));
 
 jest.mock('@tanstack/react-query', () => ({
   ...jest.requireActual('@tanstack/react-query'),
@@ -190,6 +201,33 @@ describe('BotModeProjectPanel', () => {
     expect(screen.queryByRole('button', { name: 'com_ui_bot_mode_project_launch' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Initialiser BOT MODE' })).toBeEnabled();
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('requires explicit selection before provisioning when multiple models exist', async () => {
+    mockUseListAgentsQuery.mockReturnValue({ data: { data: [] } });
+    mockGetModels.mockResolvedValue({ openai: ['model-a', 'model-b'] });
+    mockInitialize.mockResolvedValue({ capabilitiesComplete: true });
+
+    render(<BotModeProjectPanel projectId="project-a" conversations={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Initialiser BOT MODE' }));
+    expect(await screen.findByRole('combobox', { name: 'Modèle BOT MODE' })).toBeInTheDocument();
+    expect(mockInitialize).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Modèle BOT MODE' }), {
+      target: { value: '1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Initialiser BOT MODE' }));
+    await waitFor(() => {
+      expect(mockInitialize).toHaveBeenCalledWith({ provider: 'openai', model: 'model-b' });
+    });
+  });
+
+  it('refuses onboarding without a configured model', async () => {
+    mockUseListAgentsQuery.mockReturnValue({ data: { data: [] } });
+    mockGetModels.mockResolvedValue({ openai: [] });
+    render(<BotModeProjectPanel projectId="project-a" conversations={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Initialiser BOT MODE' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Aucun modèle configuré');
+    expect(mockInitialize).not.toHaveBeenCalled();
   });
 
   it('selects the BOT MODE Worker instead of the first listed agent', () => {
