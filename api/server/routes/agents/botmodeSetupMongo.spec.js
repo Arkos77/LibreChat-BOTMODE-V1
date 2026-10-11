@@ -98,7 +98,7 @@ test('setup route commits six distinct agents, owner ACL and stable second initi
   const initial = await Agent.find({ author: ownerId }).lean();
   expect(initial).toHaveLength(6);
   expect(new Set(initial.map((a) => a.name)).size).toBe(6);
-  const grants = await Acl.find({ principalId: ownerId }).lean();
+  const grants = await Acl.find({ principalId: String(ownerId) }).lean();
   expect(grants).toHaveLength(6);
   expect(grants.every((g) => (g.permBits & (PermissionBits.VIEW | PermissionBits.EDIT)) === (PermissionBits.VIEW | PermissionBits.EDIT))).toBe(true);
   const worker = initial.find((a) => a.name === 'BOT MODE Worker');
