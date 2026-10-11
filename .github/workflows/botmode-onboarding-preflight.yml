@@ -1,0 +1,46 @@
+name: BOTMODE Onboarding Isolated Preflight
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/botmode-onboarding-preflight.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  onboarding-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout pinned PR14 candidate
+        uses: actions/checkout@v5
+        with:
+          ref: 38c6a3f682f2ac4db0be2e10fd360e1cac623fc7
+          persist-credentials: false
+      - name: Verify immutable source revision
+        run: test "$(git rev-parse HEAD)" = "38c6a3f682f2ac4db0be2e10fd360e1cac623fc7"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Build data provider and schemas
+        run: |
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:api
+      - name: Native onboarding validation contracts
+        working-directory: api
+        env:
+          NODE_ENV: test
+        run: npx jest server/routes/agents/botmodeSetupValidation.spec.js --runInBand --coverage=false
+      - name: Provisioning safeguards and bootstrap regressions
+        run: python3 -m unittest discover -s scripts/botmode/tests -p 'test_*.py' -v
+      - name: Report scope (not yet full integration)
+        run: |
+          echo '### Onboarding isolated preflight' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Pinned candidate 38c6a3f; model validation, inventory/delegation contracts, bootstrap guards.' >> "$GITHUB_STEP_SUMMARY"
+          echo '**Not covered:** authenticated HTTP setup, persisted 6 agents/ACL, repeated setup, live LLM mission.' >> "$GITHUB_STEP_SUMMARY"
