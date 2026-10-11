@@ -4535,12 +4535,12 @@ describe('Agent Controllers - Mass Assignment Protection', () => {
     test('creates six agents through the real createAgent controller and persists owner ACL grants', async () => {
       const { grantPermission } = require('~/server/services/PermissionService');
       const owner = await createOwner();
-      grantPermission.mockImplementation(async ({ resourceId }) => {
+      grantPermission.mockImplementation(async ({ resourceId, resourceType }) => {
         await AclEntry.create({
           principalType: PrincipalType.USER,
           principalModel: PrincipalModel.USER,
           principalId: owner._id,
-          resourceType: ResourceType.AGENT,
+          resourceType,
           resourceId,
           permBits: OWNER_PERMISSION_BITS,
           grantedBy: owner._id,
