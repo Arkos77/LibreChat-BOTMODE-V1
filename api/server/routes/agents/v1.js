@@ -250,6 +250,54 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
       }
       created.push({ name, id: payload.id, grantedTools });
     }
+    // Link only a Worker created by this onboarding request; never overwrite
+    // an existing user's delegation graph. The native update controller
+    // checks subagent references, authorizations, schema and content policy.
+    const createdWorker = created.find((item) => item.name === 'BOT MODE Worker');
+    if (createdWorker) {
+      const specialists = await getAgents({
+        author: req.user.id,
+        name: { $in: names.slice(1) },
+      });
+      if (specialists.length !== 5) {
+        return res.status(409).json({
+          error: 'Specialists incomplete before Worker delegation setup',
+          created,
+        });
+      }
+      let updateStatus = 200;
+      let updatePayload;
+      const updateResponse = {
+        status(code) {
+          updateStatus = code;
+          return this;
+        },
+        json(value) {
+          updatePayload = value;
+          return this;
+        },
+      };
+      await v1.updateAgent(
+        {
+          ...req,
+          params: { ...req.params, id: createdWorker.id },
+          body: {
+            subagents: {
+              enabled: true,
+              allowSelf: false,
+              agent_ids: specialists.map((agent) => agent.id),
+            },
+          },
+        },
+        updateResponse,
+      );
+      if (updateStatus !== 200 || !updatePayload?.id) {
+        return res.status(updateStatus >= 400 ? updateStatus : 500).json({
+          error: 'Worker delegation could not be authorized',
+          created,
+        });
+      }
+    }
     // Cross-process writes can race the pre-insert check. Never claim success
     // until the final inventory is unique for this authenticated owner.
     const finalAgents = await getAgents({ author: req.user.id, name: { $in: names } });
