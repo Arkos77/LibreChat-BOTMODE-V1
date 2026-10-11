@@ -59,9 +59,43 @@ jobs:
             exit 1
           fi
           echo 'BOTMODE_PR14_UNAUTHENTICATED_SETUP=401_PASS'
+          # Create an isolated database-backed test principal and sign a real JWT
+          # with the exact API runtime's secret. No production account or secret used.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE' > /tmp/botmode-e2e-test-token
+          const mongoose = require('mongoose');
+          const jwt = require('jsonwebtoken');
+          (async () => {
+            await mongoose.connect(process.env.MONGO_URI);
+            const id = new mongoose.Types.ObjectId();
+            await mongoose.connection.db.collection('users').insertOne({
+              _id: id,
+              name: 'BOT MODE CI Agent',
+              username: 'botmode-ci-agent',
+              email: 'botmode-ci-agent@example.invalid',
+              role: 'ADMIN',
+              provider: 'local',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+            if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET unavailable in runtime');
+            process.stdout.write(jwt.sign({ id: String(id) }, process.env.JWT_SECRET, { expiresIn: '2m' }));
+            await mongoose.disconnect();
+          })().catch(() => process.exit(1));
+          NODE
+          chmod 600 /tmp/botmode-e2e-test-token
+          test -s /tmp/botmode-e2e-test-token
+          auth_status=$(curl -sS -o /tmp/botmode-auth-status.json -w '%{http_code}' \
+            -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" \
+            http://127.0.0.1:3090/api/agents/botmode/setup-status)
+          if [ "$auth_status" != "200" ]; then
+            echo "::error::Authenticated BOT MODE setup-status expected HTTP 200; received $auth_status"
+            exit 1
+          fi
+          echo 'BOTMODE_PR14_AUTHENTICATED_STATUS=200_PASS'
+
           echo 'BOTMODE_PR14_RUNTIME_BOOT=PASS'
           echo '### Gate scope: exact PR14 runtime boot with disposable MongoDB' >> "$GITHUB_STEP_SUMMARY"
-          echo 'The API started and unauthenticated onboarding was denied with HTTP 401. Authenticated provisioning, delegation, Oracle and publication are NOT proven yet.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'API started; unauthenticated POST returned 401 and a real JWT/database principal retrieved setup status. Provisioning, delegation, Oracle and publication are NOT proven yet.' >> "$GITHUB_STEP_SUMMARY"
       - name: Always destroy disposable stack
         if: always()
         env:
