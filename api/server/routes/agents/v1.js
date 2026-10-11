@@ -8,7 +8,10 @@ const {
   PrincipalType,
   AccessRoleIds,
 } = require('librechat-data-provider');
-const { getResourcePermissionsMap, grantPermission } = require('~/server/services/PermissionService');
+const {
+  getResourcePermissionsMap,
+  grantPermission,
+} = require('~/server/services/PermissionService');
 const { configMiddleware, canAccessAgentResource } = require('~/server/middleware');
 const v1 = require('~/server/controllers/agents/v1');
 const { getRoleByName, getAgents } = require('~/models');
@@ -161,7 +164,9 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
           resourceIds: existing.map((agent) => agent._id),
         });
         const required = PermissionBits.VIEW | PermissionBits.EDIT;
-        if (existing.some((agent) => ((repaired.get(String(agent._id)) ?? 0) & required) !== required)) {
+        if (
+          existing.some((agent) => ((repaired.get(String(agent._id)) ?? 0) & required) !== required)
+        ) {
           return res.status(409).json({
             error: 'Existing BOT MODE agents still lack owner permissions',
           });
