@@ -28,6 +28,22 @@ describe('observeResolvedModelCatalog', () => {
     );
   });
 
+  it('preserves the catalog when discovery unexpectedly returns no models', async () => {
+    const registry = new CapabilityResourceRegistry();
+    await observeResolvedModelCatalog(registry, {
+      sourcePrefix: 'test-watch',
+      loadModels: () => ({ openrouter: ['model-a'] }),
+    });
+    await expect(observeResolvedModelCatalog(registry, {
+      sourcePrefix: 'test-watch',
+      loadModels: () => ({ openrouter: [] }),
+    })).rejects.toThrow('Model discovery returned no usable models');
+    expect(registry.get('model:openrouter:model-a')).toMatchObject({
+      enabled: true,
+      modelId: 'model-a',
+    });
+  });
+
   it('detects a model that disappeared from the resolved catalog', async () => {
     const registry = new CapabilityResourceRegistry();
     await observeResolvedModelCatalog(registry, {
