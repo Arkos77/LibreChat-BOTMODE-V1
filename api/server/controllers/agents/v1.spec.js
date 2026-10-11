@@ -4530,4 +4530,66 @@ describe('Agent Controllers - Mass Assignment Protection', () => {
       expect(persisted.name).toBe('Current Router');
     });
   });
+
+  describe('BOT MODE six-agent MongoDB persistence contract', () => {
+    test('stores exactly six owner-scoped agents, owner ACL records and five worker delegates', async () => {
+      const owner = await createOwner();
+      const names = ['BOT MODE Worker', 'RECHERCHE', 'ANALYSE', 'CODE', 'DOCUMENTS', 'RÉDACTION'];
+      const specialists = [];
+      for (const name of names.slice(1)) {
+        const agent = await Agent.create({
+          id: `agent_${nanoid()}`,
+          author: owner._id,
+          name,
+          provider: 'openai',
+          model: 'gpt-4',
+          tools: [],
+        });
+        await grantAgentOwner({ agent, owner });
+        specialists.push(agent);
+      }
+      const worker = await Agent.create({
+        id: `agent_${nanoid()}`,
+        author: owner._id,
+        name: names[0],
+        provider: 'openai',
+        model: 'gpt-4',
+        tools: [],
+        subagents: {
+          enabled: true,
+          allowSelf: false,
+          agent_ids: specialists.map((agent) => agent.id),
+        },
+      });
+      await grantAgentOwner({ agent: worker, owner });
+
+      const persisted = await Agent.find({ author: owner._id, name: { $in: names } }).lean();
+      const grants = await AclEntry.find({
+        principalType: PrincipalType.USER,
+        principalId: owner._id,
+        resourceType: ResourceType.AGENT,
+      }).lean();
+      expect(persisted).toHaveLength(6);
+      expect(new Set(persisted.map((agent) => agent.name)).size).toBe(6);
+      expect(new Set(persisted.map((agent) => agent.id)).size).toBe(6);
+      expect(grants).toHaveLength(6);
+      for (const agent of persisted) {
+        expect(grants.some((grant) =>
+          String(grant.resourceId) === String(agent._id) &&
+          (grant.permBits & (PermissionBits.VIEW | PermissionBits.EDIT)) ===
+            (PermissionBits.VIEW | PermissionBits.EDIT)
+        )).toBe(true);
+      }
+      const storedWorker = persisted.find((agent) => agent.name === names[0]);
+      expect(storedWorker.subagents.enabled).toBe(true);
+      expect(new Set(storedWorker.subagents.agent_ids)).toEqual(
+        new Set(specialists.map((agent) => agent.id)),
+      );
+
+      const firstIds = persisted.map((agent) => agent.id).sort();
+      const secondRead = await Agent.find({ author: owner._id, name: { $in: names } }).lean();
+      expect(secondRead.map((agent) => agent.id).sort()).toEqual(firstIds);
+      expect(await Agent.countDocuments({ author: owner._id })).toBe(6);
+    });
+  });
 });
