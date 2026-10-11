@@ -197,15 +197,24 @@ export default function BotModeProjectPanel({
     setSetupError('');
     try {
       const catalog = await dataService.getModels();
-      const configured = Object.entries(catalog).find(
-        ([provider, models]) => provider !== 'agents' && Array.isArray(models) && models.length > 0,
+      const configured = Object.entries(catalog).flatMap(([provider, models]) =>
+        provider !== 'agents' && Array.isArray(models)
+          ? models
+              .filter((model): model is string => typeof model === 'string' && model.trim() !== '')
+              .map((model) => ({ provider, model }))
+          : [],
       );
-      if (!configured) {
+      if (configured.length === 0) {
         setSetupError('Aucun modèle configuré : ajoutez une clé API ou un fournisseur local.');
         return;
       }
-      const [provider, models] = configured;
-      const result = await dataService.initializeBotModeAgents({ provider, model: models[0] });
+      // More than one model requires explicit selection: a model merely listed
+      // in the catalog must not silently become the default for every agent.
+      if (configured.length > 1) {
+        setSetupError('Plusieurs modèles disponibles : sélection explicite requise avant initialisation.');
+        return;
+      }
+      const result = await dataService.initializeBotModeAgents(configured[0]);
       await queryClient.invalidateQueries([QueryKeys.agents]);
       if (!result.capabilitiesComplete) {
         setSetupError('Agents créés, mais certains outils ne sont pas disponibles ou autorisés.');
