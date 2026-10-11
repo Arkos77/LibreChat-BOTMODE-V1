@@ -61,7 +61,7 @@ router.get('/botmode/setup-status', checkAgentAccess, async (req, res) => {
       (name) => agents.filter((agent) => agent.name === name).length > 1,
     );
     return res.status(200).json({
-      ready: missing.length === 0 && duplicates.length === 0,
+      inventoryComplete: missing.length === 0 && duplicates.length === 0,
       present,
       missing,
       duplicates,
