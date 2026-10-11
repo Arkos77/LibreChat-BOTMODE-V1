@@ -18,7 +18,11 @@ const { getRoleByName, getAgents } = require('~/models');
 const { loadModels } = require('~/server/controllers/ModelController');
 const actions = require('./actions');
 const tools = require('./tools');
-const { validateModelSelection, inspectAgentInventory } = require('./botmodeSetupValidation');
+const {
+  validateModelSelection,
+  inspectAgentInventory,
+  validateWorkerDelegation,
+} = require('./botmodeSetupValidation');
 
 const router = express.Router();
 const avatar = express.Router();
@@ -352,16 +356,7 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
     }
     // Inventory and ACL success are insufficient when the Worker cannot
     // actually delegate to the five specialists.
-    const finalWorker = finalAgents.find((agent) => agent.name === 'BOT MODE Worker');
-    const finalSpecialistIds = finalAgents
-      .filter((agent) => agent.name !== 'BOT MODE Worker')
-      .map((agent) => agent.id);
-    const configuredIds = finalWorker?.subagents?.agent_ids ?? [];
-    if (
-      finalWorker?.subagents?.enabled !== true ||
-      finalSpecialistIds.length !== 5 ||
-      !finalSpecialistIds.every((id) => configuredIds.includes(id))
-    ) {
+    if (!validateWorkerDelegation(finalAgents, names.slice(1))) {
       return res.status(409).json({
         error: 'BOT MODE Worker delegation is not fully configured',
         created,
