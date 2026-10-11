@@ -1,4 +1,8 @@
-const { validateModelSelection, inspectAgentInventory, validateWorkerDelegation } = require('./botmodeSetupValidation');
+const {
+  validateModelSelection,
+  inspectAgentInventory,
+  validateWorkerDelegation,
+} = require('./botmodeSetupValidation');
 
 describe('BOT MODE onboarding validation', () => {
   test('accepts only an exact model in the authenticated catalog', () => {
@@ -20,14 +24,30 @@ describe('BOT MODE onboarding validation', () => {
       subagents: { enabled: true, agent_ids: children.map((child) => child.id) },
     };
     expect(validateWorkerDelegation([worker, ...children], specialists)).toBe(true);
-    expect(validateWorkerDelegation([
-      { ...worker, subagents: { enabled: false, agent_ids: worker.subagents.agent_ids } },
-      ...children,
-    ], specialists)).toBe(false);
-    expect(validateWorkerDelegation([
-      { ...worker, subagents: { enabled: true, agent_ids: ['child-0', 'child-0', 'child-2', 'child-3', 'child-4'] } },
-      ...children,
-    ], specialists)).toBe(false);
+    expect(
+      validateWorkerDelegation(
+        [
+          { ...worker, subagents: { enabled: false, agent_ids: worker.subagents.agent_ids } },
+          ...children,
+        ],
+        specialists,
+      ),
+    ).toBe(false);
+    expect(
+      validateWorkerDelegation(
+        [
+          {
+            ...worker,
+            subagents: {
+              enabled: true,
+              agent_ids: ['child-0', 'child-0', 'child-2', 'child-3', 'child-4'],
+            },
+          },
+          ...children,
+        ],
+        specialists,
+      ),
+    ).toBe(false);
     expect(validateWorkerDelegation([worker, ...children.slice(0, 4)], specialists)).toBe(false);
   });
 
