@@ -28,7 +28,7 @@ export async function observeResolvedModelCatalog(
   const checkedAt = source.checkedAt ?? new Date().toISOString();
   const sourcePrefix = source.sourcePrefix ?? 'librechat:model-catalog';
   const modelsConfig = await source.loadModels();
-  const observations: ModelWatchObservation[] = [];
+  // A transient empty or malformed discovery response is not evidence that all\n  // models were retired. Preserve the last known catalog and fail closed.\n  const validProviders = Object.entries(modelsConfig ?? {}).filter(\n    ([, models]) => Array.isArray(models) && models.some((id) => typeof id === 'string' && id.trim() !== ''),\n  );\n  if (validProviders.length === 0) {\n    throw new Error('Model discovery returned no usable models; existing catalog retained');\n  }\n  const observations: ModelWatchObservation[] = [];
   const discoveredModelIds: string[] = [];
   const seenResourceIds = new Set<string>();
 
