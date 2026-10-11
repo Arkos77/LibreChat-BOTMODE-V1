@@ -123,6 +123,30 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
         .json({ error: 'Duplicate BOT MODE agents require review', duplicates });
     }
 
+    // Do not report setup success for existing agents that the owner
+    // cannot actually view and edit. Repair requires the native ACL path.
+    if (existing.length > 0) {
+      const permissions = await getResourcePermissionsMap({
+        userId: req.user.id,
+        role: req.user.role,
+        resourceType: ResourceType.AGENT,
+        resourceIds: existing.map((agent) => agent._id),
+      });
+      const inaccessible = existing
+        .filter((agent) => {
+          const bits = permissions.get(String(agent._id)) ?? 0;
+          const needed = PermissionBits.VIEW | PermissionBits.EDIT;
+          return (bits & needed) !== needed;
+        })
+        .map((agent) => agent.name);
+      if (inaccessible.length > 0) {
+        return res.status(409).json({
+          error: 'Existing BOT MODE agents need owner permission repair',
+          agents: inaccessible,
+        });
+      }
+    }
+
     const created = [];
     for (const name of names) {
       if (existing.some((agent) => agent.name === name)) continue;
