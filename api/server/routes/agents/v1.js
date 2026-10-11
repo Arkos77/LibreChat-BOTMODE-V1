@@ -254,7 +254,18 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
     // an existing user's delegation graph. The native update controller
     // checks subagent references, authorizations, schema and content policy.
     const createdWorker = created.find((item) => item.name === 'BOT MODE Worker');
-    if (createdWorker) {
+    const existingWorker = existing.find((agent) => agent.name === 'BOT MODE Worker');
+    // Safe recovery for pre-existing unconfigured Workers. Never replace a
+    // configured delegation graph or a disabled graph with stored targets.
+    const recoverableWorker =
+      existingWorker &&
+      existingWorker.subagents?.enabled !== true &&
+      (existingWorker.subagents?.agent_ids?.length ?? 0) === 0 &&
+      (existingWorker.subagents?.graphs?.length ?? 0) === 0
+        ? existingWorker
+        : null;
+    const workerToConfigure = createdWorker ?? recoverableWorker;
+    if (workerToConfigure) {
       const specialists = await getAgents({
         author: req.user.id,
         name: { $in: names.slice(1) },
@@ -280,7 +291,7 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
       await v1.updateAgent(
         {
           ...req,
-          params: { ...req.params, id: createdWorker.id },
+          params: { ...req.params, id: workerToConfigure.id },
           body: {
             subagents: {
               enabled: true,
