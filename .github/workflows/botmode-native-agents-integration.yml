@@ -36,6 +36,11 @@ jobs:
         env:
           NODE_ENV: test
         run: npx jest server/controllers/agents/v1.spec.js server/routes/agents/botmodeSetupValidation.spec.js server/services/PermissionService.spec.js --runInBand --coverage=false
+      - name: Test actual generateCheckAccess permission middleware
+        working-directory: packages/api
+        env:
+          NODE_ENV: test
+        run: npx jest src/middleware/access.spec.ts --runInBand --coverage=false
       - name: Mark actual tested boundary
         if: always()
         run: |
