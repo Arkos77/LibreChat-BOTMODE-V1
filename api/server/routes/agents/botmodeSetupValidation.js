@@ -39,4 +39,17 @@ const validateWorkerDelegation = (agents, expectedSpecialists) => {
   );
 };
 
-module.exports = { validateModelSelection, inspectAgentInventory, validateWorkerDelegation };
+const inspectMissingCapabilities = (agents, requiredTools) =>
+  agents.flatMap((agent) => {
+    const required = requiredTools[agent.name] ?? [];
+    const granted = Array.isArray(agent.tools) ? agent.tools : [];
+    const deniedTools = required.filter((tool) => !granted.includes(tool));
+    return deniedTools.length > 0 ? [{ name: agent.name, deniedTools }] : [];
+  });
+
+module.exports = {
+  validateModelSelection,
+  inspectAgentInventory,
+  validateWorkerDelegation,
+  inspectMissingCapabilities,
+};
