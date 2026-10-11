@@ -2,8 +2,12 @@
 
 /** Pure validation shared by the authenticated BOT MODE onboarding route. */
 const validateModelSelection = (catalog, provider, model) => {
-  if (typeof provider !== 'string' || !provider.trim() ||
-      typeof model !== 'string' || !model.trim()) {
+  if (
+    typeof provider !== 'string' ||
+    !provider.trim() ||
+    typeof model !== 'string' ||
+    !model.trim()
+  ) {
     return false;
   }
   // Match exactly: never silently choose another provider or trim into a
@@ -12,9 +16,7 @@ const validateModelSelection = (catalog, provider, model) => {
 };
 
 const inspectAgentInventory = (agents, expectedNames) => {
-  const missing = expectedNames.filter(
-    (name) => !agents.some((agent) => agent.name === name),
-  );
+  const missing = expectedNames.filter((name) => !agents.some((agent) => agent.name === name));
   const duplicates = expectedNames.filter(
     (name) => agents.filter((agent) => agent.name === name).length > 1,
   );
