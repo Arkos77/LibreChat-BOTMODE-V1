@@ -17,10 +17,10 @@ jobs:
       - name: Checkout pinned PR14 candidate
         uses: actions/checkout@v5
         with:
-          ref: 0b89aa2c26b41574ebf6db6ad9b6a3ae7b6f1cd8
+          ref: 0000c302adbc6b8065010aa502f9d6a642db0500
           persist-credentials: false
       - name: Verify immutable source revision
-        run: test "$(git rev-parse HEAD)" = "0b89aa2c26b41574ebf6db6ad9b6a3ae7b6f1cd8"
+        run: test "$(git rev-parse HEAD)" = "0000c302adbc6b8065010aa502f9d6a642db0500"
       - uses: actions/setup-node@v5
         with:
           node-version: '24.16.0'
@@ -36,7 +36,7 @@ jobs:
         working-directory: api
         env:
           NODE_ENV: test
-        run: npx jest server/routes/agents/botmodeSetupValidation.spec.js server/routes/agents/botmodeSetupRoute.spec.js --runInBand --coverage=false
+        run: npx jest server/routes/agents/botmodeSetupValidation.spec.js server/routes/agents/botmodeSetupRoute.spec.js server/routes/agents/botmodeSetupMongo.spec.js --runInBand --coverage=false
       - name: Provisioning safeguards and bootstrap regressions
         run: python3 -m unittest discover -s scripts/botmode/tests -p 'test_*.py' -v
       - name: Report scope (not yet full integration)
