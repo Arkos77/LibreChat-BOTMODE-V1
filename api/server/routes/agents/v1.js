@@ -22,6 +22,7 @@ const {
   validateModelSelection,
   inspectAgentInventory,
   validateWorkerDelegation,
+  inspectMissingCapabilities,
 } = require('./botmodeSetupValidation');
 
 const router = express.Router();
@@ -335,15 +336,7 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
     // Re-evaluate actual persisted tools for both new and reused agents.
     // Otherwise a second setup could falsely report full capabilities merely
     // because no new agent needed creating.
-    missingCapabilities.length = 0;
-    for (const agent of finalAgents) {
-      const requiredTools = requestedTools[agent.name] ?? [];
-      const grantedTools = Array.isArray(agent.tools) ? agent.tools : [];
-      const deniedTools = requiredTools.filter((tool) => !grantedTools.includes(tool));
-      if (deniedTools.length > 0) {
-        missingCapabilities.push({ name: agent.name, deniedTools });
-      }
-    }
+    missingCapabilities.splice(0, missingCapabilities.length, ...inspectMissingCapabilities(finalAgents, requestedTools));
     // The native creation controller persists before granting ACLs. Never
     // announce complete setup unless the final owner can access every agent.
     const finalPermissions = await getResourcePermissionsMap({
