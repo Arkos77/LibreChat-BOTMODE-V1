@@ -4531,6 +4531,43 @@ describe('Agent Controllers - Mass Assignment Protection', () => {
     });
   });
 
+  describe('BOT MODE native controller creation contract', () => {
+    test('creates six agents through the real createAgent controller and persists owner ACL grants', async () => {
+      const { grantPermission } = require('~/server/services/PermissionService');
+      const owner = await createOwner();
+      grantPermission.mockImplementation(async ({ resourceId }) => {
+        await AclEntry.create({
+          principalType: PrincipalType.USER,
+          principalModel: PrincipalModel.USER,
+          principalId: owner._id,
+          resourceType: ResourceType.AGENT,
+          resourceId,
+          permBits: OWNER_PERMISSION_BITS,
+          grantedBy: owner._id,
+        });
+      });
+      const names = ['BOT MODE Worker', 'RECHERCHE', 'ANALYSE', 'CODE', 'DOCUMENTS', 'RÉDACTION'];
+      for (const name of names) {
+        mockReq.user.id = String(owner._id);
+        mockReq.body = { name, provider: 'openai', model: 'gpt-4', tools: [] };
+        mockRes.status.mockClear();
+        mockRes.json.mockClear();
+        await createAgentHandler(mockReq, mockRes);
+        expect(mockRes.status).toHaveBeenCalledWith(201);
+      }
+      const stored = await Agent.find({ author: owner._id }).lean();
+      const grants = await AclEntry.find({ principalId: owner._id, resourceType: ResourceType.AGENT }).lean();
+      expect(stored).toHaveLength(6);
+      expect(new Set(stored.map((a) => a.name))).toEqual(new Set(names));
+      expect(grants).toHaveLength(6);
+      expect(new Set(grants.map((g) => String(g.resourceId)))).toEqual(
+        new Set(stored.map((a) => String(a._id))),
+      );
+      expect(grants.every((g) => (g.permBits & (PermissionBits.VIEW | PermissionBits.EDIT)) ===
+        (PermissionBits.VIEW | PermissionBits.EDIT))).toBe(true);
+    });
+  });
+
   describe('BOT MODE six-agent MongoDB persistence contract', () => {
     test('stores exactly six owner-scoped agents, owner ACL records and five worker delegates', async () => {
       const owner = await createOwner();
