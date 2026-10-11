@@ -61,19 +61,11 @@ const specs = [
     for (const [name, desc, instructions, tools] of specs) {
       let a = await agents.findOne({ name });
       if (a) {
-        await agents.updateOne(
-          { _id: a._id },
-          {
-            $set: {
-              description: desc,
-              instructions: `${publicOutputPolicy}${instructions}`,
-              tools,
-              metadata: { ...(a.metadata || {}), botmode: true, specialist: true },
-              updatedAt: new Date(),
-            },
-          },
-        );
-        a = await agents.findOne({ _id: a._id });
+        if (String(a.author) !== String(worker.author)) {
+          throw new Error(`Specialist name collision with another owner: ${name}`);
+        }
+        // Preserve any existing instructions, tool grants, model and metadata.
+        // Never overwrite an agent merely because its name matches a default.
       } else {
         const id = `botmode-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
         const version = {
@@ -113,6 +105,11 @@ const specs = [
       }
       console.log(`READY ${name} ${a.id}`);
       ids.push(a.id);
+    }
+    // Existing Worker configuration is user-owned: changing tools or routing
+    // requires the normal authenticated agent update/authorization path.
+    if (worker.subagents?.enabled || (worker.tools?.length ?? 0) > 0) {
+      throw new Error('Worker already configured; refusing destructive reseed');
     }
     await agents.updateOne(
       { _id: worker._id },
