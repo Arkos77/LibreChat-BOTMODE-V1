@@ -121,6 +121,12 @@ jobs:
           NODE_ENV: test
         run: npx jest src/agents/subagentCompletionWakeup.spec.ts src/agents/orchestrator/missionOracle.spec.ts --runInBand --coverage=false
 
+      - name: Verify Oracle runtime and synthesis readiness
+        working-directory: packages/api
+        env:
+          NODE_ENV: test
+        run: npx jest src/agents/oracle/runtime.spec.ts src/agents/oracle/deterministic.spec.ts src/agents/orchestrator/synthesisReadiness.spec.ts --runInBand --coverage=false
+
       - name: Run agents integration tests
         working-directory: packages/api
         env:
