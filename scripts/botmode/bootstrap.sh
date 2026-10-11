@@ -137,6 +137,85 @@ else
   printf 'BOTMODE_ENV_EXISTING=YES\n'
 fi
 
+# Pin the exact image in the Compose dotenv file. Otherwise a later bare
+# "docker compose up" silently falls back to the mutable :edge image.
+# Keep --check-only strictly read-only.
+if [ "$CHECK_ONLY" -eq 0 ]; then
+  tmp_env=$(mktemp "$ROOT/.env.botmode.XXXXXX")
+  chmod 600 "$tmp_env"
+  awk -v image="$BOTMODE_IMAGE_VALUE" '
+    /^BOTMODE_IMAGE=/ { if (!written++) print "BOTMODE_IMAGE=" image; next }
+    { print }
+    END { if (!written) print "BOTMODE_IMAGE=" image }
+  ' .env > "$tmp_env"
+  mv "$tmp_env" .env
+fi
+
+# The published runtime runs as node (UID 1000). A root-owned mode-600
+# dotenv created by sudo is unreadable to the application. Do not loosen
+# permissions for other users or expose secrets in logs.
+if [ "$CHECK_ONLY" -eq 0 ]; then
+  if [ "$(id -u)" -eq 0 ]; then
+    chown 1000:1000 .env
+  elif [ "$(if [ "$OS" = "Darwin" ]; then stat -f %u .env; else stat -c %u .env; fi)" != "1000" ]; then
+    echo "The runtime runs as UID 1000 and cannot read this private .env (owner differs)." >&2
+    echo "Run the installer with sudo, or provision .env ownership as UID 1000." >&2
+    exit 4
+  fi
+  chmod 600 .env
+fi
+
+# Bootstrap database credentials without printing them. Existing databases must never
+# be silently switched to authentication or a different password.
+read_env_value() {
+  local key="$1" line
+  line=$(grep -E "^${key}=" .env | tail -n 1 || true)
+  printf '%s' "${line#*=}"
+}
+set_env_value() {
+  local key="$1" value="$2"
+  printf '%s=%s\n' "$key" "$value" >> .env
+}
+mongo_pass=$(read_env_value BOTMODE_MONGO_PASSWORD)
+pg_pass=$(read_env_value POSTGRES_PASSWORD)
+if [ -z "$mongo_pass" ] || [ -z "$pg_pass" ]; then
+  if [ "$CHECK_ONLY" -eq 1 ]; then
+    echo "Missing BOTMODE_MONGO_PASSWORD or POSTGRES_PASSWORD in .env; run ./install.sh --no-start first." >&2
+    exit 4
+  fi
+  need openssl
+  if [ -z "$mongo_pass" ]; then
+    mongo_pass=$(openssl rand -hex 32)
+    set_env_value BOTMODE_MONGO_PASSWORD "$mongo_pass"
+  fi
+  if [ -z "$pg_pass" ]; then
+    pg_pass=$(openssl rand -hex 32)
+    set_env_value POSTGRES_PASSWORD "$pg_pass"
+  fi
+  chmod 600 .env
+fi
+
+# Docker's database initialization credentials only apply to empty data
+# directories. Refuse to guess whether pre-existing volumes were initialized
+# with authentication; the operator must run an explicit migration.
+need openssl
+auth_stamp=$(printf 'mongo=%s\npostgres=%s\n' "$mongo_pass" "$pg_pass" | openssl dgst -sha256 | awk '{print $NF}')
+if [ "$CHECK_ONLY" -eq 0 ]; then
+  db_volumes=(botmode-mongo-data)
+  if [ "$PROFILE" = "full" ]; then db_volumes+=(botmode-pgdata); fi
+  for db_volume in "${db_volumes[@]}"; do
+    volume_name="librechat-botmode_${db_volume}"
+    if docker volume inspect "$volume_name" >/dev/null 2>&1; then
+      if [ ! -f ".botmode-database-auth-initialized" ] || [ "$(cat .botmode-database-auth-initialized)" != "v2:$auth_stamp" ]; then
+        echo "Existing database volume $volume_name: automatic auth migration is unsafe." >&2
+        echo "Back up and migrate existing data explicitly before proceeding." >&2
+        exit 5
+      fi
+    fi
+  done
+fi
+export BOTMODE_MONGO_PASSWORD="$mongo_pass"
+export POSTGRES_PASSWORD="$pg_pass"
 export BOTMODE_IMAGE="$BOTMODE_IMAGE_VALUE"
 docker compose "${COMPOSE_ARGS[@]}" config --quiet
 
@@ -161,6 +240,29 @@ fi
 
 if [ "$START_STACK" -eq 1 ]; then
   docker compose "${COMPOSE_ARGS[@]}" up -d
+  # "up -d" only confirms container creation, not working database credentials.
+  # Require authenticated reads before trusting the local volume marker.
+  db_verified=0
+  for attempt in $(seq 1 60); do
+    if docker compose "${COMPOSE_ARGS[@]}" exec -T mongodb sh -ec '
+      if command -v mongosh >/dev/null 2>&1; then cli=mongosh; else cli=mongo; fi
+      "$cli" --quiet --authenticationDatabase admin -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --eval "db.adminCommand({ping:1}).ok" | grep -q 1
+    ' >/dev/null 2>&1; then
+      if [ "$PROFILE" = "lite" ] || docker compose "${COMPOSE_ARGS[@]}" exec -T vectordb sh -ec '
+        PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$(hostname -i)" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT 1" | grep -q 1
+      ' >/dev/null 2>&1; then
+        db_verified=1
+        break
+      fi
+    fi
+    sleep 2
+  done
+  if [ "$db_verified" -ne 1 ]; then
+    echo "Database authentication verification failed; no initialization marker was written." >&2
+    exit 6
+  fi
+  printf 'v2:%s\n' "$auth_stamp" > .botmode-database-auth-initialized
+  chmod 600 .botmode-database-auth-initialized
   printf 'BOTMODE_STACK=STARTED\n'
 else
   printf 'BOTMODE_STACK=NOT_STARTED\n'

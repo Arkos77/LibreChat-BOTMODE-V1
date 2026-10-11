@@ -1,9 +1,17 @@
 const express = require('express');
 const { generateCheckAccess } = require('@librechat/api');
-const { PermissionTypes, Permissions, PermissionBits } = require('librechat-data-provider');
+const {
+  PermissionTypes,
+  Permissions,
+  PermissionBits,
+  ResourceType,
+  PrincipalType,
+  AccessRoleIds,
+} = require('librechat-data-provider');
+const { getResourcePermissionsMap, grantPermission } = require('~/server/services/PermissionService');
 const { configMiddleware, canAccessAgentResource } = require('~/server/middleware');
 const v1 = require('~/server/controllers/agents/v1');
-const { getRoleByName } = require('~/models');
+const { getRoleByName, getAgents } = require('~/models');
 const actions = require('./actions');
 const tools = require('./tools');
 
@@ -45,6 +53,211 @@ router.get('/categories', v1.getAgentCategories);
  * @returns {Agent} 201 - Success response - application/json
  */
 router.post('/', checkAgentCreate, configMiddleware, v1.createAgent);
+
+/**
+ * Authenticated, read-only BOT MODE onboarding preflight.
+ * Scoped to the current owner; does not infer ownership from agent names.
+ * Creation must still pass through POST /agents and its native ACL checks.
+ */
+router.get('/botmode/setup-status', checkAgentAccess, async (req, res) => {
+  try {
+    const names = ['BOT MODE Worker', 'RECHERCHE', 'ANALYSE', 'CODE', 'DOCUMENTS', 'RÉDACTION'];
+    const agents = await getAgents({ author: req.user.id, name: { $in: names } });
+    const permissions = await getResourcePermissionsMap({
+      userId: req.user.id,
+      role: req.user.role,
+      resourceType: ResourceType.AGENT,
+      resourceIds: agents.map((agent) => agent._id),
+    });
+    const missingOwnerAccess = agents
+      .filter((agent) => {
+        const bits = permissions.get(String(agent._id)) ?? 0;
+        return (
+          (bits & (PermissionBits.VIEW | PermissionBits.EDIT)) !==
+          (PermissionBits.VIEW | PermissionBits.EDIT)
+        );
+      })
+      .map((agent) => agent.name);
+    const present = names.filter((name) => agents.some((agent) => agent.name === name));
+    const missing = names.filter((name) => !present.includes(name));
+    const duplicates = names.filter(
+      (name) => agents.filter((agent) => agent.name === name).length > 1,
+    );
+    return res.status(200).json({
+      inventoryComplete: missing.length === 0 && duplicates.length === 0,
+      permissionsComplete: missingOwnerAccess.length === 0,
+      missingOwnerAccess,
+      present,
+      missing,
+      duplicates,
+    });
+  } catch (_error) {
+    return res.status(500).json({ error: 'Unable to inspect BOT MODE setup' });
+  }
+});
+
+/**
+ * Explicit authenticated first-run onboarding. Reuses the exact native create
+ * controller (schema validation, content filters, tool authorization and ACL).
+ * Does not mutate existing agents. The provider/model must be selected by the
+ * authenticated user from the currently configured LibreChat catalog.
+ */
+router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, res) => {
+  const { provider, model } = req.body ?? {};
+  if (
+    typeof provider !== 'string' ||
+    !provider.trim() ||
+    typeof model !== 'string' ||
+    !model.trim()
+  ) {
+    return res.status(400).json({ error: 'A configured provider and model are required' });
+  }
+
+  const names = ['BOT MODE Worker', 'RECHERCHE', 'ANALYSE', 'CODE', 'DOCUMENTS', 'RÉDACTION'];
+  try {
+    const existing = await getAgents({ author: req.user.id, name: { $in: names } });
+    const duplicates = names.filter(
+      (name) => existing.filter((agent) => agent.name === name).length > 1,
+    );
+    if (duplicates.length > 0) {
+      return res
+        .status(409)
+        .json({ error: 'Duplicate BOT MODE agents require review', duplicates });
+    }
+
+    // Do not report setup success for existing agents that the owner
+    // cannot actually view and edit. Repair requires the native ACL path.
+    if (existing.length > 0) {
+      const permissions = await getResourcePermissionsMap({
+        userId: req.user.id,
+        role: req.user.role,
+        resourceType: ResourceType.AGENT,
+        resourceIds: existing.map((agent) => agent._id),
+      });
+      const inaccessible = existing
+        .filter((agent) => {
+          const bits = permissions.get(String(agent._id)) ?? 0;
+          const needed = PermissionBits.VIEW | PermissionBits.EDIT;
+          return (bits & needed) !== needed;
+        })
+        .map((agent) => agent.name);
+      if (inaccessible.length > 0) {
+        // Existing agents were queried by immutable author ID. Repair only
+        // that authenticated author's owner ACL through LibreChat's service.
+        for (const agent of existing.filter((item) => inaccessible.includes(item.name))) {
+          await grantPermission({
+            principalType: PrincipalType.USER,
+            principalId: req.user.id,
+            resourceType: ResourceType.AGENT,
+            resourceId: agent._id,
+            accessRoleId: AccessRoleIds.AGENT_OWNER,
+            grantedBy: req.user.id,
+          });
+        }
+        const repaired = await getResourcePermissionsMap({
+          userId: req.user.id,
+          role: req.user.role,
+          resourceType: ResourceType.AGENT,
+          resourceIds: existing.map((agent) => agent._id),
+        });
+        const required = PermissionBits.VIEW | PermissionBits.EDIT;
+        if (existing.some((agent) => ((repaired.get(String(agent._id)) ?? 0) & required) !== required)) {
+          return res.status(409).json({
+            error: 'Existing BOT MODE agents still lack owner permissions',
+          });
+        }
+      }
+    }
+
+    const created = [];
+    for (const name of names) {
+      if (existing.some((agent) => agent.name === name)) continue;
+      // Recheck immediately before creation so a concurrent onboarding that
+      // has already committed is not needlessly duplicated.
+      const current = await getAgents({ author: req.user.id, name });
+      if (current.length !== 0) {
+        return res.status(409).json({
+          error: 'BOT MODE setup changed during initialization; retry after inspection',
+          failedAgent: name,
+          created,
+        });
+      }
+      const body = {
+        name,
+        provider: provider.trim(),
+        model: model.trim(),
+        description:
+          name === 'BOT MODE Worker'
+            ? 'Orchestrateur principal des missions BOT MODE'
+            : `Spécialiste BOT MODE : ${name}`,
+        instructions:
+          name === 'BOT MODE Worker'
+            ? 'Tu es le Worker principal BOT MODE. Délègue uniquement selon les autorisations.'
+            : `Tu es le spécialiste ${name} de BOT MODE. Réponds en français.`,
+        tools: [],
+      };
+      let statusCode = 200;
+      let payload;
+      const capture = {
+        status(code) {
+          statusCode = code;
+          return this;
+        },
+        json(value) {
+          payload = value;
+          return this;
+        },
+      };
+      await v1.createAgent({ ...req, body }, capture);
+      if (statusCode !== 201 || !payload?.id) {
+        return res.status(statusCode >= 400 ? statusCode : 500).json({
+          error: 'BOT MODE agent initialization interrupted',
+          failedAgent: name,
+          created,
+        });
+      }
+      created.push({ name, id: payload.id });
+    }
+    // Cross-process writes can race the pre-insert check. Never claim success
+    // until the final inventory is unique for this authenticated owner.
+    const finalAgents = await getAgents({ author: req.user.id, name: { $in: names } });
+    const invalid = names.filter(
+      (name) => finalAgents.filter((agent) => agent.name === name).length !== 1,
+    );
+    if (invalid.length > 0) {
+      return res.status(409).json({
+        error: 'BOT MODE setup inventory changed; manual review required',
+        invalid,
+        created,
+      });
+    }
+    // The native creation controller persists before granting ACLs. Never
+    // announce complete setup unless the final owner can access every agent.
+    const finalPermissions = await getResourcePermissionsMap({
+      userId: req.user.id,
+      role: req.user.role,
+      resourceType: ResourceType.AGENT,
+      resourceIds: finalAgents.map((agent) => agent._id),
+    });
+    const missingPermissions = finalAgents
+      .filter((agent) => {
+        const bits = finalPermissions.get(String(agent._id)) ?? 0;
+        const required = PermissionBits.VIEW | PermissionBits.EDIT;
+        return (bits & required) !== required;
+      })
+      .map((agent) => agent.name);
+    if (missingPermissions.length > 0) {
+      return res.status(409).json({
+        error: 'BOT MODE setup needs owner permission repair',
+        missingPermissions,
+        created,
+      });
+    }
+    return res.status(200).json({ created, existing: existing.map((agent) => agent.name) });
+  } catch (_error) {
+    return res.status(500).json({ error: 'BOT MODE agent initialization failed' });
+  }
+});
 
 /**
  * Retrieves basic agent information (VIEW permission required).

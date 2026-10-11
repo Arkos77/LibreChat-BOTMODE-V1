@@ -3,6 +3,10 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$ROOT"
 
+# Synthetic values for configuration-only checks; never use production credentials.
+export BOTMODE_MONGO_PASSWORD=ci-mongo-only-not-a-real-secret
+export POSTGRES_PASSWORD=ci-postgres-only-not-a-real-secret
+
 BOTMODE_COMMIT_SHA="$(git rev-parse --short=12 HEAD)"
 export BOTMODE_IMAGE="${BOTMODE_IMAGE:-ghcr.io/arkos77/librechat-botmode-v1:sha-${BOTMODE_COMMIT_SHA}}"
 
@@ -29,6 +33,14 @@ lite_mongo=$(docker compose -f docker-compose.botmode.yml -f docker-compose.botm
 }
 
 lite_config=$(docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml config)
+full_config=$(docker compose -f docker-compose.botmode.yml config)
+grep -q "authSource=admin" <<< "$full_config"
+grep -q "MONGO_INITDB_ROOT_USERNAME: botmode_admin" <<< "$full_config"
+grep -q "POSTGRES_PASSWORD: ci-postgres-only-not-a-real-secret" <<< "$full_config"
+if grep -Eq "mongod --noauth|POSTGRES_PASSWORD: mypassword" docker-compose.botmode.yml; then
+  echo "BOTMODE database must not use unauthenticated or default-password configuration." >&2
+  exit 1
+fi
 grep -q 'SCHEDULES_SINGLE_PROCESS: "true"' <<< "$lite_config"
 grep -q '/app/librechat.yaml' <<< "$lite_config"
 

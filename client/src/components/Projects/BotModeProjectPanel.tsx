@@ -182,7 +182,8 @@ export default function BotModeProjectPanel({
     if (verifiedObservations.length > 0) return 'verified';
     return 'running';
   })();
-  const primaryAgent = agents?.data?.[0];
+  // Never launch an arbitrary agent when the BOT MODE Worker is unavailable.
+  const primaryAgent = agents?.data?.find((agent) => agent.name === 'BOT MODE Worker');
 
   const launchMission = () => {
     if (!primaryAgent?.id) {

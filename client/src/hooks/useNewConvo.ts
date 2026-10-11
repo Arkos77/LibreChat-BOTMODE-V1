@@ -47,6 +47,7 @@ import {
   logger,
 } from '~/utils';
 import { useDeleteFilesMutation, useGetEndpointsQuery, useGetStartupConfig } from '~/data-provider';
+import { resolveNewConversationTemplate } from '~/utils/resolveNewConversationTemplate';
 import { supersedeNavigation } from './Conversations/useNavigateToConvo';
 import useGetConversation from './Conversations/useGetConversation';
 import useAssistantListMap from './Assistants/useAssistantListMap';
@@ -260,6 +261,26 @@ const useNewConvo = (index = 0) => {
 
         const getParams = (nextConversation: TConversation) => {
           const nextParams = new URLSearchParams(searchParams);
+          // A manual agent choice supersedes stale endpoint/model parameters
+          // from a previous New Chat link. Keeping them would re-select the
+          // old model on navigation or reload, even with an authorized agent.
+          if (
+            nextConversation.conversationId === Constants.NEW_CONVO &&
+            isAgentsEndpoint(nextConversation.endpoint) &&
+            nextConversation.agent_id &&
+            !nextConversation.spec
+          ) {
+            for (const key of [
+              'endpoint',
+              'endpointType',
+              'model',
+              'agent_id',
+              'assistant_id',
+              'spec',
+            ]) {
+              nextParams.delete(key);
+            }
+          }
           nextParams.delete('projectId');
           if (
             nextConversation.conversationId === Constants.NEW_CONVO &&
@@ -341,14 +362,14 @@ const useNewConvo = (index = 0) => {
         resetBadges();
       }
 
-      const templateConvoId = _template.conversationId ?? '';
       const paramEndpoint =
         isParamEndpoint(_template.endpoint ?? '', _template.endpointType ?? '') === true ||
         isParamEndpoint(_preset?.endpoint ?? '', _preset?.endpointType ?? '');
-      const template =
-        paramEndpoint === true && templateConvoId && templateConvoId === Constants.NEW_CONVO
-          ? { endpoint: _template.endpoint, chatProjectId: _template.chatProjectId }
-          : _template;
+      const template = resolveNewConversationTemplate({
+        template: _template,
+        preset: _preset,
+        paramEndpoint,
+      });
 
       const conversation = {
         conversationId: Constants.NEW_CONVO as string,

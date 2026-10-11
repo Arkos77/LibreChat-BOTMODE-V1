@@ -140,6 +140,11 @@ test.describe('agent builder MCP tools', () => {
       await expectSelectedMCPServerTools(reopenedForm);
 
       await reopenedForm.getByRole('button', { name: 'Select Agent' }).click();
+      // The selected agent must own the composer before the message is sent.
+      // A stale endpoint query must not silently route this to another model.
+      await expect(page.getByTestId('model-selector-button')).toContainText(agentName, {
+        timeout: 15000,
+      });
 
       const response = await sendMessageAndWaitForCompletion(page, `hello from ${agentName}`);
       expect(response.ok()).toBeTruthy();

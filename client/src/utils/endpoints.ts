@@ -478,6 +478,40 @@ export function getDefaultModelSpec(
 }
 
 /**
+ * Rehydrate an explicit agent selection on a cold New Chat load when there is
+ * no winning model spec. getDefaultModelSpec correctly yields to the user's
+ * manual pick, but returning no spec is not by itself enough to restore the
+ * agent: the new-chat constructor needs its id in the preset.
+ *
+ * Only the VIEW-filtered agent map can authorize reuse. A deleted, inaccessible
+ * or disallowed agent must not be resurrected from browser storage.
+ */
+export function getStoredAgentSelectionPreset(
+  startupConfig?: t.TStartupConfig,
+  endpointsConfig?: t.TEndpointsConfig,
+  agentsMap?: t.TAgentsMap,
+): t.TPreset | undefined {
+  const stored = parseStoredModelSelection(
+    localStorage.getItem(LocalStorageKeys.LAST_CONVO_SETUP + '_0'),
+  );
+  if (
+    startupConfig?.interface?.modelSelect !== true ||
+    !isStoredAgentPick(stored) ||
+    endpointsConfig?.[EModelEndpoint.agents] == null ||
+    agentsMap?.[stored.agent_id] == null
+  ) {
+    return undefined;
+  }
+
+  const addedEndpoints = startupConfig.modelSpecs?.addedEndpoints ?? [];
+  if (addedEndpoints.length > 0 && !addedEndpoints.includes(EModelEndpoint.agents)) {
+    return undefined;
+  }
+
+  return { endpoint: EModelEndpoint.agents, agent_id: stored.agent_id };
+}
+
+/**
  * Whether resolving the default spec for a new chat hinges on the agent list:
  * a soft default is configured, no hard default or stored spec decides first,
  * and the stored last setup names a concrete agent whose existence only the

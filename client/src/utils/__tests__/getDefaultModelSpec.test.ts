@@ -5,7 +5,11 @@ import type {
   TEndpointsConfig,
   TAgentsMap,
 } from 'librechat-data-provider';
-import { getDefaultModelSpec, defaultSpecAwaitsAgents } from '../endpoints';
+import {
+  getDefaultModelSpec,
+  defaultSpecAwaitsAgents,
+  getStoredAgentSelectionPreset,
+} from '../endpoints';
 
 const createModelSpec = (name: string, overrides: Partial<TModelSpec> = {}): TModelSpec =>
   ({
@@ -693,5 +697,41 @@ describe('defaultSpecAwaitsAgents', () => {
         fullEndpointsConfig,
       ),
     ).toBe(false);
+  });
+});
+
+describe('getStoredAgentSelectionPreset', () => {
+  beforeEach(() => localStorage.clear());
+
+  const startupConfig = createStartupConfig([createModelSpec('soft', { softDefault: true })], {
+    addedEndpoints: [EModelEndpoint.agents],
+  });
+  const accessibleAgentMap = { agent_123: { id: 'agent_123' } } as unknown as TAgentsMap;
+
+  it('restores a manually selected accessible agent on cold load', () => {
+    persistAgentSelection('agent_123');
+    expect(
+      getStoredAgentSelectionPreset(startupConfig, agentsOnlyEndpointsConfig, accessibleAgentMap),
+    ).toMatchObject({ endpoint: EModelEndpoint.agents, agent_id: 'agent_123' });
+  });
+
+  it('does not restore a deleted or unauthorized agent', () => {
+    persistAgentSelection('agent_123');
+    expect(
+      getStoredAgentSelectionPreset(startupConfig, agentsOnlyEndpointsConfig, {}),
+    ).toBeUndefined();
+    expect(
+      getStoredAgentSelectionPreset(startupConfig, agentsOnlyEndpointsConfig, undefined),
+    ).toBeUndefined();
+  });
+
+  it('does not restore an agent when a different endpoint is allowed', () => {
+    persistAgentSelection('agent_123');
+    const restricted = createStartupConfig([createModelSpec('soft', { softDefault: true })], {
+      addedEndpoints: [EModelEndpoint.openAI],
+    });
+    expect(
+      getStoredAgentSelectionPreset(restricted, fullEndpointsConfig, accessibleAgentMap),
+    ).toBeUndefined();
   });
 });

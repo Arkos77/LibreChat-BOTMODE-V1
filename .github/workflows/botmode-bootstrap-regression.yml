@@ -1,0 +1,30 @@
+name: BOTMODE Bootstrap Regression
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/botmode/bootstrap.sh'
+      - 'scripts/botmode/tests/**'
+      - '.github/workflows/botmode-bootstrap-regression.yml'
+  push:
+    branches:
+      - botmode-v1-consolidation-ci-20261009
+    paths:
+      - 'scripts/botmode/bootstrap.sh'
+      - 'scripts/botmode/tests/**'
+      - '.github/workflows/botmode-bootstrap-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bash syntax
+        run: bash -n scripts/botmode/bootstrap.sh
+      - name: Bootstrap regression tests
+        run: python3 -m unittest discover -s scripts/botmode/tests -p 'test_*.py' -v

@@ -177,6 +177,29 @@ describe('BotModeProjectPanel', () => {
     });
   });
 
+  it('does not launch when only unrelated agents are accessible', () => {
+    mockUseListAgentsQuery.mockReturnValue({
+      data: { data: [{ id: 'another-agent', name: 'Other Agent' }] },
+    });
+    render(<BotModeProjectPanel projectId="project-a" conversations={[]} />);
+    expect(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' })).toBeDisabled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('selects the BOT MODE Worker instead of the first listed agent', () => {
+    mockUseListAgentsQuery.mockReturnValue({
+      data: {
+        data: [
+          { id: 'another-agent', name: 'Other Agent' },
+          { id: 'agent-worker', name: 'BOT MODE Worker' },
+        ],
+      },
+    });
+    render(<BotModeProjectPanel projectId="project-a" conversations={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }));
+    expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('agent_id=agent-worker'));
+  });
+
   it('shows the durable SETTLED state when terminal evidence is present', () => {
     mockUseBotModeProjectProjectionQuery.mockReturnValue({
       data: {

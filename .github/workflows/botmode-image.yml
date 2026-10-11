@@ -13,6 +13,7 @@ on:
       - botmode-v1-runtime-fix
     tags:
       - 'v*'
+      - 'candidate-botmode-v1-*'
 
 permissions:
   contents: read
@@ -119,7 +120,8 @@ jobs:
 
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             primary="${GITHUB_REF_NAME}"
-            latest="latest"
+            latest=""
+            if [[ "${GITHUB_REF_NAME}" == v* ]]; then latest="latest"; fi
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             primary="${{ inputs.tag }}"
             latest=""
@@ -200,6 +202,11 @@ jobs:
         run: |
           set -euo pipefail
           cp .env.example .env
+          chmod 600 .env
+          export BOTMODE_MONGO_PASSWORD=ci-only-mongo-password
+          export POSTGRES_PASSWORD=ci-only-postgres-password
+          echo 'BOTMODE_MONGO_PASSWORD=ci-only-mongo-password' >> .env
+          echo 'POSTGRES_PASSWORD=ci-only-postgres-password' >> .env
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           export BOTMODE_IMAGE="ghcr.io/$owner/librechat-botmode-v1:sha-${GITHUB_SHA::12}"
           export BOTMODE_HOST_PORT=3090
