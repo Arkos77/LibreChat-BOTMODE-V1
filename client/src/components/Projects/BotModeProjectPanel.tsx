@@ -133,6 +133,8 @@ export default function BotModeProjectPanel({
   const queryClient = useQueryClient();
   const [setupPending, setSetupPending] = useState(false);
   const [setupError, setSetupError] = useState('');
+  const [setupModels, setSetupModels] = useState<Array<{ provider: string; model: string }>>([]);
+  const [selectedSetupModel, setSelectedSetupModel] = useState('');
   const { data: agents } = useListAgentsQuery();
   const {
     data: projection,
@@ -208,13 +210,22 @@ export default function BotModeProjectPanel({
         setSetupError('Aucun modèle configuré : ajoutez une clé API ou un fournisseur local.');
         return;
       }
-      // More than one model requires explicit selection: a model merely listed
-      // in the catalog must not silently become the default for every agent.
-      if (configured.length > 1) {
-        setSetupError('Plusieurs modèles disponibles : sélection explicite requise avant initialisation.');
+      if (configured.length > 1 && setupModels.length === 0) {
+        setSetupModels(configured);
+        setSetupError('Sélectionnez un modèle avant de lancer l’initialisation.');
         return;
       }
-      const result = await dataService.initializeBotModeAgents(configured[0]);
+      const selected = configured.length === 1
+        ? configured[0]
+        : setupModels[Number(selectedSetupModel)];
+      if (!selected || !configured.some(
+        (item) => item.provider === selected.provider && item.model === selected.model,
+      )) {
+        setSetupModels(configured);
+        setSetupError('Sélectionnez un modèle disponible pour continuer.');
+        return;
+      }
+      const result = await dataService.initializeBotModeAgents(selected);
       await queryClient.invalidateQueries([QueryKeys.agents]);
       if (!result.capabilitiesComplete) {
         setSetupError('Agents créés, mais certains outils ne sont pas disponibles ou autorisés.');
@@ -296,9 +307,32 @@ export default function BotModeProjectPanel({
                   {localize('com_ui_bot_mode_project_launch')}
                 </Button>
               ) : (
-                <Button type="button" size="sm" disabled={setupPending} onClick={initializeAgents}>
-                  {setupPending ? 'Initialisation…' : 'Initialiser BOT MODE'}
-                </Button>
+                <>
+                  {setupModels.length > 1 && (
+                    <select
+                      aria-label="Modèle BOT MODE"
+                      className="max-w-64 rounded border border-border-light bg-surface-primary p-2 text-sm"
+                      value={selectedSetupModel}
+                      onChange={(event) => setSelectedSetupModel(event.target.value)}
+                      disabled={setupPending}
+                    >
+                      <option value="">Choisir un modèle</option>
+                      {setupModels.map(({ provider, model }, index) => (
+                        <option key={`${provider}:${model}`} value={String(index)}>
+                          {provider} — {model}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={setupPending || (setupModels.length > 1 && selectedSetupModel === '')}
+                    onClick={initializeAgents}
+                  >
+                    {setupPending ? 'Initialisation…' : 'Initialiser BOT MODE'}
+                  </Button>
+                </>
               )}
               {setupError && (
                 <span role="alert" className="text-xs text-red-600">
