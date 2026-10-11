@@ -215,12 +215,14 @@ export default function BotModeProjectPanel({
         setSetupError('Sélectionnez un modèle avant de lancer l’initialisation.');
         return;
       }
-      const selected = configured.length === 1
-        ? configured[0]
-        : setupModels[Number(selectedSetupModel)];
-      if (!selected || !configured.some(
-        (item) => item.provider === selected.provider && item.model === selected.model,
-      )) {
+      const selected =
+        configured.length === 1 ? configured[0] : setupModels[Number(selectedSetupModel)];
+      if (
+        !selected ||
+        !configured.some(
+          (item) => item.provider === selected.provider && item.model === selected.model,
+        )
+      ) {
         setSetupModels(configured);
         setSetupError('Sélectionnez un modèle disponible pour continuer.');
         return;
@@ -316,7 +318,7 @@ export default function BotModeProjectPanel({
                       onChange={(event) => setSelectedSetupModel(event.target.value)}
                       disabled={setupPending}
                     >
-                      <option value="">Choisir un modèle</option>
+                      <option value="">{localize('com_ui_select_model')}</option>
                       {setupModels.map(({ provider, model }, index) => (
                         <option key={`${provider}:${model}`} value={String(index)}>
                           {provider} — {model}

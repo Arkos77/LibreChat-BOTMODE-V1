@@ -62,19 +62,20 @@ describe('BOT MODE onboarding validation', () => {
     expect(inspectMissingCapabilities(agents, required)).toEqual([
       { name: 'RECHERCHE', deniedTools: ['web_search'] },
     ]);
-    expect(inspectMissingCapabilities([
-      { name: 'RECHERCHE', tools: ['web_search'] },
-      { name: 'CODE', tools: ['execute_code'] },
-    ], required)).toEqual([]);
+    expect(
+      inspectMissingCapabilities(
+        [
+          { name: 'RECHERCHE', tools: ['web_search'] },
+          { name: 'CODE', tools: ['execute_code'] },
+        ],
+        required,
+      ),
+    ).toEqual([]);
   });
 
   test('detects missing and duplicate agents without changing the inventory', () => {
     const expected = ['BOT MODE Worker', 'RECHERCHE', 'CODE'];
-    const agents = [
-      { name: 'BOT MODE Worker' },
-      { name: 'RECHERCHE' },
-      { name: 'RECHERCHE' },
-    ];
+    const agents = [{ name: 'BOT MODE Worker' }, { name: 'RECHERCHE' }, { name: 'RECHERCHE' }];
     const original = JSON.stringify(agents);
     expect(inspectAgentInventory(agents, expected)).toEqual({
       missing: ['CODE'],
@@ -82,7 +83,12 @@ describe('BOT MODE onboarding validation', () => {
       complete: false,
     });
     expect(JSON.stringify(agents)).toBe(original);
-    expect(inspectAgentInventory(expected.map((name) => ({ name })), expected)).toEqual({
+    expect(
+      inspectAgentInventory(
+        expected.map((name) => ({ name })),
+        expected,
+      ),
+    ).toEqual({
       missing: [],
       duplicates: [],
       complete: true,

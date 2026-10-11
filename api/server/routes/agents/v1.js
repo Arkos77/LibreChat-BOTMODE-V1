@@ -140,7 +140,9 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
     // A client-provided name is not proof of model availability.
     const resolvedModels = await loadModels(req);
     if (!validateModelSelection(resolvedModels, provider, model)) {
-      return res.status(400).json({ error: 'Selected provider/model is not available to this user' });
+      return res
+        .status(400)
+        .json({ error: 'Selected provider/model is not available to this user' });
     }
     const existing = await getAgents({ author: req.user.id, name: { $in: names } });
     const { duplicates } = inspectAgentInventory(existing, names);
