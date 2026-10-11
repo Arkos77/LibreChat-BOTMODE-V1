@@ -9,6 +9,11 @@ const mockControlMutate = jest.fn();
 const mockUseListAgentsQuery = jest.fn();
 const mockNavigate = jest.fn();
 
+jest.mock('@tanstack/react-query', () => ({
+  ...jest.requireActual('@tanstack/react-query'),
+  useQueryClient: () => ({ invalidateQueries: jest.fn() }),
+}));
+
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
   useNavigate: () => mockNavigate,
