@@ -2,6 +2,7 @@ const {
   validateModelSelection,
   inspectAgentInventory,
   validateWorkerDelegation,
+  inspectMissingCapabilities,
 } = require('./botmodeSetupValidation');
 
 describe('BOT MODE onboarding validation', () => {
@@ -49,6 +50,22 @@ describe('BOT MODE onboarding validation', () => {
       ),
     ).toBe(false);
     expect(validateWorkerDelegation([worker, ...children.slice(0, 4)], specialists)).toBe(false);
+  });
+
+  test('audits required tools for both existing and newly created agents', () => {
+    const required = { RECHERCHE: ['web_search'], CODE: ['execute_code'] };
+    const agents = [
+      { name: 'RECHERCHE', tools: [] },
+      { name: 'CODE', tools: ['execute_code'] },
+      { name: 'ANALYSE' },
+    ];
+    expect(inspectMissingCapabilities(agents, required)).toEqual([
+      { name: 'RECHERCHE', deniedTools: ['web_search'] },
+    ]);
+    expect(inspectMissingCapabilities([
+      { name: 'RECHERCHE', tools: ['web_search'] },
+      { name: 'CODE', tools: ['execute_code'] },
+    ], required)).toEqual([]);
   });
 
   test('detects missing and duplicate agents without changing the inventory', () => {
