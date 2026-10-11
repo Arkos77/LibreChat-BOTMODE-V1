@@ -88,6 +88,78 @@ router.get('/botmode/setup-status', checkAgentAccess, async (req, res) => {
 });
 
 /**
+ * Explicit authenticated first-run onboarding. Reuses the exact native create
+ * controller (schema validation, content filters, tool authorization and ACL).
+ * Does not mutate existing agents. The provider/model must be selected by the
+ * authenticated user from the currently configured LibreChat catalog.
+ */
+router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, res) => {
+  const { provider, model } = req.body ?? {};
+  if (
+    typeof provider !== 'string' ||
+    !provider.trim() ||
+    typeof model !== 'string' ||
+    !model.trim()
+  ) {
+    return res.status(400).json({ error: 'A configured provider and model are required' });
+  }
+
+  const names = ['BOT MODE Worker', 'RECHERCHE', 'ANALYSE', 'CODE', 'DOCUMENTS', 'RÉDACTION'];
+  try {
+    const existing = await getAgents({ author: req.user.id, name: { $in: names } });
+    const duplicates = names.filter(
+      (name) => existing.filter((agent) => agent.name === name).length > 1,
+    );
+    if (duplicates.length > 0) {
+      return res.status(409).json({ error: 'Duplicate BOT MODE agents require review', duplicates });
+    }
+
+    const created = [];
+    for (const name of names) {
+      if (existing.some((agent) => agent.name === name)) continue;
+      const body = {
+        name,
+        provider: provider.trim(),
+        model: model.trim(),
+        description:
+          name === 'BOT MODE Worker'
+            ? 'Orchestrateur principal des missions BOT MODE'
+            : `Spécialiste BOT MODE : ${name}`,
+        instructions:
+          name === 'BOT MODE Worker'
+            ? 'Tu es le Worker principal BOT MODE. Délègue uniquement selon les autorisations.'
+            : `Tu es le spécialiste ${name} de BOT MODE. Réponds en français.`,
+        tools: [],
+      };
+      let statusCode = 200;
+      let payload;
+      const capture = {
+        status(code) {
+          statusCode = code;
+          return this;
+        },
+        json(value) {
+          payload = value;
+          return this;
+        },
+      };
+      await v1.createAgent({ ...req, body }, capture);
+      if (statusCode !== 201 || !payload?.id) {
+        return res.status(statusCode >= 400 ? statusCode : 500).json({
+          error: 'BOT MODE agent initialization interrupted',
+          failedAgent: name,
+          created,
+        });
+      }
+      created.push({ name, id: payload.id });
+    }
+    return res.status(200).json({ created, existing: existing.map((agent) => agent.name) });
+  } catch (_error) {
+    return res.status(500).json({ error: 'BOT MODE agent initialization failed' });
+  }
+});
+
+/**
  * Retrieves basic agent information (VIEW permission required).
  * Returns safe, non-sensitive agent data for viewing purposes.
  * @route GET /agents/:id
