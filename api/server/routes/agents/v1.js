@@ -336,7 +336,11 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
     // Re-evaluate actual persisted tools for both new and reused agents.
     // Otherwise a second setup could falsely report full capabilities merely
     // because no new agent needed creating.
-    missingCapabilities.splice(0, missingCapabilities.length, ...inspectMissingCapabilities(finalAgents, requestedTools));
+    missingCapabilities.splice(
+      0,
+      missingCapabilities.length,
+      ...inspectMissingCapabilities(finalAgents, requestedTools),
+    );
     // The native creation controller persists before granting ACLs. Never
     // announce complete setup unless the final owner can access every agent.
     const finalPermissions = await getResourcePermissionsMap({
