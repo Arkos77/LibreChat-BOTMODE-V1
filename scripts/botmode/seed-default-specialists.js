@@ -1,5 +1,10 @@
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb');
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
+const ownerArg = process.argv.indexOf('--user-id');
+const ownerId = ownerArg >= 0 ? process.argv[ownerArg + 1] : null;
+if (!ownerId || !ObjectId.isValid(ownerId)) {
+  throw new Error('Explicit --user-id OBJECT_ID required for specialist seeding');
+}
 const uri = process.env.MONGO_URI;
 if (!uri) throw new Error('MONGO_URI missing');
 const serusEnabled = Boolean(process.env.SERUS_API_KEY?.trim());
@@ -43,7 +48,7 @@ const specs = [
   try {
     const db = client.db();
     const agents = db.collection('agents');
-    const worker = await agents.findOne({ name: 'BOT MODE Worker' });
+    const worker = await agents.findOne({ name: 'BOT MODE Worker', author: new ObjectId(ownerId) });
     if (!worker) throw new Error('BOT MODE Worker not found');
     const now = new Date();
     const ids = [];
