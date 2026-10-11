@@ -34,10 +34,12 @@ describe('observeResolvedModelCatalog', () => {
       sourcePrefix: 'test-watch',
       loadModels: () => ({ openrouter: ['model-a'] }),
     });
-    await expect(observeResolvedModelCatalog(registry, {
-      sourcePrefix: 'test-watch',
-      loadModels: () => ({ openrouter: [] }),
-    })).rejects.toThrow('Model discovery returned no usable models');
+    await expect(
+      observeResolvedModelCatalog(registry, {
+        sourcePrefix: 'test-watch',
+        loadModels: () => ({ openrouter: [] }),
+      }),
+    ).rejects.toThrow('Model discovery returned no usable models');
     expect(registry.get('model:openrouter:model-a')).toMatchObject({
       enabled: true,
       modelId: 'model-a',
