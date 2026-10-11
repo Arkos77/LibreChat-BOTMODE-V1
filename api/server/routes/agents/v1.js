@@ -209,6 +209,28 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
         created,
       });
     }
+    // The native creation controller persists before granting ACLs. Never
+    // announce complete setup unless the final owner can access every agent.
+    const finalPermissions = await getResourcePermissionsMap({
+      userId: req.user.id,
+      role: req.user.role,
+      resourceType: ResourceType.AGENT,
+      resourceIds: finalAgents.map((agent) => agent._id),
+    });
+    const missingPermissions = finalAgents
+      .filter((agent) => {
+        const bits = finalPermissions.get(String(agent._id)) ?? 0;
+        const required = PermissionBits.VIEW | PermissionBits.EDIT;
+        return (bits & required) !== required;
+      })
+      .map((agent) => agent.name);
+    if (missingPermissions.length > 0) {
+      return res.status(409).json({
+        error: 'BOT MODE setup needs owner permission repair',
+        missingPermissions,
+        created,
+      });
+    }
     return res.status(200).json({ created, existing: existing.map((agent) => agent.name) });
   } catch (_error) {
     return res.status(500).json({ error: 'BOT MODE agent initialization failed' });
