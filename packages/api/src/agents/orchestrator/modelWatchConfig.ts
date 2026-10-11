@@ -31,7 +31,8 @@ export async function observeResolvedModelCatalog(
   // A transient empty or malformed discovery response is not evidence that all
   // models were retired. Preserve the last known catalog and fail closed.
   const validProviders = Object.entries(modelsConfig ?? {}).filter(
-    ([, models]) => Array.isArray(models) && models.some((id) => typeof id === 'string' && id.trim() !== ''),
+    ([, models]) =>
+      Array.isArray(models) && models.some((id) => typeof id === 'string' && id.trim() !== ''),
   );
   if (validProviders.length === 0) {
     throw new Error('Model discovery returned no usable models; existing catalog retained');
@@ -85,7 +86,8 @@ export async function observeResolvedModelCatalog(
   for (const resource of registry.list({ kind: 'model' })) {
     if (
       resource.provenance?.source?.startsWith(sourcePrefix) &&
-      resource.providerId != null && observedProviders.has(resource.providerId) &&
+      resource.providerId != null &&
+      observedProviders.has(resource.providerId) &&
       !seenResourceIds.has(resource.id)
     ) {
       retiredResourceIds.push(resource.id);
