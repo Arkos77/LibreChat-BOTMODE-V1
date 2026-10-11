@@ -25,11 +25,22 @@ async function main() {
     const details = [];
     const duplicateNames = expected.filter((name) => existing.filter((agent) => agent.name === name).length > 1);
     for (const agent of existing) {
-      const aclCount = await db.collection('aclentries').countDocuments({
-        resourceId: agent._id, resourceType: 'agent',
-        principalType: 'user', principalId: agent.author,
+      const ownerRole = roles.find((role) => role.accessRoleId === 'agent_owner');
+      const ownerAcl = ownerRole && agent.author
+        ? await db.collection('aclentries').findOne({
+          resourceId: agent._id,
+          resourceType: 'agent',
+          principalType: 'user',
+          principalId: agent.author,
+          roleId: ownerRole._id,
+        })
+        : null;
+      details.push({
+        name: agent.name,
+        id: agent.id,
+        ownerAclPresent: Boolean(ownerAcl),
+        authorPresent: Boolean(agent.author),
       });
-      details.push({ name: agent.name, id: agent.id, ownerAclPresent: aclCount > 0, authorPresent: Boolean(agent.author) });
     }
     console.log(JSON.stringify({
       readOnly: true,
