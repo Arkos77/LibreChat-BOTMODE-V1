@@ -74,16 +74,31 @@ jobs:
                   available=json.load(resp).get("models",[])
               supported=[m["name"].split("/",1)[-1] for m in available
                   if "generateContent" in m.get("supportedGenerationMethods",[])]
-              if model not in supported:
-                  if not supported:
-                      raise RuntimeError("No generateContent-compatible models in Gemini API listing")
-                  # Do not expose the API key or provider response payload.
-                  print("Gemini: selected model unavailable; using first available generateContent model")
-                  model=supported[0]
-              verify("Gemini","https://generativelanguage.googleapis.com/v1beta/models/"+quote(model)+":generateContent",
-                  {"contents":[{"parts":[{"text":"Reply with OK."}]}],"generationConfig":{"maxOutputTokens":16}},
-                  {"Content-Type":"application/json","x-goog-api-key":os.environ["GEMINI_API_KEY"]})
-              print("Gemini model validated:",model)
+              if not supported:
+                  raise RuntimeError("No generateContent-compatible models in Gemini API listing")
+              candidates=([model] if model in supported else []) + [
+                  m for m in supported if m != model and "flash" in m.lower()
+              ][:4]
+              if not candidates:
+                  candidates=supported[:3]
+              # A model can be listed yet still return 404 at generation time.
+              # Retry only 404; auth, quota or billing failures stop immediately.
+              last_404=False
+              for candidate in candidates[:4]:
+                  try:
+                      verify("Gemini","https://generativelanguage.googleapis.com/v1beta/models/"+quote(candidate)+":generateContent",
+                          {"contents":[{"parts":[{"text":"Reply with OK."}]}],"generationConfig":{"maxOutputTokens":32}},
+                          {"Content-Type":"application/json","x-goog-api-key":os.environ["GEMINI_API_KEY"]})
+                      print("Gemini model validated:",candidate)
+                      last_404=False
+                      break
+                  except SystemExit as exc:
+                      if "HTTP 404" not in str(exc):
+                          raise
+                      print("Gemini model returned HTTP 404:",candidate)
+                      last_404=True
+              if last_404:
+                  raise RuntimeError("All tried Gemini models returned HTTP 404")
           except (Exception,SystemExit) as exc:
               print("Gemini validation failed:",str(exc) if isinstance(exc,SystemExit) else type(exc).__name__)
               failures.append("Gemini")
@@ -95,7 +110,7 @@ jobs:
               else:
                   try:
                       verify("OpenRouter","https://openrouter.ai/api/v1/chat/completions",
-                          {"model":"openrouter/auto","messages":[{"role":"user","content":"Reply with OK."}],"max_tokens":16},
+                          {"model":"openrouter/free","messages":[{"role":"user","content":"Reply with OK."}],"max_tokens":16},
                           {"Content-Type":"application/json","Authorization":"Bearer "+token})
                   except (Exception,SystemExit) as exc:
                       print("OpenRouter validation failed:",str(exc) if isinstance(exc,SystemExit) else type(exc).__name__)
