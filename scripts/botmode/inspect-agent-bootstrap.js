@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /** Read-only BOT MODE provisioning preflight. No database writes. */
-const { MongoClient, ObjectId } = require('mongodb');
+const { MongoClient } = require('mongodb');
 
 async function main() {
   const uri = process.env.MONGO_URI;
