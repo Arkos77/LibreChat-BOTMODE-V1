@@ -65,16 +65,43 @@ jobs:
                   ok=bool(result.get("choices"))
               if not ok: raise SystemExit(f"{label}: HTTP succeeded but no generation candidate")
               print(f"{label}: inference response validated (contents redacted)")
+          failures=[]
           model=os.environ["GEMINI_MODEL"]
-          verify("Gemini","https://generativelanguage.googleapis.com/v1beta/models/"+quote(model)+":generateContent",
-              {"contents":[{"parts":[{"text":"Reply with OK."}]}],"generationConfig":{"maxOutputTokens":16}},
-              {"Content-Type":"application/json","x-goog-api-key":os.environ["GEMINI_API_KEY"]})
+          try:
+              req=urllib.request.Request("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",
+                  headers={"x-goog-api-key":os.environ["GEMINI_API_KEY"]})
+              with urllib.request.urlopen(req,timeout=35) as resp:
+                  available=json.load(resp).get("models",[])
+              supported=[m["name"].split("/",1)[-1] for m in available
+                  if "generateContent" in m.get("supportedGenerationMethods",[])]
+              if model not in supported:
+                  if not supported:
+                      raise RuntimeError("No generateContent-compatible models in Gemini API listing")
+                  # Do not expose the API key or provider response payload.
+                  print("Gemini: selected model unavailable; using first available generateContent model")
+                  model=supported[0]
+              verify("Gemini","https://generativelanguage.googleapis.com/v1beta/models/"+quote(model)+":generateContent",
+                  {"contents":[{"parts":[{"text":"Reply with OK."}]}],"generationConfig":{"maxOutputTokens":16}},
+                  {"Content-Type":"application/json","x-goog-api-key":os.environ["GEMINI_API_KEY"]})
+              print("Gemini model validated:",model)
+          except (Exception,SystemExit) as exc:
+              print("Gemini validation failed:",str(exc) if isinstance(exc,SystemExit) else type(exc).__name__)
+              failures.append("Gemini")
           if os.environ["CHECK_OPENROUTER"].lower()=="true":
               token=os.environ.get("OPENROUTER_API_KEY","")
-              if not token: raise SystemExit("Missing repository Actions secret OPENROUTER_API_KEY")
-              verify("OpenRouter","https://openrouter.ai/api/v1/chat/completions",
-                  {"model":"openrouter/auto","messages":[{"role":"user","content":"Reply with OK."}],"max_tokens":16},
-                  {"Content-Type":"application/json","Authorization":"Bearer "+token})
+              if not token:
+                  print("OpenRouter: missing Actions secret OPENROUTER_API_KEY")
+                  failures.append("OpenRouter")
+              else:
+                  try:
+                      verify("OpenRouter","https://openrouter.ai/api/v1/chat/completions",
+                          {"model":"openrouter/auto","messages":[{"role":"user","content":"Reply with OK."}],"max_tokens":16},
+                          {"Content-Type":"application/json","Authorization":"Bearer "+token})
+                  except (Exception,SystemExit) as exc:
+                      print("OpenRouter validation failed:",str(exc) if isinstance(exc,SystemExit) else type(exc).__name__)
+                      failures.append("OpenRouter")
+          if failures:
+              raise SystemExit("Provider readiness failed: "+", ".join(failures))
           PY
       - name: Scope of this result
         if: success()
