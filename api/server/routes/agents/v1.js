@@ -86,9 +86,20 @@ router.get('/botmode/setup-status', checkAgentAccess, async (req, res) => {
     const duplicates = names.filter(
       (name) => agents.filter((agent) => agent.name === name).length > 1,
     );
+    const worker = agents.find((agent) => agent.name === 'BOT MODE Worker');
+    const specialistIds = agents
+      .filter((agent) => agent.name !== 'BOT MODE Worker')
+      .map((agent) => agent.id);
+    const routedIds = worker?.subagents?.agent_ids ?? [];
+    const delegationConfigured =
+      worker?.subagents?.enabled === true &&
+      specialistIds.length === 5 &&
+      specialistIds.every((id) => routedIds.includes(id));
+
     return res.status(200).json({
       inventoryComplete: missing.length === 0 && duplicates.length === 0,
       permissionsComplete: missingOwnerAccess.length === 0,
+      delegationConfigured,
       missingOwnerAccess,
       present,
       missing,
