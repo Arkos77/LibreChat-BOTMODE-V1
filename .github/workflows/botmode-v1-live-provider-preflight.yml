@@ -1,0 +1,83 @@
+name: BOTMODE V1 Live Provider Preflight
+
+# Manual only: never run paid-provider calls on a push or PR.
+on:
+  workflow_dispatch:
+    inputs:
+      gemini_model:
+        description: "Gemini API model identifier (not the LibreChat display label)"
+        required: true
+        default: gemini-2.5-flash
+        type: string
+      check_openrouter:
+        description: "Also verify configured OpenRouter access"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  provider-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Verify pinned PR14 candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ea24f476164153735b5f5c95fe9c7861d4f97a1f
+          persist-credentials: false
+      - name: Check immutable revision
+        run: test "$(git rev-parse HEAD)" = "ea24f476164153735b5f5c95fe9c7861d4f97a1f"
+      - name: Validate provider credentials and real inference
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GEMINI_MODEL: ${{ inputs.gemini_model }}
+          CHECK_OPENROUTER: ${{ inputs.check_openrouter }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${GEMINI_API_KEY:-}" ]; then
+            echo "::error::Missing repository Actions secret GEMINI_API_KEY"
+            exit 1
+          fi
+          # Guard model string prior to placing it in an API URL.
+          [[ "$GEMINI_MODEL" =~ ^[a-zA-Z0-9._-]+$ ]] || { echo "::error::Invalid model identifier"; exit 1; }
+          python3 - <<'PY'
+          import json,os,urllib.request,urllib.error
+          from urllib.parse import quote
+          def verify(label,url,payload,headers):
+              data=json.dumps(payload).encode()
+              req=urllib.request.Request(url,data=data,headers=headers,method="POST")
+              try:
+                  with urllib.request.urlopen(req,timeout=35) as r:
+                      result=json.load(r)
+              except urllib.error.HTTPError as e:
+                  # Never echo response bodies or credentials.
+                  raise SystemExit(f"{label}: HTTP {e.code}; check key, quota, permissions and model")
+              except Exception as e:
+                  raise SystemExit(f"{label}: connection failed ({type(e).__name__})")
+              if label=="Gemini":
+                  ok=bool(result.get("candidates"))
+              else:
+                  ok=bool(result.get("choices"))
+              if not ok: raise SystemExit(f"{label}: HTTP succeeded but no generation candidate")
+              print(f"{label}: inference response validated (contents redacted)")
+          model=os.environ["GEMINI_MODEL"]
+          verify("Gemini","https://generativelanguage.googleapis.com/v1beta/models/"+quote(model)+":generateContent",
+              {"contents":[{"parts":[{"text":"Reply with OK."}]}],"generationConfig":{"maxOutputTokens":16}},
+              {"Content-Type":"application/json","x-goog-api-key":os.environ["GEMINI_API_KEY"]})
+          if os.environ["CHECK_OPENROUTER"].lower()=="true":
+              token=os.environ.get("OPENROUTER_API_KEY","")
+              if not token: raise SystemExit("Missing repository Actions secret OPENROUTER_API_KEY")
+              verify("OpenRouter","https://openrouter.ai/api/v1/chat/completions",
+                  {"model":"openrouter/auto","messages":[{"role":"user","content":"Reply with OK."}],"max_tokens":16},
+                  {"Content-Type":"application/json","Authorization":"Bearer "+token})
+          PY
+      - name: Scope of this result
+        if: success()
+        run: |
+          echo "### Provider access proved only" >> "$GITHUB_STEP_SUMMARY"
+          echo "This does NOT prove Worker -> specialist -> Oracle -> publication." >> "$GITHUB_STEP_SUMMARY"
