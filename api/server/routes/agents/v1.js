@@ -18,6 +18,7 @@ const { getRoleByName, getAgents } = require('~/models');
 const { loadModels } = require('~/server/controllers/ModelController');
 const actions = require('./actions');
 const tools = require('./tools');
+const { validateModelSelection, inspectAgentInventory } = require('./botmodeSetupValidation');
 
 const router = express.Router();
 const avatar = express.Router();
@@ -133,13 +134,11 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
     // Resolve against this authenticated request, including user API keys.
     // A client-provided name is not proof of model availability.
     const resolvedModels = await loadModels(req);
-    if (!Array.isArray(resolvedModels[provider]) || !resolvedModels[provider].includes(model)) {
+    if (!validateModelSelection(resolvedModels, provider, model)) {
       return res.status(400).json({ error: 'Selected provider/model is not available to this user' });
     }
     const existing = await getAgents({ author: req.user.id, name: { $in: names } });
-    const duplicates = names.filter(
-      (name) => existing.filter((agent) => agent.name === name).length > 1,
-    );
+    const { duplicates } = inspectAgentInventory(existing, names);
     if (duplicates.length > 0) {
       return res
         .status(409)
