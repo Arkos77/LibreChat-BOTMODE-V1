@@ -73,12 +73,76 @@ def redis_job(stream_id):
         return out.stdout.strip()
     return field("status"), field("orchestratorPlan"), field("missionOracleState")
 
+def diagnostic_error_class(events):
+    """Allowlist error classification: never print raw provider messages."""
+    terms = {
+        "ORCHESTRATOR_SPECIALIST": ("orchestrator specialist", "specialist is not authorized"),
+        "ORCHESTRATOR_PLAN": ("orchestrator plan", "invalid orchestrator", "native task identity"),
+        "GRAPH_BINDING": ("authorized agent binding", "missing or mismatched", "invalid graph"),
+        "MISSING_OUTPUT": ("missing exact task output", "checkpointed predecessor output"),
+        "MISSION_ORACLE": ("mission oracle", "oracle blocked", "mission_oracle_failure"),
+        "PROVIDER_AUTH": ("invalid api key", "no api key", "authentication", "unauthorized"),
+        "PROVIDER_LIMIT": ("rate limit", "429", "quota", "free model"),
+        "PROVIDER_MODEL": ("model not found", "invalid model", "no endpoints", "model unavailable"),
+        "PROVIDER_MISC": ("provider", "model failed", "generation failed"),
+        "SERVER_INTERNAL": ("internal server", "internal error", "cannot read properties"),
+    }
+    fragments = []
+    for e in events:
+        r = e.get("responseMessage")
+        if isinstance(r, dict):
+            content = r.get("content") or []
+            for part in content if isinstance(content, list) else []:
+                if isinstance(part, dict) and part.get("type") == "error":
+                    value = part.get("error", "")
+                    fragments.append(json.dumps(value, ensure_ascii=False).lower()
+                                     if isinstance(value, (dict, list)) else str(value).lower())
+        for field in ("error", "message"):
+            value = e.get(field)
+            if isinstance(value, str):
+                fragments.append(value.lower())
+    raw = " ".join(fragments)
+    import hashlib
+    return ",".join(k for k, phrases in terms.items() if any(p in raw for p in phrases)) or "UNCLASSIFIED", hashlib.sha256(raw.encode()).hexdigest()[:12], len(raw)
+
+def redis_connection_summary(stream_id):
+    cmd = COMPOSE + ["exec", "-T", "api", "node", "-e",
+                     "console.log(JSON.stringify({redis:process.env.USE_REDIS,streams:process.env.USE_REDIS_STREAMS,keep:process.env.STREAM_KEEP_COMPLETED_JOBS,redisUriConfigured:Boolean(process.env.REDIS_URI)}))"]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+    if proc.returncode == 0:
+        try:
+            info = json.loads(proc.stdout.strip().splitlines()[-1])
+            print("CI_ORACLE_RUNTIME_REDIS=" + str(info.get("redis")), flush=True)
+            print("CI_ORACLE_RUNTIME_STREAMS=" + str(info.get("streams")), flush=True)
+            print("CI_ORACLE_RUNTIME_KEEP=" + str(info.get("keep")), flush=True)
+            print("CI_ORACLE_RUNTIME_REDIS_URI_CONFIGURED=" + str(info.get("redisUriConfigured")), flush=True)
+        except (TypeError, ValueError, IndexError):
+            print("CI_ORACLE_RUNTIME_ENV_INSPECTION_FAILED=true", flush=True)
+    logs = subprocess.run(COMPOSE + ["logs", "--no-color", "--tail", "140", "api"],
+                          capture_output=True, text=True, timeout=20)
+    logdata = logs.stdout.lower() if logs.returncode == 0 else ""
+    for label, phrase in (
+        ("STORE_REDIS", "created redis-backed stream services"),
+        ("STORE_MEMORY", "created in-memory stream services"),
+        ("STORE_REDIS_FALLBACK", "falling back to in-memory"),
+        ("PLAN_FAILURE", "orchestrator plan"),
+        ("MISSION_ORACLE_FAILURE", "mission oracle"),
+        ("BINDING_FAILURE", "authorized agent binding"),
+        ("SPECIALIST_AUTH_FAILURE", "orchestrator specialist"),
+    ):
+        print("CI_ORACLE_" + label + "_IN_LAST_API_LOG=" + str(phrase in logdata), flush=True)
+    scan = subprocess.run(COMPOSE + ["exec", "-T", "redis", "redis-cli", "--raw",
+                                    "--scan", "--pattern", "stream:*:job"],
+                          capture_output=True, text=True, timeout=20)
+    if scan.returncode == 0:
+        print("CI_ORACLE_REDIS_JOB_KEY_COUNT=" + str(len([x for x in scan.stdout.splitlines() if x.strip()])), flush=True)
+
 def redis_field_names(stream_id):
     key = "stream:{" + stream_id + "}:job"
     p = subprocess.run(COMPOSE + ["exec", "-T", "redis", "redis-cli", "--raw",
                                   "HKEYS", key], capture_output=True, text=True,
                        timeout=20, check=True)
-    return sorted(p.stdout.splitlines())
+    return sorted(item for item in p.stdout.splitlines() if item.strip())
 
 def verify(label, review, expected_status):
     conversation_id = str(uuid.uuid4())
@@ -139,6 +203,10 @@ def verify(label, review, expected_status):
     print("CI_ORACLE_" + label + "_SSE_EVENTS=" + str(len(events)), flush=True)
     print("CI_ORACLE_" + label + "_SSE_FINALS=" + str(len(final)), flush=True)
     print("CI_ORACLE_" + label + "_SSE_ERRORS=" + str(len(error_events)), flush=True)
+    cls, fingerprint, size = diagnostic_error_class(events)
+    print("CI_ORACLE_" + label + "_ERROR_CLASSES=" + cls, flush=True)
+    print("CI_ORACLE_" + label + "_ERROR_FINGERPRINT=" + fingerprint, flush=True)
+    print("CI_ORACLE_" + label + "_ERROR_TEXT_SIZE=" + str(size), flush=True)
     finals = [e.get("responseMessage") for e in final if isinstance(e.get("responseMessage"), dict)]
     print("CI_ORACLE_" + label + "_FINAL_RESPONSE_PRESENT=" + str(bool(finals)), flush=True)
     print("CI_ORACLE_" + label + "_FINAL_CONTENT_PART_TYPES=" +
@@ -163,6 +231,7 @@ def verify(label, review, expected_status):
                 pass
         time.sleep(1)
     if persisted is None:
+        redis_connection_summary(stream_id)
         latest_status, latest_plan, latest_state = redis_job(stream_id)
         fields = redis_field_names(stream_id)
         print("CI_ORACLE_" + label + "_JOB_EXISTS=" + str(bool(fields)), flush=True)
