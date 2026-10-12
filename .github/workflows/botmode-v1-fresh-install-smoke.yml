@@ -96,6 +96,10 @@ jobs:
               if res.status!=200:
                   raise SystemExit('CI_FIRST_USER_PROTECTED_ENDPOINT_FAILED')
           print('CI_FIRST_USER_JWT_AND_PROTECTED_API=PASS')
+          # Persist only synthetic credentials on the disposable runner; never print them.
+          path=pathlib.Path('/tmp/botmode-ci-credentials.json')
+          path.write_text(json.dumps({'email':registration['email'],'password':password,'previous_token':token}))
+          path.chmod(0o600)
           # Read-only check: does first-user onboarding produce a usable BOT MODE
           # worker/specialist set without a manual seed script?
           PY
@@ -119,12 +123,6 @@ jobs:
             } finally { await client.close(); }
           })().catch(e=>{console.error('CI_AGENT_ONBOARDING_READ_FAILED='+e.name);process.exit(1)});
           NODE_BOOT
-          python3 - <<'PY'
-          # Persist only synthetic credentials on the disposable runner; never print them.
-          path=pathlib.Path('/tmp/botmode-ci-credentials.json')
-          path.write_text(json.dumps({'email':registration['email'],'password':password,'previous_token':token}))
-          path.chmod(0o600)
-          PY
       - name: Stop and restart using lifecycle scripts, verify durable database volume
         run: |
           set -euo pipefail
