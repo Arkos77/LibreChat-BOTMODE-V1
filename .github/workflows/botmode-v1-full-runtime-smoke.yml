@@ -51,7 +51,7 @@ jobs:
           echo 'CI_FULL_API_READY=PASS'
           for svc in mongodb vectordb meilisearch rag_api; do
             test -n "$("${compose[@]}" ps -q "$svc")"
-            test "$("${compose[@]}" inspect --format '{{.State.Running}}' "$("${compose[@]}" ps -q "$svc")" 2>/dev/null || docker inspect --format '{{.State.Running}}' "$("${compose[@]}" ps -q "$svc")")" = true
+            test "$(sudo docker inspect --format '{{.State.Running}}' "$("${compose[@]}" ps -q "$svc")")" = true
             echo "CI_FULL_SERVICE_${svc}=RUNNING"
           done
           "${compose[@]}" exec -T vectordb sh -ec 'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT 1" | grep -q 1'
