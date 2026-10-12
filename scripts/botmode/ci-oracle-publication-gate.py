@@ -216,6 +216,14 @@ def redis_connection_summary(stream_id):
         accepted = next((choice for choice in choices
                          if (field + "=" + choice) in logdata), "unknown")
         print("CI_ORACLE_PROBE_" + label + "=" + accepted.upper(), flush=True)
+    for flag in ("ctormatches=true", "ctormatches=false",
+                 "issdkrun=true", "issdkrun=false",
+                 "prototypeaccessor=true", "prototypeaccessor=false",
+                 "ownshadow=true", "ownshadow=false",
+                 "graphmessages=true", "graphmessages=false"):
+        print("CI_HTTP_RUN_" + flag.upper().replace("=", "_") + "=" +
+              str("ci_oracle_diagnostic_output " in logdata and flag in logdata),
+              flush=True)
     for flag in ("missing=0", "missing=1", "outputerror=none",
                  "nonempty=true", "nonempty=false"):
         print("CI_DIAGNOSTIC_OUTPUT_" + flag.upper().replace("=", "_") + "=" +
