@@ -103,7 +103,7 @@ jobs:
           # Read-only check: does first-user onboarding produce a usable BOT MODE
           # worker/specialist set without a manual seed script?
           PY
-          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE_BOOT'
+          sudo env BOTMODE_HOST_PORT=3093 docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE_BOOT'
           (async () => {
             const { MongoClient } = require('mongodb');
             const client = await MongoClient.connect(process.env.MONGO_URI);
