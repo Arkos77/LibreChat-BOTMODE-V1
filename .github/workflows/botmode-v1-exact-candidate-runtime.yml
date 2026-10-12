@@ -109,14 +109,14 @@ jobs:
           if [ "$auth_status" != "200" ]; then
             echo "CI_AUTH_RESPONSE_STATUS=$auth_status"
             python3 - <<'PY'
-import json
-try:
- d=json.load(open("/tmp/botmode-auth-status.json"))
- print("CI_AUTH_RESPONSE_FIELDS="+",".join(sorted(d.keys())))
- print("CI_AUTH_ERROR_CODE="+str(d.get("code","absent"))[:60])
-except Exception:
- print("CI_AUTH_RESPONSE_FORMAT=non_json")
-PY
+          import json
+          try:
+           d=json.load(open("/tmp/botmode-auth-status.json"))
+           print("CI_AUTH_RESPONSE_FIELDS="+",".join(sorted(d.keys())))
+           print("CI_AUTH_ERROR_CODE="+str(d.get("code","absent"))[:60])
+          except Exception:
+           print("CI_AUTH_RESPONSE_FORMAT=non_json")
+          PY
             docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node -e "const crypto=require('crypto'); const fs=require('fs'); const x=(fs.readFileSync('/app/.env','utf8').match(/^JWT_SECRET=(.*)$/m)||[])[1]; console.log('CI_RUNTIME_JWT_SECRET_PRESENT='+Boolean(process.env.JWT_SECRET)); console.log('CI_ENV_FILE_JWT_SECRET_PRESENT='+Boolean(x)); console.log('CI_RUNTIME_JWT_MATCH='+Boolean(x && process.env.JWT_SECRET === x));"
             echo "::error::Authenticated BOT MODE setup-status expected HTTP 200; received $auth_status"
             exit 1
