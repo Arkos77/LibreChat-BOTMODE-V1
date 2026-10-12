@@ -297,6 +297,14 @@ jobs:
                           detected=[k for k,words in categories.items() if any(word in err for word in words)]
                           print('CI_SSE_ERROR_CATEGORY='+(','.join(detected) if detected else 'unclassified'))
                           print('CI_SSE_ERROR_TEXT_LENGTH='+str(len(err)))
+                          # Only emit a fingerprint of the error, never its raw text.
+                          import hashlib
+                          print('CI_SSE_ERROR_FINGERPRINT='+hashlib.sha256(err.encode()).hexdigest()[:12])
+                          print('CI_SSE_ERROR_HTTP_401='+str('401' in err))
+                          print('CI_SSE_ERROR_HTTP_403='+str('403' in err))
+                          print('CI_SSE_ERROR_HTTP_429='+str('429' in err))
+                          print('CI_SSE_ERROR_INVALID_KEY='+str('invalid key' in err or 'invalid api key' in err))
+                          print('CI_SSE_ERROR_UNAUTHORIZED='+str('unauthorized' in err))
                   except Exception:
                       print('CI_SSE_EVENT_FORMAT=non_json')
           PY
