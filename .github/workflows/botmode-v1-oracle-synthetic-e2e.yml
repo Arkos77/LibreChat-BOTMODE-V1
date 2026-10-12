@@ -20,7 +20,7 @@ jobs:
         run: test "$(git rev-parse HEAD)" = 'ea24f476164153735b5f5c95fe9c7861d4f97a1f'
       - name: Instrument disposable checkout for Oracle diagnostics only
         run: |
-          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/b0439e9897aa7b759204a0cdaf91712dc53e66ee/scripts/botmode/ci-oracle-runtime-instrument.py -o /tmp/botmode-ci-oracle-runtime-instrument.py
+          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/434a9c0927cc3bb2fcdc39f433e6cdaf72b2fec8/scripts/botmode/ci-oracle-runtime-instrument.py -o /tmp/botmode-ci-oracle-runtime-instrument.py
           python3 /tmp/botmode-ci-oracle-runtime-instrument.py
           echo 'CI_DIAGNOSTIC_IMAGE_NOT_RELEASE_CANDIDATE=true'
       - name: Build actual PR14 API runtime image locally
