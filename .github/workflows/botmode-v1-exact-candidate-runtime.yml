@@ -378,6 +378,14 @@ jobs:
           updates=[v for v in values if v.get('event')=='on_subagent_update' or v.get('type')=='on_subagent_update']
           print('CI_SUBAGENT_UPDATE_COUNT='+str(len(updates)))
           print('CI_SUBAGENT_UPDATE_FIELDS='+','.join(sorted(set(k for v in updates for k in v.keys())))[:220])
+          payloads=[v.get('data') for v in updates if isinstance(v.get('data'),dict)]
+          print('CI_SUBAGENT_PAYLOAD_COUNT='+str(len(payloads)))
+          print('CI_SUBAGENT_PAYLOAD_FIELDS='+','.join(sorted({k for p in payloads for k in p.keys()}))[:250])
+          for field in ('status','state','phase','taskId','agentId'):
+              present=[str(p[field])[:30] for p in payloads if p.get(field) is not None]
+              print('CI_SUBAGENT_DATA_'+field.upper()+'_COUNT='+str(len(present)))
+              if field in ('status','state','phase'):
+                  print('CI_SUBAGENT_DATA_'+field.upper()+'_VALUES='+','.join(sorted(set(present)))[:140])
           for field in ('status','state','phase'):
               print('CI_SUBAGENT_'+field.upper()+'_VALUES='+','.join(sorted({str(v.get(field))[:35] for v in updates if v.get(field) is not None}))[:120])
           finals=[v for v in values if v.get('final') is True]
