@@ -21,6 +21,10 @@ COMPOSE = [
 TOKEN = Path("/tmp/botmode-e2e-test-token").read_text().strip()
 WORKER = Path("/tmp/botmode-ci-worker-id").read_text().strip()
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+# The pinned candidate's ioredis client applies GLOBAL_PREFIX_SEPARATOR='::'
+# even when REDIS_KEY_PREFIX is empty. redis-cli bypasses that client prefix.
+# This CI stack leaves REDIS_KEY_PREFIX / REDIS_KEY_PREFIX_VAR unset.
+REDIS_PHYSICAL_PREFIX = "::"
 
 def fail(reason):
     raise SystemExit("CI_ORACLE_GATE_FAIL=" + reason)
@@ -66,7 +70,7 @@ def response_text(message):
     return ""
 
 def redis_job(stream_id):
-    key = "stream:{" + stream_id + "}:job"
+    key = REDIS_PHYSICAL_PREFIX + "stream:{" + stream_id + "}:job"
     def field(name):
         cmd = COMPOSE + ["exec", "-T", "redis", "redis-cli", "--raw", "HGET", key, name]
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=20, check=True)
@@ -132,13 +136,13 @@ def redis_connection_summary(stream_id):
     ):
         print("CI_ORACLE_" + label + "_IN_LAST_API_LOG=" + str(phrase in logdata), flush=True)
     scan = subprocess.run(COMPOSE + ["exec", "-T", "redis", "redis-cli", "--raw",
-                                    "--scan", "--pattern", "stream:*:job"],
+                                    "--scan", "--pattern", REDIS_PHYSICAL_PREFIX + "stream:*:job"],
                           capture_output=True, text=True, timeout=20)
     if scan.returncode == 0:
         print("CI_ORACLE_REDIS_JOB_KEY_COUNT=" + str(len([x for x in scan.stdout.splitlines() if x.strip()])), flush=True)
 
 def redis_field_names(stream_id):
-    key = "stream:{" + stream_id + "}:job"
+    key = REDIS_PHYSICAL_PREFIX + "stream:{" + stream_id + "}:job"
     p = subprocess.run(COMPOSE + ["exec", "-T", "redis", "redis-cli", "--raw",
                                   "HKEYS", key], capture_output=True, text=True,
                        timeout=20, check=True)
@@ -207,6 +211,8 @@ def verify(label, review, expected_status):
     print("CI_ORACLE_" + label + "_ERROR_CLASSES=" + cls, flush=True)
     print("CI_ORACLE_" + label + "_ERROR_FINGERPRINT=" + fingerprint, flush=True)
     print("CI_ORACLE_" + label + "_ERROR_TEXT_SIZE=" + str(size), flush=True)
+    # The prefix/absence of any job is not proof of a model or Oracle failure.
+    # Explicitly separate the Redis physical keyspace from the logical key.
     finals = [e.get("responseMessage") for e in final if isinstance(e.get("responseMessage"), dict)]
     print("CI_ORACLE_" + label + "_FINAL_RESPONSE_PRESENT=" + str(bool(finals)), flush=True)
     print("CI_ORACLE_" + label + "_FINAL_CONTENT_PART_TYPES=" +
