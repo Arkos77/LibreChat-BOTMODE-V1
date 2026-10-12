@@ -30,16 +30,17 @@ replacement = """        await this.handleRunInterrupt(run, streamId);
             !Object.prototype.hasOwnProperty.call(actualOutputs, id));
           const firstOutput = actualOutputs[expectedNodes[0]];
           const content = firstOutput?.content;
-          logger.warn('CI_ORACLE_DIAGNOSTIC_OUTPUT', {
-            actualOutputCount: Object.keys(actualOutputs).length,
-            expectedValidatedOutputCount: expectedNodes.length,
-            missingValidatedOutputCount: missing.length,
-            matchedContentType: Array.isArray(content) ? 'array' : typeof content,
-            matchedContentNonEmpty: typeof content === 'string' && content.trim().length > 0,
-            haltPresent: run.getHaltReason() != null,
-            interruptPresent: run.getInterrupt() != null,
-            getOutputsError: debugError,
-          });
+          logger.warn(
+            'CI_ORACLE_DIAGNOSTIC_OUTPUT ' +
+            'actual=' + Object.keys(actualOutputs).length +
+            ' expected=' + expectedNodes.length +
+            ' missing=' + missing.length +
+            ' contentType=' + (Array.isArray(content) ? 'array' : typeof content) +
+            ' nonempty=' + (typeof content === 'string' && content.trim().length > 0) +
+            ' halted=' + (run.getHaltReason() != null) +
+            ' interrupted=' + (run.getInterrupt() != null) +
+            ' outputError=' + debugError
+          );
         }
         await this.assertTerminalMissionOracle(run);"""
 if source.count(anchor) != 1:
@@ -61,12 +62,13 @@ replacement2 = """    } catch (error) {
         : msg.includes('cannot read') ? 'TYPE_ACCESS'
         : msg.includes('job') ? 'JOB_STORAGE'
         : 'OTHER';
-      logger.warn('CI_ORACLE_DIAGNOSTIC_FAILURE', {
-        diagnosticClass,
-        errorName: ['TypeError', 'RangeError', 'ReferenceError', 'Error']
-          .includes(String(error?.name)) ? String(error?.name) : 'OTHER',
-        errorCodePresent: error?.code != null,
-      });
+      const safeErrorName = ['TypeError', 'RangeError', 'ReferenceError', 'Error']
+        .includes(String(error?.name)) ? String(error?.name) : 'OTHER';
+      logger.warn(
+        'CI_ORACLE_DIAGNOSTIC_FAILURE class=' + diagnosticClass +
+        ' name=' + safeErrorName +
+        ' codePresent=' + (error?.code != null)
+      );
       /** Mission Oracle failures are terminal QA failures, not ordinary provider errors."""
 if source.count(anchor2) != 1:
     raise SystemExit("CI_INSTRUMENT_ORACLE_CATCH_ANCHOR_MISSING")
