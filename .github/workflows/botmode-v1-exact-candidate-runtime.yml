@@ -28,7 +28,8 @@ jobs:
         run: |
           set -euo pipefail
           cp .env.example .env
-          chmod 600 .env
+          # Disposable GitHub runner: the non-root LibreChat API must read this bind-mounted file.
+          chmod 644 .env
           # Isolated, runtime-only signing material. Never reuse in production.
           ci_jwt_secret=$(openssl rand -hex 48)
           ci_jwt_refresh_secret=$(openssl rand -hex 48)
