@@ -269,6 +269,8 @@ jobs:
             -H 'Accept: text/event-stream' -H "User-Agent: $browser_ua" \
             -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" \
             "http://127.0.0.1:3090/api/agents/chat/stream/$worker_stream_id?resume=true") || stream_http=CURL_ERROR
+          # Provider credential presence only: never print its value or hashes.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node -e "console.log('CI_PROVIDER_KEY_IN_RUNTIME='+Boolean(process.env.OPENROUTER_KEY)); console.log('CI_PROVIDER_KEY_ALIAS_IN_RUNTIME='+Boolean(process.env.OPENROUTER_API_KEY));"
           echo "CI_WORKER_STREAM_HTTP=$stream_http"
           python3 - <<'PY'
           from pathlib import Path
