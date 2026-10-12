@@ -53,6 +53,54 @@ jobs:
           done
           test -s /tmp/botmode-fresh-config.json
           echo 'CI_FRESH_INSTALL=PASS'
+      - name: Register and authenticate a real first user through public API
+        run: |
+          python3 - <<'PY'
+          import json, secrets, pathlib
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError
+          base='http://127.0.0.1:3093'
+          password=secrets.token_urlsafe(28)+'Ab3!'
+          registration={
+              'name':'BOTMODE CI First User',
+              'username':'botmode-ci-first-user',
+              'email':'botmode-ci@example.invalid',
+              'password':password,
+              'confirm_password':password,
+          }
+          def post(path, body):
+              req=Request(base+path,
+                  data=json.dumps(body).encode(),
+                  headers={'Content-Type':'application/json',
+                           'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36'},
+                  method='POST')
+              try:
+                  with urlopen(req, timeout=35) as res:
+                      return res.status,json.load(res)
+              except HTTPError as exc:
+                  print('CI_FIRST_USER_'+path.replace('/','_').upper()+'_HTTP='+str(exc.code))
+                  raise SystemExit('CI_FIRST_USER_AUTH_FLOW_FAILED')
+          status,_=post('/api/auth/register',registration)
+          if status!=200:
+              raise SystemExit('CI_FIRST_USER_REGISTRATION_NOT_OK')
+          print('CI_FIRST_USER_REGISTER=PASS')
+          status,data=post('/api/auth/login',{'email':registration['email'],'password':password})
+          if status!=200 or not isinstance(data.get('token'),str) or len(data['token'])<50:
+              raise SystemExit('CI_FIRST_USER_LOGIN_JWT_MISSING')
+          token=data['token']
+          req=Request(base+'/api/user',
+                headers={'Authorization':'Bearer '+token,
+                         'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36'})
+          with urlopen(req,timeout=20) as res:
+              user=json.load(res)
+              if res.status!=200:
+                  raise SystemExit('CI_FIRST_USER_PROTECTED_ENDPOINT_FAILED')
+          print('CI_FIRST_USER_JWT_AND_PROTECTED_API=PASS')
+          # Persist only synthetic credentials on the disposable runner; never print them.
+          path=pathlib.Path('/tmp/botmode-ci-credentials.json')
+          path.write_text(json.dumps({'email':registration['email'],'password':password}))
+          path.chmod(0o600)
+          PY
       - name: Stop and restart using lifecycle scripts, verify durable database volume
         run: |
           set -euo pipefail
@@ -74,12 +122,29 @@ jobs:
             sleep 2
           done
           test -s /tmp/botmode-after-restart.json
+          # Prove the actual user persists and can log in after container restart.
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+          credentials=json.loads(Path('/tmp/botmode-ci-credentials.json').read_text())
+          req=Request('http://127.0.0.1:3093/api/auth/login',
+              data=json.dumps(credentials).encode(),
+              headers={'Content-Type':'application/json',
+                       'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36'},
+              method='POST')
+          with urlopen(req, timeout=25) as res:
+              response=json.load(res)
+              if res.status!=200 or not isinstance(response.get('token'),str):
+                  raise SystemExit('CI_FIRST_USER_LOGIN_AFTER_RESTART_FAILED')
+          print('CI_FIRST_USER_LOGIN_AFTER_RESTART=PASS')
+          PY
           echo 'CI_FRESH_INSTALL_RESTART_PRESERVES_DATA=PASS'
       - name: Cleanup disposable runner volumes
         if: always()
         run: |
           sudo env BOTMODE_HOST_PORT=3093 docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
-          rm -f /tmp/botmode-fresh-install.log /tmp/botmode-start.log /tmp/botmode-stop.log
+          rm -f /tmp/botmode-fresh-install.log /tmp/botmode-start.log /tmp/botmode-stop.log /tmp/botmode-ci-credentials.json
       - name: Explain coverage boundaries
         if: always()
         run: |
