@@ -25,23 +25,25 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/b36f4811a27205354dc4bd5bea6b51209eeccb8f/scripts/botmode/ci-oracle-instance-bridge.py -o /tmp/botmode-ci-oracle-instance-bridge.py
           # Reject the prior cross-prototype bridge: this CI proof fixes the installation topology instead.
           # The old bridge is intentionally NOT applied.
+          # Add canonical SDK singleton enforcement INSIDE the disposable image build.
+          # No docker commit/repacking, no changes to the pinned commit or lockfile.
+          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/3a726ed901fa625ddcc6de3bf073bdb2b05257b6/scripts/botmode/ci-sdk-singleton-docker.js -o scripts/botmode/ci-sdk-singleton-docker.js
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('Dockerfile')
+          source=p.read_text()
+          anchor='    && npm cache clean --force\nUSER node\n\n# Optional build metadata'
+          replace='    && npm cache clean --force\nRUN node /app/scripts/botmode/ci-sdk-singleton-docker.js\nUSER node\n\n# Optional build metadata'
+          if source.count(anchor)!=1:
+              raise SystemExit('CI_DOCKER_SDK_BUILD_ANCHOR_MISMATCH')
+          p.write_text(source.replace(anchor, replace, 1))
+          print('CI_DOCKER_SDK_BUILD_PATCH_APPLIED=true')
+          PY
           echo 'CI_DIAGNOSTIC_IMAGE_NOT_RELEASE_CANDIDATE=true'
       - name: Build actual PR14 API runtime image locally
         run: |
           set -euo pipefail
           docker build --target node --build-arg BUILD_COMMIT="$(git rev-parse HEAD)" -t botmode-pr14-exact:local -f Dockerfile .
-      - name: Consolidate SDK in disposable image before runtime
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/3a726ed901fa625ddcc6de3bf073bdb2b05257b6/scripts/botmode/ci-sdk-singleton-docker.js -o /tmp/botmode-ci-sdk-singleton.js
-          # Do not start the API: isolated normalization has no Compose DB yet.
-          # Start an inert container and restore the actual API image CMD afterward.
-          docker create --name botmode-sdk-normalizer --entrypoint sleep botmode-pr14-exact:local infinity >/dev/null
-          docker cp /tmp/botmode-ci-sdk-singleton.js botmode-sdk-normalizer:/app/ci-sdk-singleton.js
-          docker start botmode-sdk-normalizer >/dev/null
-          docker exec -u root botmode-sdk-normalizer node /app/ci-sdk-singleton.js
-          docker commit --change 'ENTRYPOINT []' --change 'CMD ["npm","run","backend"]' botmode-sdk-normalizer botmode-pr14-exact:local >/dev/null
-          docker rm -f botmode-sdk-normalizer >/dev/null
-
       - name: Boot isolated candidate with disposable MongoDB
         env:
           OPENROUTER_API_KEY: ci-local-fixture-no-real-key
