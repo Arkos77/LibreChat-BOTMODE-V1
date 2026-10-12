@@ -158,6 +158,8 @@ Preuves sur la candidate `d4e82dd` :
 
 Le dernier gate a validé un spécialiste réellement exécuté, les verdicts Oracle durables `VERIFIED` et `HUMAN_REVIEW`, la publication acceptée et la rétention de la candidate rejetée. Il ne qualifie pas individuellement tous les spécialistes ni tous les systèmes d'exploitation.
 
+Pour préparer une restauration sans perte de données, consulter [le plan de rollback](BOT_MODE_ROLLBACK.md). Cette procédure n'est pas encore qualifiée par un test réel de restauration.
+
 ## État de publication
 
 Ne créer aucun tag `v*`, ne fusionner aucune PR et ne promouvoir aucune image vers `latest` avant une décision explicite GO/no-go, la vérification des risques résiduels et la documentation du rollback. La candidate est disponible uniquement avec son tag `sha-<commit>`.
