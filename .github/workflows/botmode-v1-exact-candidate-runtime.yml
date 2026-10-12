@@ -278,9 +278,23 @@ jobs:
           print('CI_WORKER_STREAM_EVENT_COUNT='+str(sum(x.startswith('data:') for x in data.splitlines())))
           print('CI_WORKER_STREAM_FINAL='+str('"final":true' in data))
           print('CI_WORKER_STREAM_ERROR='+str('event: error' in data))
+          for ln in data.splitlines():
+              if ln.startswith('data:'):
+                  try:
+                      obj=__import__('json').loads(ln[5:].strip())
+                      if isinstance(obj,dict):
+                          print('CI_SSE_FIELDS='+','.join(sorted(obj.keys()))[:180])
+                          print('CI_SSE_ERROR_CODE='+str(obj.get('code','none'))[:75])
+                          print('CI_SSE_ERROR_TYPE='+str(obj.get('type','none'))[:75])
+                  except Exception:
+                      print('CI_SSE_EVENT_FORMAT=non_json')
           PY
           if [ "$stream_http" != "200" ] || ! grep -q '^data:' /tmp/botmode-ci-real-sse.txt; then
             echo "::error::Authenticated Worker stream did not provide SSE generation events"
+            exit 1
+          fi
+          if grep -q '^event: error' /tmp/botmode-ci-real-sse.txt; then
+            echo "::error::Worker produced SSE error; generation gate remains RED"
             exit 1
           fi
           echo 'BOTMODE_PR14_WORKER_SSE_TRANSPORT=PASS'
