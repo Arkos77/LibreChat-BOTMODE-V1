@@ -65,8 +65,11 @@ jobs:
           const mongoose = require('mongoose');
           const jwt = require('jsonwebtoken');
           (async () => {
+            console.error('CI_PHASE=mongo_connect_begin');
             await mongoose.connect(process.env.MONGO_URI);
+            console.error('CI_PHASE=mongo_connect_pass');
             const id = new mongoose.Types.ObjectId();
+            console.error('CI_PHASE=user_insert_begin');
             await mongoose.connection.db.collection('users').insertOne({
               _id: id,
               name: 'BOT MODE CI Agent',
@@ -77,8 +80,11 @@ jobs:
               createdAt: new Date(),
               updatedAt: new Date(),
             });
+            console.error('CI_PHASE=user_insert_pass');
             if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET unavailable in runtime');
+            console.error('CI_PHASE=jwt_sign_begin');
             process.stdout.write(jwt.sign({ id: String(id) }, process.env.JWT_SECRET, { expiresIn: '2m' }));
+            console.error('CI_PHASE=jwt_sign_pass');
             await mongoose.disconnect();
           })().catch((error) => { console.error('CI principal creation:', JSON.stringify({name:error?.name,code:error?.code,codeName:error?.codeName,phase:error?.errorLabelSet ? 'mongo' : undefined,messageClass: /auth/i.test(error?.message || '') ? 'authentication' : /connect|network|server selection/i.test(error?.message || '') ? 'connection' : /module/i.test(error?.message || '') ? 'module' : 'other'})); process.exit(1); });
           NODE
