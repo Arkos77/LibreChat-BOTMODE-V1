@@ -187,6 +187,23 @@ def redis_connection_summary(stream_id):
     logs = subprocess.run(COMPOSE + ["logs", "--no-color", "--tail", "140", "api"],
                           capture_output=True, text=True, timeout=20)
     logdata = logs.stdout.lower() if logs.returncode == 0 else ""
+    # Report only fixed boolean diagnostics; never display API logs or prompts.
+    for category in (
+        "missing_output", "verdict_persistence", "evidence_persistence",
+        "verdict_blocked", "result_replay_conflict", "invalid_mission",
+        "sdk_output_method", "type_access", "job_storage", "other",
+    ):
+        token = "ci_oracle_diagnostic_failure class=" + category
+        print("CI_DIAGNOSTIC_CLASS_" + category.upper() + "=" +
+              str(token in logdata), flush=True)
+    print("CI_DIAGNOSTIC_OUTPUT_MARKER_PRESENT=" +
+          str("ci_oracle_diagnostic_output " in logdata), flush=True)
+    for flag in ("missing=0", "missing=1", "outputerror=none",
+                 "nonempty=true", "nonempty=false"):
+        print("CI_DIAGNOSTIC_OUTPUT_" + flag.upper().replace("=", "_") + "=" +
+              str(("ci_oracle_diagnostic_output " in logdata)
+                  and (flag in logdata)), flush=True)
+
     for label, phrase in (
         ("STORE_REDIS", "created redis-backed stream services"),
         ("STORE_MEMORY", "created in-memory stream services"),
