@@ -31,20 +31,13 @@ jobs:
           # CI-only disposable Redis: durable Mission Oracle result readback.
           # Modify the ephemeral checkout, never the pinned candidate.
           sed -i '/      - SCHEDULES_SINGLE_PROCESS=true/a\      - USE_REDIS=true\n      - USE_REDIS_STREAMS=true\n      - REDIS_URI=redis://redis:6379\n      - STREAM_KEEP_COMPLETED_JOBS=true' docker-compose.botmode-lite.yml
+          # Append a true service under the existing services: map.
+          # Avoid a second 'services.depends_on' key, which Compose rejects.
           cat >> docker-compose.botmode-lite.yml <<'YAML'
-            depends_on:
-              redis:
-                condition: service_started
+            redis:
+              image: redis:7-alpine
+              command: ["redis-server", "--save", "", "--appendonly", "no"]
           YAML
-          # YAML merges would duplicate existing api.depends_on: instead use the
-          # standalone Redis service only; the API retries while Redis starts.
-          python3 - <<'PY_REDIS'
-          from pathlib import Path
-          p=Path('docker-compose.botmode-lite.yml')
-          s=p.read_text().replace('    depends_on:\n      redis:\n        condition: service_started\n','')
-          s += '\n  redis:\n    image: redis:7-alpine\n    command: ["redis-server", "--save", "", "--appendonly", "no"]\n'
-          p.write_text(s)
-          PY_REDIS
           # Disposable GitHub runner: the non-root LibreChat API must read this bind-mounted file.
           chmod 644 .env
           # Isolated, runtime-only signing material. Never reuse in production.
