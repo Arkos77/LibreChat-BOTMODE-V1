@@ -19,7 +19,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git merge-base --is-ancestor d4e82dded5df49f17b97e20361c89796b8f1e068 HEAD
+          # GitHub pull_request checkouts use a shallow synthetic merge commit.\n          # Fetch only the pinned candidate to verify its existence, not ancestry.\n          git fetch --no-tags --depth=1 origin d4e82dded5df49f17b97e20361c89796b8f1e068\n          git cat-file -e d4e82dded5df49f17b97e20361c89796b8f1e068^{commit}
           docker pull ghcr.io/arkos77/librechat-botmode-v1:sha-d4e82dded5df
       - name: Start disposable Lite installation
         shell: bash
