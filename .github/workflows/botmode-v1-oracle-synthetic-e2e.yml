@@ -22,6 +22,8 @@ jobs:
         run: |
           curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/434a9c0927cc3bb2fcdc39f433e6cdaf72b2fec8/scripts/botmode/ci-oracle-runtime-instrument.py -o /tmp/botmode-ci-oracle-runtime-instrument.py
           python3 /tmp/botmode-ci-oracle-runtime-instrument.py
+          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/b36f4811a27205354dc4bd5bea6b51209eeccb8f/scripts/botmode/ci-oracle-instance-bridge.py -o /tmp/botmode-ci-oracle-instance-bridge.py
+          python3 /tmp/botmode-ci-oracle-instance-bridge.py
           echo 'CI_DIAGNOSTIC_IMAGE_NOT_RELEASE_CANDIDATE=true'
       - name: Build actual PR14 API runtime image locally
         run: |
