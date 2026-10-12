@@ -441,7 +441,7 @@ jobs:
           # The pinned candidate does not contain this main-branch CI harness.
           # Pull the exact harness bytes from a reviewed main commit, not a
           # mutable branch reference during the running job.
-          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/6f652ba7da4ec0c64766123dcac1c847e2f7d343/scripts/botmode/ci-oracle-publication-gate.py -o /tmp/botmode-ci-oracle-publication-gate.py
+          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/738e745ffe0283599a60dc47b15a90522f2e4762/scripts/botmode/ci-oracle-publication-gate.py -o /tmp/botmode-ci-oracle-publication-gate.py
           python3 /tmp/botmode-ci-oracle-publication-gate.py
           echo 'BOTMODE_PR14_RUNTIME_BOOT=PASS'
           echo '### Gate scope: exact PR14 runtime boot with disposable MongoDB' >> "$GITHUB_STEP_SUMMARY"
