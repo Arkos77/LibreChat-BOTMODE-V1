@@ -381,6 +381,13 @@ jobs:
           payloads=[v.get('data') for v in updates if isinstance(v.get('data'),dict)]
           print('CI_SUBAGENT_PAYLOAD_COUNT='+str(len(payloads)))
           print('CI_SUBAGENT_PAYLOAD_FIELDS='+','.join(sorted({k for p in payloads for k in p.keys()}))[:250])
+          phases={str(p.get('phase')) for p in payloads}
+          ids={str(p.get('subagentRunId')) for p in payloads if p.get('subagentRunId')}
+          print('CI_SUBAGENT_UNIQUE_RUNS='+str(len(ids)))
+          print('CI_SUBAGENT_HAS_START_STOP='+str({'start','stop'}.issubset(phases)))
+          if not ids or not {'start','stop','run_step_completed'}.issubset(phases):
+              raise SystemExit('CI_GATE_SUBAGENT_EXECUTION_NOT_PROVEN')
+          print('BOTMODE_PR14_SUBAGENT_EXECUTION=PASS')
           for field in ('status','state','phase','taskId','agentId'):
               present=[str(p[field])[:30] for p in payloads if p.get(field) is not None]
               print('CI_SUBAGENT_DATA_'+field.upper()+'_COUNT='+str(len(present)))
