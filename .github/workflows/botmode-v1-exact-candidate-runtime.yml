@@ -70,11 +70,10 @@ jobs:
           echo 'BOTMODE_PR14_UNAUTHENTICATED_SETUP=401_PASS'
           # Create an isolated database-backed test principal and sign a real JWT
           # with the exact API runtime's secret. No production account or secret used.
-          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE' > /tmp/botmode-e2e-test-token
-          const fs = require('fs');
-          const dotenv = require('dotenv');
-          const envFile = dotenv.parse(fs.readFileSync('/app/.env'));
-          const signingSecret = envFile.JWT_SECRET;
+          export CI_JWT_SECRET="$(sed -n 's/^JWT_SECRET=//p' .env)"
+          test -n "$CI_JWT_SECRET"
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T -e CI_JWT_SECRET api node - <<'NODE' > /tmp/botmode-e2e-test-token
+          const signingSecret = process.env.CI_JWT_SECRET;
           const mongoose = require('mongoose');
           const jwt = require('jsonwebtoken');
           (async () => {
@@ -101,6 +100,7 @@ jobs:
             await mongoose.disconnect();
           })().catch((error) => { console.error('CI principal creation:', JSON.stringify({name:error?.name,code:error?.code,codeName:error?.codeName,phase:error?.errorLabelSet ? 'mongo' : undefined,messageClass: /auth/i.test(error?.message || '') ? 'authentication' : /connect|network|server selection/i.test(error?.message || '') ? 'connection' : /module/i.test(error?.message || '') ? 'module' : 'other'})); process.exit(1); });
           NODE
+          unset CI_JWT_SECRET
           chmod 600 /tmp/botmode-e2e-test-token
           test -s /tmp/botmode-e2e-test-token
           auth_status=$(curl -sS -o /tmp/botmode-auth-status.json -w '%{http_code}' \
