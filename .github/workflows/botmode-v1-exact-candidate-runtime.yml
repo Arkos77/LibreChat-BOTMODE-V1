@@ -47,20 +47,36 @@ jobs:
           data = result.get('data') if isinstance(result, dict) else None
           if not isinstance(data, dict):
               raise SystemExit('CI_PROVIDER_BLOCKED=KEY_INFO_SCHEMA_UNEXPECTED')
-          quota = data.get('free_model_daily_requests', {})
-          if not isinstance(quota, dict):
-              raise SystemExit('CI_PROVIDER_BLOCKED=FREE_QUOTA_SCHEMA_UNEXPECTED')
-          remaining = quota.get('remaining')
-          limit = quota.get('limit')
-          print('CI_OPENROUTER_FREE_DAILY_REMAINING=' + str(remaining))
-          print('CI_OPENROUTER_FREE_DAILY_LIMIT=' + str(limit))
-          # Native-worker/tool and two Oracle runs can make multiple inference
-          # calls. Never spend the last free request to prove a release.
-          if isinstance(remaining, int) and remaining < 8:
-              raise SystemExit('CI_PROVIDER_BLOCKED=INSUFFICIENT_FREE_DAILY_QUOTA')
-          if not isinstance(remaining, int):
-              raise SystemExit('CI_PROVIDER_BLOCKED=FREE_QUOTA_REMAINING_UNKNOWN')
-          print('CI_OPENROUTER_FREE_PREFLIGHT=PASS')
+          # /api/v1/key reports spend and usage, not a free-request
+          # 'remaining' field. Do not invent an available quota from it.
+          print('CI_OPENROUTER_KEY_VERIFIED=true')
+          print('CI_OPENROUTER_FREE_DAILY_REMAINING=not_exposed')
+          if data.get('is_management_key') is True:
+              raise SystemExit('CI_PROVIDER_BLOCKED=MANAGEMENT_KEY_NOT_FOR_INFERENCE')
+          # One minimal live probe is the only supported way to learn whether
+          # the configured route is currently returning model_rate_limit.
+          probe = Request(
+              'https://openrouter.ai/api/v1/chat/completions',
+              data=json.dumps({'model':'openrouter/free',
+                               'messages':[{'role':'user','content':'Reply OK.'}],
+                               'max_tokens':8}).encode('utf-8'),
+              headers={'Authorization': 'Bearer ' + token,
+                       'Content-Type':'application/json',
+                       'Accept':'application/json'},
+              method='POST',
+          )
+          try:
+              with urlopen(probe, timeout=45) as reply:
+                  probe_data = json.load(reply)
+          except HTTPError as exc:
+              # Never log the raw provider error body or API key.
+              print('CI_OPENROUTER_PROBE_HTTP=' + str(exc.code))
+              raise SystemExit('CI_PROVIDER_BLOCKED=INFERENCE_UNAVAILABLE')
+          except (URLError, ValueError, TimeoutError):
+              raise SystemExit('CI_PROVIDER_BLOCKED=INFERENCE_PROBE_FAILED')
+          if 'error' in probe_data:
+              raise SystemExit('CI_PROVIDER_BLOCKED=INFERENCE_ERROR')
+          print('CI_OPENROUTER_FREE_PREFLIGHT=PASS_ONE_REQUEST_ONLY')
           PY_QUOTA
       - name: Build actual PR14 API runtime image locally
         run: |
