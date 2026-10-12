@@ -77,6 +77,46 @@ def redis_job(stream_id):
         return out.stdout.strip()
     return field("status"), field("orchestratorPlan"), field("missionOracleState")
 
+def safe_error_fragments(events):
+    """Synthetic-CI model errors only, with secrets, URLs and identifiers scrubbed."""
+    import re
+    found = []
+    for e in events:
+        if not isinstance(e, dict):
+            continue
+        response = e.get("responseMessage")
+        if isinstance(response, dict):
+            parts = response.get("content")
+            if isinstance(parts, list):
+                for part in parts:
+                    if isinstance(part, dict) and part.get("type") == "error":
+                        value = part.get("error", "")
+                        found.append(str(value))
+    scrubbed = []
+    for value in found:
+        value = re.sub(r'(?i)(bearer\\s+|sk-[a-z0-9_-]+|api[_ -]?key[^, }\\n]*)', '[REDACTED]', value)
+        value = re.sub(r'https?://\\S+|[\\w.+-]+@[\\w.-]+', '[REDACTED]', value)
+        value = re.sub(r'[A-Za-z0-9_=-]{20,}', '[REDACTED]', value)
+        value = re.sub(r'[^A-Za-z0-9 :_,.()\[\]/-]', '?', value)
+        scrubbed.append(value[:220])
+    return scrubbed
+
+def inspect_reference_sse():
+    file = Path("/tmp/botmode-ci-real-sse.txt")
+    if not file.exists():
+        fail("REFERENCE_SSE_FILE_MISSING")
+    events = result_events(file.read_text(errors="replace"))
+    finals = [e.get("responseMessage") for e in events
+              if e.get("final") is True and isinstance(e.get("responseMessage"), dict)]
+    types = sorted({str(p.get("type", "unspecified")) for r in finals
+                    for p in (r.get("content") if isinstance(r.get("content"), list) else [])
+                    if isinstance(p, dict)})
+    print("CI_REFERENCE_FINAL_CONTENT_TYPES=" + ",".join(types), flush=True)
+    for value in safe_error_fragments(events):
+        print("CI_REFERENCE_SAFE_ERROR=" + value, flush=True)
+    print("CI_REFERENCE_HAS_ERROR_PART=" + str("error" in types), flush=True)
+    return "error" not in types
+
 def diagnostic_error_class(events):
     """Allowlist error classification: never print raw provider messages."""
     terms = {
@@ -211,6 +251,8 @@ def verify(label, review, expected_status):
     print("CI_ORACLE_" + label + "_ERROR_CLASSES=" + cls, flush=True)
     print("CI_ORACLE_" + label + "_ERROR_FINGERPRINT=" + fingerprint, flush=True)
     print("CI_ORACLE_" + label + "_ERROR_TEXT_SIZE=" + str(size), flush=True)
+    for value in safe_error_fragments(events):
+        print("CI_ORACLE_" + label + "_SAFE_ERROR=" + value, flush=True)
     # The prefix/absence of any job is not proof of a model or Oracle failure.
     # Explicitly separate the Redis physical keyspace from the logical key.
     finals = [e.get("responseMessage") for e in final if isinstance(e.get("responseMessage"), dict)]
@@ -284,6 +326,9 @@ def verify(label, review, expected_status):
     return True
 
 if __name__ == "__main__":
+    reference_ok = inspect_reference_sse()
     verify("ACCEPT", False, "VERIFIED")
     verify("REVIEW", True, "HUMAN_REVIEW")
+    if not reference_ok:
+        fail("REFERENCE_TERMINAL_CONTAINS_ERROR_PART")
     print("BOTMODE_PR14_ORACLE_PUBLICATION_E2E=PASS")
