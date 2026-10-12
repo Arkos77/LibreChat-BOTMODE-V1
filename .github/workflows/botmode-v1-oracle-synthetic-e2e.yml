@@ -82,13 +82,13 @@ jobs:
           # Native agent setup already stores OpenRouter/openrouter-free.
           # Omit optional host router in this single-provider isolation test.
           routes=conf['endpoints']['agents'].pop('hostModelRouting',[])
-          path.write_text(json.dumps(conf,ensure_ascii=False,indent=2)+'\n')
           # Point ONLY this disposable checkout's OpenRouter adapter at the
           # runner-local fixture, retaining the real provider adapter and SDK.
           for endpoint in conf['endpoints']['custom']:
               if endpoint.get('name') == 'OpenRouter':
                   endpoint['baseURL'] = 'http://host.docker.internal:8088/v1'
                   endpoint['models'] = {'fetch': False, 'default': ['openrouter/free']}
+          path.write_text(json.dumps(conf,ensure_ascii=False,indent=2)+'\n')
           print('CI_HOST_MODEL_ROUTING_DISABLED_FOR_ISOLATED_TEST='+str(len(routes)))
           PY
           export BOTMODE_MONGO_PASSWORD=ci-isolated-only
