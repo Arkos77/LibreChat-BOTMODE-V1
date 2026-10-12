@@ -32,7 +32,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Installer en root sur ce runner jetable : .env reste privé, UID 1000.\n          sudo git config --global --add safe.directory "$GITHUB_WORKSPACE"\n          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT ./install.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1:sha-d4e82dded5df
+          # Installer en root sur ce runner jetable : .env reste privé, UID 1000.
+          sudo git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT ./install.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1:sha-d4e82dded5df
           compose=(docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)
           ready=0
           for n in $(seq 1 90); do
