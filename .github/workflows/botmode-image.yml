@@ -121,7 +121,7 @@ jobs:
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             primary="${GITHUB_REF_NAME}"
             latest=""
-            if [[ "${GITHUB_REF_NAME}" == v* ]]; then latest="latest"; fi
+            # Never auto-promote :latest, even on v* tags. Stable promotion requires a separate reviewed GO/no-go.
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             primary="${{ inputs.tag }}"
             latest=""
