@@ -14,10 +14,10 @@ jobs:
       - name: Checkout immutable PR14 candidate
         uses: actions/checkout@v4
         with:
-          ref: 03c33642755e5c2d440e96a55dcfb970fdf6b311
+          ref: d4e82dded5df49f17b97e20361c89796b8f1e068
           persist-credentials: false
       - name: Prove checked-out revision
-        run: test "$(git rev-parse HEAD)" = '03c33642755e5c2d440e96a55dcfb970fdf6b311'
+        run: test "$(git rev-parse HEAD)" = 'd4e82dded5df49f17b97e20361c89796b8f1e068'
       - name: Build unmodified release-fix branch image locally
         run: |
           set -euo pipefail
