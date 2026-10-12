@@ -69,10 +69,18 @@ RUN \
 USER root
 ARG PLAYWRIGHT_VERSION=1.62.1
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN npm install --no-save --package-lock=false --omit=dev "playwright@${PLAYWRIGHT_VERSION}" \
-    && npx playwright install --with-deps chromium \
-    && node -e "const { chromium } = require('playwright'); const fs = require('fs'); const p = chromium.executablePath(); if (!fs.existsSync(p)) { throw new Error('Playwright Chromium missing: ' + p); } console.log('BOTMODE_PLAYWRIGHT=' + p);" \
-    && npm cache clean --force
+RUN set -eu; \
+    mkdir -p /tmp/botmode-playwright-install; \
+    echo '{"name":"botmode-playwright-install","private":true,"version":"1.0.0"}' > /tmp/botmode-playwright-install/package.json; \
+    npm --prefix /tmp/botmode-playwright-install install --no-save --package-lock=false --omit=dev "playwright@${PLAYWRIGHT_VERSION}"; \
+    rm -rf /app/node_modules/playwright /app/node_modules/playwright-core; \
+    cp -a /tmp/botmode-playwright-install/node_modules/playwright /app/node_modules/playwright; \
+    cp -a /tmp/botmode-playwright-install/node_modules/playwright-core /app/node_modules/playwright-core; \
+    rm -rf /tmp/botmode-playwright-install; \
+    node /app/node_modules/playwright/cli.js install --with-deps chromium; \
+    node -e "const { chromium } = require('playwright'); const fs = require('fs'); const p = chromium.executablePath(); if (!fs.existsSync(p)) { throw new Error('Playwright Chromium missing: ' + p); } console.log('BOTMODE_PLAYWRIGHT=PASS');"; \
+    npm cache clean --force
+RUN node /app/scripts/botmode/ensure-singleton-agents-sdk.js
 USER node
 
 # Optional build metadata surfaced in Settings -> About for support triage.
