@@ -461,7 +461,7 @@ jobs:
           # The pinned candidate does not contain this main-branch CI harness.
           # Pull the exact harness bytes from a reviewed main commit, not a
           # mutable branch reference during the running job.
-          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/ed7550a36e0935e957f75b61b678cb3742bea5f8/scripts/botmode/ci-oracle-publication-gate.py -o /tmp/botmode-ci-oracle-publication-gate.py
+          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/f639da594e54dfa59ebccd932f3e7c5509b1dcf5/scripts/botmode/ci-oracle-publication-gate.py -o /tmp/botmode-ci-oracle-publication-gate.py
           python3 /tmp/botmode-ci-oracle-publication-gate.py
           echo 'BOTMODE_PR14_RUNTIME_BOOT=PASS'
           echo '### PR14 Oracle/QA synthetic provider gate (NOT hosted inference)' >> "$GITHUB_STEP_SUMMARY"
