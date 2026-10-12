@@ -17,7 +17,6 @@ BASE = "http://127.0.0.1:3090"
 COMPOSE = [
     "docker", "compose", "-f", "docker-compose.botmode.yml",
     "-f", "docker-compose.botmode-lite.yml",
-    "-f", "/tmp/botmode-ci-redis.yml",
 ]
 TOKEN = Path("/tmp/botmode-e2e-test-token").read_text().strip()
 WORKER = Path("/tmp/botmode-ci-worker-id").read_text().strip()
