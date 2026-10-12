@@ -205,6 +205,8 @@ jobs:
           with open('/tmp/botmode-ci-mission-request.json','w') as h: json.dump(payload,h)
           with open('/tmp/botmode-ci-mission-id','w') as h: h.write(payload['conversationId'])
           PY
+          # API config readiness precedes durable generation readiness; retry only explicit startup 503.
+          for mission_attempt in 1 2 3 4 5 6 7 8 9 10; do
           mission_http=$(curl -sS --max-time 210 -o /tmp/botmode-ci-mission-stream.txt \
             -w '%{http_code}' -X POST \
             -H 'Content-Type: application/json' -H 'Accept: text/event-stream' \
@@ -212,6 +214,13 @@ jobs:
             -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" \
             --data-binary @/tmp/botmode-ci-mission-request.json \
             http://127.0.0.1:3090/api/agents/chat/agents) || mission_http=CURL_ERROR
+          if [ "$mission_http" = "503" ] && grep -q '"code":"SERVER_NOT_READY"' /tmp/botmode-ci-mission-stream.txt && grep -q 'Server is still starting' /tmp/botmode-ci-mission-stream.txt; then
+            echo "CI_MISSION_RUNTIME_STARTING_ATTEMPT=$mission_attempt"
+            sleep 12
+            continue
+          fi
+          break
+          done
           echo "CI_WORKER_MISSION_HTTP=$mission_http"
           python3 - <<'PY'
           import json
