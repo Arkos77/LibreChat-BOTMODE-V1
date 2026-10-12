@@ -50,6 +50,24 @@ jobs:
             echo 'BOTMODE_MONGO_PASSWORD=ci-isolated-only'
             echo 'POSTGRES_PASSWORD=ci-isolated-only'
           } >> .env
+          # Deterministic integration: only the already live-tested OpenRouter free route.
+          # Patch the ephemeral checkout, never the pinned PR14 source.
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path('librechat.yaml')
+          conf=json.loads(path.read_text())
+          routes=conf['endpoints']['agents']['hostModelRouting']
+          for route in routes:
+              free=[b for b in route['bindings'] if b.get('provider')=='OpenRouter' and b.get('model')=='openrouter/free']
+              if len(free)!=1: raise SystemExit('No unambiguous OpenRouter free route for '+str(route.get('agentName')))
+              route['bindings']=free
+              route['preferredBindingId']=free[0]['id']
+              route['routingMode']='fixed'
+              route['allowFailover']=False
+          path.write_text(json.dumps(conf,ensure_ascii=False,indent=2)+'\n')
+          print('CI_MODEL_ROUTES_OPENROUTER_ONLY='+str(len(routes)))
+          PY
           export BOTMODE_MONGO_PASSWORD=ci-isolated-only
           export POSTGRES_PASSWORD=ci-isolated-only
           export BOTMODE_IMAGE=botmode-pr14-exact:local
