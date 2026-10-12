@@ -76,6 +76,12 @@ jobs:
             src/stream/metadata.spec.ts
           echo "CI_ORACLE_STRUCTURED_TESTS=PASS"
 
+      - name: Verify native SDK output identity through Oracle
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/d629bfcfe76970e26d518f37203265cb431c3333/scripts/botmode/oracle-sdk-output-probe.spec.ts -o packages/api/src/agents/orchestrator/oracle-sdk-output-probe.spec.ts
+          cd packages/api
+          npx jest --ci --runInBand --coverage=false --runTestsByPath src/agents/orchestrator/oracle-sdk-output-probe.spec.ts
+
       - name: Verify agent publication and durable resume regressions
         working-directory: api
         run: |
