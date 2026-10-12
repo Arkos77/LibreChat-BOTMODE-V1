@@ -1,9 +1,9 @@
 import { Run, Providers } from '@librechat/agents';
 import { HumanMessage } from '@librechat/agents/langchain/messages';
 import type { AgentInputs } from '@librechat/agents';
-import { deterministicPlanner } from '../../packages/api/src/agents/orchestrator/planner';
-import { compileNativePlan } from '../../packages/api/src/agents/orchestrator/native';
-import { assertTerminalMissionTasksVerified } from '../../packages/api/src/agents/orchestrator/missionOracle';
+import { deterministicPlanner } from './planner';
+import { compileNativePlan } from './native';
+import { assertTerminalMissionTasksVerified } from './missionOracle';
 
 /** This is compiled against the immutable PR14 candidate in isolated CI only.
  * It must not be copied into a production installation. */
