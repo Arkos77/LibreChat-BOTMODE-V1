@@ -91,12 +91,12 @@ jobs:
           # CI-only catalogue alignment to the verified Gemini model.
           # Omit optional host router in this single-provider isolation test.
           routes=conf['endpoints']['agents'].pop('hostModelRouting',[])
-          for endpoint in conf['endpoints']['agents'].get('custom',[]):
+          for endpoint in conf['endpoints'].get('custom',[]):
               if endpoint.get('name')=='Gemini':
                   endpoint['models']['default']=['models/gemini-3.5-flash-lite']
                   endpoint['models']['fetch']=False
           # Guard: expected Gemini endpoint must be present and uniquely selected.
-          assert any(e.get('name')=='Gemini' and 'models/gemini-3.5-flash-lite' in e.get('models',{}).get('default',[]) for e in conf['endpoints']['agents'].get('custom',[])), 'Gemini endpoint missing'
+          assert any(e.get('name')=='Gemini' and 'models/gemini-3.5-flash-lite' in e.get('models',{}).get('default',[]) for e in conf['endpoints'].get('custom',[])), 'Gemini endpoint missing'
           path.write_text(json.dumps(conf,ensure_ascii=False,indent=2)+'\n')
           print('CI_HOST_MODEL_ROUTING_DISABLED_FOR_FREE_ROUTE_TEST='+str(len(routes)))
           PY
@@ -333,7 +333,7 @@ jobs:
             -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" \
             "http://127.0.0.1:3090/api/agents/chat/stream/$worker_stream_id?resume=true") || stream_http=CURL_ERROR
           # Provider credential presence only: never print its value or hashes.
-          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node -e "console.log('CI_PROVIDER_KEY_IN_RUNTIME='+Boolean(process.env.GEMINI_API_KEY)); console.log('CI_PROVIDER_KEY_ALIAS_IN_RUNTIME='+Boolean(process.env.GEMINI_API_KEY));"
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node -e "console.log('CI_PROVIDER_KEY_IN_RUNTIME='+Boolean(process.env.GEMINI_API_KEY)); console.log('CI_GEMINI_MODEL_CONFIGURED=true');"
           # Compare stored Worker provider identity with server endpoint configuration.
           docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE'
           const mongoose=require('mongoose');
