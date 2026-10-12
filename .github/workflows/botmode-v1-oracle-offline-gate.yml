@@ -44,6 +44,26 @@ jobs:
       - name: Install dependencies from lockfile
         run: npm ci --no-audit --no-fund
 
+      - name: Assert SDK Oracle output API compatibility
+        run: |
+          node - <<'NODE'
+          const { Run } = require('@librechat/agents');
+          const method = typeof Run.prototype.getAgentOutputs;
+          const runMessages = typeof Run.prototype.getRunMessages;
+          console.log('CI_PINNED_SDK_GET_AGENT_OUTPUTS=' + method);
+          console.log('CI_PINNED_SDK_GET_RUN_MESSAGES=' + runMessages);
+          if (method !== 'function') {
+            console.error('CI_ORACLE_SDK_API_BLOCKED=getAgentOutputs_absent');
+            process.exit(1);
+          }
+          NODE
+
+      - name: Build pinned internal packages
+        run: |
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:api
+
       - name: Assert one SDK implementation across package boundaries
         run: |
           node - <<'NODE'
@@ -64,26 +84,6 @@ jobs:
             process.exit(1);
           }
           NODE
-
-      - name: Assert SDK Oracle output API compatibility
-        run: |
-          node - <<'NODE'
-          const { Run } = require('@librechat/agents');
-          const method = typeof Run.prototype.getAgentOutputs;
-          const runMessages = typeof Run.prototype.getRunMessages;
-          console.log('CI_PINNED_SDK_GET_AGENT_OUTPUTS=' + method);
-          console.log('CI_PINNED_SDK_GET_RUN_MESSAGES=' + runMessages);
-          if (method !== 'function') {
-            console.error('CI_ORACLE_SDK_API_BLOCKED=getAgentOutputs_absent');
-            process.exit(1);
-          }
-          NODE
-
-      - name: Build pinned internal packages
-        run: |
-          npm run build:data-provider
-          npm run build:data-schemas
-          npm run build:api
 
       - name: Verify mission planning and deterministic Oracle
         working-directory: packages/api
