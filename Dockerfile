@@ -71,7 +71,7 @@ ARG PLAYWRIGHT_VERSION=1.62.1
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN set -eu; \
     mkdir -p /tmp/botmode-playwright-install; \
-    printf '{"name":"botmode-playwright-install","private":true,"version":"1.0.0"}\\n' > /tmp/botmode-playwright-install/package.json; \
+    echo '{"name":"botmode-playwright-install","private":true,"version":"1.0.0"}' > /tmp/botmode-playwright-install/package.json; \
     npm --prefix /tmp/botmode-playwright-install install --no-save --package-lock=false --omit=dev "playwright@${PLAYWRIGHT_VERSION}"; \
     rm -rf /app/node_modules/playwright /app/node_modules/playwright-core; \
     cp -a /tmp/botmode-playwright-install/node_modules/playwright /app/node_modules/playwright; \
