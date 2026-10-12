@@ -16,10 +16,19 @@ replacement = """        await this.handleRunInterrupt(run, streamId);
           // Diagnostic metadata only. No prompt, output, secrets or agent IDs.
           let debugOutputs;
           let debugError = 'none';
+          const instanceMethodType = typeof run?.getAgentOutputs;
+          const graphMethodType = typeof run?.Graph?.getAgentOutputs;
+          const sdkMethodType = typeof require('@librechat/agents').Run.prototype.getAgentOutputs;
           try {
             debugOutputs = run.getAgentOutputs();
           } catch (e) {
-            debugError = e?.name === 'TypeError' ? 'TYPE_ERROR' : 'GET_OUTPUT_EXCEPTION';
+            const detail = String(e?.message ?? '').toLowerCase();
+            debugError = detail.includes('getagentoutputs is not a function')
+              ? 'METHOD_NOT_FUNCTION'
+              : detail.includes('getagentoutputs') && detail.includes('not') 
+              ? 'METHOD_UNAVAILABLE'
+              : detail.includes('graph not initialized') ? 'GRAPH_UNINITIALIZED'
+              : e?.name === 'TypeError' ? 'TYPE_ERROR' : 'GET_OUTPUT_EXCEPTION';
           }
           const expectedNodes = this.orchestratorPlan.tasks
             .filter((task) => task.validation.length > 0)
@@ -39,7 +48,10 @@ replacement = """        await this.handleRunInterrupt(run, streamId);
             ' nonempty=' + (typeof content === 'string' && content.trim().length > 0) +
             ' halted=' + (run.getHaltReason() != null) +
             ' interrupted=' + (run.getInterrupt() != null) +
-            ' outputError=' + debugError
+            ' outputError=' + debugError +
+            ' instanceMethod=' + instanceMethodType +
+            ' graphMethod=' + graphMethodType +
+            ' sdkMethod=' + sdkMethodType
           );
         }
         await this.assertTerminalMissionOracle(run);"""
