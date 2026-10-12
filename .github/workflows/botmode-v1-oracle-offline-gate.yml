@@ -44,6 +44,27 @@ jobs:
       - name: Install dependencies from lockfile
         run: npm ci --no-audit --no-fund
 
+      - name: Assert one SDK implementation across package boundaries
+        run: |
+          node - <<'NODE'
+          const {createRequire} = require('node:module');
+          const {resolve} = require('node:path');
+          const fromApi = createRequire(resolve('api/server/index.js'));
+          const fromShared = createRequire(resolve('packages/api/dist/index.cjs'));
+          const apiRun = fromApi('@librechat/agents').Run;
+          const sharedRun = fromShared('@librechat/agents').Run;
+          const apiLocation = fromApi.resolve('@librechat/agents');
+          const sharedLocation = fromShared.resolve('@librechat/agents');
+          console.log('CI_SDK_MODULE_SAME_PATH=' + String(apiLocation === sharedLocation));
+          console.log('CI_SDK_CONSTRUCTOR_SAME=' + String(apiRun === sharedRun));
+          console.log('CI_SDK_HOST_METHOD=' + typeof apiRun.prototype.getAgentOutputs);
+          console.log('CI_SDK_SHARED_METHOD=' + typeof sharedRun.prototype.getAgentOutputs);
+          if (apiRun !== sharedRun) {
+            console.error('CI_SDK_RUNTIME_IDENTITY_MISMATCH=true');
+            process.exit(1);
+          }
+          NODE
+
       - name: Assert SDK Oracle output API compatibility
         run: |
           node - <<'NODE'
