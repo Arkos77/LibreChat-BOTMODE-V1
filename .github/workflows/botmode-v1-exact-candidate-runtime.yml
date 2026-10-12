@@ -174,11 +174,67 @@ jobs:
                   raise SystemExit('Incomplete native agent setup: '+name)
           PY
           echo 'BOTMODE_PR14_SIX_AGENT_PROVISIONING=PASS'
+          # HTTP/SSE mission admission is a separate gate from successful setup.
+          # This is a real Worker turn, never a fabricated oracle/publication PASS.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE' > /tmp/botmode-ci-worker-id
+          const mongoose = require('mongoose');
+          (async () => {
+            await mongoose.connect(process.env.MONGO_URI);
+            const worker = await mongoose.connection.db.collection('agents').findOne(
+              {name:'BOT MODE Worker'},
+              {projection:{id:1,name:1}}
+            );
+            if (!worker?.id) throw new Error('Native Worker ID not found');
+            process.stdout.write(worker.id);
+            await mongoose.disconnect();
+          })().catch((e)=>{console.error('CI_WORKER_LOOKUP='+String(e.name));process.exit(1)});
+          NODE
+          test -s /tmp/botmode-ci-worker-id
+          python3 - <<'PY'
+          import json,uuid
+          worker=open('/tmp/botmode-ci-worker-id').read().strip()
+          payload={
+              'endpoint':'agents',
+              'agent_id':worker,
+              'conversationId':str(uuid.uuid4()),
+              'messageId':str(uuid.uuid4()),
+              'parentMessageId':'00000000-0000-0000-0000-000000000000',
+              'isNewConvo':True,
+              'text':'Mission de vérification BOT MODE : délègue à RECHERCHE la recherche du titre du premier article de la Déclaration universelle des droits de l’homme, vérifie avec le spécialiste, puis réponds en français avec une preuve consultable.',
+          }
+          with open('/tmp/botmode-ci-mission-request.json','w') as h: json.dump(payload,h)
+          with open('/tmp/botmode-ci-mission-id','w') as h: h.write(payload['conversationId'])
+          PY
+          mission_http=$(curl -sS --max-time 210 -o /tmp/botmode-ci-mission-stream.txt \
+            -w '%{http_code}' -X POST \
+            -H 'Content-Type: application/json' -H 'Accept: text/event-stream' \
+            -H "User-Agent: $browser_ua" \
+            -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" \
+            --data-binary @/tmp/botmode-ci-mission-request.json \
+            http://127.0.0.1:3090/api/agents/chat/agents) || mission_http=CURL_ERROR
+          echo "CI_WORKER_MISSION_HTTP=$mission_http"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/botmode-ci-mission-stream.txt')
+          data=p.read_text(errors='replace') if p.exists() else ''
+          print('CI_MISSION_STREAM_BYTES='+str(len(data)))
+          print('CI_MISSION_HAS_SSE='+str('data:' in data))
+          print('CI_MISSION_HAS_ERROR_EVENT='+str('event: error' in data.lower()))
+          PY
+          if [ "$mission_http" != "200" ]; then
+            echo "::error::Real Worker mission HTTP admission did not return 200"
+            exit 1
+          fi
+          echo 'BOTMODE_PR14_WORKER_HTTP_ADMISSION=PASS'
+          # Oracle/QA acceptance, child execution and publication require separate
+          # durable evidence assertions; do not mark the release E2E gate green here.
+
 
 
           echo 'BOTMODE_PR14_RUNTIME_BOOT=PASS'
           echo '### Gate scope: exact PR14 runtime boot with disposable MongoDB' >> "$GITHUB_STEP_SUMMARY"
-          echo 'API started; unauthenticated POST returned 401 and a real JWT/database principal retrieved setup status. Provisioning and delegation are tested in this run. Oracle and publication are NOT proven yet.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'API started; unauthenticated POST returned 401 and a real JWT/database principal retrieved setup status. Provisioning and delegation are tested in this run. Worker HTTP admission is attempted. Child execution, Oracle and publication are NOT yet proven.' >> "$GITHUB_STEP_SUMMARY"
       - name: Always destroy disposable stack
         if: always()
         env:
