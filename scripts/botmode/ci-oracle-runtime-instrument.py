@@ -19,6 +19,18 @@ replacement = """        await this.handleRunInterrupt(run, streamId);
           const instanceMethodType = typeof run?.getAgentOutputs;
           const graphMethodType = typeof run?.Graph?.getAgentOutputs;
           const sdkMethodType = typeof require('@librechat/agents').Run.prototype.getAgentOutputs;
+          const sdkRunClass = require('@librechat/agents').Run;
+          const instanceConstructorMatchesSDK = run?.constructor === sdkRunClass;
+          const instanceIsSDKRun = run instanceof sdkRunClass;
+          const prototypeHasSDKAccessor =
+            typeof Object.getPrototypeOf(run)?.getAgentOutputs === 'function';
+          const ownAccessorShadow =
+            Object.prototype.hasOwnProperty.call(run, 'getAgentOutputs');
+          const usableSDKOutputAccessor =
+            typeof sdkRunClass.prototype.getAgentOutputs === 'function';
+          const actualGraphStateAvailable =
+            typeof run?.Graph?.getRunMessages === 'function';
+
           try {
             debugOutputs = run.getAgentOutputs();
           } catch (e) {
@@ -51,7 +63,13 @@ replacement = """        await this.handleRunInterrupt(run, streamId);
             ' outputError=' + debugError +
             ' instanceMethod=' + instanceMethodType +
             ' graphMethod=' + graphMethodType +
-            ' sdkMethod=' + sdkMethodType
+            ' sdkMethod=' + sdkMethodType +
+            ' ctorMatches=' + instanceConstructorMatchesSDK +
+            ' isSDKRun=' + instanceIsSDKRun +
+            ' prototypeAccessor=' + prototypeHasSDKAccessor +
+            ' ownShadow=' + ownAccessorShadow +
+            ' sdkAccessor=' + usableSDKOutputAccessor +
+            ' graphMessages=' + actualGraphStateAvailable
           );
         }
         await this.assertTerminalMissionOracle(run);"""
