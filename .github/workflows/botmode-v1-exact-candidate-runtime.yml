@@ -142,9 +142,21 @@ jobs:
               print('CI_SETUP_RESPONSE_KEYS='+','.join(sorted(data.keys())))
               print('CI_SETUP_FAILED_AGENT='+str(data.get('failedAgent','none'))[:60])
               print('CI_SETUP_ERROR='+str(data.get('error','none'))[:150])
+              print('CI_SETUP_MESSAGE='+str(data.get('message','none'))[:160])
           except Exception:
               print('CI_SETUP_RESPONSE_NON_JSON')
           PY
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE'
+          const mongoose=require('mongoose');
+          (async()=>{
+            await mongoose.connect(process.env.MONGO_URI);
+            const roles=await mongoose.connection.db.collection('roles').find({}, {projection:{name:1,permissions:1}}).limit(12).toArray();
+            for (const role of roles) {
+              console.log('CI_ROLE='+String(role.name)+' AGENTS_PERMISSIONS='+JSON.stringify(role.permissions?.AGENTS??role.permissions?.agents??null));
+            }
+            await mongoose.disconnect();
+          })().catch(e=>{console.error('CI_ROLE_DIAGNOSTIC='+String(e.name));process.exitCode=1});
+          NODE
             exit 1
           fi
           inventory_status=$(curl -sS -o /tmp/botmode-inventory.json -w '%{http_code}' \
