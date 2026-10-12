@@ -33,9 +33,10 @@ jobs:
           ci_jwt_secret=$(openssl rand -hex 48)
           ci_jwt_refresh_secret=$(openssl rand -hex 48)
           {
-            echo "JWT_SECRET=$ci_jwt_secret"
-            echo "JWT_REFRESH_SECRET=$ci_jwt_refresh_secret"
-          } >> .env
+            :
+          } >/dev/null
+          sed -i "s/^JWT_SECRET=.*/JWT_SECRET=$ci_jwt_secret/" .env
+          sed -i "s/^JWT_REFRESH_SECRET=.*/JWT_REFRESH_SECRET=$ci_jwt_refresh_secret/" .env
           unset ci_jwt_secret ci_jwt_refresh_secret
           {
             echo 'BOTMODE_MONGO_PASSWORD=ci-isolated-only'
@@ -70,6 +71,7 @@ jobs:
           # Create an isolated database-backed test principal and sign a real JWT
           # with the exact API runtime's secret. No production account or secret used.
           docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE' > /tmp/botmode-e2e-test-token
+          require('dotenv').config({ path: '/app/.env' });
           const mongoose = require('mongoose');
           const jwt = require('jsonwebtoken');
           (async () => {
