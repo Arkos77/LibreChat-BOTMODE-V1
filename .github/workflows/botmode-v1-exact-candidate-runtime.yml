@@ -365,6 +365,26 @@ jobs:
           if not any(v.get('final') is True for v in events):
               raise SystemExit('CI_GATE_MISSING_TERMINAL_EVENT')
           PY
+          # Inspect actual subagent events and terminal response without logging content.
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          values=[]
+          for line in Path('/tmp/botmode-ci-real-sse.txt').read_text(errors='replace').splitlines():
+              if not line.startswith('data:'): continue
+              try: v=json.loads(line[5:].strip())
+              except Exception: continue
+              if isinstance(v,dict): values.append(v)
+          updates=[v for v in values if v.get('event')=='on_subagent_update' or v.get('type')=='on_subagent_update']
+          print('CI_SUBAGENT_UPDATE_COUNT='+str(len(updates)))
+          print('CI_SUBAGENT_UPDATE_FIELDS='+','.join(sorted(set(k for v in updates for k in v.keys())))[:220])
+          for field in ('status','state','phase'):
+              print('CI_SUBAGENT_'+field.upper()+'_VALUES='+','.join(sorted({str(v.get(field))[:35] for v in updates if v.get(field) is not None}))[:120])
+          finals=[v for v in values if v.get('final') is True]
+          responses=[v.get('responseMessage') for v in finals if isinstance(v.get('responseMessage'),dict)]
+          print('CI_TERMINAL_RESPONSE_PRESENT='+str(bool(responses)))
+          print('CI_TERMINAL_RESPONSE_HAS_TEXT='+str(any(bool(m.get('text')) for m in responses)))
+          PY
           echo 'BOTMODE_PR14_WORKER_SSE_TERMINAL=PASS'
           # Capture narrow durable evidence without dumping response bodies or secrets.
           docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T \
