@@ -305,6 +305,9 @@ jobs:
                           print('CI_SSE_ERROR_HTTP_429='+str('429' in err))
                           print('CI_SSE_ERROR_INVALID_KEY='+str('invalid key' in err or 'invalid api key' in err))
                           print('CI_SSE_ERROR_UNAUTHORIZED='+str('unauthorized' in err))
+                          # Match safe known phrases only; never expose arbitrary provider text.
+                          for tag,phrase in [('MISSING_API_KEY','api key'),('KEY_NOT_PROVIDED','not provided'),('KEY_REQUIRED','required'),('INVALID_CREDENTIALS','credentials'),('MISSING_PROVIDER','provider'),('INVALID_AUTHENTICATION','authentication'),('NO_TOKEN','no token'),('MODEL_ERROR','model'),('MISSING_AUTHORIZATION','authorization')]:
+                              print('CI_SSE_'+tag+'='+str(phrase in err))
                   except Exception:
                       print('CI_SSE_EVENT_FORMAT=non_json')
           PY
