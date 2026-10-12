@@ -115,6 +115,15 @@ jobs:
           fi
           # Use a recognized browser UA for API requests; LibreChat blocks and scores curl clients.
           browser_ua='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+          # Compare exact runtime SDK with the offline pinned SDK check.
+          # No prompt/model/credential data is emitted.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T -w /app/api api node - <<'NODE_SDK'
+          const { Run } = require('@librechat/agents');
+          const output = typeof Run?.prototype?.getAgentOutputs;
+          const messages = typeof Run?.prototype?.getRunMessages;
+          console.log('CI_DOCKER_SDK_GET_AGENT_OUTPUTS=' + output);
+          console.log('CI_DOCKER_SDK_GET_RUN_MESSAGES=' + messages);
+          NODE_SDK
           # Test the real mounted route without a token, not a simulated router.
           unauth_status=$(curl -sS -o /tmp/botmode-unauth.json -w '%{http_code}' \
             -X POST -H 'Content-Type: application/json' -H "User-Agent: $browser_ua" \
