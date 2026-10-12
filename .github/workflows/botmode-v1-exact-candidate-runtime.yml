@@ -275,6 +275,21 @@ jobs:
             "http://127.0.0.1:3090/api/agents/chat/stream/$worker_stream_id?resume=true") || stream_http=CURL_ERROR
           # Provider credential presence only: never print its value or hashes.
           docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node -e "console.log('CI_PROVIDER_KEY_IN_RUNTIME='+Boolean(process.env.OPENROUTER_KEY)); console.log('CI_PROVIDER_KEY_ALIAS_IN_RUNTIME='+Boolean(process.env.OPENROUTER_API_KEY));"
+          # Compare stored Worker provider identity with server endpoint configuration.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE'
+          const mongoose=require('mongoose');
+          (async()=>{
+            await mongoose.connect(process.env.MONGO_URI);
+            const db=mongoose.connection.db;
+            const worker=await db.collection('agents').findOne({name:'BOT MODE Worker'},{projection:{provider:1,model:1,author:1}});
+            console.log('CI_WORKER_STORED_PROVIDER='+String(worker?.provider||'missing'));
+            console.log('CI_WORKER_STORED_MODEL='+String(worker?.model||'missing'));
+            console.log('CI_OPENROUTER_RUNTIME_KEY_PRESENT='+Boolean(process.env.OPENROUTER_KEY));
+            const userKeys=await db.listCollections({name:'userkeys'}).toArray();
+            console.log('CI_USERKEYS_COLLECTION_EXISTS='+Boolean(userKeys.length));
+            await mongoose.disconnect();
+          })().catch(e=>{console.error('CI_AGENT_PROVIDER_PROBE='+e.name);process.exit(1)});
+          NODE
           echo "CI_WORKER_STREAM_HTTP=$stream_http"
           python3 - <<'PY'
           from pathlib import Path
