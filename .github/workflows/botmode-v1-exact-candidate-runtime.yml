@@ -57,16 +57,11 @@ jobs:
           from pathlib import Path
           path=Path('librechat.yaml')
           conf=json.loads(path.read_text())
-          routes=conf['endpoints']['agents']['hostModelRouting']
-          for route in routes:
-              free=[b for b in route['bindings'] if b.get('provider')=='OpenRouter' and b.get('model')=='openrouter/free']
-              if len(free)!=1: raise SystemExit('No unambiguous OpenRouter free route for '+str(route.get('agentName')))
-              route['bindings']=free
-              route['preferredBindingId']=free[0]['id']
-              route['routingMode']='fixed'
-              route['allowFailover']=False
+          # Native agent setup already stores OpenRouter/openrouter-free.
+          # Omit optional host router in this single-provider isolation test.
+          routes=conf['endpoints']['agents'].pop('hostModelRouting',[])
           path.write_text(json.dumps(conf,ensure_ascii=False,indent=2)+'\n')
-          print('CI_MODEL_ROUTES_OPENROUTER_ONLY='+str(len(routes)))
+          print('CI_HOST_MODEL_ROUTING_DISABLED_FOR_ISOLATED_TEST='+str(len(routes)))
           PY
           export BOTMODE_MONGO_PASSWORD=ci-isolated-only
           export POSTGRES_PASSWORD=ci-isolated-only
