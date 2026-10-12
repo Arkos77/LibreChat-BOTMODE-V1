@@ -286,6 +286,11 @@ jobs:
                           print('CI_SSE_FIELDS='+','.join(sorted(obj.keys()))[:180])
                           print('CI_SSE_ERROR_CODE='+str(obj.get('code','none'))[:75])
                           print('CI_SSE_ERROR_TYPE='+str(obj.get('type','none'))[:75])
+                          err=str(obj.get('error','')).lower()
+                          categories={'provider_auth':('401','api key','unauthorized','invalid key'),'provider_quota':('429','rate limit','quota'),'provider_model':('model not found','invalid model','model unavailable'),'server_config':('not configured','missing config','endpoint unavailable'),'runtime':('failed to initialize','generation failed','internal error')}
+                          detected=[k for k,words in categories.items() if any(word in err for word in words)]
+                          print('CI_SSE_ERROR_CATEGORY='+(','.join(detected) if detected else 'unclassified'))
+                          print('CI_SSE_ERROR_TEXT_LENGTH='+str(len(err)))
                   except Exception:
                       print('CI_SSE_EVENT_FORMAT=non_json')
           PY
