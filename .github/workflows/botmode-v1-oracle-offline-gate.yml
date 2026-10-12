@@ -1,0 +1,82 @@
+name: BOTMODE V1 Oracle and Publication Offline Gate
+
+# Independent of the exhausted OpenRouter free quota. Validates existing
+# Oracle/QA and publication tests on the immutable PR14 candidate.
+# Not a substitute for the real provider end-to-end release gate.
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/botmode-v1-oracle-offline-gate.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: botmode-v1-oracle-offline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  oracle-publication-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NODE_ENV: test
+      NODE_OPTIONS: '--max-old-space-size=6144'
+    steps:
+      - name: Checkout immutable PR14 candidate
+        uses: actions/checkout@v5
+        with:
+          ref: ea24f476164153735b5f5c95fe9c7861d4f97a1f
+          persist-credentials: false
+
+      - name: Assert exact candidate
+        run: |
+          test "$(git rev-parse HEAD)" = "ea24f476164153735b5f5c95fe9c7861d4f97a1f"
+          echo "CI_EXACT_PR14_CANDIDATE=PASS"
+
+      - name: Node 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.16.0'
+          cache: npm
+
+      - name: Install dependencies from lockfile
+        run: npm ci --no-audit --no-fund
+
+      - name: Build pinned internal packages
+        run: |
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:api
+
+      - name: Verify mission planning and deterministic Oracle
+        working-directory: packages/api
+        run: |
+          npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            src/agents/orchestrator/planner.spec.ts \
+            src/agents/orchestrator/missionOracle.spec.ts \
+            src/agents/orchestrator/native.spec.ts \
+            src/agents/orchestrator/synthesisReadiness.spec.ts \
+            src/agents/oracle/runtime.spec.ts \
+            src/stream/metadata.spec.ts
+          echo "CI_ORACLE_STRUCTURED_TESTS=PASS"
+
+      - name: Verify agent publication and durable resume regressions
+        working-directory: api
+        run: |
+          npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            server/controllers/agents/__tests__/callbacks.spec.js \
+            server/controllers/agents/__tests__/request.resumeMetadata.spec.js \
+            server/controllers/agents/__tests__/resume.spec.js
+          echo "CI_PUBLICATION_RESUME_TESTS=PASS"
+
+      - name: Publish bounded test summary
+        if: always()
+        run: |
+          {
+            echo '### BOTMODE V1: isolated Oracle/publication regression gate'
+            echo 'Pinned candidate: ea24f476164153735b5f5c95fe9c7861d4f97a1f'
+            echo 'No provider API keys or external model requests.'
+            echo 'This gate does not establish real model E2E readiness or authorize PR14 merge.'
+          } >> "$GITHUB_STEP_SUMMARY"
