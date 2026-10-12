@@ -1,4 +1,4 @@
-name: BOTMODE V1 Synthetic Oracle Publication E2E
+name: BOTMODE V1 Synthetic Oracle Diagnostic (Modified CI Image)
 on:
   push:
     branches: [main]
@@ -18,6 +18,11 @@ jobs:
           persist-credentials: false
       - name: Prove checked-out revision
         run: test "$(git rev-parse HEAD)" = 'ea24f476164153735b5f5c95fe9c7861d4f97a1f'
+      - name: Instrument disposable checkout for Oracle diagnostics only
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/97b7977876e2c248c7b8de3c715874087e18cf55/scripts/botmode/ci-oracle-runtime-instrument.py -o /tmp/botmode-ci-oracle-runtime-instrument.py
+          python3 /tmp/botmode-ci-oracle-runtime-instrument.py
+          echo 'CI_DIAGNOSTIC_IMAGE_NOT_RELEASE_CANDIDATE=true'
       - name: Build actual PR14 API runtime image locally
         run: |
           set -euo pipefail
