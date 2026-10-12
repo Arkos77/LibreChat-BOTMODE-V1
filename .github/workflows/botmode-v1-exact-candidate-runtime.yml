@@ -302,7 +302,42 @@ jobs:
             echo "::error::Worker produced SSE error; generation gate remains RED"
             exit 1
           fi
-          echo 'BOTMODE_PR14_WORKER_SSE_TRANSPORT=PASS'
+          # A transport handshake is insufficient: require a terminal event.
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          events=[]
+          for line in Path('/tmp/botmode-ci-real-sse.txt').read_text(errors='replace').splitlines():
+              if not line.startswith('data:'): continue
+              try:
+                  value=json.loads(line[5:].strip())
+              except Exception:
+                  continue
+              if isinstance(value,dict): events.append(value)
+          print('CI_SSE_PARSED_EVENTS='+str(len(events)))
+          print('CI_SSE_FINAL_COUNT='+str(sum(v.get('final') is True for v in events)))
+          print('CI_SSE_EVENT_TYPES='+','.join(sorted({str(v.get('type') or v.get('event') or 'unspecified')[:45] for v in events})))
+          if not any(v.get('final') is True for v in events):
+              raise SystemExit('CI_GATE_MISSING_TERMINAL_EVENT')
+          PY
+          echo 'BOTMODE_PR14_WORKER_SSE_TERMINAL=PASS'
+          # Capture narrow durable evidence without dumping response bodies or secrets.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api \
+            -e CI_CONVERSATION_ID="$(cat /tmp/botmode-ci-mission-id)" node - <<'NODE'
+          const mongoose=require('mongoose');
+          (async()=>{
+            await mongoose.connect(process.env.MONGO_URI);
+            const db=mongoose.connection.db;
+            for(const name of ['messages','conversations']){
+              const count=await db.collection(name).countDocuments({conversationId:process.env.CI_CONVERSATION_ID});
+              console.log('CI_PERSISTED_'+name.toUpperCase()+'='+count);
+            }
+            const collections=(await db.listCollections({}, {nameOnly:true}).toArray()).map(x=>x.name);
+            console.log('CI_EVIDENCE_COLLECTION_CANDIDATES='+collections.filter(x=>/subagent|oracle|mission|evidence|task/i.test(x)).join(',').slice(0,260));
+            await mongoose.disconnect();
+          })().catch(e=>{console.error('CI_EVIDENCE_INSPECTION_FAILED='+e.name);process.exit(1)});
+          NODE
+
           # Oracle/QA acceptance, child execution and publication require separate
           # durable evidence assertions; do not mark the release E2E gate green here.
 
