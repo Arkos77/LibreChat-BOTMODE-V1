@@ -116,6 +116,8 @@ COPY skill ./skill
 COPY --from=data-provider-build /app/packages/data-provider/dist ./packages/data-provider/dist
 COPY --from=data-schemas-build /app/packages/data-schemas/dist ./packages/data-schemas/dist
 COPY --from=api-package-build /app/packages/api/dist ./packages/api/dist
+COPY scripts/botmode/ensure-singleton-agents-sdk.js ./scripts/botmode/ensure-singleton-agents-sdk.js
+RUN node /app/scripts/botmode/ensure-singleton-agents-sdk.js
 COPY --from=client-build /app/client/dist ./client/dist
 # Propagate build metadata into runtime env so /api/config can expose it.
 # Declared here (after the heavy install/copy steps) so that commit/date
