@@ -96,9 +96,33 @@ jobs:
               if res.status!=200:
                   raise SystemExit('CI_FIRST_USER_PROTECTED_ENDPOINT_FAILED')
           print('CI_FIRST_USER_JWT_AND_PROTECTED_API=PASS')
+          # Read-only check: does first-user onboarding produce a usable BOT MODE
+          # worker/specialist set without a manual seed script?
+          PY
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE_BOOT'
+          (async () => {
+            const { MongoClient } = require('mongodb');
+            const client = await MongoClient.connect(process.env.MONGO_URI);
+            try {
+              const db = client.db();
+              const owner = await db.collection('users').findOne(
+                {email: 'botmode-ci@example.invalid'}, {projection: {_id: 1}});
+              if (!owner) throw new Error('CI_FIRST_USER_MISSING_FROM_DB');
+              const names=['BOT MODE Worker','RECHERCHE','ANALYSE','CODE','DOCUMENTS','RÉDACTION'];
+              const agents=await db.collection('agents').find(
+                {author:owner._id,name:{$in:names}},
+                {projection:{name:1}}).toArray();
+              const found=new Set(agents.map(x=>x.name));
+              const ready=names.every(x=>found.has(x));
+              console.log('CI_FIRST_USER_AGENTS_PRESENT='+agents.length);
+              console.log('CI_FIRST_USER_AGENT_ONBOARDING='+ (ready?'READY':'INCOMPLETE'));
+            } finally { await client.close(); }
+          })().catch(e=>{console.error('CI_AGENT_ONBOARDING_READ_FAILED='+e.name);process.exit(1)});
+          NODE_BOOT
+          python3 - <<'PY'
           # Persist only synthetic credentials on the disposable runner; never print them.
           path=pathlib.Path('/tmp/botmode-ci-credentials.json')
-          path.write_text(json.dumps({'email':registration['email'],'password':password}))
+          path.write_text(json.dumps({'email':registration['email'],'password':password,'previous_token':token}))
           path.chmod(0o600)
           PY
       - name: Stop and restart using lifecycle scripts, verify durable database volume
@@ -138,6 +162,19 @@ jobs:
               if res.status!=200 or not isinstance(response.get('token'),str):
                   raise SystemExit('CI_FIRST_USER_LOGIN_AFTER_RESTART_FAILED')
           print('CI_FIRST_USER_LOGIN_AFTER_RESTART=PASS')
+          old_token=credentials['previous_token']
+          req=Request('http://127.0.0.1:3093/api/user',
+              headers={'Authorization':'Bearer '+old_token,
+                       'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36'})
+          try:
+              with urlopen(req,timeout=25) as res:
+                  previous=json.load(res)
+                  if res.status!=200:
+                      raise SystemExit('CI_JWT_BECAME_INVALID_AFTER_RESTART')
+          except Exception as exc:
+              print('CI_PREVIOUS_JWT_AFTER_RESTART=FAIL_'+exc.__class__.__name__)
+              raise
+          print('CI_PREVIOUS_JWT_AFTER_RESTART=PASS')
           PY
           echo 'CI_FRESH_INSTALL_RESTART_PRESERVES_DATA=PASS'
       - name: Cleanup disposable runner volumes
