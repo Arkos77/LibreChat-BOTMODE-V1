@@ -39,6 +39,9 @@ jobs:
           sed -i "s/^JWT_SECRET=.*/JWT_SECRET=$ci_jwt_secret/" .env
           sed -i "s/^JWT_REFRESH_SECRET=.*/JWT_REFRESH_SECRET=$ci_jwt_refresh_secret/" .env
           unset ci_jwt_secret ci_jwt_refresh_secret
+          # The candidate LibreChat YAML resolves OpenRouter through OPENROUTER_KEY.
+          test -n "${OPENROUTER_API_KEY:-}" || { echo "::error::OPENROUTER_API_KEY secret missing"; exit 1; }
+          printf '\nOPENROUTER_KEY=%s\n' "$OPENROUTER_API_KEY" >> .env
           {
             echo 'BOTMODE_MONGO_PASSWORD=ci-isolated-only'
             echo 'POSTGRES_PASSWORD=ci-isolated-only'
@@ -123,10 +126,45 @@ jobs:
             exit 1
           fi
           echo 'BOTMODE_PR14_AUTHENTICATED_STATUS=200_PASS'
+          # Real native provisioning; verification of persisted inventory and routing.
+          setup_status=$(curl -sS -o /tmp/botmode-setup-result.json -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" \
+            --data '{"provider":"OpenRouter","model":"openrouter/free"}' \
+            http://127.0.0.1:3090/api/agents/botmode/setup)
+          echo "CI_BOTMODE_SETUP_HTTP=$setup_status"
+          if [ "$setup_status" != "200" ] && [ "$setup_status" != "201" ]; then
+            echo "::error::Native six-agent setup rejected; status $setup_status"
+            python3 - <<'PY'
+          import json
+          try:
+              data=json.load(open('/tmp/botmode-setup-result.json'))
+              print('CI_SETUP_RESPONSE_KEYS='+','.join(sorted(data.keys())))
+              print('CI_SETUP_FAILED_AGENT='+str(data.get('failedAgent','none'))[:60])
+              print('CI_SETUP_ERROR='+str(data.get('error','none'))[:150])
+          except Exception:
+              print('CI_SETUP_RESPONSE_NON_JSON')
+          PY
+            exit 1
+          fi
+          inventory_status=$(curl -sS -o /tmp/botmode-inventory.json -w '%{http_code}' \
+            -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" \
+            http://127.0.0.1:3090/api/agents/botmode/setup-status)
+          test "$inventory_status" = "200"
+          python3 - <<'PY'
+          import json
+          data=json.load(open('/tmp/botmode-inventory.json'))
+          for name in ('inventoryComplete','permissionsComplete','delegationConfigured'):
+              print('CI_'+name+'='+str(data.get(name)))
+              if data.get(name) is not True:
+                  raise SystemExit('Incomplete native agent setup: '+name)
+          PY
+          echo 'BOTMODE_PR14_SIX_AGENT_PROVISIONING=PASS'
+
 
           echo 'BOTMODE_PR14_RUNTIME_BOOT=PASS'
           echo '### Gate scope: exact PR14 runtime boot with disposable MongoDB' >> "$GITHUB_STEP_SUMMARY"
-          echo 'API started; unauthenticated POST returned 401 and a real JWT/database principal retrieved setup status. Provisioning, delegation, Oracle and publication are NOT proven yet.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'API started; unauthenticated POST returned 401 and a real JWT/database principal retrieved setup status. Provisioning and delegation are tested in this run. Oracle and publication are NOT proven yet.' >> "$GITHUB_STEP_SUMMARY"
       - name: Always destroy disposable stack
         if: always()
         env:
