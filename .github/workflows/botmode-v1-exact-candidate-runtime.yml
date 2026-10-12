@@ -29,6 +29,14 @@ jobs:
           set -euo pipefail
           cp .env.example .env
           chmod 600 .env
+          # Isolated, runtime-only signing material. Never reuse in production.
+          ci_jwt_secret=$(openssl rand -hex 48)
+          ci_jwt_refresh_secret=$(openssl rand -hex 48)
+          {
+            echo "JWT_SECRET=$ci_jwt_secret"
+            echo "JWT_REFRESH_SECRET=$ci_jwt_refresh_secret"
+          } >> .env
+          unset ci_jwt_secret ci_jwt_refresh_secret
           {
             echo 'BOTMODE_MONGO_PASSWORD=ci-isolated-only'
             echo 'POSTGRES_PASSWORD=ci-isolated-only'
