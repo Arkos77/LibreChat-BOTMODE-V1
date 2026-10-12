@@ -42,6 +42,10 @@ jobs:
           # The candidate LibreChat YAML resolves OpenRouter through OPENROUTER_KEY.
           test -n "${OPENROUTER_API_KEY:-}" || { echo "::error::OPENROUTER_API_KEY secret missing"; exit 1; }
           printf '\nOPENROUTER_KEY=%s\n' "$OPENROUTER_API_KEY" >> .env
+          # CI-only Compose patch: explicitly pass provider key into the API environment.
+          # Mounted .env is used for Compose interpolation, not automatic container injection.
+          export OPENROUTER_KEY="$OPENROUTER_API_KEY"
+          sed -i '/      - HOST=0.0.0.0/a\      - OPENROUTER_KEY=${OPENROUTER_KEY:?Missing CI OpenRouter key}' docker-compose.botmode.yml
           {
             echo 'BOTMODE_MONGO_PASSWORD=ci-isolated-only'
             echo 'POSTGRES_PASSWORD=ci-isolated-only'
