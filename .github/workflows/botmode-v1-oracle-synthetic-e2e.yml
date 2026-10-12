@@ -39,6 +39,8 @@ jobs:
           p.write_text(source.replace(anchor, replace, 1))
           print('CI_DOCKER_SDK_BUILD_PATCH_APPLIED=true')
           PY
+          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/d4f71d792dfcb1df1e669cd8591b99d467afeb0e/scripts/botmode/ci-patch-isolated-playwright.py -o /tmp/ci-patch-isolated-playwright.py
+          python3 /tmp/ci-patch-isolated-playwright.py
           echo 'CI_DIAGNOSTIC_IMAGE_NOT_RELEASE_CANDIDATE=true'
       - name: Build actual PR14 API runtime image locally
         run: |
