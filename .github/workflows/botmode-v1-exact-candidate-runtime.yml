@@ -63,9 +63,11 @@ jobs:
             echo "::error::Exact PR14 API was not ready"
             exit 1
           fi
+          # Use a recognized browser UA for API requests; LibreChat blocks and scores curl clients.
+          browser_ua='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
           # Test the real mounted route without a token, not a simulated router.
           unauth_status=$(curl -sS -o /tmp/botmode-unauth.json -w '%{http_code}' \
-            -X POST -H 'Content-Type: application/json' \
+            -X POST -H 'Content-Type: application/json' -H "User-Agent: $browser_ua" \
             -d '{}' http://127.0.0.1:3090/api/agents/botmode/setup)
           if [ "$unauth_status" != "401" ]; then
             echo "::error::Unauthenticated BOTMODE setup expected HTTP 401, got $unauth_status"
@@ -108,7 +110,7 @@ jobs:
           chmod 600 /tmp/botmode-e2e-test-token
           test -s /tmp/botmode-e2e-test-token
           auth_status=$(curl -sS -o /tmp/botmode-auth-status.json -w '%{http_code}' \
-            -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" \
+            -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" -H "User-Agent: $browser_ua" \
             http://127.0.0.1:3090/api/agents/botmode/setup-status)
           if [ "$auth_status" != "200" ]; then
             echo "CI_AUTH_RESPONSE_STATUS=$auth_status"
@@ -128,7 +130,7 @@ jobs:
           echo 'BOTMODE_PR14_AUTHENTICATED_STATUS=200_PASS'
           # Real native provisioning; verification of persisted inventory and routing.
           setup_status=$(curl -sS -o /tmp/botmode-setup-result.json -w '%{http_code}' \
-            -X POST -H 'Content-Type: application/json' \
+            -X POST -H 'Content-Type: application/json' -H "User-Agent: $browser_ua" \
             -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" \
             --data '{"provider":"OpenRouter","model":"openrouter/free"}' \
             http://127.0.0.1:3090/api/agents/botmode/setup)
@@ -160,7 +162,7 @@ jobs:
             exit 1
           fi
           inventory_status=$(curl -sS -o /tmp/botmode-inventory.json -w '%{http_code}' \
-            -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" \
+            -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" -H "User-Agent: $browser_ua" \
             http://127.0.0.1:3090/api/agents/botmode/setup-status)
           test "$inventory_status" = "200"
           python3 - <<'PY'
