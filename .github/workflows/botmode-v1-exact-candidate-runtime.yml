@@ -221,6 +221,13 @@ jobs:
           print('CI_MISSION_STREAM_BYTES='+str(len(data)))
           print('CI_MISSION_HAS_SSE='+str('data:' in data))
           print('CI_MISSION_HAS_ERROR_EVENT='+str('event: error' in data.lower()))
+          if len(data) < 1000:
+              try:
+                  obj=json.loads(data)
+                  print('CI_MISSION_ERROR_CODE='+str(obj.get('code','none'))[:90])
+                  print('CI_MISSION_ERROR='+str(obj.get('error','none'))[:160])
+              except Exception:
+                  print('CI_MISSION_ERROR_FORMAT=non_json')
           PY
           if [ "$mission_http" != "200" ]; then
             echo "::error::Real Worker mission HTTP admission did not return 200"
