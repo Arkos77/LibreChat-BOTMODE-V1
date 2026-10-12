@@ -1,0 +1,65 @@
+name: BOTMODE V1 Disposable Lite Rollback Smoke
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-lite-rollback-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preserve-mongo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify candidate ancestry and available GHCR image
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor d4e82dded5df49f17b97e20361c89796b8f1e068 HEAD
+          docker pull ghcr.io/arkos77/librechat-botmode-v1:sha-d4e82dded5df
+      - name: Start disposable Lite installation
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "BOTMODE_MONGO_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo "BOTMODE_HOST_PORT=3090" >> "$GITHUB_ENV"
+      - name: Install and assert data survives stop/start
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./install.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1:sha-d4e82dded5df
+          compose=(docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)
+          ready=0
+          for n in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          "${compose[@]}" exec -T mongodb sh -ec '
+            mongo --quiet --username botmode_admin --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''db.rollback_ci.insertOne({_id:"rollback-smoke", payload:"preserved"}); print("CI_MARKER_INSERTED")'\''
+          '
+          before=$("${compose[@]}" exec -T mongodb sh -ec 'mongo --quiet --username botmode_admin --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''print(db.rollback_ci.countDocuments({_id:"rollback-smoke",payload:"preserved"}))'\''' | tail -1 | tr -d '\r')
+          test "$before" = 1
+          ./stop.sh
+          # Stop never uses --volumes. Re-open the same pinned image.
+          ./start.sh --lite
+          ready=0
+          for n in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          after=$("${compose[@]}" exec -T mongodb sh -ec 'mongo --quiet --username botmode_admin --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''print(db.rollback_ci.countDocuments({_id:"rollback-smoke",payload:"preserved"}))'\''' | tail -1 | tr -d '\r')
+          test "$after" = 1
+          echo 'BOTMODE_LITE_RESTART_PRESERVES_MONGO=PASS'
+          echo 'SCOPE=stop/start persistence only; NOT upgrade downgrade migration rollback'
+      - name: Destroy runner-only resources
+        if: always()
+        shell: bash
+        run: |
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
