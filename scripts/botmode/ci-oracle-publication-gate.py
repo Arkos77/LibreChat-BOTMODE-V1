@@ -77,6 +77,28 @@ def redis_job(stream_id):
         return out.stdout.strip()
     return field("status"), field("orchestratorPlan"), field("missionOracleState")
 
+def classify_durable_failure(stream_id):
+    """Read the real epoch's Redis terminal cause with allowlisted labels only."""
+    key = REDIS_PHYSICAL_PREFIX + "stream:{" + stream_id + "}:job"
+    p = subprocess.run(COMPOSE + ["exec", "-T", "redis", "redis-cli", "--raw",
+                                  "HGET", key, "error"],
+                       capture_output=True, text=True, timeout=20, check=True)
+    value = p.stdout.strip().lower()
+    categories = {
+        "TERMINAL_TASK_OUTPUT_MISSING": ("native mission terminal oracle missing exact task output",),
+        "DURABLE_MISSION_ORACLE_FAILURE": ("mission oracle result persistence verification failed",),
+        "DURABLE_EVIDENCE_FAILURE": ("mission oracle evidence persistence verification failed",),
+        "MISSION_ORACLE_VERDICT_BLOCKED": ("native mission oracle blocked task",),
+        "CANDIDATE_MISSING": ("candidate missing",),
+        "AUTHORIZED_BINDING_MISSING": ("missing or mismatched authorized binding",),
+        "ORCHESTRATOR_PLAN_INVALID": ("orchestrator plan", "invalid native task identity"),
+    }
+    matched = [k for k, patterns in categories.items()
+               if any(pattern in value for pattern in patterns)]
+    print("CI_ORACLE_DURABLE_TERMINAL_ERROR_PRESENT=" + str(bool(value)), flush=True)
+    print("CI_ORACLE_DURABLE_TERMINAL_ERROR_CLASS=" +
+          (",".join(matched) if matched else "UNCLASSIFIED"), flush=True)
+
 def safe_error_fragments(events):
     """Synthetic-CI model errors only, with secrets, URLs and identifiers scrubbed."""
     import re
@@ -280,6 +302,7 @@ def verify(label, review, expected_status):
         time.sleep(1)
     if persisted is None:
         redis_connection_summary(stream_id)
+        classify_durable_failure(stream_id)
         latest_status, latest_plan, latest_state = redis_job(stream_id)
         fields = redis_field_names(stream_id)
         print("CI_ORACLE_" + label + "_JOB_EXISTS=" + str(bool(fields)), flush=True)
