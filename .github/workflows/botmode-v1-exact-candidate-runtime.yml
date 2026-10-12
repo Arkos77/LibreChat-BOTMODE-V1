@@ -254,12 +254,36 @@ jobs:
             echo "::error::Real Worker mission HTTP admission did not return 200"
             exit 1
           fi
-          # A 200 JSON envelope is not proof of an LLM generation.
-          if ! grep -q '^data:' /tmp/botmode-ci-mission-stream.txt; then
-            echo "::error::Worker HTTP returned 200 but no SSE generation events; release gate remains RED"
+          # The start route returns JSON status=started and streamId.
+          # A separate authorized GET subscribes to the actual SSE channel.
+          python3 - <<'PY'
+          import json
+          obj=json.load(open('/tmp/botmode-ci-mission-stream.txt'))
+          if obj.get('status') != 'started' or not obj.get('streamId'):
+              raise SystemExit('Worker did not return a valid started/streamId envelope')
+          with open('/tmp/botmode-ci-stream-id','w') as f: f.write(obj['streamId'])
+          print('CI_WORKER_ASYNC_STARTED=PASS')
+          PY
+          worker_stream_id=$(cat /tmp/botmode-ci-stream-id)
+          stream_http=$(curl -sS -N --max-time 180 -o /tmp/botmode-ci-real-sse.txt -w '%{http_code}' \
+            -H 'Accept: text/event-stream' -H "User-Agent: $browser_ua" \
+            -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" \
+            "http://127.0.0.1:3090/api/agents/chat/stream/$worker_stream_id?resume=true") || stream_http=CURL_ERROR
+          echo "CI_WORKER_STREAM_HTTP=$stream_http"
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/botmode-ci-real-sse.txt')
+          data=p.read_text(errors='replace') if p.exists() else ''
+          print('CI_WORKER_STREAM_BYTES='+str(len(data)))
+          print('CI_WORKER_STREAM_EVENT_COUNT='+str(sum(x.startswith('data:') for x in data.splitlines())))
+          print('CI_WORKER_STREAM_FINAL='+str('"final":true' in data))
+          print('CI_WORKER_STREAM_ERROR='+str('event: error' in data))
+          PY
+          if [ "$stream_http" != "200" ] || ! grep -q '^data:' /tmp/botmode-ci-real-sse.txt; then
+            echo "::error::Authenticated Worker stream did not provide SSE generation events"
             exit 1
           fi
-          echo 'BOTMODE_PR14_WORKER_HTTP_ADMISSION=PASS'
+          echo 'BOTMODE_PR14_WORKER_SSE_TRANSPORT=PASS'
           # Oracle/QA acceptance, child execution and publication require separate
           # durable evidence assertions; do not mark the release E2E gate green here.
 
