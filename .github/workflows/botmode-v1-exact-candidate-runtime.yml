@@ -367,8 +367,8 @@ jobs:
           PY
           echo 'BOTMODE_PR14_WORKER_SSE_TERMINAL=PASS'
           # Capture narrow durable evidence without dumping response bodies or secrets.
-          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api \
-            -e CI_CONVERSATION_ID="$(cat /tmp/botmode-ci-mission-id)" node - <<'NODE'
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T \
+            -e CI_CONVERSATION_ID="$(cat /tmp/botmode-ci-mission-id)" api node - <<'NODE'
           const mongoose=require('mongoose');
           (async()=>{
             await mongoose.connect(process.env.MONGO_URI);
