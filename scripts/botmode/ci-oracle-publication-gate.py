@@ -73,6 +73,13 @@ def redis_job(stream_id):
         return out.stdout.strip()
     return field("status"), field("orchestratorPlan"), field("missionOracleState")
 
+def redis_field_names(stream_id):
+    key = "stream:{" + stream_id + "}:job"
+    p = subprocess.run(COMPOSE + ["exec", "-T", "redis", "redis-cli", "--raw",
+                                  "HKEYS", key], capture_output=True, text=True,
+                       timeout=20, check=True)
+    return sorted(p.stdout.splitlines())
+
 def verify(label, review, expected_status):
     conversation_id = str(uuid.uuid4())
     mission_id = "ci-oracle-" + str(uuid.uuid4())
@@ -132,6 +139,14 @@ def verify(label, review, expected_status):
     print("CI_ORACLE_" + label + "_SSE_EVENTS=" + str(len(events)), flush=True)
     print("CI_ORACLE_" + label + "_SSE_FINALS=" + str(len(final)), flush=True)
     print("CI_ORACLE_" + label + "_SSE_ERRORS=" + str(len(error_events)), flush=True)
+    finals = [e.get("responseMessage") for e in final if isinstance(e.get("responseMessage"), dict)]
+    print("CI_ORACLE_" + label + "_FINAL_RESPONSE_PRESENT=" + str(bool(finals)), flush=True)
+    print("CI_ORACLE_" + label + "_FINAL_CONTENT_PART_TYPES=" +
+          ",".join(sorted({str(p.get("type", "unspecified"))
+                           for r in finals for p in (r.get("content") or [])
+                           if isinstance(p, dict) and isinstance(r.get("content"), list)}))[:140], flush=True)
+    print("CI_ORACLE_" + label + "_FINAL_RESPONSE_NONEMPTY=" +
+          str(any(bool(response_text(r).strip()) for r in finals)), flush=True)
 
     # Under Redis persistence, completed jobs are retained by CI-only configuration.
     persisted = None
@@ -148,6 +163,22 @@ def verify(label, review, expected_status):
                 pass
         time.sleep(1)
     if persisted is None:
+        latest_status, latest_plan, latest_state = redis_job(stream_id)
+        fields = redis_field_names(stream_id)
+        print("CI_ORACLE_" + label + "_JOB_EXISTS=" + str(bool(fields)), flush=True)
+        print("CI_ORACLE_" + label + "_JOB_STATUS=" + (latest_status or "absent"), flush=True)
+        print("CI_ORACLE_" + label + "_PLAN_PRESENT=" + str(bool(latest_plan)), flush=True)
+        print("CI_ORACLE_" + label + "_STATE_PRESENT=" + str(bool(latest_state)), flush=True)
+        print("CI_ORACLE_" + label + "_JOB_FIELD_NAMES=" + ",".join(fields)[:500], flush=True)
+        if latest_state:
+            try:
+                st = json.loads(latest_state)
+                print("CI_ORACLE_" + label + "_RESULT_TASK_IDS=" +
+                      str(len(st.get("results", {}))), flush=True)
+                print("CI_ORACLE_" + label + "_RESULT_VERDICT_COUNTS=" +
+                      ",".join(str(len(v.get("verdicts", []))) for v in st.get("results", {}).values())[:100], flush=True)
+            except (TypeError, ValueError, AttributeError):
+                print("CI_ORACLE_" + label + "_STATE_JSON_VALID=false", flush=True)
         fail(label + "_ORACLE_NOT_DURABLY_PERSISTED")
     stored_status, plan, state, verdicts = persisted
     if plan.get("mission", {}).get("missionId") != mission_id:
