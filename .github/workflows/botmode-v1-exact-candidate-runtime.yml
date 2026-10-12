@@ -399,6 +399,10 @@ jobs:
           responses=[v.get('responseMessage') for v in finals if isinstance(v.get('responseMessage'),dict)]
           print('CI_TERMINAL_RESPONSE_PRESENT='+str(bool(responses)))
           print('CI_TERMINAL_RESPONSE_HAS_TEXT='+str(any(bool(m.get('text')) for m in responses)))
+          print('CI_TERMINAL_RESPONSE_FIELDS='+','.join(sorted({k for m in responses for k in m.keys()}))[:200])
+          print('CI_TERMINAL_RESPONSE_CONTENT_PRESENT='+str(any(bool(m.get('content')) for m in responses)))
+          print('CI_TERMINAL_RESPONSE_TEXT_LENGTH='+str(max((len(str(m.get('text') or '')) for m in responses),default=0)))
+          print('CI_TERMINAL_PUBLICATION_SIGNAL='+str(any(bool(v.get('final')) and isinstance(v.get('responseMessage'),dict) for v in values)))
           PY
           echo 'BOTMODE_PR14_WORKER_SSE_TERMINAL=PASS'
           # Capture narrow durable evidence without dumping response bodies or secrets.
