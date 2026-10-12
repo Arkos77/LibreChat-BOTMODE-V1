@@ -18,6 +18,50 @@ jobs:
           persist-credentials: false
       - name: Prove checked-out revision
         run: test "$(git rev-parse HEAD)" = 'ea24f476164153735b5f5c95fe9c7861d4f97a1f'
+      - name: OpenRouter free-quota preflight (no model requests)
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_QUOTA'
+          import json
+          import os
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError, URLError
+
+          token = os.environ.get('OPENROUTER_API_KEY', '')
+          if not token:
+              raise SystemExit('CI_PROVIDER_BLOCKED=OPENROUTER_API_KEY_SECRET_MISSING')
+          request = Request(
+              'https://openrouter.ai/api/v1/key',
+              headers={'Authorization': 'Bearer ' + token, 'Accept': 'application/json'},
+          )
+          try:
+              with urlopen(request, timeout=20) as response:
+                  result = json.load(response)
+          except HTTPError as exc:
+              print('CI_OPENROUTER_KEY_INFO_HTTP=' + str(exc.code))
+              raise SystemExit('CI_PROVIDER_BLOCKED=KEY_INFO_HTTP_FAILURE')
+          except (URLError, ValueError, TimeoutError):
+              raise SystemExit('CI_PROVIDER_BLOCKED=KEY_INFO_UNAVAILABLE')
+          data = result.get('data') if isinstance(result, dict) else None
+          if not isinstance(data, dict):
+              raise SystemExit('CI_PROVIDER_BLOCKED=KEY_INFO_SCHEMA_UNEXPECTED')
+          quota = data.get('free_model_daily_requests', {})
+          if not isinstance(quota, dict):
+              raise SystemExit('CI_PROVIDER_BLOCKED=FREE_QUOTA_SCHEMA_UNEXPECTED')
+          remaining = quota.get('remaining')
+          limit = quota.get('limit')
+          print('CI_OPENROUTER_FREE_DAILY_REMAINING=' + str(remaining))
+          print('CI_OPENROUTER_FREE_DAILY_LIMIT=' + str(limit))
+          # Native-worker/tool and two Oracle runs can make multiple inference
+          # calls. Never spend the last free request to prove a release.
+          if isinstance(remaining, int) and remaining < 8:
+              raise SystemExit('CI_PROVIDER_BLOCKED=INSUFFICIENT_FREE_DAILY_QUOTA')
+          if not isinstance(remaining, int):
+              raise SystemExit('CI_PROVIDER_BLOCKED=FREE_QUOTA_REMAINING_UNKNOWN')
+          print('CI_OPENROUTER_FREE_PREFLIGHT=PASS')
+          PY_QUOTA
       - name: Build actual PR14 API runtime image locally
         run: |
           set -euo pipefail
@@ -415,7 +459,9 @@ jobs:
           print('CI_TERMINAL_RESPONSE_TEXT_LENGTH='+str(max((len(str(m.get('text') or '')) for m in responses),default=0)))
           print('CI_TERMINAL_PUBLICATION_SIGNAL='+str(any(bool(v.get('final')) and isinstance(v.get('responseMessage'),dict) for v in values)))
           PY
-          echo 'BOTMODE_PR14_WORKER_SSE_TERMINAL=PASS'
+          # SSE final alone is not a successful response: the pinned Oracle
+          # harness checks the exact final content and fails on error parts.
+          echo 'CI_WORKER_TERMINAL_EVENT_OBSERVED=true'
           # Capture narrow durable evidence without dumping response bodies or secrets.
           docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T \
             -e CI_CONVERSATION_ID="$(cat /tmp/botmode-ci-mission-id)" api node - <<'NODE'
@@ -444,8 +490,8 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/ed7550a36e0935e957f75b61b678cb3742bea5f8/scripts/botmode/ci-oracle-publication-gate.py -o /tmp/botmode-ci-oracle-publication-gate.py
           python3 /tmp/botmode-ci-oracle-publication-gate.py
           echo 'BOTMODE_PR14_RUNTIME_BOOT=PASS'
-          echo '### Gate scope: exact PR14 runtime boot with disposable MongoDB' >> "$GITHUB_STEP_SUMMARY"
-          echo 'API started; unauthenticated POST returned 401 and a real JWT/database principal retrieved setup status. Provisioning and delegation are tested in this run. Worker HTTP admission is attempted. Child execution, Oracle and publication are NOT yet proven.' >> "$GITHUB_STEP_SUMMARY"
+          echo '### PR14 Oracle/QA and publication gate — exact candidate' >> "$GITHUB_STEP_SUMMARY"
+          echo 'CI quota preflight and actual API/Worker/Oracle tests executed. PASS requires the exact durable Oracle verdict and the accepted/rejected publication assertions above.' >> "$GITHUB_STEP_SUMMARY"
       - name: Always destroy disposable stack
         if: always()
         env:
