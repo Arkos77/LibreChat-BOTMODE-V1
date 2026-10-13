@@ -1,0 +1,86 @@
+name: BOTMODE V1 Disposable API Restore Boot
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-api-restore-boot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restored-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Prepare isolated credentials
+        shell: bash
+        run: |
+          echo "BOTMODE_MONGO_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo "MEILI_MASTER_KEY=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo 'BOTMODE_HOST_PORT=3090' >> "$GITHUB_ENV"
+          echo 'ADMIN_PANEL_PORT=3091' >> "$GITHUB_ENV"
+      - name: Install disposable Full runtime and create durable marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,MEILI_MASTER_KEY,BOTMODE_HOST_PORT,ADMIN_PANEL_PORT ./install.sh --full --image ghcr.io/arkos77/librechat-botmode-v1:sha-d4e82dded5df
+          for n in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3090/api/config >/dev/null
+          compose=(sudo docker compose -f docker-compose.botmode.yml)
+          "${compose[@]}" exec -T mongodb sh -ec 'mongosh --quiet -u botmode_admin -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''db.restore_epoch_ci.insertOne({_id:"api-restore-boot",state:"committed"})'\'''
+          echo 'BOTMODE_RESTORE_BOOT_SOURCE_API=PASS'
+      - name: Capture stopped Mongo and restore into a distinct disposable volume
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose=(sudo docker compose -f docker-compose.botmode.yml)
+          "${compose[@]}" stop api mongodb
+          source_id=$("${compose[@]}" ps -aq mongodb)
+          test -n "$source_id"
+          source_vol=$(sudo docker inspect "$source_id" --format '{{range .Mounts}}{{if eq .Destination "/data/db"}}{{.Name}}{{end}}{{end}}')
+          test -n "$source_vol"
+          sudo docker volume create botmode-ci-restored-mongo >/dev/null
+          sudo docker run --rm -v "$source_vol:/source:ro" -v botmode-ci-restored-mongo:/target alpine:3.20 sh -ec 'cd /source && tar cf - . | (cd /target && tar xf -)'
+          # Stop the source and replace only the Mongo mount in an ephemeral override.
+          # No real user's volume is removed or altered.
+          cat > "$RUNNER_TEMP/restore-compose.yml" <<'YAML'
+          services:
+            mongodb:
+              volumes:
+                - botmode-ci-restored-mongo:/data/db
+          volumes:
+            botmode-ci-restored-mongo:
+              external: true
+          YAML
+          printf '%s\n' "$RUNNER_TEMP/restore-compose.yml" > "$RUNNER_TEMP/restore-compose-path"
+          echo 'BOTMODE_RESTORE_BOOT_OFFLINE_COPY=PASS'
+      - name: Boot Full API against restored isolated Mongo and verify marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose=(sudo docker compose -f docker-compose.botmode.yml -f "$RUNNER_TEMP/restore-compose.yml")
+          "${compose[@]}" up -d --force-recreate mongodb api
+          for n in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3090/api/config >/dev/null
+          result=$("${compose[@]}" exec -T mongodb sh -ec 'mongosh --quiet -u botmode_admin -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''print(db.restore_epoch_ci.countDocuments({_id:"api-restore-boot",state:"committed"}))'\''' | tail -1 | tr -d '\r')
+          test "$result" = 1
+          echo 'BOTMODE_RESTORED_FULL_API_HTTP=PASS'
+          echo 'BOTMODE_RESTORED_MONGO_MARKER=PASS'
+          echo 'SCOPE=full runtime API HTTP on separate restored Mongo volume; NOT schema migration, six-agent ACL assertions or durable task resume'
+      - name: Destroy CI-only resources
+        if: always()
+        shell: bash
+        run: |
+          sudo docker compose -f docker-compose.botmode.yml down --volumes --remove-orphans >/dev/null 2>&1 || true
+          sudo docker volume rm -f botmode-ci-restored-mongo >/dev/null 2>&1 || true
