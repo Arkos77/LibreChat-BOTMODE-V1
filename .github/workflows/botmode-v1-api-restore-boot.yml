@@ -74,6 +74,13 @@ jobs:
           done
           if ! curl -fsS http://127.0.0.1:3090/api/config >/dev/null; then
             echo 'BOTMODE_RESTORED_FULL_API_HTTP=FAIL'
+            echo 'CI_API_PORT_PUBLISHING'
+            "${compose[@]}" port api 3080 || true
+            sudo docker inspect "$("${compose[@]}" ps -q api)" --format '{{json .NetworkSettings.Ports}}' || true
+            echo 'CI_LOCAL_PORT_LISTENERS'
+            sudo ss -ltn '( sport = :3090 )' || true
+            echo 'CI_API_CONTAINER_HTTP'
+            "${compose[@]}" exec -T api node -e "require('http').get('http://127.0.0.1:3080/api/config',r=>{console.log('CI_CONTAINER_HTTP_STATUS='+r.statusCode);r.resume()}).on('error',e=>{console.log('CI_CONTAINER_HTTP_ERROR='+e.code);process.exitCode=1})" || true
             "${compose[@]}" ps --format json | python3 -c 'import json,sys; [print("CI_SERVICE_STATE="+str({k:v for k,v in json.loads(line).items() if k in ("Service","State","Health","ExitCode")})) for line in sys.stdin if line.strip()]' || true
             if "${compose[@]}" exec -T mongodb sh -ec 'mongosh --quiet -u botmode_admin -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "db.adminCommand({ping:1}).ok" | grep -q 1'; then
               echo 'BOTMODE_RESTORED_MONGO_AUTH_PING=PASS'
