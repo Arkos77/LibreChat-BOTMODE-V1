@@ -80,3 +80,43 @@ jobs:
             console.log('BOTMODE_DOCX_BENIGN_PROBE=PASS');
           })().catch((error) => { console.error(error); process.exitCode = 1; });
           JS
+
+      - name: Qualify four bounded concurrent DOCX conversions
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Each conversion runs with its own heap and wall-clock bounds.
+          # This does not establish isolation inside the live API process.
+          workdir="$(mktemp -d)"
+          trap 'rm -rf "$workdir"' EXIT
+          pids=()
+          for i in 1 2 3 4; do
+            (
+              /usr/bin/time -f 'peak_rss_kb=%M elapsed_s=%e' -o "$workdir/time.$i" \
+                timeout --signal=TERM --kill-after=5s 45s \
+                node --max-old-space-size=256 -e '
+                  const fs = require("node:fs");
+                  const mammoth = require("mammoth");
+                  const buffer = fs.readFileSync("packages/api/src/files/documents/sample.docx");
+                  (async () => {
+                    for (let k=0;k<20;k++) {
+                      const result = await (k%2 ? mammoth.convertToHtml({buffer}) : mammoth.extractRawText({buffer}));
+                      if (!result.value.includes("sample DOCX")) throw Error("DOCX_CONCURRENT_OUTPUT_INVALID");
+                    }
+                    console.log("DOCX_CONCURRENT_CHILD_PASS");
+                  })().catch(e=>{ console.error(e); process.exitCode=1; });
+                ' > "$workdir/output.$i" 2>&1
+            ) &
+            pids+=("$!")
+          done
+          failed=0
+          for i in 1 2 3 4; do
+            wait "${pids[$((i-1))]}" || failed=1
+            cat "$workdir/time.$i" "$workdir/output.$i"
+            grep -q 'DOCX_CONCURRENT_CHILD_PASS' "$workdir/output.$i" || failed=1
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "BOTMODE_DOCX_CONCURRENT_PROBE=FAIL"
+            exit 1
+          fi
+          echo "BOTMODE_DOCX_CONCURRENT_PROBE=PASS"
