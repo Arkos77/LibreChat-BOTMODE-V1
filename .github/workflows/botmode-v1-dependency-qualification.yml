@@ -65,6 +65,32 @@ jobs:
           JS
           cd "$GITHUB_WORKSPACE"
           git diff --exit-code -- package-lock.json package.json client/package.json
+      - name: Integration smoke patched KaTeX with installed rehype-katex
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/katex-integration"
+          cd "$RUNNER_TEMP/katex-integration"
+          npm init -y >/dev/null
+          npm install --ignore-scripts --no-audit --no-fund --save-exact katex@0.18.2 rehype-katex@6.0.3 unified@11.0.5 remark-parse@11.0.0 remark-math@6.0.0 remark-rehype@11.1.2 rehype-stringify@10.0.1
+          node --input-type=module <<'JS'
+          import { unified } from 'unified';
+          import remarkParse from 'remark-parse';
+          import remarkMath from 'remark-math';
+          import remarkRehype from 'remark-rehype';
+          import rehypeKatex from 'rehype-katex';
+          import rehypeStringify from 'rehype-stringify';
+          import katex from 'katex';
+          import { createRequire } from 'node:module';
+          const require=createRequire(import.meta.url);
+          const version=require('katex/package.json').version;
+          if(version!=='0.18.2') throw new Error('Unexpected KaTeX '+version);
+          const html=String(await unified().use(remarkParse).use(remarkMath).use(remarkRehype).use(rehypeKatex,{trust:false}).use(rehypeStringify).process('Math: $\\\\frac{1}{2}$ and $x^2$'));
+          if(!html.includes('katex') || !html.includes('frac')) throw new Error('Integrated math rendering failed');
+          console.log('BOTMODE_KATEX_REHYPE_INTEGRATION=PASS');
+          JS
+          cd "$GITHUB_WORKSPACE"
+          git diff --exit-code -- package-lock.json package.json client/package.json
       - name: Existing math regressions
         shell: bash
         run: |
