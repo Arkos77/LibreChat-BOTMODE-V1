@@ -34,7 +34,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker exec botmode-pg-source psql -v ON_ERROR_STOP=1 -U myuser -d mydatabase -c 'CREATE EXTENSION IF NOT EXISTS vector; CREATE TABLE rollback_ci (id text PRIMARY KEY, embedding vector(3)); INSERT INTO rollback_ci VALUES (''backup-restore-probe'', ''[1,2,3]'');'
+          docker exec -i botmode-pg-source psql -v ON_ERROR_STOP=1 -U myuser -d mydatabase <<'SQL'
+          CREATE EXTENSION IF NOT EXISTS vector;
+          CREATE TABLE rollback_ci (id text PRIMARY KEY, embedding vector(3));
+          INSERT INTO rollback_ci VALUES ('backup-restore-probe', '[1,2,3]');
+          SQL
           docker exec botmode-pg-source pg_dump -U myuser -d mydatabase -Fc > "$RUNNER_TEMP/botmode-pg.dump"
           test -s "$RUNNER_TEMP/botmode-pg.dump"
           docker exec -i botmode-pg-restored pg_restore --exit-on-error -U myuser -d mydatabase < "$RUNNER_TEMP/botmode-pg.dump"
