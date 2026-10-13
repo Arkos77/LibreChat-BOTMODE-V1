@@ -1,0 +1,23 @@
+name: BOTMODE Main Integration Rehearsal
+on:
+  push:
+    branches:
+      - botmode-v1-main-integration-dryrun-20261013
+    paths:
+      - scripts/botmode-main-integration-dryrun.sh
+      - .github/workflows/botmode-main-integration-rehearsal.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dryrun:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Rehearse Git merge with temporary worktree
+        shell: bash
+        run: bash scripts/botmode-main-integration-dryrun.sh
