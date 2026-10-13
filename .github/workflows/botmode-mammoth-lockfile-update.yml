@@ -1,9 +1,7 @@
 name: BOTMODE Mammoth Lockfile Update
 
 on:
-  push:
-    branches:
-      - botmode-v1-mammoth-security-trial-20261013
+  pull_request:
     paths:
       - 'packages/api/package.json'
       - '.github/workflows/botmode-mammoth-lockfile-update.yml'
@@ -13,12 +11,13 @@ permissions:
 
 jobs:
   update-locked-dependency:
-    if: github.repository == 'Arkos77/LibreChat-BOTMODE-V1'
+    if: github.repository == 'Arkos77/LibreChat-BOTMODE-V1' && github.head_ref == 'botmode-v1-mammoth-security-trial-20261013'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
         with:
+          ref: botmode-v1-mammoth-security-trial-20261013
           persist-credentials: true
       - uses: actions/setup-node@v4
         with:
@@ -38,7 +37,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_REF_NAME" = "botmode-v1-mammoth-security-trial-20261013"
+          test "$GITHUB_HEAD_REF" = "botmode-v1-mammoth-security-trial-20261013"
           if git diff --quiet -- package-lock.json; then
             echo BOTMODE_LOCKFILE_ALREADY_CURRENT=PASS
             exit 0
@@ -47,4 +46,4 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- package-lock.json
           git commit -m 'chore(botmode): lock verified Mammoth 1.12.3'
-          git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"
+          git push origin "HEAD:refs/heads/$GITHUB_HEAD_REF"
