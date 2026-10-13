@@ -40,6 +40,12 @@ fi
 git -c user.name='BOTMODE rehearsal' -c user.email='botmode-rehearsal@localhost' commit --no-edit -m 'test(botmode): ephemeral main integration rehearsal' >/dev/null
 echo "BOTMODE_DRYRUN_MERGE_COMMIT=$(git rev-parse HEAD)"
 echo "BOTMODE_DRYRUN=MERGE_TREE_CREATED_EPHEMERALLY"
+if [[ "${BOTMODE_DRYRUN_DOCKER:-0}" == "1" ]]; then
+  echo "BOTMODE_DRYRUN_DOCKER=START"
+  docker buildx build --platform "linux/${BOTMODE_DRYRUN_ARCH:-amd64}" --target node --load --tag botmode-integrated-dryrun:local -f Dockerfile .
+  docker run --rm --entrypoint node botmode-integrated-dryrun:local -e "const { createRequire } = require('node:module'); const fs = require('node:fs'); const requireApp = createRequire('/app/package.json'); const { chromium } = requireApp('playwright'); if (!fs.existsSync(chromium.executablePath())) throw Error('CHROMIUM_MISSING'); console.log('BOTMODE_DRYRUN_DOCKER_PLAYWRIGHT=PASS')"
+  echo "BOTMODE_DRYRUN_DOCKER=PASS"
+fi
 if [[ "${BOTMODE_DRYRUN_VALIDATE:-0}" == "1" ]]; then
   echo "BOTMODE_DRYRUN_INTEGRATED_VALIDATION=START"
   npm ci --ignore-scripts --no-audit --no-fund
