@@ -112,7 +112,9 @@ describe('checkpointer (mongodb-memory-server integration)', () => {
     const checkpoint = await seedInterruptCheckpoint(saver!, threadId, '', 'ci-approval');
     const identity = { checkpointId: checkpoint.id, interruptId: 'ci-approval' };
 
-    await expect(hasDurableAgentInterruptCheckpoint(threadId, MONGO_CFG, identity)).resolves.toBe(true);
+    await expect(
+      hasDurableAgentInterruptCheckpoint(threadId, MONGO_CFG, identity),
+    ).resolves.toBe(true);
     await mongoose.disconnect();
     __resetCheckpointerForTests();
     await mongoose.connect(mongoServer.getUri());
@@ -120,7 +122,9 @@ describe('checkpointer (mongodb-memory-server integration)', () => {
     expect(restored).toBeDefined();
     const tuple = await restored!.getTuple(readConfig(threadId));
     expect(tuple?.checkpoint.id).toBe(checkpoint.id);
-    await expect(hasDurableAgentInterruptCheckpoint(threadId, MONGO_CFG, identity)).resolves.toBe(true);
+    await expect(
+      hasDurableAgentInterruptCheckpoint(threadId, MONGO_CFG, identity),
+    ).resolves.toBe(true);
   });
 
   it('verifies that an interrupt write has its matching durable checkpoint', async () => {
