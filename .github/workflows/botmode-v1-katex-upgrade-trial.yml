@@ -45,7 +45,8 @@ jobs:
           const lock=require('./package-lock.json').packages;
           const packages=Object.entries(lock).filter(([p])=>p==='node_modules/katex'||p.endsWith('/node_modules/katex')).map(([path,v])=>({path,version:v.version}));
           console.log('BOTMODE_KATEX_TRIAL_PACKAGES='+JSON.stringify(packages));
-          if(!packages.length || packages.some(p=>!/^0\\.18\\.[2-9]$/.test(p.version))) throw Error('Patched KaTeX not resolved exclusively');
+          const fixed = v => { const m = /^(\\d+)\\.(\\d+)\\.(\\d+)$/.exec(v); return !!m && (Number(m[1]) > 0 || Number(m[2]) > 18 || (Number(m[2]) === 18 && Number(m[3]) >= 2)); };
+          if(!packages.length || packages.some(p=>!fixed(p.version))) throw Error('Patched KaTeX not resolved exclusively');
           console.log('BOTMODE_KATEX_TRIAL_LOCKFILE=PASS');
           JS
       - name: Clean install with trial lockfile
