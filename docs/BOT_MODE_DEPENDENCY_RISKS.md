@@ -59,3 +59,11 @@ Le point d'appel exact est `packages/api/src/files/documents/crud.ts` : `parseDo
 `packages/api/src/files/documents/zipSafety.ts` parcourt réellement les entrées ZIP à l'aide de `yauzl` et limite la décompression à **100 MiB au total** et **25 MiB par entrée**. Le comptage ne se fonde pas seulement sur la taille déclarée dans le répertoire central, qui peut être falsifiée. Les dépassements provoquent `ZipBombError`. **Protections contre le gonflement ZIP établies ; ne pas les réimplémenter.**
 
 **Limites restantes** : aucun délai maximal de traitement par document, isolation CPU/mémoire du parseur ou preuve d'inexploitabilité des avis `mammoth`, `argparse`, `sprintf-js` n'ont été établis par ce traçage. L'appel `extractRawText` réduit les risques liés à la sortie HTML, sans démontrer l'absence de vecteurs DoS. Rechercher les limites des processus RAG et les points d'entrée non fiables, puis demander une acceptation explicite du risque ou appliquer un correctif ciblé. **Aucune acceptation implicite.**
+
+## Distinction critique : aperçu HTML DOCX — 13 octobre 2026
+
+Le constat `extractRawText` ci-dessus ne concerne **que l'extraction textuelle**. Un second chemin est confirmé dans `packages/api/src/files/documents/html.ts` : `renderMammothBody` appelle **`mammoth.convertToHtml({ buffer }, { styleMap: DOCX_STYLE_MAP })`**, puis **`sanitizeOfficeHtml(result.value)`**. L'aperçu DOCX emploie cette sortie HTML assainie, y compris comme fallback de rendu CDN. La fonction d'aperçu DOCX appelle aussi `assertSafeZipSize` avant la conversion. **Ne pas prétendre que Mammoth n'est jamais utilisé en mode HTML.**
+
+Les tests `packages/api/src/files/documents/zipSafety.spec.ts` couvrent les plafonds de décompression, dont un scénario ZIP bomb. `packages/api/src/files/documents/crud.spec.ts` couvre la taille maximale d'un fichier en extraction. Ces tests ne constituent pas une preuve de timeout global ni de limitation CPU du parseur Mammoth ; `sanitizeOfficeHtml` réduit les risques de sortie HTML non fiable mais ne corrige pas un éventuel déni de service dans les dépendances au moment du parsing.
+
+**Décision** : ne pas accepter automatiquement les avis modérés avant une qualification dédiée des deux chemins (texte et HTML) et du contexte concret des chaînes de formatage `sprintf-js`.
