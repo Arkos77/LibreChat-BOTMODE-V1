@@ -758,13 +758,13 @@ describe('userGroup methods', () => {
 
     it('deduplicates concurrent cache builds for the same member key', async () => {
       const user = await createTestUser({ idOnTheSource: 'dedup-ext-1' });
-      const store = new Map<string, string[]>();
+      const store = new Map<string, unknown>();
       const cache = {
         get: jest.fn(async (key: string) => {
           await new Promise((resolve) => setTimeout(resolve, 10));
           return store.get(key);
         }),
-        set: jest.fn(async (key: string, value: string[]) => {
+        set: jest.fn(async (key: string, value: unknown) => {
           store.set(key, value);
         }),
       };
