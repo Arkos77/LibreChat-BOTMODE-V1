@@ -1,0 +1,59 @@
+name: BOTMODE DOCX Bounded Resource Probe
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-docx-resource-probe.yml'
+      - 'packages/api/src/files/documents/**'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docx-resource-probe:
+    name: Bounded DOCX text and HTML sample
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Reproducible dependency installation
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Exercise both Mammoth entry points under per-process limits
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This benign fixture measures observed resource use; it is NOT proof
+          # that adversarial DOCX inputs cannot exhaust production API resources.
+          /usr/bin/time -v timeout --signal=TERM --kill-after=5s 60s \
+            node --max-old-space-size=256 <<'JS'
+          const fs = require('node:fs');
+          const { performance } = require('node:perf_hooks');
+          const mammoth = require('mammoth');
+          (async () => {
+            const buffer = fs.readFileSync('packages/api/src/files/documents/sample.docx');
+            for (const [name, method] of [
+              ['text', (b) => mammoth.extractRawText({buffer: b})],
+              ['html', (b) => mammoth.convertToHtml({buffer: b})],
+            ]) {
+              const start = performance.now();
+              const result = await method(buffer);
+              if (typeof result.value !== 'string' || !result.value.trim()) {
+                throw new Error('DOCX_' + name + '_OUTPUT_EMPTY');
+              }
+              console.log('BOTMODE_DOCX_RESOURCE=' + JSON.stringify({
+                mode: name,
+                sourceBytes: buffer.length,
+                outputBytes: Buffer.byteLength(result.value),
+                elapsedMs: Math.round(performance.now() - start),
+                peakRssBytes: process.resourceUsage().maxRSS * 1024,
+              }));
+            }
+            console.log('BOTMODE_DOCX_BENIGN_PROBE=PASS');
+          })().catch((error) => { console.error(error); process.exitCode = 1; });
+          JS
