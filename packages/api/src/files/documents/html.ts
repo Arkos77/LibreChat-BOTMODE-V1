@@ -2,6 +2,7 @@ import yauzl from 'yauzl';
 import { excelMimeTypes, megabyte } from 'librechat-data-provider';
 import { tryLibreOfficePreview } from './libreoffice';
 import { assertSafeZipSize } from './zipSafety';
+import { convertDocxWithWorker } from './docxWorker';
 
 /**
  * Maximum decompressed size we'll accept from a single PPTX entry. Mirrors the
@@ -544,9 +545,8 @@ ${DOCX_EXTRA_CSS}
  * review on PR #12934.
  */
 async function renderMammothBody(buffer: Buffer): Promise<string> {
-  const { convertToHtml } = await import('mammoth');
-  const result = await convertToHtml({ buffer }, { styleMap: DOCX_STYLE_MAP });
-  return sanitizeOfficeHtml(result.value);
+  const html = await convertDocxWithWorker(buffer, 'html', DOCX_STYLE_MAP);
+  return sanitizeOfficeHtml(html);
 }
 
 async function wordDocToHtmlViaCdn(buffer: Buffer, mammothFallbackBody: string): Promise<string> {
