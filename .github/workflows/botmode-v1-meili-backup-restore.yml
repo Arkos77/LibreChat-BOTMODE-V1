@@ -1,0 +1,69 @@
+name: BOTMODE V1 Disposable Meilisearch Backup Restore
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-meili-backup-restore.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  meili-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - name: Start disposable Meilisearch source
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull getmeili/meilisearch:v1.35.1
+          docker volume create botmode-ci-meili-source >/dev/null
+          docker volume create botmode-ci-meili-restored >/dev/null
+          docker run -d --name botmode-ci-meili-source -p 127.0.0.1:17700:7700 -e MEILI_NO_ANALYTICS=true -e MEILI_ENV=development -v botmode-ci-meili-source:/meili_data getmeili/meilisearch:v1.35.1
+          for n in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:17700/health | grep -q available; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:17700/health | grep -q available
+      - name: Index document, stop source, archive and restore into fresh volume
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST http://127.0.0.1:17700/indexes -H 'Content-Type: application/json' -d '{"uid":"botmode_ci_restore","primaryKey":"id"}' >/dev/null
+          curl -fsS -X POST http://127.0.0.1:17700/indexes/botmode_ci_restore/documents -H 'Content-Type: application/json' -d '[{"id":"restore-proof","title":"botmode-meili-preserved"}]' >/dev/null
+          ready=0
+          for n in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:17700/indexes/botmode_ci_restore/documents/restore-proof 2>/dev/null | grep -q botmode-meili-preserved; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          docker stop botmode-ci-meili-source >/dev/null
+          docker run --rm -v botmode-ci-meili-source:/source:ro -v "$RUNNER_TEMP:/backup" alpine:3.20 tar czf /backup/botmode-ci-meili.tar.gz -C /source .
+          test -s "$RUNNER_TEMP/botmode-ci-meili.tar.gz"
+          docker run --rm -v botmode-ci-meili-restored:/target -v "$RUNNER_TEMP:/backup:ro" alpine:3.20 tar xzf /backup/botmode-ci-meili.tar.gz -C /target
+          docker run -d --name botmode-ci-meili-restored -p 127.0.0.1:17701:7700 -e MEILI_NO_ANALYTICS=true -e MEILI_ENV=development -v botmode-ci-meili-restored:/meili_data getmeili/meilisearch:v1.35.1
+          ready=0
+          for n in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:17701/indexes/botmode_ci_restore/documents/restore-proof 2>/dev/null | grep -q botmode-meili-preserved; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          docker restart botmode-ci-meili-restored >/dev/null
+          ready=0
+          for n in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:17701/indexes/botmode_ci_restore/documents/restore-proof 2>/dev/null | grep -q botmode-meili-preserved; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          echo 'BOTMODE_MEILI_OFFLINE_BACKUP_RESTORE=PASS'
+          echo 'BOTMODE_MEILI_RESTORE_RESTART_PERSISTENCE=PASS'
+          echo 'SCOPE=Meilisearch v1.35.1 stopped-volume snapshot only; NOT cross-version migration or end-to-end app rollback'
+      - name: Remove disposable Meilisearch resources
+        if: always()
+        run: |
+          docker rm -f -v botmode-ci-meili-source botmode-ci-meili-restored >/dev/null 2>&1 || true
+          docker volume rm -f botmode-ci-meili-source botmode-ci-meili-restored >/dev/null 2>&1 || true
+          rm -f "$RUNNER_TEMP/botmode-ci-meili.tar.gz"

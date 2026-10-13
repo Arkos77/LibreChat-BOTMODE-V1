@@ -1,0 +1,98 @@
+name: BOTMODE V1 Dependency Risk Qualification Batch
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-dependency-qualification.yml'
+      - 'package-lock.json'
+      - 'client/package.json'
+      - 'api/package.json'
+      - 'packages/api/package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  risk-map-and-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Resolve actual versions and dependency owners
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'JS'
+          const lock=require('./package-lock.json').packages;
+          for (const name of ['katex','rehype-katex','remark-math','mermaid','mammoth','argparse','sprintf-js','micromark-extension-llm-math']) {
+            const found=Object.entries(lock).filter(([p])=>p.split('/').pop()===name && !p.includes('/@types/'))
+              .map(([path,v])=>({path,version:v.version}));
+            console.log('BOTMODE_DEP_RESOLVED='+JSON.stringify({name,found}));
+          }
+          const katex=Object.entries(lock).filter(([p])=>p.split('/').pop()==='katex' && !p.includes('/@types/'));
+          if (!katex.length) { console.error('BOTMODE_KATEX_RESOLUTION=UNKNOWN'); process.exit(1); }
+          const below=katex.filter(([,v])=>{ const m=/^(\\d+)\\.(\\d+)\\.(\\d+)/.exec(v.version||''); return !m || Number(m[1])===0 && (Number(m[2])<18 || (Number(m[2])===18 && Number(m[3])<2)); });
+          console.log('BOTMODE_KATEX_BELOW_FIXED_0_18_2='+below.length);
+          for(const [path,v] of below) console.log('BOTMODE_KATEX_VULNERABLE='+JSON.stringify({path,version:v.version}));
+          JS
+          echo 'BOTMODE_MAMMOTH_CODE_REFERENCES_BEGIN'
+          git grep -n -E "from ['\\\"]mammoth|require\\(['\\\"]mammoth|mammoth\\." -- api packages client || true
+          echo 'BOTMODE_MAMMOTH_CODE_REFERENCES_END'
+      - name: Reproducible dependency install
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Test patched KaTeX in isolated temporary package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/katex-smoke"
+          cd "$RUNNER_TEMP/katex-smoke"
+          npm init -y >/dev/null
+          npm install --ignore-scripts --no-audit --no-fund --save-exact katex@0.18.2
+          node <<'JS'
+          const katex=require('katex');
+          const version=require('katex/package.json').version;
+          if(version!=='0.18.2') throw new Error('Expected 0.18.2 but got '+version);
+          for(const expr of ['x^2+y^2=z^2','\\frac{1}{2}','\\sqrt{x}']) {
+            const html=katex.renderToString(expr,{throwOnError:true,trust:false});
+            if(!html.includes('katex')) throw new Error('KaTeX render missing');
+          }
+          console.log('BOTMODE_KATEX_DISPOSABLE_RENDER=PASS');
+          JS
+          cd "$GITHUB_WORKSPACE"
+          git diff --exit-code -- package-lock.json package.json client/package.json
+      - name: Integration smoke patched KaTeX with installed rehype-katex
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/katex-integration"
+          cd "$RUNNER_TEMP/katex-integration"
+          npm init -y >/dev/null
+          npm install --ignore-scripts --no-audit --no-fund --save-exact katex@0.18.2 rehype-katex@6.0.3 unified@11.0.5 remark-parse@11.0.0 remark-math@6.0.0 remark-rehype@11.1.2 rehype-stringify@10.0.1
+          node --input-type=module <<'JS'
+          import { unified } from 'unified';
+          import remarkParse from 'remark-parse';
+          import remarkMath from 'remark-math';
+          import remarkRehype from 'remark-rehype';
+          import rehypeKatex from 'rehype-katex';
+          import rehypeStringify from 'rehype-stringify';
+          import katex from 'katex';
+          import { createRequire } from 'node:module';
+          const require=createRequire(import.meta.url);
+          const version=require('katex/package.json').version;
+          if(version!=='0.18.2') throw new Error('Unexpected KaTeX '+version);
+          const html=String(await unified().use(remarkParse).use(remarkMath).use(remarkRehype).use(rehypeKatex,{trust:false}).use(rehypeStringify).process('Math: $\\\\frac{1}{2}$ and $x^2$'));
+          if(!html.includes('katex') || !html.includes('frac')) throw new Error('Integrated math rendering failed');
+          console.log('BOTMODE_KATEX_REHYPE_INTEGRATION=PASS');
+          JS
+          cd "$GITHUB_WORKSPACE"
+          git diff --exit-code -- package-lock.json package.json client/package.json
+      - name: Existing math regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm exec --workspace @librechat/api -- jest --runInBand --coverage=false --runTestsByPath src/utils/math.spec.ts src/utils/math.integration.spec.ts

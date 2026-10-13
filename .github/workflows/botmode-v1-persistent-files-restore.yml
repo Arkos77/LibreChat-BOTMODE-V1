@@ -1,0 +1,48 @@
+name: BOTMODE V1 Disposable Persistent Files Restore
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-persistent-files-restore.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restore-named-volumes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Verify expected persistent API volume declarations
+        shell: bash
+        run: |
+          set -euo pipefail
+          for vol in botmode-uploads botmode-images botmode-librechat-data botmode-skills; do
+            grep -qE "^  $vol:" docker-compose.botmode.yml
+            docker volume create "ci-$vol" >/dev/null
+            docker volume create "ci-restored-$vol" >/dev/null
+          done
+      - name: Backup and restore file payloads across fresh named volumes
+        shell: bash
+        run: |
+          set -euo pipefail
+          for vol in botmode-uploads botmode-images botmode-librechat-data botmode-skills; do
+            docker run --rm -v "ci-$vol:/payload" alpine:3.20 sh -c 'mkdir -p /payload/subdir; printf "botmode-restore-proof\\n" > /payload/subdir/probe.txt'
+            docker run --rm -v "ci-$vol:/payload:ro" -v "$RUNNER_TEMP:/backup" alpine:3.20 tar czf "/backup/$vol.tar.gz" -C /payload .
+            test -s "$RUNNER_TEMP/$vol.tar.gz"
+            docker run --rm -v "ci-restored-$vol:/payload" -v "$RUNNER_TEMP:/backup:ro" alpine:3.20 tar xzf "/backup/$vol.tar.gz" -C /payload
+            actual=$(docker run --rm -v "ci-restored-$vol:/payload:ro" alpine:3.20 cat /payload/subdir/probe.txt)
+            test "$actual" = "botmode-restore-proof"
+            echo "BOTMODE_FILES_RESTORE_${vol}=PASS"
+          done
+          echo 'BOTMODE_PERSISTENT_FILES_RESTORE=PASS'
+          echo 'SCOPE=4 named API file volumes only; excludes Meilisearch index, MongoDB, PostgreSQL and business-level migration'
+      - name: Remove CI-only volumes and archives
+        if: always()
+        run: |
+          for vol in botmode-uploads botmode-images botmode-librechat-data botmode-skills; do
+            docker volume rm -f "ci-$vol" "ci-restored-$vol" >/dev/null 2>&1 || true
+            rm -f "$RUNNER_TEMP/$vol.tar.gz"
+          done

@@ -758,12 +758,15 @@ describe('userGroup methods', () => {
 
     it('deduplicates concurrent cache builds for the same member key', async () => {
       const user = await createTestUser({ idOnTheSource: 'dedup-ext-1' });
+      const store = new Map<string, unknown>();
       const cache = {
-        get: jest.fn(async () => {
+        get: jest.fn(async (key: string) => {
           await new Promise((resolve) => setTimeout(resolve, 10));
-          return undefined;
+          return store.get(key);
         }),
-        set: jest.fn(async () => undefined),
+        set: jest.fn(async (key: string, value: unknown) => {
+          store.set(key, value);
+        }),
       };
       const cachedMethods = createUserGroupMethods(mongoose, { getCache: jest.fn(() => cache) });
       const params = {

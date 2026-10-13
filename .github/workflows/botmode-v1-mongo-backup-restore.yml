@@ -1,0 +1,60 @@
+name: BOTMODE V1 Disposable Mongo Backup Restore
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-mongo-backup-restore.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restore-mongo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - name: Start two isolated disposable MongoDB instances
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull mongo:8.0.20
+          docker run -d --name botmode-ci-mongo-source mongo:8.0.20 --bind_ip_all
+          docker run -d --name botmode-ci-mongo-restored mongo:8.0.20 --bind_ip_all
+          for name in botmode-ci-mongo-source botmode-ci-mongo-restored; do
+            ready=0
+            for n in $(seq 1 90); do
+              if docker exec "$name" mongosh --quiet --eval 'db.adminCommand({ping:1}).ok' | grep -q 1; then ready=1; break; fi
+              sleep 2
+            done
+            test "$ready" = 1
+          done
+          echo 'BOTMODE_DISPOSABLE_MONGO_INSTANCES=READY'
+      - name: Backup and restore actual BSON into separate instance
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec botmode-ci-mongo-source mongosh --quiet LibreChat --eval 'db.rollback_ci.insertOne({_id:"backup-restore-probe",payload:"immutable-proof"});'
+          test "$(docker exec botmode-ci-mongo-source mongosh --quiet LibreChat --eval 'print(db.rollback_ci.countDocuments({_id:"backup-restore-probe",payload:"immutable-proof"}))' | tail -1 | tr -d '\r')" = 1
+          docker exec botmode-ci-mongo-source mongodump --db LibreChat --archive --gzip > "$RUNNER_TEMP/botmode-ci-mongo.archive.gz"
+          test -s "$RUNNER_TEMP/botmode-ci-mongo.archive.gz"
+          docker exec -i botmode-ci-mongo-restored mongorestore --archive --gzip < "$RUNNER_TEMP/botmode-ci-mongo.archive.gz"
+          test "$(docker exec botmode-ci-mongo-restored mongosh --quiet LibreChat --eval 'print(db.rollback_ci.countDocuments({_id:"backup-restore-probe",payload:"immutable-proof"}))' | tail -1 | tr -d '\r')" = 1
+          docker restart botmode-ci-mongo-restored >/dev/null
+          ready=0
+          for n in $(seq 1 90); do
+            if docker exec botmode-ci-mongo-restored mongosh --quiet --eval 'db.adminCommand({ping:1}).ok' | grep -q 1; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          test "$(docker exec botmode-ci-mongo-restored mongosh --quiet LibreChat --eval 'print(db.rollback_ci.countDocuments({_id:"backup-restore-probe",payload:"immutable-proof"}))' | tail -1 | tr -d '\r')" = 1
+          echo 'BOTMODE_MONGO_BACKUP_RESTORE_CROSS_INSTANCE=PASS'
+          echo 'BOTMODE_MONGO_RESTORE_RESTART_PERSISTENCE=PASS'
+          echo 'SCOPE=Mongo BSON restore in disposable isolated instances, NOT full-stack schema migration or PostgreSQL/Meilisearch/files restore'
+      - name: Clean up disposable database and backup
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f -v botmode-ci-mongo-source botmode-ci-mongo-restored >/dev/null 2>&1 || true
+          rm -f "$RUNNER_TEMP/botmode-ci-mongo.archive.gz"
