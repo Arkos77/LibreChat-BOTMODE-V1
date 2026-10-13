@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import yauzl from 'yauzl';
-import type { TextItem } from 'pdfjs-dist/types/src/display/api';
 import { megabyte, excelMimeTypes, FileSources } from 'librechat-data-provider';
+import type { TextItem } from 'pdfjs-dist/types/src/display/api';
 import type { MistralOCRUploadResult } from '~/types';
 import { convertDocxWithWorker } from './docxWorker';
 import { assertSafeZipSize } from './zipSafety';
