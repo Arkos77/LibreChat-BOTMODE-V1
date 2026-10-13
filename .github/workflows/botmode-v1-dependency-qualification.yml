@@ -1,0 +1,50 @@
+name: BOTMODE V1 Dependency Risk Qualification Batch
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-dependency-qualification.yml'
+      - 'package-lock.json'
+      - 'client/package.json'
+      - 'api/package.json'
+      - 'packages/api/package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  risk-map-and-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Resolve actual versions and dependency owners
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'JS'
+          const lock=require('./package-lock.json').packages;
+          for (const name of ['katex','rehype-katex','remark-math','mermaid','mammoth','argparse','sprintf-js','micromark-extension-llm-math']) {
+            const found=Object.entries(lock).filter(([p])=>p.endsWith('/'+name))
+              .map(([path,v])=>({path,version:v.version}));
+            console.log('BOTMODE_DEP_RESOLVED='+JSON.stringify({name,found}));
+          }
+          const katex=Object.entries(lock).filter(([p])=>p.endsWith('/katex'));
+          if (!katex.length) { console.error('BOTMODE_KATEX_RESOLUTION=UNKNOWN'); process.exit(1); }
+          console.log('BOTMODE_KATEX_BELOW_FIXED_0_18_2='+katex.filter(([,v])=>/^0\\.18\\.[01]$/.test(v.version)).length);
+          JS
+          echo 'BOTMODE_MAMMOTH_CODE_REFERENCES_BEGIN'
+          git grep -n -E "from ['\\\"]mammoth|require\\(['\\\"]mammoth|mammoth\\." -- api packages client || true
+          echo 'BOTMODE_MAMMOTH_CODE_REFERENCES_END'
+      - name: Reproducible dependency install
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Existing math regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm exec --workspace @librechat/api -- jest --runInBand --coverage=false --runTestsByPath src/utils/math.spec.ts src/utils/math.integration.spec.ts
