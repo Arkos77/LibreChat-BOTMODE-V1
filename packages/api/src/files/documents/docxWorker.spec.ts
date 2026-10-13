@@ -43,7 +43,6 @@ describe('bounded Mammoth worker isolation', () => {
     expect(await convertDocxWithWorker(fixture, 'text')).toContain('sample DOCX');
   });
 
-
   test('records parent RSS during two large concurrent DOCX conversions', async () => {
     const zip = new JSZip();
     const paragraph = '<w:p><w:r><w:t>Bounded concurrent worker probe.</w:t></w:r></w:p>';
