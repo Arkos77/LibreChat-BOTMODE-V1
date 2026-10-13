@@ -72,7 +72,20 @@ jobs:
             if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then break; fi
             sleep 2
           done
-          curl -fsS http://127.0.0.1:3090/api/config >/dev/null
+          if ! curl -fsS http://127.0.0.1:3090/api/config >/dev/null; then
+            echo 'BOTMODE_RESTORED_FULL_API_HTTP=FAIL'
+            "${compose[@]}" ps --format json | python3 -c 'import json,sys; [print("CI_SERVICE_STATE="+str({k:v for k,v in json.loads(line).items() if k in ("Service","State","Health","ExitCode")})) for line in sys.stdin if line.strip()]' || true
+            if "${compose[@]}" exec -T mongodb sh -ec 'mongosh --quiet -u botmode_admin -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "db.adminCommand({ping:1}).ok" | grep -q 1'; then
+              echo 'BOTMODE_RESTORED_MONGO_AUTH_PING=PASS'
+            else
+              echo 'BOTMODE_RESTORED_MONGO_AUTH_PING=FAIL'
+            fi
+            for svc in mongodb api; do
+              echo "CI_LOG_SERVICE=$svc"
+              "${compose[@]}" logs --tail 60 --no-color "$svc" 2>&1 | sed -E 's#(mongodb://[^:[:space:]]+:)[^@[:space:]]+@#\\1[REDACTED]@#g; s/((password|secret|token|api[_-]?key)[=: ]+)[^[:space:]]+/\\1[REDACTED]/Ig' || true
+            done
+            exit 1
+          fi
           result=$("${compose[@]}" exec -T mongodb sh -ec 'mongosh --quiet -u botmode_admin -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''print(db.restore_epoch_ci.countDocuments({_id:"api-restore-boot",state:"committed"}))'\''' | tail -1 | tr -d '\r')
           test "$result" = 1
           echo 'BOTMODE_RESTORED_FULL_API_HTTP=PASS'
