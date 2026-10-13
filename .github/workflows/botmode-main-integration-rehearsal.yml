@@ -1,5 +1,9 @@
 name: BOTMODE Main Integration Rehearsal
 on:
+  pull_request:
+    paths:
+      - scripts/botmode-main-integration-dryrun.sh
+      - .github/workflows/botmode-main-integration-rehearsal.yml
   push:
     branches:
       - botmode-v1-main-integration-dryrun-20261013
