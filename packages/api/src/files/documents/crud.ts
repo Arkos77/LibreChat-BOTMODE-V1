@@ -4,6 +4,7 @@ import { megabyte, excelMimeTypes, FileSources } from 'librechat-data-provider';
 import type { TextItem } from 'pdfjs-dist/types/src/display/api';
 import type { MistralOCRUploadResult } from '~/types';
 import { assertSafeZipSize } from './zipSafety';
+import { convertDocxWithWorker } from './docxWorker';
 
 type FileParseFn = (file: Express.Multer.File) => Promise<string>;
 
@@ -100,9 +101,7 @@ async function wordDocToText(file: Express.Multer.File): Promise<string> {
    * sub-1MB compressed bomb (~200x ratio) would block the event loop
    * and spike RSS to ~1GB. See SEC review on PR #12934. */
   await assertSafeZipSize(buffer, { name: file.originalname ?? 'docx' });
-  const { extractRawText } = await import('mammoth');
-  const rawText = await extractRawText({ buffer });
-  return rawText.value;
+  return convertDocxWithWorker(buffer, 'text');
 }
 
 /** Parses Excel sheet, returns text inside. */
