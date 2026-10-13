@@ -33,3 +33,15 @@ Source : [GitHub Actions 38325630542](https://github.com/Arkos77/LibreChat-BOTMO
 3. Poursuivre la revue des paramètres de rendu d'entrées non fiables, de la sanitation HTML et des essais de pollution du prototype. Aucun avis n'est accepté uniquement sur la base de sa gravité Low.
 
 **Décision :** inventaire et références vérifiés, remédiation/acceptation des risques encore **EN COURS**. Le GO5 stable reste NO-GO.
+
+## État actualisé sur la candidate qualifiée `3666942` — 13 octobre 2026
+
+Audit effectif : [GitHub Actions 38400336978](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/38400336978), `npm audit --omit=dev`, **0 critical / 0 high / 3 moderate / 0 low**. Le tableau historique ci-dessus est antérieur à la mise à jour KaTeX ; **ne plus annoncer 6 Low résiduels**. KaTeX `0.18.10` et ses overrides ont passé les validations npm/CI.
+
+Advisories résiduels **modérés** :
+
+- `mammoth` direct (range annoncé `>=0.3.30`) ; suggestion npm de retour à `0.3.29` avec rupture SemVer, **non appliquée**.
+- `argparse` transitif (`1.0.0 - 1.0.10`), correction suggérée via rétrogradation de `mammoth`, **non appliquée**.
+- `sprintf-js` transitif, [GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c) ; scénario de déni de service par précision de format non bornée si l'entrée attaquante atteint le formatteur. Exploitabilité effective du chemin applicatif non démontrée.
+
+**Décision sécurité : risques modérés non acceptés à ce stade.** Avant GO5, établir la route exacte des traitements DOCX, les limites de taille/temps, l'exposition aux entrées non fiables, les atténuations et le responsable de l'acceptation éventuelle. Un audit PASS au seuil High/Critical ne suffit pas à approuver ces trois avis. Ne pas recourir à `npm audit fix --force`.
