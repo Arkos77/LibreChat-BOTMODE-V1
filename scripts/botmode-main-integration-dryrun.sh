@@ -56,13 +56,14 @@ if [[ "${BOTMODE_DRYRUN_VALIDATE:-0}" == "1" ]]; then
     echo "BOTMODE_DRYRUN_EXTENDED_VALIDATION=START"
     npm run build:packages
     echo "BOTMODE_DRYRUN_AUTH_REGRESSION=START"
-    npm run test:api -- --runInBand --coverage=false --runTestsByPath server/middleware/optionalShareFileAuth.spec.js
+    timeout 180s npm exec --workspace=api -- jest --ci --runInBand --coverage=false --forceExit --runTestsByPath server/middleware/optionalShareFileAuth.spec.js
     echo "BOTMODE_DRYRUN_AUTH_REGRESSION=PASS"
     for shard in 1 2 3 4; do
       echo "BOTMODE_DRYRUN_BACKEND_SHARD=$shard/4"
-      npm exec --workspace=api -- jest --ci --runInBand --coverage=false --shard="$shard/4"
+      timeout 600s npm exec --workspace=api -- jest --ci --runInBand --coverage=false --forceExit --shard="$shard/4" --testPathIgnorePatterns=optionalShareFileAuth.spec.js
+      echo "BOTMODE_DRYRUN_BACKEND_SHARD_PASS=$shard/4"
     done
-    npm run test:client -- --runInBand --coverage=false
+    timeout 900s npm run test:client -- --runInBand --coverage=false --forceExit
     echo "BOTMODE_DRYRUN_EXTENDED_VALIDATION=PASS"
   fi
 fi
