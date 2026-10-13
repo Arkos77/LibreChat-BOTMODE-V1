@@ -1,0 +1,61 @@
+name: BOTMODE Mammoth Security Upgrade Trial
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-mammoth-security-trial.yml'
+      - 'packages/api/src/files/documents/**'
+      - 'packages/api/package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mammoth-patched-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install repository lockfile
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Trial patched Mammoth without modifying tracked manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund mammoth@1.12.3
+          node <<'JS'
+          const fs = require('node:fs');
+          const pkg = require('mammoth/package.json');
+          if (pkg.version !== '1.12.3') throw new Error('MAMMOTH_PATCHED_CANDIDATE_MISSING: ' + pkg.version);
+          console.log('BOTMODE_MAMMOTH_TRIAL_VERSION=' + pkg.version);
+          JS
+          test -z "$(git status --porcelain -- package.json packages/api/package.json package-lock.json)"
+      - name: Build internal data provider used by DOCX tests
+        run: npm run build:data-provider
+      - name: DOCX regression with patched candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm exec --workspace=packages/api -- jest --runInBand --coverage=false --runTestsByPath src/files/documents/docxWorker.spec.ts src/files/documents/html.spec.ts src/files/documents/crud.spec.ts src/files/documents/zipSafety.spec.ts
+      - name: Audit trial dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm audit --omit=dev --json > "$RUNNER_TEMP/mammoth-trial-audit.json" || status=$?
+          node - "$RUNNER_TEMP/mammoth-trial-audit.json" <<'JS'
+          const report = require(process.argv[2]);
+          const counts = report.metadata && report.metadata.vulnerabilities;
+          if (!counts) throw new Error('AUDIT_RESULT_UNAVAILABLE');
+          console.log('BOTMODE_MAMMOTH_TRIAL_AUDIT=' + JSON.stringify(counts));
+          console.log('BOTMODE_MAMMOTH_TRIAL_FINDINGS=' + JSON.stringify(
+            Object.fromEntries(Object.entries(report.vulnerabilities || {})
+              .filter(([name]) => ['mammoth','argparse','sprintf-js'].includes(name))
+              .map(([name,v]) => [name,{severity:v.severity,range:v.range,fixAvailable:v.fixAvailable}]))));
+          JS
+          test "${status:-0}" -le 1

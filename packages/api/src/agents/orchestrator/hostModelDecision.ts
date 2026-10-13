@@ -58,6 +58,7 @@ type NormalizedBinding = {
   model: string;
   options: Record<string, unknown>;
   contextWindow?: number;
+  signals?: import('./routing').AuthorizedResourceSignals;
 };
 
 function hasBindingInput(input: Input): input is BindingInput {

@@ -1,0 +1,133 @@
+name: BOTMODE Docker Security Distribution
+on:
+  pull_request:
+    paths:
+      - 'docker-compose.botmode.yml'
+      - 'docker-compose.botmode-lite.yml'
+      - 'scripts/botmode/bootstrap.sh'
+      - 'scripts/botmode/verify-runtime-distribution.sh'
+      - 'docs/BOT_MODE_INSTALL.md'
+      - '.github/workflows/botmode-docker-security.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compose-auth:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [full, lite]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare synthetic local-only credentials
+        run: |
+          cp .env.example .env
+          chmod 600 .env
+          echo 'BOTMODE_MONGO_PASSWORD=ci-only-mongo-credential' >> .env
+          echo 'POSTGRES_PASSWORD=ci-only-postgres-credential' >> .env
+          echo 'MEILI_MASTER_KEY=ci-only-meili-key' >> .env
+      - name: Validate both Compose profiles
+        run: ./scripts/botmode/verify-runtime-distribution.sh
+      - name: Retry temporary Docker Hub pull failures
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          set -euo pipefail
+          images=(mongo:8.0.20)
+          if [ "$PROFILE" = lite ]; then
+            images=(mongo:4.4.29)
+          else
+            images+=(pgvector/pgvector:0.8.0-pg15-trixie)
+          fi
+          for image in "${images[@]}"; do
+            pulled=0
+            for attempt in 1 2 3 4; do
+              if docker pull "$image"; then pulled=1; break; fi
+              if [ "$attempt" -lt 4 ]; then sleep $((attempt * 15)); fi
+            done
+            if [ "$pulled" -ne 1 ]; then
+              echo "::error::Unable to download required CI image $image"
+              exit 1
+            fi
+          done
+      - name: Start only databases
+        env:
+          BOTMODE_MONGO_PASSWORD: ci-only-mongo-credential
+          POSTGRES_PASSWORD: ci-only-postgres-credential
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          set -euo pipefail
+          args=(-f docker-compose.botmode.yml)
+          if [ "$PROFILE" = lite ]; then args+=(-f docker-compose.botmode-lite.yml); fi
+          docker compose "${args[@]}" up -d mongodb
+          if [ "$PROFILE" = full ]; then docker compose "${args[@]}" up -d vectordb; fi
+      - name: Verify login with correct and incorrect credentials
+        env:
+          BOTMODE_MONGO_PASSWORD: ci-only-mongo-credential
+          POSTGRES_PASSWORD: ci-only-postgres-credential
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          set -euo pipefail
+          args=(-f docker-compose.botmode.yml)
+          if [ "$PROFILE" = lite ]; then args+=(-f docker-compose.botmode-lite.yml); fi
+          ok=0
+          for attempt in $(seq 1 60); do
+            if docker compose "${args[@]}" exec -T mongodb sh -ec '
+              if command -v mongosh >/dev/null; then cli=mongosh; else cli=mongo; fi
+              "$cli" --quiet --authenticationDatabase admin -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --eval "db.adminCommand({ping:1}).ok" | grep -q 1
+            ' >/dev/null 2>&1; then ok=1; break; fi
+            sleep 2
+          done
+          test "$ok" = 1
+          if docker compose "${args[@]}" exec -T mongodb sh -ec '
+            if command -v mongosh >/dev/null; then cli=mongosh; else cli=mongo; fi
+            "$cli" --quiet --authenticationDatabase admin -u "$MONGO_INITDB_ROOT_USERNAME" -p wrong-password --eval "db.adminCommand({ping:1})"
+          ' >/dev/null 2>&1; then echo "Mongo incorrect password was accepted" >&2; exit 1; fi
+          if [ "$PROFILE" = full ]; then
+            ok=0
+            for attempt in $(seq 1 40); do
+              if docker compose "${args[@]}" exec -T vectordb sh -ec 'PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$(hostname -i)" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT 1" | grep -q 1' >/dev/null 2>&1; then ok=1; break; fi
+              sleep 2
+            done
+            test "$ok" = 1
+            if docker compose "${args[@]}" exec -T -e PGPASSWORD=wrong-password vectordb sh -ec 'psql -h "$(hostname -i)" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT 1"' >/dev/null 2>&1; then
+              echo "Postgres incorrect password was accepted" >&2; exit 1
+            fi
+          fi
+      - name: Verify authenticated restart with preserved volumes
+        env:
+          BOTMODE_MONGO_PASSWORD: ci-only-mongo-credential
+          POSTGRES_PASSWORD: ci-only-postgres-credential
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          set -euo pipefail
+          args=(-f docker-compose.botmode.yml)
+          if [ "$PROFILE" = lite ]; then args+=(-f docker-compose.botmode-lite.yml); fi
+          docker compose "${args[@]}" restart mongodb
+          if [ "$PROFILE" = full ]; then docker compose "${args[@]}" restart vectordb; fi
+          ready=0
+          for attempt in $(seq 1 60); do
+            if docker compose "${args[@]}" exec -T mongodb sh -ec '
+              if command -v mongosh >/dev/null; then cli=mongosh; else cli=mongo; fi
+              "$cli" --quiet --authenticationDatabase admin -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --eval "db.adminCommand({ping:1}).ok" | grep -q 1
+            ' >/dev/null 2>&1; then
+              if [ "$PROFILE" = lite ] || docker compose "${args[@]}" exec -T vectordb sh -ec '
+                PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$(hostname -i)" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT 1" | grep -q 1
+              ' >/dev/null 2>&1; then ready=1; break; fi
+            fi
+            sleep 2
+          done
+          test "$ready" = 1
+      - name: Diagnose failures
+        if: failure()
+        env:
+          BOTMODE_MONGO_PASSWORD: ci-only-mongo-credential
+          POSTGRES_PASSWORD: ci-only-postgres-credential
+        run: docker compose -f docker-compose.botmode.yml ps
+      - name: Remove test containers and volumes
+        if: always()
+        env:
+          BOTMODE_MONGO_PASSWORD: ci-only-mongo-credential
+          POSTGRES_PASSWORD: ci-only-postgres-credential
+        run: docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down -v --remove-orphans

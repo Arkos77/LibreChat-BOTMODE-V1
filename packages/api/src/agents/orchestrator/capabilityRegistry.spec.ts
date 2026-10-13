@@ -40,8 +40,8 @@ describe('CapabilityResourceRegistry', () => {
     expect(stored).toEqual(original);
     expect(stored).not.toBe(original);
 
-    stored!.capabilities.push('mutated');
-    stored!.signals!.qualityScore = 0;
+    (stored!.capabilities as string[]).push('mutated');
+    (stored!.signals! as { qualityScore?: number }).qualityScore = 0;
     expect(registry.get(original.id)).toEqual(original);
   });
 

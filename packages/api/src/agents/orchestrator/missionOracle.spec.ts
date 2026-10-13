@@ -2,38 +2,39 @@ import { AIMessage } from '@librechat/agents/langchain/messages';
 import type { MissionPlan } from './types';
 import * as missionOracle from './missionOracle';
 
-const terminalPlan = (candidateExpected = true): MissionPlan =>
-  ({
-    planId: 'plan-terminal-oracle',
-    planVersion: 1,
-    mission: {
-      missionId: 'mission-terminal-oracle',
-      taskId: 'root',
-      objective: 'Validate terminal output',
+const terminalPlan = (candidateExpected = true): MissionPlan => ({
+  planId: 'plan-terminal-oracle',
+  planVersion: 1,
+  mission: {
+    missionId: 'mission-terminal-oracle',
+    taskId: 'root',
+    objective: 'Validate terminal output',
+    requiredCapabilities: ['basic'],
+    constraints: [],
+  },
+  strategy: 'DIRECT',
+  tasks: [
+    {
+      key: 'terminal',
+      objective: 'Produce terminal output',
       requiredCapabilities: ['basic'],
+      dependsOn: [],
+      taskId: 'task-terminal',
+      parentTaskId: 'root',
+      nodeId: 'node-terminal',
+      agentId: 'worker',
       constraints: [],
+      validation: [
+        {
+          criteria: [{ id: 'ok', field: 'ok', expected: candidateExpected }],
+        },
+      ],
+      canRunInParallel: false,
     },
-    strategy: 'DIRECT',
-    tasks: [
-      {
-        key: 'terminal',
-        objective: 'Produce terminal output',
-        requiredCapabilities: ['basic'],
-        dependsOn: [],
-        taskId: 'task-terminal',
-        parentTaskId: 'root',
-        nodeId: 'node-terminal',
-        agentId: 'worker',
-        constraints: [],
-        validation: [
-          {
-            criteria: [{ id: 'ok', field: 'ok', expected: candidateExpected }],
-          },
-        ],
-        canRunInParallel: false,
-      },
-    ],
-  }) as MissionPlan;
+  ],
+  specialists: [],
+  reasons: [{ code: 'WORKER_CAPABLE' }],
+});
 
 describe('normalizeMissionOracleState', () => {
   it('returns a detached clone for valid durable state', () => {
@@ -102,7 +103,7 @@ describe('Mission Oracle result replay semantics', () => {
   });
 
   it('detects a real verdict change despite a new timestamp', () => {
-    const left = {
+    const left: missionOracle.MissionOracleTaskResult = {
       taskId: 'task-1',
       nodeId: 'node-1',
       verdicts: [

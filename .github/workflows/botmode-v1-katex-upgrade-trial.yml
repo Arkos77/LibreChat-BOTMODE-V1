@@ -1,0 +1,87 @@
+name: BOTMODE V1 KaTeX Upgrade Trial
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-katex-upgrade-trial.yml'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Temporarily update only KaTeX overrides and resolve lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'JS'
+          const fs=require('node:fs');
+          const file='package.json';
+          const data=JSON.parse(fs.readFileSync(file,'utf8'));
+          const baseline=data.overrides?.katex;
+          const rehype=data.overrides?.['rehype-katex']?.katex;
+          if(baseline==='^0.16.21' && rehype==='^0.16.21') {
+            data.overrides.katex='^0.18.2';
+            data.overrides['rehype-katex'].katex='^0.18.2';
+            if(data.overrides?.['remark-math']?.['micromark-extension-math']?.katex==='^0.16.21') data.overrides['remark-math']['micromark-extension-math'].katex='^0.18.2';
+            fs.writeFileSync(file,JSON.stringify(data,null,2)+String.fromCharCode(10));
+            console.log('BOTMODE_KATEX_TRIAL_BASELINE=LEGACY');
+          } else if(baseline==='^0.18.2' && rehype==='^0.18.2' && data.overrides?.['remark-math']?.['micromark-extension-math']?.katex==='^0.18.2') {
+            console.log('BOTMODE_KATEX_TRIAL_BASELINE=PATCHED');
+          } else throw Error('Unexpected mixed KaTeX override baseline');
+          JS
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm update katex --package-lock-only --ignore-scripts --no-audit --no-fund
+          node <<'JS'
+          const lock=require('./package-lock.json').packages;
+          const packages=Object.entries(lock).filter(([p])=>p==='node_modules/katex'||p.endsWith('/node_modules/katex')).map(([path,v])=>({path,version:v.version}));
+          console.log('BOTMODE_KATEX_TRIAL_PACKAGES='+JSON.stringify(packages));
+          const fixed = v => { const parts=v.split('.').map(Number); return parts.length===3 && parts.every(Number.isInteger) && (parts[0]>0 || parts[1]>18 || (parts[1]===18 && parts[2]>=2)); };
+          if(!packages.length || packages.some(p=>!fixed(p.version))) throw Error('Patched KaTeX not resolved exclusively');
+          console.log('BOTMODE_KATEX_TRIAL_LOCKFILE=PASS');
+          JS
+      - name: Clean install with trial lockfile
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Test KaTeX via actual frontend workspace resolution
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'JS'
+          const {createRequire}=require('node:module');
+          const req=createRequire(process.cwd()+'/client/package.json');
+          const k=req('katex');
+          const html=k.renderToString('x^2 + \\\\frac{1}{2}',{trust:false,throwOnError:true});
+          if(!html.includes('katex')) throw Error('KaTeX render failed');
+          console.log('BOTMODE_KATEX_TRIAL_FRONTEND_RESOLVE=PASS');
+          JS
+          npm exec --workspace @librechat/api -- jest --runInBand --coverage=false --runTestsByPath src/utils/math.spec.ts src/utils/math.integration.spec.ts
+      - name: Build candidate patch for review
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff -- package.json package-lock.json > "$RUNNER_TEMP/botmode-katex-upgrade.patch"
+          if test -s "$RUNNER_TEMP/botmode-katex-upgrade.patch"; then echo "BOTMODE_KATEX_PATCH_KIND=CHANGE"; else echo "BOTMODE_KATEX_PATCH_KIND=ALREADY_PATCHED"; fi
+          git diff --check
+          echo 'BOTMODE_KATEX_PATCH_READY=PASS'
+      - name: Upload reviewed candidate patch artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: botmode-katex-lockfile-patch
+          path: ${{ runner.temp }}/botmode-katex-upgrade.patch
+          if-no-files-found: error
+          retention-days: 7
+      - name: Report patch, do not publish or push
+        run: |
+          git diff --stat -- package.json package-lock.json
+          echo 'BOTMODE_KATEX_TRIAL_NO_REPO_COMMIT=PASS'

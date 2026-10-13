@@ -180,7 +180,10 @@ export function promoteTransientMissionOracleEvidence(
   }
   const taskId = requiredText(observation.taskId ?? '', 'taskId');
   const criterionId = requiredText(observation.criterionId ?? '', 'criterionId');
-  if (!Object.prototype.hasOwnProperty.call(observation, 'value')) {
+  if (
+    !Object.prototype.hasOwnProperty.call(observation, 'value') ||
+    observation.value === undefined
+  ) {
     throw new Error('Mission Oracle evidence requires explicit value');
   }
 
@@ -245,7 +248,7 @@ export function normalizeMissionOracleState(value: unknown): MissionOracleState 
     }
   }
 
-  return structuredClone(value) as MissionOracleState;
+  return structuredClone(value) as unknown as MissionOracleState;
 }
 
 function requiredText(value: string, name: string): string {

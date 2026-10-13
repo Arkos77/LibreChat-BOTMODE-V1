@@ -172,7 +172,10 @@ export interface GenerationJob {
 }
 
 export type ContentPart = Agents.ContentPart;
-export type ResumeState = Agents.ResumeState;
+export type ResumeState = Agents.ResumeState & {
+  orchestratorPlan?: MissionPlan;
+  isRegenerate?: boolean;
+};
 
 export type ChunkHandler = (event: ServerSentEvent) => void;
 export type DoneHandler = (event: ServerSentEvent) => void;

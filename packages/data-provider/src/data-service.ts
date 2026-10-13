@@ -608,6 +608,18 @@ export const deleteAction = async ({
  * Agents
  */
 
+export const initializeBotModeAgents = (selection: {
+  provider: string;
+  model: string;
+}): Promise<{
+  created: Array<{ name: string; id: string; grantedTools: string[] }>;
+  existing: string[];
+  capabilitiesComplete: boolean;
+  missingCapabilities: Array<{ name: string; deniedTools: string[] }>;
+}> => {
+  return request.post(endpoints.agents({ path: 'botmode/setup' }), selection);
+};
+
 export const createAgent = ({ ...data }: a.AgentCreateParams): Promise<a.Agent> => {
   return request.post(endpoints.agents({}), data);
 };
