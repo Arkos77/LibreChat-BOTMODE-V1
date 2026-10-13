@@ -1,8 +1,8 @@
 import yauzl from 'yauzl';
 import { excelMimeTypes, megabyte } from 'librechat-data-provider';
 import { tryLibreOfficePreview } from './libreoffice';
-import { assertSafeZipSize } from './zipSafety';
 import { convertDocxWithWorker } from './docxWorker';
+import { assertSafeZipSize } from './zipSafety';
 
 /**
  * Maximum decompressed size we'll accept from a single PPTX entry. Mirrors the
