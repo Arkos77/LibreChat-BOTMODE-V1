@@ -40,6 +40,17 @@ fi
 git -c user.name='BOTMODE rehearsal' -c user.email='botmode-rehearsal@localhost' commit --no-edit -m 'test(botmode): ephemeral main integration rehearsal' >/dev/null
 echo "BOTMODE_DRYRUN_MERGE_COMMIT=$(git rev-parse HEAD)"
 echo "BOTMODE_DRYRUN=MERGE_TREE_CREATED_EPHEMERALLY"
+if [[ "${BOTMODE_DRYRUN_PERSIST_BRANCH:-0}" == "1" ]]; then
+  target="botmode-v1-integrated-candidate-20261014"
+  echo "BOTMODE_INTEGRATION_CANDIDATE_TARGET=$target"
+  if git ls-remote --exit-code --heads origin "$target" >/dev/null 2>&1; then
+    echo "ERROR: candidate branch already exists; will not overwrite" >&2
+    exit 3
+  fi
+  git push origin "HEAD:refs/heads/$target"
+  echo "BOTMODE_INTEGRATION_CANDIDATE_SHA=$(git rev-parse HEAD)"
+  echo "BOTMODE_INTEGRATION_CANDIDATE_PERSISTED=PASS"
+fi
 if [[ "${BOTMODE_DRYRUN_DOCKER:-0}" == "1" ]]; then
   echo "BOTMODE_DRYRUN_DOCKER=START"
   docker buildx build --platform "linux/${BOTMODE_DRYRUN_ARCH:-amd64}" --target node --load --tag botmode-integrated-dryrun:local -f Dockerfile .
