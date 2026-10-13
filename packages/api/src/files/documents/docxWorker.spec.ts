@@ -32,7 +32,8 @@ describe('bounded Mammoth worker isolation', () => {
         callback: (...args: unknown[]) => void,
         delay?: number,
         ...args: unknown[]
-      ) => originalSetTimeout(callback, delay === 20_000 ? 1 : delay, ...args)) as typeof setTimeout);
+      ) =>
+        originalSetTimeout(callback, delay === 20_000 ? 1 : delay, ...args)) as typeof setTimeout);
     try {
       await expect(convertDocxWithWorker(fixture, 'text')).rejects.toBeInstanceOf(DocxTimeoutError);
     } finally {
