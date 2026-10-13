@@ -76,13 +76,16 @@ export async function convertDocxWithWorker(
         resourceLimits: { maxOldGenerationSizeMb: 256, maxYoungGenerationSizeMb: 64 },
       });
       let settled = false;
-      const finish = (error?: Error, value?: string) => {
+      const finish = (error?: Error, value?: string, alreadyExited = false) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        void worker.terminate().catch(() => undefined);
-        if (error) reject(error);
-        else resolve(value ?? '');
+        // Keep the concurrency slot occupied until termination completes.
+        const stopped = alreadyExited ? Promise.resolve() : worker.terminate().then(() => undefined);
+        void stopped.then(
+          () => (error ? reject(error) : resolve(value ?? '')),
+          (terminationError: Error) => reject(terminationError),
+        );
       };
       const timer = setTimeout(() => finish(new DocxTimeoutError()), TIMEOUT_MS);
       worker.once('message', (message: { ok: boolean; value?: string; error?: string }) => {
@@ -91,7 +94,7 @@ export async function convertDocxWithWorker(
       });
       worker.once('error', (error) => finish(error));
       worker.once('exit', (code) => {
-        if (!settled) finish(new Error(`DOCX worker exited unexpectedly: ${code}`));
+        if (!settled) finish(new Error(`DOCX worker exited unexpectedly: ${code}`), undefined, true);
       });
     });
   } finally {
