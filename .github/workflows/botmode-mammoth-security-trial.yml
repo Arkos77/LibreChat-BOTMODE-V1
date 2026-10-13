@@ -40,7 +40,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm exec --workspace=packages/api -- jest --runInBand --coverage=false --testPathPatterns='src/files/documents/(docxWorker|html|crud|zipSafety)\\.spec\\.ts$'
+          npm exec --workspace=packages/api -- jest --runInBand --coverage=false --runTestsByPath src/files/documents/docxWorker.spec.ts src/files/documents/html.spec.ts src/files/documents/crud.spec.ts src/files/documents/zipSafety.spec.ts
       - name: Audit trial dependency graph
         shell: bash
         run: |
