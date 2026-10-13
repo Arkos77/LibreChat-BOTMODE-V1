@@ -46,5 +46,12 @@ if [[ "${BOTMODE_DRYRUN_VALIDATE:-0}" == "1" ]]; then
   npm run build:data-provider
   npm exec --workspace=packages/api -- jest --runInBand --coverage=false --runTestsByPath src/files/documents/docxWorker.spec.ts src/files/documents/html.spec.ts src/files/documents/crud.spec.ts src/files/documents/zipSafety.spec.ts
   echo "BOTMODE_DRYRUN_INTEGRATED_VALIDATION=PASS"
+  if [[ "${BOTMODE_DRYRUN_EXTENDED:-0}" == "1" ]]; then
+    echo "BOTMODE_DRYRUN_EXTENDED_VALIDATION=START"
+    npm run build:packages
+    npm run test:api -- --runInBand --coverage=false
+    npm run test:client -- --runInBand --coverage=false
+    echo "BOTMODE_DRYRUN_EXTENDED_VALIDATION=PASS"
+  fi
 fi
 echo "NOTES: Worktree and commit are destroyed on exit. This is not a CI pass."
