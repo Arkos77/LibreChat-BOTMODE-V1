@@ -30,11 +30,11 @@ jobs:
           node <<'JS'
           const lock=require('./package-lock.json').packages;
           for (const name of ['katex','rehype-katex','remark-math','mermaid','mammoth','argparse','sprintf-js','micromark-extension-llm-math']) {
-            const found=Object.entries(lock).filter(([p])=>p.endsWith('/'+name))
+            const found=Object.entries(lock).filter(([p])=>p.split('/').pop()===name && !p.includes('/@types/'))
               .map(([path,v])=>({path,version:v.version}));
             console.log('BOTMODE_DEP_RESOLVED='+JSON.stringify({name,found}));
           }
-          const katex=Object.entries(lock).filter(([p])=>p.endsWith('/katex'));
+          const katex=Object.entries(lock).filter(([p])=>p.split('/').pop()==='katex' && !p.includes('/@types/'));
           if (!katex.length) { console.error('BOTMODE_KATEX_RESOLUTION=UNKNOWN'); process.exit(1); }
           const below=katex.filter(([,v])=>{ const m=/^(\\d+)\\.(\\d+)\\.(\\d+)/.exec(v.version||''); return !m || Number(m[1])===0 && (Number(m[2])<18 || (Number(m[2])===18 && Number(m[3])<2)); });
           console.log('BOTMODE_KATEX_BELOW_FIXED_0_18_2='+below.length);
