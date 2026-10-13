@@ -45,3 +45,9 @@ Advisories résiduels **modérés** :
 - `sprintf-js` transitif, [GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c) ; scénario de déni de service par précision de format non bornée si l'entrée attaquante atteint le formatteur. Exploitabilité effective du chemin applicatif non démontrée.
 
 **Décision sécurité : risques modérés non acceptés à ce stade.** Avant GO5, établir la route exacte des traitements DOCX, les limites de taille/temps, l'exposition aux entrées non fiables, les atténuations et le responsable de l'acceptation éventuelle. Un audit PASS au seuil High/Critical ne suffit pas à approuver ces trois avis. Ne pas recourir à `npm audit fix --force`.
+
+## Traçage de la surface de traitement des documents
+
+Le dépôt déclare `mammoth: ^1.11.0` dans `packages/api/package.json` (dépendance directe). La route serveur `api/server/services/Files/process.js` appelle `@librechat/api.parseText` pour les fichiers textuels autorisés. Lorsqu'une extraction de texte RAG configurée échoue, les lignes 931–959 prévoient explicitement un **fallback vers un parseur de documents intégré**, y compris pour DOCX/PDF. Le chemin est donc potentiellement exposé aux documents non fiables, sous réserve du filtrage de types et des garde-fous en amont.
+
+**Limite du constat :** l'appel précis du parseur à `mammoth` et les bornes effectives (taille, durée, ressources, rejet des archives) restent à démontrer par traçage de l'implémentation de `parseText` et du fallback `resolveDocumentText`. Il serait incorrect d'affirmer que les trois avis modérés sont inexploitables ou, inversement, directement exploitables, sur ces seules observations. **Décision de risque toujours ouverte.**
