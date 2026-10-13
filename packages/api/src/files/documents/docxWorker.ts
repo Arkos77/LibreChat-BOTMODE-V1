@@ -81,7 +81,9 @@ export async function convertDocxWithWorker(
         settled = true;
         clearTimeout(timer);
         // Keep the concurrency slot occupied until termination completes.
-        const stopped = alreadyExited ? Promise.resolve() : worker.terminate().then(() => undefined);
+        const stopped = alreadyExited
+          ? Promise.resolve()
+          : worker.terminate().then(() => undefined);
         void stopped.then(
           () => (error ? reject(error) : resolve(value ?? '')),
           (terminationError: Error) => reject(terminationError),
@@ -94,7 +96,9 @@ export async function convertDocxWithWorker(
       });
       worker.once('error', (error) => finish(error));
       worker.once('exit', (code) => {
-        if (!settled) finish(new Error(`DOCX worker exited unexpectedly: ${code}`), undefined, true);
+        if (!settled) {
+          finish(new Error(`DOCX worker exited unexpectedly: ${code}`), undefined, true);
+        }
       });
     });
   } finally {
