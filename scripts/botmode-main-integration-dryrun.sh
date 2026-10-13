@@ -46,6 +46,14 @@ if [[ "${BOTMODE_DRYRUN_DOCKER:-0}" == "1" ]]; then
   docker run --rm --entrypoint node botmode-integrated-dryrun:local -e "const { createRequire } = require('node:module'); const fs = require('node:fs'); const requireApp = createRequire('/app/package.json'); const { chromium } = requireApp('playwright'); if (!fs.existsSync(chromium.executablePath())) throw Error('CHROMIUM_MISSING'); console.log('BOTMODE_DRYRUN_DOCKER_PLAYWRIGHT=PASS')"
   echo "BOTMODE_DRYRUN_DOCKER=PASS"
 fi
+if [[ "${BOTMODE_DRYRUN_E2E:-0}" == "1" ]]; then
+  echo "BOTMODE_DRYRUN_INTEGRATED_E2E=START"
+  npm ci --no-audit --no-fund
+  npm run build:packages
+  npm run build:client
+  CI=true E2E_CHROMIUM_CHANNEL=chrome E2E_STREAM_STORE=memory timeout 1500s npx playwright test --config=e2e/playwright.config.mock.ts e2e/specs/mock/tool-approvals.spec.ts e2e/specs/mock/soft-default.spec.ts --workers=1 --retries=0
+  echo "BOTMODE_DRYRUN_INTEGRATED_E2E=PASS"
+fi
 if [[ "${BOTMODE_DRYRUN_VALIDATE:-0}" == "1" ]]; then
   echo "BOTMODE_DRYRUN_INTEGRATED_VALIDATION=START"
   npm ci --ignore-scripts --no-audit --no-fund
