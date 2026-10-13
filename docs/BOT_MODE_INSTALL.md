@@ -158,7 +158,7 @@ Preuves sur la candidate `d4e82dd` :
 
 Le dernier gate a validé un spécialiste réellement exécuté, les verdicts Oracle durables `VERIFIED` et `HUMAN_REVIEW`, la publication acceptée et la rétention de la candidate rejetée. Il ne qualifie pas individuellement tous les spécialistes ni tous les systèmes d'exploitation.
 
-Pour préparer une restauration sans perte de données, consulter [le plan de rollback](BOT_MODE_ROLLBACK.md). Cette procédure n'est pas encore qualifiée par un test réel de restauration.
+Pour préparer une restauration sans perte de données, consulter [le plan de rollback](BOT_MODE_ROLLBACK.md). Les restaurations ont été testées sur des environnements CI jetables (MongoDB, PostgreSQL/pgvector, Meilisearch, fichiers et API avec Worker/ACL), mais **le retour arrière après migration de schéma et la reprise complète d'une mission depuis une sauvegarde physique ne sont pas qualifiés**. Ne jamais considérer ces essais comme une autorisation de modifier les volumes d'une installation existante.
 
 ## État de publication
 
