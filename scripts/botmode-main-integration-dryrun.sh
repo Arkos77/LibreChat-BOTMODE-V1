@@ -40,4 +40,11 @@ fi
 git -c user.name='BOTMODE rehearsal' -c user.email='botmode-rehearsal@localhost' commit --no-edit -m 'test(botmode): ephemeral main integration rehearsal' >/dev/null
 echo "BOTMODE_DRYRUN_MERGE_COMMIT=$(git rev-parse HEAD)"
 echo "BOTMODE_DRYRUN=MERGE_TREE_CREATED_EPHEMERALLY"
+if [[ "${BOTMODE_DRYRUN_VALIDATE:-0}" == "1" ]]; then
+  echo "BOTMODE_DRYRUN_INTEGRATED_VALIDATION=START"
+  npm ci --ignore-scripts --no-audit --no-fund
+  npm run build:data-provider
+  npm exec --workspace=packages/api -- jest --runInBand --coverage=false --runTestsByPath src/files/documents/docxWorker.spec.ts src/files/documents/html.spec.ts src/files/documents/crud.spec.ts src/files/documents/zipSafety.spec.ts
+  echo "BOTMODE_DRYRUN_INTEGRATED_VALIDATION=PASS"
+fi
 echo "NOTES: Worktree and commit are destroyed on exit. This is not a CI pass."
