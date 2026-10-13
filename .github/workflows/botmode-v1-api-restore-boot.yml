@@ -34,14 +34,14 @@ jobs:
             sleep 2
           done
           curl -fsS http://127.0.0.1:3090/api/config >/dev/null
-          compose=(sudo docker compose -f docker-compose.botmode.yml)
+          compose=(sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,MEILI_MASTER_KEY,BOTMODE_HOST_PORT,ADMIN_PANEL_PORT docker compose -f docker-compose.botmode.yml)
           "${compose[@]}" exec -T mongodb sh -ec 'mongosh --quiet -u botmode_admin -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''db.restore_epoch_ci.insertOne({_id:"api-restore-boot",state:"committed"})'\'''
           echo 'BOTMODE_RESTORE_BOOT_SOURCE_API=PASS'
       - name: Capture stopped Mongo and restore into a distinct disposable volume
         shell: bash
         run: |
           set -euo pipefail
-          compose=(sudo docker compose -f docker-compose.botmode.yml)
+          compose=(sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,MEILI_MASTER_KEY,BOTMODE_HOST_PORT,ADMIN_PANEL_PORT docker compose -f docker-compose.botmode.yml)
           "${compose[@]}" stop api mongodb
           source_id=$("${compose[@]}" ps -aq mongodb)
           test -n "$source_id"
@@ -66,7 +66,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          compose=(sudo docker compose -f docker-compose.botmode.yml -f "$RUNNER_TEMP/restore-compose.yml")
+          compose=(sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,MEILI_MASTER_KEY,BOTMODE_HOST_PORT,ADMIN_PANEL_PORT docker compose -f docker-compose.botmode.yml -f "$RUNNER_TEMP/restore-compose.yml")
           "${compose[@]}" up -d --force-recreate mongodb api
           for n in $(seq 1 90); do
             if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then break; fi
