@@ -45,6 +45,22 @@ jobs:
           echo 'BOTMODE_MAMMOTH_CODE_REFERENCES_END'
       - name: Reproducible dependency install
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Test patched KaTeX in disposable runner only
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --ignore-scripts --no-audit --no-fund --package-lock=false katex@0.18.2
+          node <<'JS'
+          const katex=require('katex');
+          const version=require('katex/package.json').version;
+          if(version!=='0.18.2') throw new Error('Expected 0.18.2 but got '+version);
+          for(const expr of ['x^2+y^2=z^2','\\\\frac{1}{2}','\\\\sqrt{x}']) {
+            const html=katex.renderToString(expr,{throwOnError:true,trust:false});
+            if(!html.includes('katex')) throw new Error('KaTeX render missing');
+          }
+          console.log('BOTMODE_KATEX_DISPOSABLE_RENDER=PASS');
+          JS
+          git diff --exit-code -- package-lock.json package.json client/package.json
       - name: Existing math regressions
         shell: bash
         run: |
