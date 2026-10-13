@@ -29,3 +29,11 @@ Le backfill historique `chart-1.9.1` appartient au pipeline legacy Helm, pas à 
 GO1, GO2 installation/stop-start et GO3 contrôles ciblés sont **VALIDÉS dans leur périmètre**. GO4 Helm historique reste **BLOQUÉ dans le périmètre Helm**, avec proposition de séparation Docker encore soumise à décision. GO5 release stable = **NO-GO**.
 
 Les PR #14, #18 et #20 restent DRAFT non fusionnées. Aucun tag stable ni image `:latest` ne doit être publié.
+
+## Mise à jour du checkpoint de qualification — 13 octobre 2026
+
+Le SHA exact de la PR #20 est `03ae2fbcce305fdd27a5f682687812135c0211a6` : **15/15 workflows GitHub Actions SUCCESS**, notamment [Playwright E2E](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/38330642509), [Backend](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/38330642458), [Frontend](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/38330642499), [Full](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/38330642478), [Lite](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/38330642519), [KaTeX trial](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/38330642490), secrets et npm production. Le correctif KaTeX `0.18.10` est intégré au lockfile et validé sur cette candidate. La régression `userGroup` n'a pas été reproduite dans les trois passages isolés (106 tests chacun), et le backend complet est vert sur ce SHA.
+
+**Distinction des décisions** : **GO pour la qualification technique automatisée de cette candidate**, mais **NO-GO pour une distribution stable à ce stade**. L'ensemble des contrôles CI verts ne prouve pas une migration/restore réelle, les OS non-Linux ou l'absence de tous risques résiduels.
+
+**Décisions encore ouvertes avant GO5 :** 1) qualification sauvegarde → restauration de données après migration (ou périmètre expressément limité aux nouvelles installations et sans promesse de migration), 2) acceptation documentée des risques npm modérés/faibles et revue des images conteneur, 3) choix explicite du périmètre Docker Compose/GHCR sans Helm historique, 4) compatibilité OS annoncée limitée à ce qui a été effectivement testé, 5) approbation humaine du SHA et de la release. **Ne pas fusionner les PR #14/#18/#20 ni publier de tag stable ou :latest sans ce GO final.**
