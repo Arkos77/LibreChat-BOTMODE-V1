@@ -49,7 +49,10 @@ if [[ "${BOTMODE_DRYRUN_VALIDATE:-0}" == "1" ]]; then
   if [[ "${BOTMODE_DRYRUN_EXTENDED:-0}" == "1" ]]; then
     echo "BOTMODE_DRYRUN_EXTENDED_VALIDATION=START"
     npm run build:packages
-    npm run test:api -- --runInBand --coverage=false
+    for shard in 1 2 3 4; do
+      echo "BOTMODE_DRYRUN_BACKEND_SHARD=$shard/4"
+      npm run test:api -- --runInBand --coverage=false --shard="$shard/4"
+    done
     npm run test:client -- --runInBand --coverage=false
     echo "BOTMODE_DRYRUN_EXTENDED_VALIDATION=PASS"
   fi
