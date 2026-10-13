@@ -1,0 +1,129 @@
+name: BOTMODE DOCX Bounded Resource Probe
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-docx-resource-probe.yml'
+      - 'packages/api/src/files/documents/**'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docx-resource-probe:
+    name: Bounded DOCX text and HTML sample
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Reproducible dependency installation
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Exercise both Mammoth entry points under per-process limits
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This benign fixture measures observed resource use; it is NOT proof
+          # that adversarial DOCX inputs cannot exhaust production API resources.
+          /usr/bin/time -v timeout --signal=TERM --kill-after=5s 60s \
+            node --max-old-space-size=256 <<'JS'
+          const fs = require('node:fs');
+          const { performance } = require('node:perf_hooks');
+          const mammoth = require('mammoth');
+          (async () => {
+            const buffer = fs.readFileSync('packages/api/src/files/documents/sample.docx');
+            for (const [name, method] of [
+              ['text', (b) => mammoth.extractRawText({buffer: b})],
+              ['html', (b) => mammoth.convertToHtml({buffer: b})],
+            ]) {
+              const start = performance.now();
+              const result = await method(buffer);
+              if (typeof result.value !== 'string' || !result.value.trim()) {
+                throw new Error('DOCX_' + name + '_OUTPUT_EMPTY');
+              }
+              console.log('BOTMODE_DOCX_RESOURCE=' + JSON.stringify({
+                mode: name,
+                sourceBytes: buffer.length,
+                outputBytes: Buffer.byteLength(result.value),
+                elapsedMs: Math.round(performance.now() - start),
+                peakRssBytes: process.resourceUsage().maxRSS * 1024,
+              }));
+            }
+            // A larger but harmless, synthetically generated DOCX is measured
+            // in this same bounded process. No adversarial payloads or uploads.
+            const JSZip = require('jszip');
+            const zip = new JSZip();
+            zip.file('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+            zip.file('_rels/.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="r1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+            const para = '<w:p><w:r><w:t>Ordinary synthetic paragraph for bounded resource qualification.</w:t></w:r></w:p>';
+            zip.file('word/document.xml', '<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' + para.repeat(12000) + '</w:body></w:document>');
+            const large = await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'});
+            for (const [name, method] of [
+              ['text', (b) => mammoth.extractRawText({buffer: b})],
+              ['html', (b) => mammoth.convertToHtml({buffer: b})],
+            ]) {
+              const start = performance.now();
+              const result = await method(large);
+              if (!result.value.includes('Ordinary synthetic paragraph')) throw Error('DOCX_LARGE_' + name + '_FAILED');
+              console.log('BOTMODE_DOCX_LARGE_RESOURCE=' + JSON.stringify({
+                mode: name, sourceBytes: large.length,
+                outputBytes: Buffer.byteLength(result.value),
+                elapsedMs: Math.round(performance.now() - start),
+                peakRssBytes: process.resourceUsage().maxRSS * 1024,
+              }));
+            }
+            console.log('BOTMODE_DOCX_BENIGN_PROBE=PASS');
+          })().catch((error) => { console.error(error); process.exitCode = 1; });
+          JS
+
+      - name: Qualify four concurrent synthetic DOCX conversions
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Each conversion runs with its own heap and wall-clock bounds.
+          # This does not establish isolation inside the live API process.
+          workdir="$(mktemp -d)"
+          trap 'rm -rf "$workdir"' EXIT
+          pids=()
+          for i in 1 2 3 4; do
+            (
+              /usr/bin/time -f 'peak_rss_kb=%M elapsed_s=%e' -o "$workdir/time.$i" \
+                timeout --signal=TERM --kill-after=5s 45s \
+                node --max-old-space-size=256 -e '
+                  const fs = require("node:fs");
+                  const mammoth = require("mammoth");
+                  const JSZip = require("jszip");
+                  (async () => {
+                    const zip = new JSZip();
+                    const text = "Ordinary synthetic paragraph for bounded resource qualification.";
+                    const paragraph = "<w:p><w:r><w:t>" + text + "</w:t></w:r></w:p>";
+                    zip.file("[Content_Types].xml", `<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`);
+                    zip.file("_rels/.rels", `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="r1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
+                    zip.file("word/document.xml", `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${paragraph.repeat(12000)}</w:body></w:document>`);
+                    const buffer = await zip.generateAsync({type:"nodebuffer",compression:"DEFLATE"});
+                    for (const mode of ["text","html"]) {
+                      const result = await (mode === "html" ? mammoth.convertToHtml({buffer}) : mammoth.extractRawText({buffer}));
+                      if (!result.value.includes(text) || result.value.length < 100000) throw Error("DOCX_CONCURRENT_OUTPUT_INVALID_" + mode);
+                    }
+                    console.log("DOCX_CONCURRENT_CHILD_PASS");
+                  })().catch(e=>{ console.error(e); process.exitCode=1; });
+                ' > "$workdir/output.$i" 2>&1
+            ) &
+            pids+=("$!")
+          done
+          failed=0
+          for i in 1 2 3 4; do
+            wait "${pids[$((i-1))]}" || failed=1
+            cat "$workdir/time.$i" "$workdir/output.$i"
+            grep -q 'DOCX_CONCURRENT_CHILD_PASS' "$workdir/output.$i" || failed=1
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "BOTMODE_DOCX_CONCURRENT_PROBE=FAIL"
+            exit 1
+          fi
+          echo "BOTMODE_DOCX_CONCURRENT_PROBE=PASS"

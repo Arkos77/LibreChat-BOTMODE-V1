@@ -3715,14 +3715,16 @@ export function buildSubagentThreadTaskConfig(
       : {
           supportsThreadContinuation: baseStore.supportsThreadContinuation,
           supportsDurableCheckpointRecovery: baseStore.supportsDurableCheckpointRecovery,
-          start: (request) =>
-            store.start({
+          start: (request) => {
+            const hostRequest: HostSubagentTaskStartRequest = {
               ...request,
               ...(options.completionWakeups === true
                 ? { completionDelivery: SUBAGENT_COMPLETION_DELIVERY }
                 : {}),
               verifyDurableRecovery: options.verifyDurableRecovery,
-            }),
+            };
+            return store.start(hostRequest);
+          },
           get: (scopeId, taskId) => baseStore.get(scopeId, taskId),
           list: (scopeId) => baseStore.list(scopeId),
           claim: (scopeId, taskId) => baseStore.claim(scopeId, taskId),

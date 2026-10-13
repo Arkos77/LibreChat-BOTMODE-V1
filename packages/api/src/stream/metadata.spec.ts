@@ -1,3 +1,4 @@
+import type { MissionPlan } from '../agents/orchestrator/types';
 import { sanitizeJobMetadata } from './metadata';
 
 describe('sanitizeJobMetadata', () => {
@@ -8,7 +9,7 @@ describe('sanitizeJobMetadata', () => {
   });
 
   it('preserves an exact durable orchestrator plan without sharing caller mutation', () => {
-    const orchestratorPlan = {
+    const orchestratorPlan: MissionPlan = {
       planId: 'mission-p6:v1',
       planVersion: 1,
       mission: {

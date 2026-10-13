@@ -28,6 +28,41 @@ describe('observeResolvedModelCatalog', () => {
     );
   });
 
+  it('preserves the catalog when discovery unexpectedly returns no models', async () => {
+    const registry = new CapabilityResourceRegistry();
+    await observeResolvedModelCatalog(registry, {
+      sourcePrefix: 'test-watch',
+      loadModels: () => ({ openrouter: ['model-a'] }),
+    });
+    await expect(
+      observeResolvedModelCatalog(registry, {
+        sourcePrefix: 'test-watch',
+        loadModels: () => ({ openrouter: [] }),
+      }),
+    ).rejects.toThrow('Model discovery returned no usable models');
+    expect(registry.get('model:openrouter:model-a')).toMatchObject({
+      enabled: true,
+      modelId: 'model-a',
+    });
+  });
+
+  it('does not retire another provider omitted from partial discovery', async () => {
+    const registry = new CapabilityResourceRegistry();
+    await observeResolvedModelCatalog(registry, {
+      sourcePrefix: 'test-watch',
+      loadModels: () => ({ openrouter: ['model-a'], anthropic: ['model-b'] }),
+    });
+    const result = await observeResolvedModelCatalog(registry, {
+      sourcePrefix: 'test-watch',
+      loadModels: () => ({ openrouter: ['model-a'] }),
+    });
+    expect(result.retiredResourceIds).toEqual([]);
+    expect(registry.get('model:anthropic:model-b')).toMatchObject({
+      enabled: true,
+      modelId: 'model-b',
+    });
+  });
+
   it('detects a model that disappeared from the resolved catalog', async () => {
     const registry = new CapabilityResourceRegistry();
     await observeResolvedModelCatalog(registry, {

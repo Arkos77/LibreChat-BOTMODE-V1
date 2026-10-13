@@ -9528,10 +9528,16 @@ describe('AgentClient - P11 model invocation evidence', () => {
     ];
     client.collectedThoughtSignatures = {};
     const metadata = client.buildResponseMetadata();
-    expect(metadata.hostModelUsage).toEqual({
+    expect(metadata.hostModelUsage).toMatchObject({
       traceId: 'trace-1',
       decisionId: 'decision-1',
       selectedModel: 'b:free',
+      selectedProvider: 'openrouter',
+      resolvedModel: 'b:free',
+      resolvedProvider: 'openrouter',
+      fallbackUsed: false,
+      authorizedBindings: [{ model: 'b:free', provider: 'openrouter' }],
+      total: { inputTokens: 14, outputTokens: 3 },
       modelCalls: [
         { usageModel: 'b:free', provider: 'openrouter', inputTokens: 14, outputTokens: 3 },
       ],

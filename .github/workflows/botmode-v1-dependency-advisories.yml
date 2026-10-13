@@ -1,0 +1,50 @@
+name: BOTMODE V1 Production Dependency Advisory Audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-dependency-advisories.yml'
+      - 'package-lock.json'
+      - 'package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  npm-production-advisories:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Report production npm advisories without changing lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm audit --omit=dev --json > "$RUNNER_TEMP/botmode-npm-audit.json" || audit_status=$?
+          node - "$RUNNER_TEMP/botmode-npm-audit.json" <<'JS'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (report.error || !report.metadata?.vulnerabilities) {
+            console.error('BOTMODE_NPM_AUDIT_STATUS=UNAVAILABLE');
+            process.exit(2);
+          }
+          const counts = report.metadata.vulnerabilities;
+          console.log('BOTMODE_NPM_PROD_COUNTS=' + JSON.stringify(counts));
+          const findings = Object.entries(report.vulnerabilities || {});
+          for (const [name, v] of findings) {
+            if (!['critical','high','moderate','low'].includes(v.severity)) continue;
+            console.log('BOTMODE_NPM_ADVISORY=' + JSON.stringify({name, severity:v.severity, isDirect:v.isDirect, range:v.range, fixAvailable:v.fixAvailable, advisories:(v.via||[]).filter(x=>typeof x==='object').map(x=>({url:x.url,title:x.title}))}));
+          }
+          const severe = (counts.critical || 0) + (counts.high || 0);
+          console.log('BOTMODE_NPM_PROD_HIGH_CRITICAL=' + severe);
+          if (severe > 0) {
+            console.error('BOTMODE_NPM_PRODUCTION_RELEASE_GATE=FAIL');
+            process.exit(1);
+          }
+          console.log('BOTMODE_NPM_PRODUCTION_RELEASE_GATE=PASS');
+          JS
+          test -z "${audit_status:-}" || test "${audit_status}" -eq 1

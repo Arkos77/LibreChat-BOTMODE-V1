@@ -10,11 +10,19 @@ services:
     environment:
       - MEILI_HOST=
       - RAG_API_URL=
+      - SCHEDULES_SINGLE_PROCESS=true
+
+  mongodb:
+    image: mongo:4.4.29
+
   admin-panel:
     profiles: ["full"]
+
   meilisearch:
     profiles: ["full"]
+
   vectordb:
     profiles: ["full"]
+
   rag_api:
     profiles: ["full"]

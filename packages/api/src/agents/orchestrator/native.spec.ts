@@ -294,8 +294,8 @@ describe('native plan compilation', () => {
     const checked = plan.tasks[0];
     const persistMissionOracleResult = jest.fn(async () => {});
     const compile = compileNativePlan as unknown as (
-      plan: typeof plan,
-      bindings: typeof bindings,
+      plan: Parameters<typeof compileNativePlan>[0],
+      bindings: Parameters<typeof compileNativePlan>[1],
       compileOptions?: undefined,
       resolveMissionOracleEvidence?: undefined,
       persistMissionOracleResult?: (result: unknown) => Promise<void>,
