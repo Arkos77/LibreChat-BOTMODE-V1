@@ -64,6 +64,21 @@ jobs:
           console.log('BOTMODE_KATEX_TRIAL_FRONTEND_RESOLVE=PASS');
           JS
           npm exec --workspace @librechat/api -- jest --runInBand --coverage=false --runTestsByPath src/utils/math.spec.ts src/utils/math.integration.spec.ts
+      - name: Build candidate patch for review
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff -- package.json package-lock.json > "$RUNNER_TEMP/botmode-katex-upgrade.patch"
+          test -s "$RUNNER_TEMP/botmode-katex-upgrade.patch"
+          git diff --check
+          echo 'BOTMODE_KATEX_PATCH_READY=PASS'
+      - name: Upload reviewed candidate patch artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: botmode-katex-lockfile-patch
+          path: ${{ runner.temp }}/botmode-katex-upgrade.patch
+          if-no-files-found: error
+          retention-days: 7
       - name: Report patch, do not publish or push
         run: |
           git diff --stat -- package.json package-lock.json
