@@ -23,6 +23,10 @@ jobs:
           cache: npm
       - name: Install exact locked dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build required workspace packages
+        run: |
+          npm run build --workspace librechat-data-provider
+          npm run build --workspace @librechat/data-schemas
       - name: Repeat targeted cache regression three times
         shell: bash
         run: |
