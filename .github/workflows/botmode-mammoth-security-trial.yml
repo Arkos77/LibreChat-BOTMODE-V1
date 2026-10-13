@@ -36,6 +36,8 @@ jobs:
           console.log('BOTMODE_MAMMOTH_TRIAL_VERSION=' + pkg.version);
           JS
           test -z "$(git status --porcelain -- package.json packages/api/package.json package-lock.json)"
+      - name: Build internal data provider used by DOCX tests
+        run: npm run build:data-provider
       - name: DOCX regression with patched candidate
         shell: bash
         run: |
