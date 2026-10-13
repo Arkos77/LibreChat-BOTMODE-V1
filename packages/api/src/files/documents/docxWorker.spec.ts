@@ -1,6 +1,6 @@
+import JSZip from 'jszip';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import JSZip from 'jszip';
 import { convertDocxWithWorker, DocxBusyError, DocxTimeoutError } from './docxWorker';
 
 const fixture = fs.readFileSync(path.join(__dirname, 'sample.docx'));
