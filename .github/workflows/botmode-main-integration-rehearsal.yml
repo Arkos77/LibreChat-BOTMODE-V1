@@ -24,4 +24,6 @@ jobs:
           persist-credentials: false
       - name: Rehearse Git merge with temporary worktree
         shell: bash
+        env:
+          BOTMODE_DRYRUN_VALIDATE: '1'
         run: bash scripts/botmode-main-integration-dryrun.sh
