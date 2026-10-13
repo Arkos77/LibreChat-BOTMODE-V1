@@ -40,6 +40,7 @@ jobs:
           fs.writeFileSync(file,JSON.stringify(data,null,2)+String.fromCharCode(10));
           JS
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm update katex --package-lock-only --ignore-scripts --no-audit --no-fund
           node <<'JS'
           const lock=require('./package-lock.json').packages;
           const packages=Object.entries(lock).filter(([p])=>p==='node_modules/katex'||p.endsWith('/node_modules/katex')).map(([path,v])=>({path,version:v.version}));
