@@ -49,3 +49,11 @@ Ne pas utiliser `./update.sh` comme rollback : il est conçu pour avancer une br
 ## Critères de sortie
 
 Le rollback ne pourra être marqué VALIDÉ qu'après un test CI ou manuel reproductible sur une stack jetable, avec preuve d'une écriture avant mise à niveau, de sa préservation ou de sa restauration attendue, de l'authentification, des six agents, des ACL et d'une mission après redémarrage. **Aucune restauration destructrice ne doit être automatisée sans une autorisation explicite.**
+
+## Qualification réelle des restaurations en CI — 13 octobre 2026
+
+Le titre historique « test de restauration réel non effectué » au début de ce document ne décrit plus l'état actuel. Des essais **réels en environnements CI jetables** ont depuis validé : MongoDB, PostgreSQL/pgvector, Meilisearch, quatre volumes fichiers, une capture cohérente coordonnée des quatre ensembles, redémarrage de l'API Full sur un volume Mongo restauré, conservation d'un Worker provisionné par le script réel et de son ACL propriétaire. Référence : [API Restore Boot](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/38397054603) et [CI complète 21/21](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/38400337087).
+
+**Ce qui n'a PAS été validé par ces essais** : une migration de schéma suivie d'un retour à une ancienne version, un redémarrage d'une mission complète à partir d'un checkpoint issu d'une **restauration physique**, ni l'authentification utilisateur finale au sein de ce dernier workflow. Le checkpoint HITL survit à une reconnexion Mongo dans des tests d'intégration dédiés, ce qui n'est pas équivalent. Les six agents synthétiques du test de restauration ne doivent pas être présentés comme six spécialistes natifs réellement provisionnés ; l'onboarding natif est qualifié séparément dans [la documentation d'installation](BOT_MODE_INSTALL.md).
+
+**Périmètre de rollback proposé pour V1** : reprise vers la **même version et un schéma compatible** à partir d'un ensemble sauvegardé hors ligne et d'un digest d'image verrouillé. Le rollback transversion de données déjà migrées reste explicitement **NO-GO**. Ne jamais convertir ces tests jetables en autorisation de modifier des volumes utilisateur sans validation humaine et sauvegarde indépendante.
