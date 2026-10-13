@@ -26,14 +26,15 @@ describe('bounded Mammoth worker isolation', () => {
 
   test('terminates a timed-out worker and restores processing capacity', async () => {
     const originalSetTimeout = global.setTimeout;
-    const timeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation(
-      ((callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) =>
-        originalSetTimeout(callback, delay === 20_000 ? 1 : delay, ...args)) as typeof setTimeout,
-    );
+    const timeoutSpy = jest
+      .spyOn(global, 'setTimeout')
+      .mockImplementation(((
+        callback: (...args: unknown[]) => void,
+        delay?: number,
+        ...args: unknown[]
+      ) => originalSetTimeout(callback, delay === 20_000 ? 1 : delay, ...args)) as typeof setTimeout);
     try {
-      await expect(convertDocxWithWorker(fixture, 'text')).rejects.toBeInstanceOf(
-        DocxTimeoutError,
-      );
+      await expect(convertDocxWithWorker(fixture, 'text')).rejects.toBeInstanceOf(DocxTimeoutError);
     } finally {
       timeoutSpy.mockRestore();
     }
