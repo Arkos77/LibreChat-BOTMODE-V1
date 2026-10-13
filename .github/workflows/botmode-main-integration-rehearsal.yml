@@ -16,7 +16,7 @@ permissions:
 jobs:
   dryrun:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
         with:
@@ -26,4 +26,5 @@ jobs:
         shell: bash
         env:
           BOTMODE_DRYRUN_VALIDATE: '1'
+          BOTMODE_DRYRUN_EXTENDED: '1'
         run: bash scripts/botmode-main-integration-dryrun.sh
