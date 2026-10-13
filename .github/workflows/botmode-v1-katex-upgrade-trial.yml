@@ -29,15 +29,17 @@ jobs:
           const fs=require('node:fs');
           const file='package.json';
           const data=JSON.parse(fs.readFileSync(file,'utf8'));
-          if(data.overrides?.katex!=='^0.16.21' || data.overrides?.['rehype-katex']?.katex!=='^0.16.21') {
-            throw Error('Unexpected KaTeX override baseline');
-          }
-          data.overrides.katex='^0.18.2';
-          data.overrides['rehype-katex'].katex='^0.18.2';
-          if(data.overrides?.['remark-math']?.['micromark-extension-math']?.katex==='^0.16.21') {
-            data.overrides['remark-math']['micromark-extension-math'].katex='^0.18.2';
-          }
-          fs.writeFileSync(file,JSON.stringify(data,null,2)+String.fromCharCode(10));
+          const baseline=data.overrides?.katex;
+          const rehype=data.overrides?.['rehype-katex']?.katex;
+          if(baseline==='^0.16.21' && rehype==='^0.16.21') {
+            data.overrides.katex='^0.18.2';
+            data.overrides['rehype-katex'].katex='^0.18.2';
+            if(data.overrides?.['remark-math']?.['micromark-extension-math']?.katex==='^0.16.21') data.overrides['remark-math']['micromark-extension-math'].katex='^0.18.2';
+            fs.writeFileSync(file,JSON.stringify(data,null,2)+String.fromCharCode(10));
+            console.log('BOTMODE_KATEX_TRIAL_BASELINE=LEGACY');
+          } else if(baseline==='^0.18.2' && rehype==='^0.18.2' && data.overrides?.['remark-math']?.['micromark-extension-math']?.katex==='^0.18.2') {
+            console.log('BOTMODE_KATEX_TRIAL_BASELINE=PATCHED');
+          } else throw Error('Unexpected mixed KaTeX override baseline');
           JS
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
           npm update katex --package-lock-only --ignore-scripts --no-audit --no-fund
@@ -69,7 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           git diff -- package.json package-lock.json > "$RUNNER_TEMP/botmode-katex-upgrade.patch"
-          test -s "$RUNNER_TEMP/botmode-katex-upgrade.patch"
+          if test -s "$RUNNER_TEMP/botmode-katex-upgrade.patch"; then echo "BOTMODE_KATEX_PATCH_KIND=CHANGE"; else echo "BOTMODE_KATEX_PATCH_KIND=ALREADY_PATCHED"; fi
           git diff --check
           echo 'BOTMODE_KATEX_PATCH_READY=PASS'
       - name: Upload reviewed candidate patch artifact
