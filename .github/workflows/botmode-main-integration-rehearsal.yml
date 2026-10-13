@@ -72,3 +72,22 @@ jobs:
         env:
           BOTMODE_DRYRUN_E2E: '1'
         run: bash scripts/botmode-main-integration-dryrun.sh
+
+  persist-integrated-candidate:
+    name: Persist isolated integrated candidate (no release)
+    needs: [dryrun]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/botmode-v1-main-integration-dryrun-20261013'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Create immutable initial candidate ref
+        shell: bash
+        env:
+          BOTMODE_DRYRUN_PERSIST_BRANCH: '1'
+        run: bash scripts/botmode-main-integration-dryrun.sh
