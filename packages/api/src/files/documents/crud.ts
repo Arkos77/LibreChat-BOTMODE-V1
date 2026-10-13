@@ -1,10 +1,10 @@
 import * as fs from 'fs';
 import yauzl from 'yauzl';
-import { megabyte, excelMimeTypes, FileSources } from 'librechat-data-provider';
 import type { TextItem } from 'pdfjs-dist/types/src/display/api';
+import { megabyte, excelMimeTypes, FileSources } from 'librechat-data-provider';
 import type { MistralOCRUploadResult } from '~/types';
-import { assertSafeZipSize } from './zipSafety';
 import { convertDocxWithWorker } from './docxWorker';
+import { assertSafeZipSize } from './zipSafety';
 
 type FileParseFn = (file: Express.Multer.File) => Promise<string>;
 
