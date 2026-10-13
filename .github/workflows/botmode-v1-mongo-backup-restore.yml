@@ -19,13 +19,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker pull mongo:4.4.29
-          docker run -d --name botmode-ci-mongo-source mongo:4.4.29 --bind_ip_all
-          docker run -d --name botmode-ci-mongo-restored mongo:4.4.29 --bind_ip_all
+          docker pull mongo:8.0.20
+          docker run -d --name botmode-ci-mongo-source mongo:8.0.20 --bind_ip_all
+          docker run -d --name botmode-ci-mongo-restored mongo:8.0.20 --bind_ip_all
           for name in botmode-ci-mongo-source botmode-ci-mongo-restored; do
             ready=0
             for n in $(seq 1 90); do
-              if docker exec "$name" mongo --quiet --eval 'db.adminCommand({ping:1}).ok' | grep -q 1; then ready=1; break; fi
+              if docker exec "$name" mongosh --quiet --eval 'db.adminCommand({ping:1}).ok' | grep -q 1; then ready=1; break; fi
               sleep 2
             done
             test "$ready" = 1
@@ -35,20 +35,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker exec botmode-ci-mongo-source mongo --quiet LibreChat --eval 'db.rollback_ci.insertOne({_id:"backup-restore-probe",payload:"immutable-proof"});'
-          test "$(docker exec botmode-ci-mongo-source mongo --quiet LibreChat --eval 'print(db.rollback_ci.countDocuments({_id:"backup-restore-probe",payload:"immutable-proof"}))' | tail -1 | tr -d '\r')" = 1
+          docker exec botmode-ci-mongo-source mongosh --quiet LibreChat --eval 'db.rollback_ci.insertOne({_id:"backup-restore-probe",payload:"immutable-proof"});'
+          test "$(docker exec botmode-ci-mongo-source mongosh --quiet LibreChat --eval 'print(db.rollback_ci.countDocuments({_id:"backup-restore-probe",payload:"immutable-proof"}))' | tail -1 | tr -d '\r')" = 1
           docker exec botmode-ci-mongo-source mongodump --db LibreChat --archive --gzip > "$RUNNER_TEMP/botmode-ci-mongo.archive.gz"
           test -s "$RUNNER_TEMP/botmode-ci-mongo.archive.gz"
           docker exec -i botmode-ci-mongo-restored mongorestore --archive --gzip < "$RUNNER_TEMP/botmode-ci-mongo.archive.gz"
-          test "$(docker exec botmode-ci-mongo-restored mongo --quiet LibreChat --eval 'print(db.rollback_ci.countDocuments({_id:"backup-restore-probe",payload:"immutable-proof"}))' | tail -1 | tr -d '\r')" = 1
+          test "$(docker exec botmode-ci-mongo-restored mongosh --quiet LibreChat --eval 'print(db.rollback_ci.countDocuments({_id:"backup-restore-probe",payload:"immutable-proof"}))' | tail -1 | tr -d '\r')" = 1
           docker restart botmode-ci-mongo-restored >/dev/null
           ready=0
           for n in $(seq 1 90); do
-            if docker exec botmode-ci-mongo-restored mongo --quiet --eval 'db.adminCommand({ping:1}).ok' | grep -q 1; then ready=1; break; fi
+            if docker exec botmode-ci-mongo-restored mongosh --quiet --eval 'db.adminCommand({ping:1}).ok' | grep -q 1; then ready=1; break; fi
             sleep 2
           done
           test "$ready" = 1
-          test "$(docker exec botmode-ci-mongo-restored mongo --quiet LibreChat --eval 'print(db.rollback_ci.countDocuments({_id:"backup-restore-probe",payload:"immutable-proof"}))' | tail -1 | tr -d '\r')" = 1
+          test "$(docker exec botmode-ci-mongo-restored mongosh --quiet LibreChat --eval 'print(db.rollback_ci.countDocuments({_id:"backup-restore-probe",payload:"immutable-proof"}))' | tail -1 | tr -d '\r')" = 1
           echo 'BOTMODE_MONGO_BACKUP_RESTORE_CROSS_INSTANCE=PASS'
           echo 'BOTMODE_MONGO_RESTORE_RESTART_PERSISTENCE=PASS'
           echo 'SCOPE=Mongo BSON restore in disposable isolated instances, NOT full-stack schema migration or PostgreSQL/Meilisearch/files restore'
