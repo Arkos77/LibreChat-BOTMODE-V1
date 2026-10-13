@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { convertDocxWithWorker, DocxBusyError } from './docxWorker';
+import { convertDocxWithWorker, DocxBusyError, DocxTimeoutError } from './docxWorker';
 
 const fixture = fs.readFileSync(path.join(__dirname, 'sample.docx'));
 
@@ -21,6 +21,22 @@ describe('bounded Mammoth worker isolation', () => {
 
   test('propagates a conversion failure and subsequently recovers capacity', async () => {
     await expect(convertDocxWithWorker(Buffer.from('invalid'), 'text')).rejects.toThrow();
+    expect(await convertDocxWithWorker(fixture, 'text')).toContain('sample DOCX');
+  });
+
+  test('terminates a timed-out worker and restores processing capacity', async () => {
+    const originalSetTimeout = global.setTimeout;
+    const timeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation(
+      ((callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) =>
+        originalSetTimeout(callback, delay === 20_000 ? 1 : delay, ...args)) as typeof setTimeout,
+    );
+    try {
+      await expect(convertDocxWithWorker(fixture, 'text')).rejects.toBeInstanceOf(
+        DocxTimeoutError,
+      );
+    } finally {
+      timeoutSpy.mockRestore();
+    }
     expect(await convertDocxWithWorker(fixture, 'text')).toContain('sample DOCX');
   });
 
