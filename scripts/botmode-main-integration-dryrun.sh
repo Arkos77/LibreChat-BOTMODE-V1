@@ -54,7 +54,7 @@ if [[ "${BOTMODE_DRYRUN_VALIDATE:-0}" == "1" ]]; then
     echo "BOTMODE_DRYRUN_AUTH_REGRESSION=PASS"
     for shard in 1 2 3 4; do
       echo "BOTMODE_DRYRUN_BACKEND_SHARD=$shard/4"
-      npm run test:api -- --runInBand --coverage=false --shard="$shard/4"
+      npm exec --workspace=api -- jest --ci --runInBand --coverage=false --shard="$shard/4"
     done
     npm run test:client -- --runInBand --coverage=false
     echo "BOTMODE_DRYRUN_EXTENDED_VALIDATION=PASS"
