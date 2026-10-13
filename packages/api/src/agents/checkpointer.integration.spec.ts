@@ -105,6 +105,24 @@ describe('checkpointer (mongodb-memory-server integration)', () => {
     expect(ttlIndex?.expireAfterSeconds).toBe(3600);
   });
 
+  it('recovers a durable HITL interrupt after closing the Mongo connection and rebuilding the saver', async () => {
+    const threadId = 'ci-cold-restored-interrupt';
+    const saver = await getAgentCheckpointer(MONGO_CFG);
+    expect(saver).toBeDefined();
+    const checkpoint = await seedInterruptCheckpoint(saver!, threadId, '', 'ci-approval');
+    const identity = { checkpointId: checkpoint.id, interruptId: 'ci-approval' };
+
+    await expect(hasDurableAgentInterruptCheckpoint(threadId, MONGO_CFG, identity)).resolves.toBe(true);
+    await mongoose.disconnect();
+    __resetCheckpointerForTests();
+    await mongoose.connect(mongoServer.getUri());
+    const restored = await getAgentCheckpointer(MONGO_CFG);
+    expect(restored).toBeDefined();
+    const tuple = await restored!.getTuple(readConfig(threadId));
+    expect(tuple?.checkpoint.id).toBe(checkpoint.id);
+    await expect(hasDurableAgentInterruptCheckpoint(threadId, MONGO_CFG, identity)).resolves.toBe(true);
+  });
+
   it('verifies that an interrupt write has its matching durable checkpoint', async () => {
     const saver = await getAgentCheckpointer(MONGO_CFG);
     expect(saver).toBeDefined();
