@@ -51,3 +51,17 @@ Le SHA exact de la PR #20 est `03ae2fbcce305fdd27a5f682687812135c0211a6` : **15/
 **GO4 Helm** : exclusion de Helm recommandée **uniquement** pour une première distribution Docker Compose/GHCR. Décision d'exclusion encore soumise au GO humain ; pipeline legacy Helm bloqué séparément.
 
 **GO5 : NO-GO jusqu'à** revue des trois PR empilées, qualification de l'image publiée du SHA de livraison, traitement/acceptation des 3 moderate et des risques conteneur, déclaration explicite des OS supportés et du périmètre Docker-only, décision humaine de publication. Ne pas fusionner, tagger ou promouvoir `:latest` à partir d'une CI verte seule.
+
+## Contrôle de publication de l'image — procédure de GO5 (non exécutée)
+
+Le workflow existant `.github/workflows/botmode-image.yml` peut construire deux architectures (`amd64`, `arm64`), fusionner leurs digests en manifest multiarchitecture, vérifier le pull GHCR anonyme et effectuer un smoke Lite. Son déclenchement manuel **publie** cependant un artefact dans GHCR ; ne pas l'exécuter sans autorisation de publication d'une candidate. Les workflows ordinaires `Docker Build Smoke Tests` et `Full/Lite` ne remplacent pas cette qualification : certains exécutent encore l'image candidate historique `sha-d4e82dded5df`.
+
+**Checklist impérative avant GO stable** :
+
+1. Geler le SHA **effectivement livré**, après revue des différences combinées des PR #14, #18 et #20 (la CI de branche n'est pas une revue de code).
+2. Obtenir l'accord humain préalable à la publication **d'une image candidate seulement** ; exécuter ensuite le workflow de construction multiarchitecture et relever le digest immuable du manifest.
+3. Vérifier sur ce **même SHA et ce même digest** les pulls AMD64/ARM64, le démarrage Lite et Full, l'API HTTP, l'onboarding natif, les droits ACL et les tests de restauration nécessaires ; classer les contrôles non exécutés comme tels.
+4. Confirmer explicitement le périmètre V1 (Docker Compose/GHCR, Linux qualifié ; Helm et migrations de schéma exclus sauf qualification et accord distincts) et les trois vulnérabilités modérées npm non encore acceptées.
+5. Demander un second GO humain distinct pour fusion, tag `v*`, promotion de `:latest` ou annonce publique. **La publication d'une candidate ne vaut pas autorisation de stable.**
+
+Cette section est un protocole de vérification, **pas** un compte rendu d'exécution de build/push.
