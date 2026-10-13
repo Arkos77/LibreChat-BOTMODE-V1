@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import JSZip from 'jszip';
 import { convertDocxWithWorker, DocxBusyError, DocxTimeoutError } from './docxWorker';
 
 const fixture = fs.readFileSync(path.join(__dirname, 'sample.docx'));
@@ -40,6 +41,54 @@ describe('bounded Mammoth worker isolation', () => {
       timeoutSpy.mockRestore();
     }
     expect(await convertDocxWithWorker(fixture, 'text')).toContain('sample DOCX');
+  });
+
+
+  test('records parent RSS during two large concurrent DOCX conversions', async () => {
+    const zip = new JSZip();
+    const paragraph = '<w:p><w:r><w:t>Bounded concurrent worker probe.</w:t></w:r></w:p>';
+    zip.file(
+      '[Content_Types].xml',
+      '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
+    );
+    zip.file(
+      '_rels/.rels',
+      '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="r1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
+    );
+    zip.file(
+      'word/document.xml',
+      '<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' +
+        paragraph.repeat(12000) +
+        '</w:body></w:document>',
+    );
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    const baselineRss = process.memoryUsage().rss;
+    let peakRss = baselineRss;
+    const sampler = setInterval(() => {
+      peakRss = Math.max(peakRss, process.memoryUsage().rss);
+    }, 10);
+    try {
+      const results = await Promise.all([
+        convertDocxWithWorker(buffer, 'text'),
+        convertDocxWithWorker(buffer, 'html'),
+      ]);
+      expect(results[0]).toContain('Bounded concurrent worker probe.');
+      expect(results[1]).toContain('Bounded concurrent worker probe.');
+    } finally {
+      clearInterval(sampler);
+    }
+    peakRss = Math.max(peakRss, process.memoryUsage().rss);
+    console.log(
+      'BOTMODE_DOCX_WORKER_RSS=' +
+        JSON.stringify({
+          baselineRssBytes: baselineRss,
+          sampledPeakRssBytes: peakRss,
+          sampledDeltaRssBytes: peakRss - baselineRss,
+          conversions: 2,
+          note: 'Jest process RSS; sampled, not an OS-enforced cap',
+        }),
+    );
+    expect(peakRss).toBeGreaterThan(0);
   });
 
   test('bounds concurrent submissions rather than growing an unbounded queue', async () => {
