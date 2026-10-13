@@ -64,7 +64,7 @@ jobs:
           set -euo pipefail
           image="botmode-preflight:${GITHUB_SHA}"
           docker image inspect "$image" >/dev/null
-          docker run --rm --entrypoint node "$image" -e "const { chromium } = require('playwright'); const fs = require('fs'); if (!fs.existsSync(chromium.executablePath())) process.exit(1); require('/app/scripts/botmode/ensure-singleton-agents-sdk.js'); console.log('BOTMODE_PREPUSH_SMOKE=PASS')"
+          docker run --rm --entrypoint node "$image" -e "const { chromium } = require('playwright'); const fs = require('fs'); const {createRequire} = require('module'); if (!fs.existsSync(chromium.executablePath())) throw Error('BOTMODE_BROWSER_MISSING'); const api = createRequire('/app/api/package.json'); const shared = createRequire('/app/packages/api/dist/index.cjs'); if (fs.realpathSync(api.resolve('@librechat/agents')) !== fs.realpathSync(shared.resolve('@librechat/agents')) || api('@librechat/agents').Run !== shared('@librechat/agents').Run) throw Error('BOTMODE_AGENTS_SDK_IDENTITY_MISMATCH'); console.log('BOTMODE_PREPUSH_SMOKE=PASS')"
 
   build:
     if: github.event_name == 'workflow_dispatch' && inputs.publish == true
