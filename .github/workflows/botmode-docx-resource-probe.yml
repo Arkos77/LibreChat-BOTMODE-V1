@@ -81,7 +81,7 @@ jobs:
           })().catch((error) => { console.error(error); process.exitCode = 1; });
           JS
 
-      - name: Qualify four bounded concurrent DOCX conversions
+      - name: Qualify four concurrent synthetic DOCX conversions
         shell: bash
         run: |
           set -euo pipefail
@@ -97,11 +97,18 @@ jobs:
                 node --max-old-space-size=256 -e '
                   const fs = require("node:fs");
                   const mammoth = require("mammoth");
-                  const buffer = fs.readFileSync("packages/api/src/files/documents/sample.docx");
+                  const JSZip = require("jszip");
                   (async () => {
-                    for (let k=0;k<20;k++) {
-                      const result = await (k%2 ? mammoth.convertToHtml({buffer}) : mammoth.extractRawText({buffer}));
-                      if (!result.value.includes("sample DOCX")) throw Error("DOCX_CONCURRENT_OUTPUT_INVALID");
+                    const zip = new JSZip();
+                    const text = "Ordinary synthetic paragraph for bounded resource qualification.";
+                    const paragraph = "<w:p><w:r><w:t>" + text + "</w:t></w:r></w:p>";
+                    zip.file("[Content_Types].xml", `<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`);
+                    zip.file("_rels/.rels", `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="r1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
+                    zip.file("word/document.xml", `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${paragraph.repeat(12000)}</w:body></w:document>`);
+                    const buffer = await zip.generateAsync({type:"nodebuffer",compression:"DEFLATE"});
+                    for (const mode of ["text","html"]) {
+                      const result = await (mode === "html" ? mammoth.convertToHtml({buffer}) : mammoth.extractRawText({buffer}));
+                      if (!result.value.includes(text) || result.value.length < 100000) throw Error("DOCX_CONCURRENT_OUTPUT_INVALID_" + mode);
                     }
                     console.log("DOCX_CONCURRENT_CHILD_PASS");
                   })().catch(e=>{ console.error(e); process.exitCode=1; });
