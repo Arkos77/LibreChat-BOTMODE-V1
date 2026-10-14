@@ -113,6 +113,21 @@ jobs:
                     const detail = args[1] && typeof args[1] === 'object' ? args[1] : {};
                     const name = typeof detail.errorName === 'string' ? detail.errorName : 'unknown';
                     const stack = typeof detail.stack === 'string' ? detail.stack : '';
+                    // Classify without disclosing the model request, raw exception, or credentials.
+                    const crypto = require('node:crypto');
+                    const detailText = typeof detail.detail === 'string' ? detail.detail : '';
+                    const stackLine = stack.split('\\n')[1] || '';
+                    const categories = [
+                      ['ABORT', /abort|cancel|signal/i],
+                      ['AUTH', /unauthori[sz]|permission|forbidden|access denied/i],
+                      ['MODEL', /model|provider|endpoint/i],
+                      ['CONFIG', /config|invalid|missing|unknown/i],
+                      ['GRAPH', /graph|checkpoint|state/i],
+                      ['NETWORK', /connect|fetch|timeout|socket|ECONN/i],
+                    ];
+                    const matching = categories.filter((item) => item[1].test(stackLine + ' ' + detailText)).map((item) => item[0]);
+                    process.stderr.write('CI_ORACLE_CHILD_EXCEPTION_CATEGORY=' + (matching.join(',') || 'UNCLASSIFIED') + '\\n');
+                    process.stderr.write('CI_ORACLE_CHILD_EXCEPTION_STACK_HASH=' + crypto.createHash('sha256').update(stack).digest('hex').slice(0,16) + '\\n');
                     const match = stack.match(/\bat\s+([A-Za-z_$][\w$.<>]*)\s*\(/);
                     process.stderr.write('CI_ORACLE_CHILD_EXCEPTION_NAME=' + (/^[A-Za-z][A-Za-z0-9]{0,63}$/.test(name) ? name : 'redacted') + '\n');
                     process.stderr.write('CI_ORACLE_CHILD_EXCEPTION_FRAME=' + (match ? match[1].slice(0,90) : 'unavailable') + '\n');
@@ -637,7 +652,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs --no-color api 2>/dev/null | grep -E 'CI_ORACLE_(PROBE_PRELOAD|PROBE_INSTALL|CHILD_EXCEPTION_NAME|CHILD_EXCEPTION_FRAME)=' | tail -30 || true
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs --no-color api 2>/dev/null | grep -E 'CI_ORACLE_(PROBE_PRELOAD|PROBE_INSTALL|CHILD_EXCEPTION_NAME|CHILD_EXCEPTION_FRAME|CHILD_EXCEPTION_CATEGORY|CHILD_EXCEPTION_STACK_HASH)=' | tail -30 || true
       - name: Always destroy disposable stack
         if: always()
         env:
