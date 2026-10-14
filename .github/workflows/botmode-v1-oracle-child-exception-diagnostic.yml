@@ -1,5 +1,7 @@
 name: BOTMODE V1 Oracle Child Exception Diagnostic
 on:
+  pull_request:
+    paths: ['.github/workflows/botmode-v1-oracle-child-exception-diagnostic.yml']
   workflow_dispatch:
 permissions:
   contents: read
