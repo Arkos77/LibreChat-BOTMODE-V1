@@ -499,11 +499,11 @@ jobs:
               if time.monotonic()>=deadline:
                   break
               time.sleep(2)
+          for key in ('completion_calls','parent_tool_requests','child_responses','parent_final','missing_tool'):
+              print('CI_SUBAGENT_'+key.upper()+'='+str(data.get(key,0)))
           for key in ('parent_tool_requests','child_responses'):
               value=data.get(key,0)
-              print('CI_SUBAGENT_'+key.upper()+'='+str(value))
               if not isinstance(value,int) or value<1: raise SystemExit('CI_SUBAGENT_MODEL_CYCLE_MISSING='+key)
-          print('CI_SUBAGENT_PARENT_FINAL='+str(data.get('parent_final',0)))
           PY_METRICS
           # Oracle/QA acceptance, child execution and publication require separate
           # durable evidence assertions; do not mark the release E2E gate green here.
