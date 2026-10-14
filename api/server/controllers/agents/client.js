@@ -2714,7 +2714,8 @@ class AgentClient extends BaseClient {
         mcpManager,
         configServers,
         sharedRunContext: agentRunContextParts.filter(Boolean).join('\n\n'),
-        ephemeralAgent: agentId === lazyContextAuthority.primaryAgentId ? ephemeralAgent : undefined,
+        ephemeralAgent:
+          agentId === lazyContextAuthority.primaryAgentId ? ephemeralAgent : undefined,
       });
       if (assertLateBoundContent) {
         assertModelBoundContent({
