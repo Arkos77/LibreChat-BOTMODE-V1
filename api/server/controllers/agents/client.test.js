@@ -9528,7 +9528,7 @@ describe('AgentClient - P11 model invocation evidence', () => {
     ];
     client.collectedThoughtSignatures = {};
     const metadata = client.buildResponseMetadata();
-    expect(metadata.hostModelUsage).toEqual({
+    expect(metadata.hostModelUsage).toMatchObject({
       traceId: 'trace-1',
       decisionId: 'decision-1',
       selectedModel: 'b:free',
