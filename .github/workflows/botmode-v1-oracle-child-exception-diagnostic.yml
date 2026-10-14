@@ -115,6 +115,11 @@ jobs:
               if (!pkg) throw new Error("Pinned runtime SDK package metadata unavailable");
               console.log("CI_ORACLE_RUNTIME_SDK_VERSION="+pkg.version);
               console.log("CI_ORACLE_RUNTIME_SDK_ENTRY_CLASS="+(entry.endsWith(".cjs")?"cjs":entry.endsWith(".mjs")?"mjs":entry.endsWith(".js")?"js":"other"));
+              const SDK = require("@librechat/agents");
+              const methods = ["execute","resolveChildExecutionIdentity","resolveExecutionConfig"];
+              const missing = methods.filter((method) => typeof SDK.SubagentExecutor?.prototype?.[method] !== "function");
+              if (missing.length) throw new Error("Pinned SDK inspection methods unavailable: "+missing.join(","));
+              console.log("CI_ORACLE_SDK_INSPECTION_METHODS=PASS");
             '
           # Diagnostic only: intercept the already-logged exception in the disposable API process.
           # The pinned image, SHA, application code and public error payload remain unchanged.
@@ -124,6 +129,67 @@ jobs:
           const originalLoad = Module._load;
           Module._load = function(request, parent, isMain) {
             const exported = originalLoad.apply(this, arguments);
+            // The installed SDK v3.7.17 masks resolution errors before executeDetached rethrows.
+            // Wrap its two resolution methods instead of logging the late generic exception.
+            if (request === '@librechat/agents' && exported && exported.SubagentExecutor) {
+              const proto = exported.SubagentExecutor.prototype;
+              if (!Object.prototype.hasOwnProperty.call(proto, '__oracleSdkProbeInstalled')) {
+                const crypto = require('node:crypto');
+                const classify = (message) => {
+                  const categories = [
+                    ['ABORT', /abort|cancel|signal/i],
+                    ['AUTH', /unauthori[sz]|permission|forbidden|access denied/i],
+                    ['MODEL', /model|provider|endpoint/i],
+                    ['CONFIG', /config|invalid|missing|unknown/i],
+                    ['GRAPH', /graph|checkpoint|state/i],
+                    ['NETWORK', /connect|fetch|timeout|socket|ECONN/i],
+                  ];
+                  return categories.filter((entry) => entry[1].test(message)).map((entry) => entry[0]).join(',') || 'UNCLASSIFIED';
+                };
+                const phaseMethods = ['resolveChildExecutionIdentity', 'resolveExecutionConfig'];
+                for (const phase of phaseMethods) {
+                  const original = proto[phase];
+                  if (typeof original !== 'function') {
+                    process.stderr.write('CI_ORACLE_SDK_PHASE_MISSING=' + phase + '\n');
+                    continue;
+                  }
+                  proto[phase] = async function(...args) {
+                    process.stderr.write('CI_ORACLE_SDK_PHASE_ENTER=' + phase + '\n');
+                    try {
+                      const result = await original.apply(this, args);
+                      process.stderr.write('CI_ORACLE_SDK_PHASE_OK=' + phase + '\n');
+                      return result;
+                    } catch (error) {
+                      const name = error instanceof Error ? error.name : typeof error;
+                      const message = error instanceof Error ? error.message : String(error);
+                      const firstFrame = error instanceof Error ? (error.stack || '').split('\n')[1] || '' : '';
+                      process.stderr.write('CI_ORACLE_SDK_PHASE_ERROR=' + phase + '\n');
+                      process.stderr.write('CI_ORACLE_SDK_ORIGINAL_ERROR_CLASS=' + (/^[A-Za-z][A-Za-z0-9]{0,63}$/.test(name) ? name : 'redacted') + '\n');
+                      process.stderr.write('CI_ORACLE_SDK_ORIGINAL_ERROR_CATEGORY=' + classify(message) + '\n');
+                      process.stderr.write('CI_ORACLE_SDK_ORIGINAL_ERROR_HASH=' + crypto.createHash('sha256').update(message).digest('hex').slice(0,16) + '\n');
+                      const frame = firstFrame.match(/at\s+([A-Za-z_$][\w$.<>]*)\s*\(/);
+                      process.stderr.write('CI_ORACLE_SDK_ORIGINAL_ERROR_FRAME=' + (frame ? frame[1].slice(0,90) : 'unavailable') + '\n');
+                      throw error;
+                    }
+                  };
+                }
+                const originalExecute = proto.execute;
+                if (typeof originalExecute === 'function') {
+                  proto.execute = function(...args) {
+                    return Promise.resolve(originalExecute.apply(this, args)).then((result) => {
+                      if (args[0]?.taskRuntime && result?.error != null) {
+                        const message = String(result.error);
+                        process.stderr.write('CI_ORACLE_SDK_CHILD_FAILURE_CATEGORY=' + classify(message) + '\n');
+                        process.stderr.write('CI_ORACLE_SDK_CHILD_FAILURE_HASH=' + crypto.createHash('sha256').update(message).digest('hex').slice(0,16) + '\n');
+                      }
+                      return result;
+                    });
+                  };
+                }
+                Object.defineProperty(proto, '__oracleSdkProbeInstalled', { value: true });
+                process.stderr.write('CI_ORACLE_SDK_PROBE_INSTALLED=active\n');
+              }
+            }
             if (request === '@librechat/data-schemas' && exported && exported.logger && !exported.logger.__oracleProbeInstalled) {
               try {
                 const logger = exported.logger;
@@ -161,6 +227,8 @@ jobs:
           };
           process.stderr.write('CI_ORACLE_PROBE_PRELOAD=active\n');
           NODE_PROBE
+          node --check .ci-oracle-error-probe.cjs
+          echo 'CI_ORACLE_INSTRUMENTATION_SYNTAX=PASS'
           python3 - <<'PY_PROBE_CONFIG'
           from pathlib import Path
           p=Path('docker-compose.botmode.yml')
@@ -672,7 +740,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs --no-color api 2>/dev/null | grep -E 'CI_ORACLE_(PROBE_PRELOAD|PROBE_INSTALL|CHILD_EXCEPTION_NAME|CHILD_EXCEPTION_FRAME|CHILD_EXCEPTION_CATEGORY|CHILD_EXCEPTION_STACK_HASH)=' | tail -30 || true
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs --no-color api 2>/dev/null | grep -E 'CI_ORACLE_(PROBE_PRELOAD|PROBE_INSTALL|CHILD_EXCEPTION_NAME|CHILD_EXCEPTION_FRAME|CHILD_EXCEPTION_CATEGORY|CHILD_EXCEPTION_STACK_HASH|SDK_PHASE_ENTER|SDK_PHASE_OK|SDK_PHASE_ERROR|SDK_ORIGINAL_ERROR_CLASS|SDK_ORIGINAL_ERROR_CATEGORY|SDK_ORIGINAL_ERROR_HASH|SDK_ORIGINAL_ERROR_FRAME|SDK_CHILD_FAILURE_CATEGORY|SDK_CHILD_FAILURE_HASH|SDK_PROBE_INSTALLED)=' | tail -30 || true
       - name: Always destroy disposable stack
         if: always()
         env:
