@@ -88,14 +88,15 @@ class Handler(BaseHTTPRequestHandler):
                 })}
             }]}
             reason="tool_calls"
-        elif not advertised:
-            with lock: calls["missing_tool"]+=1
-            # Deliberately no valid Oracle JSON; absent delegated tool cannot falsely pass.
-            message={"role":"assistant","content":"CI_SUBAGENT_TOOL_NOT_ADVERTISED"}
-            reason="stop"
-        else:
+        elif not advertised and child_id and not already_requested and not has_tool_result:
+            # The authorized child has no nested subagent tool; its first model turn returns the receipt.
             with lock: calls["child_responses"]+=1
             message={"role":"assistant","content":"CI_DELEGATED_CHILD_RECEIPT"}
+            reason="stop"
+        else:
+            with lock: calls["missing_tool"]+=1
+            # No eligible parent tool or recognizable child continuation: fail closed.
+            message={"role":"assistant","content":"CI_SUBAGENT_UNRECOGNIZED_MODEL_TURN"}
             reason="stop"
         model=str(req.get("model") or MODEL)
         usage={"prompt_tokens":8,"completion_tokens":8,"total_tokens":16}
