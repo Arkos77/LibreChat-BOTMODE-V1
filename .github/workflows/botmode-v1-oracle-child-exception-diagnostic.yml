@@ -167,6 +167,21 @@ jobs:
                       process.stderr.write('CI_ORACLE_SDK_ORIGINAL_ERROR_CLASS=' + (/^[A-Za-z][A-Za-z0-9]{0,63}$/.test(name) ? name : 'redacted') + '\n');
                       process.stderr.write('CI_ORACLE_SDK_ORIGINAL_ERROR_CATEGORY=' + classify(message) + '\n');
                       process.stderr.write('CI_ORACLE_SDK_ORIGINAL_ERROR_HASH=' + crypto.createHash('sha256').update(message).digest('hex').slice(0,16) + '\n');
+                      // Reveal only TypeError structure and trusted source locations, never raw values.
+                      const missingProperty = message.match(/^Cannot (read|set) properties of (undefined|null) \((reading|setting) '([A-Za-z_$][\w$]{0,63})'\)$/);
+                      const errorShape = missingProperty ? 'NULLISH_PROPERTY_ACCESS' : /is not a function$/.test(message) ? 'NONCALLABLE' : /is not iterable/.test(message) ? 'NONITERABLE' : 'OTHER';
+                      process.stderr.write('CI_ORACLE_SDK_ORIGINAL_ERROR_SHAPE=' + errorShape + '\n');
+                      if (missingProperty) {
+                        process.stderr.write('CI_ORACLE_SDK_ORIGINAL_ERROR_ACCESS=' + missingProperty[3] + '_' + missingProperty[2].toUpperCase() + '\n');
+                        process.stderr.write('CI_ORACLE_SDK_ORIGINAL_ERROR_PROPERTY=' + missingProperty[4] + '\n');
+                      }
+                      const trustedLocations = error instanceof Error
+                        ? (error.stack || '').split('\n').slice(1,7).map((line) => {
+                            const match = line.match(/\/app\/(?:api\/|packages\/api\/|node_modules\/@librechat\/agents\/)[A-Za-z0-9_./@-]+:\d+:\d+/);
+                            return match ? match[0].slice(5) : null;
+                          }).filter(Boolean)
+                        : [];
+                      process.stderr.write('CI_ORACLE_SDK_ORIGINAL_ERROR_LOCATIONS=' + (trustedLocations.join('|').slice(0,500) || 'unavailable') + '\n');
                       const frame = firstFrame.match(/at\s+([A-Za-z_$][\w$.<>]*)\s*\(/);
                       process.stderr.write('CI_ORACLE_SDK_ORIGINAL_ERROR_FRAME=' + (frame ? frame[1].slice(0,90) : 'unavailable') + '\n');
                       throw error;
@@ -740,7 +755,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs --no-color api 2>/dev/null | grep -E 'CI_ORACLE_(PROBE_PRELOAD|PROBE_INSTALL|CHILD_EXCEPTION_NAME|CHILD_EXCEPTION_FRAME|CHILD_EXCEPTION_CATEGORY|CHILD_EXCEPTION_STACK_HASH|SDK_PHASE_ENTER|SDK_PHASE_OK|SDK_PHASE_ERROR|SDK_ORIGINAL_ERROR_CLASS|SDK_ORIGINAL_ERROR_CATEGORY|SDK_ORIGINAL_ERROR_HASH|SDK_ORIGINAL_ERROR_FRAME|SDK_CHILD_FAILURE_CATEGORY|SDK_CHILD_FAILURE_HASH|SDK_PROBE_INSTALLED)=' | tail -30 || true
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs --no-color api 2>/dev/null | grep -E 'CI_ORACLE_(PROBE_PRELOAD|PROBE_INSTALL|CHILD_EXCEPTION_NAME|CHILD_EXCEPTION_FRAME|CHILD_EXCEPTION_CATEGORY|CHILD_EXCEPTION_STACK_HASH|SDK_PHASE_ENTER|SDK_PHASE_OK|SDK_PHASE_ERROR|SDK_ORIGINAL_ERROR_CLASS|SDK_ORIGINAL_ERROR_CATEGORY|SDK_ORIGINAL_ERROR_HASH|SDK_ORIGINAL_ERROR_SHAPE|SDK_ORIGINAL_ERROR_ACCESS|SDK_ORIGINAL_ERROR_PROPERTY|SDK_ORIGINAL_ERROR_LOCATIONS|SDK_ORIGINAL_ERROR_FRAME|SDK_CHILD_FAILURE_CATEGORY|SDK_CHILD_FAILURE_HASH|SDK_PROBE_INSTALLED)=' | tail -30 || true
       - name: Always destroy disposable stack
         if: always()
         env:
