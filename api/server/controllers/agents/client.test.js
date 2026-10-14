@@ -6944,7 +6944,11 @@ describe('AgentClient - titleConvo', () => {
     });
 
     it('hydrates lazy child context after the parent options are disposed', async () => {
-      const childContext = makeTextFile('detached-child', 'detached.txt', 'Detached private context');
+      const childContext = makeTextFile(
+        'detached-child',
+        'detached.txt',
+        'Detached private context',
+      );
       const resolvedChild = {
         id: 'detached-child-agent',
         endpoint: EModelEndpoint.openAI,
@@ -6961,8 +6965,15 @@ describe('AgentClient - titleConvo', () => {
       mockAgent.lazySubagentConfigs = [descriptor];
       client.agentConfigs = new Map();
       await client.buildMessages(
-        [{ messageId: 'detached-msg', parentMessageId: null, sender: 'User',
-          text: 'Delegate this task.', isCreatedByUser: true }],
+        [
+          {
+            messageId: 'detached-msg',
+            parentMessageId: null,
+            sender: 'User',
+            text: 'Delegate this task.',
+            isCreatedByUser: true,
+          },
+        ],
         'detached-msg',
         {},
       );
