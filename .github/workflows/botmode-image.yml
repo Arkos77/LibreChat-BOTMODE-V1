@@ -300,11 +300,26 @@ jobs:
             exit 1
           fi
 
-          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api \
-            node -e "const { chromium } = require('playwright'); (async () => { const browser = await chromium.launch({ headless: true }); await browser.close(); console.log('BOTMODE_BROWSER_SMOKE=PASS'); })().catch((error) => { console.error(error); process.exit(1); });"
+          api_id="$(docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps -q api)"
+          api_network="$(docker inspect "$api_id" --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{break}}{{end}}')"
+          docker run -d --name botmode-lite-browser-ci --network "$api_network" \
+            --init --user pwuser --workdir /home/pwuser \
+            mcr.microsoft.com/playwright:v1.62.1-noble \
+            /bin/sh -c 'npx -y playwright@1.62.1 run-server --port 3000 --host 0.0.0.0'
+          for attempt in $(seq 1 30); do
+            if docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T \
+                -e BOTMODE_PLAYWRIGHT_WS_ENDPOINT=ws://botmode-lite-browser-ci:3000/ api \
+                node -e "const { chromium } = require('playwright'); chromium.connect(process.env.BOTMODE_PLAYWRIGHT_WS_ENDPOINT,{timeout:3000}).then(async b=>{const p=await b.newPage();await p.goto('data:text/html,<title>BOTMODE</title>');if(await p.title()!=='BOTMODE')throw Error('BROWSER_NAVIGATION_FAILED');await b.close();console.log('BOTMODE_BROWSER_SMOKE=PASS')}).catch(()=>process.exit(1))"; then
+              break
+            fi
+            if [ "$attempt" = 30 ]; then docker logs botmode-lite-browser-ci; exit 1; fi
+            sleep 2
+          done
 
           echo "BOTMODE_LITE_SMOKE=PASS"
 
       - name: Cleanup
         if: always()
-        run: docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down -v
+        run: |
+          docker rm -f botmode-lite-browser-ci >/dev/null 2>&1 || true
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down -v
