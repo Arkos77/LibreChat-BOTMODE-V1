@@ -426,12 +426,77 @@ def verify(label, review, expected_status):
         if not any(t.strip() for t in visible):
             fail(label + "_ACCEPTED_CONTENT_EMPTY")
         print("CI_ORACLE_ACCEPT_PUBLICATION=PASS", flush=True)
-    return True
+    return conversation_id
+
+
+def verify_mongo_child_lineage(parent_conversation_id, phase):
+    """Assert real Mongo parent/child links, never inferred from fixture model metrics."""
+    js = r"""
+const mongoose = require('mongoose');
+(async () => {
+  await mongoose.connect(process.env.MONGO_URI);
+  const db = mongoose.connection.db;
+  const parent = process.env.CI_PARENT_CONVERSATION_ID;
+  const children = await db.collection('conversations').find(
+    {'subagentThread.parentConversationId': parent},
+    {projection: {conversationId: 1, subagentThread: 1}}
+  ).toArray();
+  const findings = [];
+  for (const child of children) {
+    const link = child.subagentThread || {};
+    const messages = await db.collection('messages').find(
+      {conversationId: child.conversationId},
+      {projection: {subagentTask: 1, messageId: 1}}
+    ).toArray();
+    const parentRunIds = [...new Set(messages.map(m => m.subagentTask?.parentRunId).filter(Boolean))];
+    const statuses = [...new Set(messages.map(m => m.subagentTask?.status).filter(Boolean))];
+    findings.push({
+      linked: link.parentConversationId === parent &&
+        link.rootConversationId === parent &&
+        Boolean(link.parentToolCallId) &&
+        Boolean(link.parentMessageId) &&
+        parentRunIds.length === 1 &&
+        link.parentMessageId === parentRunIds[0],
+      childMessages: messages.length,
+      terminal: statuses.some(s => ['completed','error','cancelled'].includes(s))
+    });
+  }
+  console.log('CI_DURABLE_CHILD_COUNT=' + findings.length);
+  console.log('CI_DURABLE_CHILD_LINKED_COUNT=' + findings.filter(f => f.linked).length);
+  console.log('CI_DURABLE_CHILD_TERMINAL_COUNT=' + findings.filter(f => f.terminal).length);
+  if (findings.length !== 1 || !findings[0].linked || !findings[0].terminal) {
+    process.exitCode = 3;
+  }
+  await mongoose.disconnect();
+})().catch(e => {console.error('CI_DURABLE_CHILD_INSPECTION_ERROR=' + e.name);process.exitCode=2});
+"""
+    command = COMPOSE + [
+        "exec", "-T", "-e", "CI_PARENT_CONVERSATION_ID=" + parent_conversation_id,
+        "api", "node", "-e", js,
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=60)
+    for line in result.stdout.splitlines():
+        if line.startswith("CI_DURABLE_CHILD_"):
+            print("CI_" + phase + "_" + line[3:], flush=True)
+    if result.returncode != 0:
+        fail(phase + "_DURABLE_CHILD_LINEAGE_MISSING")
+    print("CI_" + phase + "_DURABLE_CHILD_LINEAGE=PASS", flush=True)
+
+
+def verify_lineage_across_api_restart(parent_conversation_id):
+    verify_mongo_child_lineage(parent_conversation_id, "BEFORE_RESTART")
+    restarted = subprocess.run(COMPOSE + ["restart", "api"], capture_output=True,
+                               text=True, timeout=120)
+    if restarted.returncode:
+        fail("API_RESTART_FAILED")
+    verify_mongo_child_lineage(parent_conversation_id, "AFTER_RESTART")
+    print("BOTMODE_DURABLE_CHILD_LINEAGE_RESTART=PASS", flush=True)
 
 if __name__ == "__main__":
     reference_ok = inspect_reference_sse()
-    verify("ACCEPT", False, "VERIFIED")
+    accepted_conversation_id = verify("ACCEPT", False, "VERIFIED")
     verify("REVIEW", True, "HUMAN_REVIEW")
+    verify_lineage_across_api_restart(accepted_conversation_id)
     if not reference_ok:
         fail("REFERENCE_TERMINAL_CONTAINS_ERROR_PART")
     print("BOTMODE_PR14_ORACLE_PUBLICATION_E2E=PASS")
