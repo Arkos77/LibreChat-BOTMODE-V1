@@ -547,6 +547,30 @@ jobs:
           echo 'BOTMODE_GHCR_SUBAGENT_ORACLE_PROBE=PASS'
           echo '### Release-fix branch Oracle/QA E2E (local synthetic provider)' >> "$GITHUB_STEP_SUMMARY"
           echo 'Test image built without source-code CI hotpatches; local fixture is not hosted inference.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Classify child execution exception from API logs
+        if: failure()
+        env:
+          BOTMODE_MONGO_PASSWORD: ci-isolated-only
+          POSTGRES_PASSWORD: ci-isolated-only
+          BOTMODE_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95
+        shell: bash
+        run: |
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs --no-color api > /tmp/botmode-api-failure.log 2>/dev/null || true
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          lines=Path('/tmp/botmode-api-failure.log').read_text(errors='replace').splitlines()
+          hits=[i for i,line in enumerate(lines) if '[subagentThreads] Child-thread execution failed' in line]
+          print('CI_CHILD_EXCEPTION_LOG_ENTRIES='+str(len(hits)))
+          for i in hits[-3:]:
+              block='\\n'.join(lines[i:i+14])
+              names=re.findall(r'errorName[^A-Za-z]+([A-Za-z][A-Za-z0-9]*)',block)
+              print('CI_CHILD_EXCEPTION_NAME='+(','.join(names[:2]) or 'unknown'))
+              for candidate in ('TypeError','ReferenceError','ValidationError','AbortError','MongoServerError','SubagentThreadPublicError'):
+                  if candidate in block:
+                      print('CI_CHILD_EXCEPTION_CLASS='+candidate)
+              print('CI_CHILD_EXCEPTION_HAS_STACK='+str('stack:' in block))
+          PY
       - name: Always destroy disposable stack
         if: always()
         env:
