@@ -1,4 +1,4 @@
-name: BOTMODE V1 Oracle Child Exception Diagnostic
+name: BOTMODE V1 Detached Child Runtime Verification
 on:
   pull_request:
     paths: ['.github/workflows/botmode-v1-oracle-child-exception-diagnostic.yml']
@@ -10,18 +10,45 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
-      - name: Checkout immutable PR14 candidate
+      - name: Checkout immutable PR27 corrected commit
         uses: actions/checkout@v4
         with:
-          ref: 54b30a342bf8f3480d7385b30cfa669b73c92878
+          ref: 8c6c2c42476a269528a44a00d0cd3387102a610f
           persist-credentials: false
-      - name: Prove checked-out revision
-        run: test "$(git rev-parse HEAD)" = '54b30a342bf8f3480d7385b30cfa669b73c92878'
-      - name: Pull exact publicly published candidate image
+      - name: Prove corrected revision
+        run: test "$(git rev-parse HEAD)" = '8c6c2c42476a269528a44a00d0cd3387102a610f'
+      - name: Build CI-only corrected runtime on the verified candidate image
         run: |
           set -euo pipefail
-          docker logout ghcr.io >/dev/null 2>&1 || true
-          docker pull ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95
+          # The integration branch has no /api/agents/botmode/setup-status route.
+          # That route exists in the previously exercised candidate image.
+          # Overlay ONLY the corrected AgentClient file and never publish it.
+          # Keep the SDK, bootstrap, ACL and Oracle implementation from the pinned candidate.
+          cat > .ci-pr27-detached-overlay.Dockerfile <<'DOCKERFILE'
+          FROM ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95
+          COPY --chown=node:node api/server/controllers/agents/client.js /app/api/server/controllers/agents/client.js
+          DOCKERFILE
+          docker build -f .ci-pr27-detached-overlay.Dockerfile -t botmode-pr27-child-context:local .
+          docker image inspect botmode-pr27-child-context:local >/dev/null
+          host_sha=$(sha256sum api/server/controllers/agents/client.js | cut -d' ' -f1)
+          runtime_sha=$(docker run --rm --entrypoint sha256sum botmode-pr27-child-context:local /app/api/server/controllers/agents/client.js | cut -d' ' -f1)
+          test "$host_sha" = "$runtime_sha"
+          docker run --rm --entrypoint node botmode-pr27-child-context:local -e "require.resolve('@librechat/agents'); console.log('CI_PR27_SDK_LOAD=PASS')"
+          echo CI_PR27_TEST_OVERLAY_MATCH=PASS
+          echo CI_PR27_IMAGE_IS_CI_ONLY=true
+          echo CI_PR27_CORRECTED_SOURCE_COMMIT=8c6c2c42476a269528a44a00d0cd3387102a610f
+      - name: Restore pinned isolated compose topology missing from current branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          pinned_compose_sha=54b30a342bf8f3480d7385b30cfa669b73c92878
+          for filename in docker-compose.botmode.yml docker-compose.botmode-lite.yml; do
+            curl -fsSL --retry 3 "https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/${pinned_compose_sha}/${filename}" -o "${filename}"
+            test -s "${filename}"
+          done
+          grep -Fq 'SCHEDULES_SINGLE_PROCESS=true' docker-compose.botmode-lite.yml
+          grep -Fq 'image: ${BOTMODE_IMAGE:-' docker-compose.botmode.yml
+          echo CI_PINNED_COMPOSE_TOPOLOGY=PASS
       - name: Boot isolated candidate with disposable MongoDB
         env:
           OPENROUTER_API_KEY: ci-local-fixture-no-real-key
@@ -94,12 +121,12 @@ jobs:
           sudo chmod 640 .env
           export BOTMODE_MONGO_PASSWORD=ci-isolated-only
           export POSTGRES_PASSWORD=ci-isolated-only
-          export BOTMODE_IMAGE=ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95
+          export BOTMODE_IMAGE=botmode-pr27-child-context:local
           export BOTMODE_HOST_PORT=3090
-          # Before instrumenting, prove which SDK version actually runs in the pinned image.
+          # Before instrumenting, prove which SDK version runs in the corrected test image.
           # Abort the diagnostic if the installed package cannot be resolved.
           docker run --rm --entrypoint node \
-            ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95 \
+            botmode-pr27-child-context:local \
             -e '
               const fs=require("node:fs"), path=require("node:path");
               const entry=require.resolve("@librechat/agents");
@@ -122,7 +149,7 @@ jobs:
               console.log("CI_ORACLE_SDK_INSPECTION_METHODS=PASS");
             '
           # Diagnostic only: intercept the already-logged exception in the disposable API process.
-          # The pinned image, SHA, application code and public error payload remain unchanged.
+          # The local image, application code and public error payload remain unchanged.
           cat > .ci-oracle-error-probe.cjs <<'NODE_PROBE'
           'use strict';
           const Module = require('node:module');
@@ -692,20 +719,20 @@ jobs:
           })().catch(e=>{console.error('CI_CHILD_DIAGNOSTIC_CLASS='+e.name);process.exitCode=1});
           NODE_LINEAGE
 
-          # The pinned candidate does not contain this main-branch CI harness.
+          # The corrected checkout uses a separately pinned CI evidence harness.
           # Pull the exact harness bytes from a reviewed main commit, not a
           # mutable branch reference during the running job.
           curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/c9ef9c3161c3b14038e65e52baedbdc332f9c93f/scripts/botmode/ci-oracle-delegated-mission-gate.py -o /tmp/botmode-ci-oracle-publication-gate.py
           python3 /tmp/botmode-ci-oracle-publication-gate.py
-          echo 'BOTMODE_GHCR_SUBAGENT_ORACLE_PROBE=PASS'
+          echo 'BOTMODE_PR27_CHILD_ORACLE_PROBE=PASS'
           echo '### Release-fix branch Oracle/QA E2E (local synthetic provider)' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Test image built without source-code CI hotpatches; local fixture is not hosted inference.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'CI-only image: immutable published candidate runtime plus one reviewed AgentClient file from PR27; NOT a publishable/release image. Local model fixture is not hosted inference.' >> "$GITHUB_STEP_SUMMARY"
       - name: Classify child execution exception from API logs
         if: failure()
         env:
           BOTMODE_MONGO_PASSWORD: ci-isolated-only
           POSTGRES_PASSWORD: ci-isolated-only
-          BOTMODE_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95
+          BOTMODE_IMAGE: botmode-pr27-child-context:local
         shell: bash
         run: |
           docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs --no-color api > /tmp/botmode-api-failure.log 2>/dev/null || true
@@ -761,5 +788,5 @@ jobs:
         env:
           BOTMODE_MONGO_PASSWORD: ci-isolated-only
           POSTGRES_PASSWORD: ci-isolated-only
-          BOTMODE_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95
+          BOTMODE_IMAGE: botmode-pr27-child-context:local
         run: sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
