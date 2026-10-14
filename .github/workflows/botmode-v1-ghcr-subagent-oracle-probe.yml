@@ -501,7 +501,7 @@ jobs:
           # The pinned candidate does not contain this main-branch CI harness.
           # Pull the exact harness bytes from a reviewed main commit, not a
           # mutable branch reference during the running job.
-          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/a9320b78292cc2d6d167f38d374f39cacb64bb6b/scripts/botmode/ci-oracle-delegated-mission-gate.py -o /tmp/botmode-ci-oracle-publication-gate.py
+          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/ecae436e73b8dde3f4fe9d6179f3e2afa84042d3/scripts/botmode/ci-oracle-delegated-mission-gate.py -o /tmp/botmode-ci-oracle-publication-gate.py
           python3 /tmp/botmode-ci-oracle-publication-gate.py
           echo 'BOTMODE_GHCR_SUBAGENT_ORACLE_PROBE=PASS'
           echo '### Release-fix branch Oracle/QA E2E (local synthetic provider)' >> "$GITHUB_STEP_SUMMARY"
