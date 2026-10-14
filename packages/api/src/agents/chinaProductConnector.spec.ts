@@ -22,7 +22,7 @@ describe('China product connector', () => {
           }),
           { status: 200 },
         );
-      }) as typeof fetch,
+      }) as unknown as typeof fetch,
     });
 
     await expect(connector.search({ query: 'wireless mouse', limit: 1 })).resolves.toEqual([
@@ -42,7 +42,7 @@ describe('China product connector', () => {
 
   it('fails closed on invalid limits and HTTP errors', async () => {
     const connector = new TaobaoProductMarketConnector({
-      fetchImpl: (async () => new Response('', { status: 503 })) as typeof fetch,
+      fetchImpl: (async () => new Response('', { status: 503 })) as unknown as typeof fetch,
     });
     await expect(connector.search({ query: 'mouse', limit: 0 })).rejects.toThrow(
       /between 1 and 20/,
