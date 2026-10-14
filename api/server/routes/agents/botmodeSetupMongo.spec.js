@@ -5,7 +5,12 @@ const express = require('express');
 const supertest = require('supertest');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const { agentSchema, aclEntrySchema } = require('@librechat/data-schemas');
-const { PermissionBits, PrincipalType, ResourceType, PrincipalModel } = require('librechat-data-provider');
+const {
+  PermissionBits,
+  PrincipalType,
+  ResourceType,
+  PrincipalModel,
+} = require('librechat-data-provider');
 let mongo;
 let Agent;
 let Acl;
@@ -16,7 +21,12 @@ const mockGetAgents = jest.fn(async ({ author, name }) =>
 );
 const mockGrant = jest.fn(async ({ principalId, resourceId }) => {
   await Acl.updateOne(
-    { principalType: PrincipalType.USER, principalId, resourceType: ResourceType.AGENT, resourceId },
+    {
+      principalType: PrincipalType.USER,
+      principalId,
+      resourceType: ResourceType.AGENT,
+      resourceId,
+    },
     { $set: { principalModel: PrincipalModel.USER, permBits: ownerBits, grantedBy: principalId } },
     { upsert: true },
   );
@@ -27,7 +37,9 @@ const mockPerms = jest.fn(async ({ userId, resourceIds }) => {
 });
 const mockCreate = jest.fn(async (req, res) => {
   const created = await Agent.create({
-    ...req.body, id: `agent_${new mongoose.Types.ObjectId()}`, author: req.user.id,
+    ...req.body,
+    id: `agent_${new mongoose.Types.ObjectId()}`,
+    author: req.user.id,
   });
   await mockGrant({ principalId: req.user.id, resourceId: created._id });
   res.status(201).json(created);
@@ -72,13 +84,28 @@ jest.mock('~/server/controllers/agents/v1', () => ({
 jest.mock('./actions', () => require('express').Router());
 jest.mock('./tools', () => require('express').Router());
 const { v1: router } = require('./v1');
-const setup = router.stack.find((x) => x.route?.path === '/botmode/setup').route.stack.at(-1).handle;
-const inspect = router.stack.find((x) => x.route?.path === '/botmode/setup-status').route.stack.at(-1).handle;
-const req = () => ({ user: { id: String(ownerId), role: 'USER' }, params: {}, body: { provider: 'openai', model: 'test-model' } });
+const setup = router.stack
+  .find((x) => x.route?.path === '/botmode/setup')
+  .route.stack.at(-1).handle;
+const inspect = router.stack
+  .find((x) => x.route?.path === '/botmode/setup-status')
+  .route.stack.at(-1).handle;
+const req = () => ({
+  user: { id: String(ownerId), role: 'USER' },
+  params: {},
+  body: { provider: 'openai', model: 'test-model' },
+});
 const res = () => ({
-  code: 200, payload: null,
-  status(code) { this.code = code; return this; },
-  json(value) { this.payload = value; return this; },
+  code: 200,
+  payload: null,
+  status(code) {
+    this.code = code;
+    return this;
+  },
+  json(value) {
+    this.payload = value;
+    return this;
+  },
 });
 beforeAll(async () => {
   mongo = await MongoMemoryServer.create();
@@ -86,7 +113,10 @@ beforeAll(async () => {
   Agent = mongoose.models.Agent || mongoose.model('Agent', agentSchema);
   Acl = mongoose.models.AclEntry || mongoose.model('AclEntry', aclEntrySchema);
 }, 30000);
-afterAll(async () => { await mongoose.disconnect(); await mongo.stop(); });
+afterAll(async () => {
+  await mongoose.disconnect();
+  await mongo.stop();
+});
 beforeEach(async () => {
   await Agent.deleteMany({});
   await Acl.deleteMany({});
@@ -102,7 +132,13 @@ test('setup route commits six distinct agents, owner ACL and stable second initi
   expect(new Set(initial.map((a) => a.name)).size).toBe(6);
   const grants = await Acl.find({ principalId: String(ownerId) }).lean();
   expect(grants).toHaveLength(6);
-  expect(grants.every((g) => (g.permBits & (PermissionBits.VIEW | PermissionBits.EDIT)) === (PermissionBits.VIEW | PermissionBits.EDIT))).toBe(true);
+  expect(
+    grants.every(
+      (g) =>
+        (g.permBits & (PermissionBits.VIEW | PermissionBits.EDIT)) ===
+        (PermissionBits.VIEW | PermissionBits.EDIT),
+    ),
+  ).toBe(true);
   const worker = initial.find((a) => a.name === 'BOT MODE Worker');
   expect(worker.subagents.enabled).toBe(true);
   expect(new Set(worker.subagents.agent_ids).size).toBe(5);
@@ -118,7 +154,9 @@ test('setup route commits six distinct agents, owner ACL and stable second initi
   await inspect(req(), state);
   expect(state.code).toBe(200);
   expect(state.payload).toMatchObject({
-    inventoryComplete: true, permissionsComplete: true, delegationConfigured: true,
+    inventoryComplete: true,
+    permissionsComplete: true,
+    delegationConfigured: true,
   });
 });
 
@@ -132,14 +170,16 @@ test('HTTP POST and GET travel through Express with a test-authenticated owner',
   });
   app.use('/agents', router);
   const first = await supertest(app).post('/agents/botmode/setup').send({
-    provider: 'openai', model: 'test-model',
+    provider: 'openai',
+    model: 'test-model',
   });
   expect(first.status).toBe(200);
   expect(first.body.created).toHaveLength(6);
   expect(await Agent.countDocuments({ author: ownerId })).toBe(6);
 
   const second = await supertest(app).post('/agents/botmode/setup').send({
-    provider: 'openai', model: 'test-model',
+    provider: 'openai',
+    model: 'test-model',
   });
   expect(second.status).toBe(200);
   expect(second.body.created).toHaveLength(0);
@@ -148,6 +188,8 @@ test('HTTP POST and GET travel through Express with a test-authenticated owner',
   const inventory = await supertest(app).get('/agents/botmode/setup-status');
   expect(inventory.status).toBe(200);
   expect(inventory.body).toMatchObject({
-    inventoryComplete: true, permissionsComplete: true, delegationConfigured: true,
+    inventoryComplete: true,
+    permissionsComplete: true,
+    delegationConfigured: true,
   });
 });

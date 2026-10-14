@@ -10,9 +10,14 @@ jest.mock('@librechat/data-schemas', () => ({
   runAsSystem: (callback) => callback(),
 }));
 jest.mock('~/models', () => ({
-  getUserById: jest.fn(async (id) => id === 'test-owner' ? {
-    _id: { toString: () => 'test-owner' }, role: 'USER',
-  } : null),
+  getUserById: jest.fn(async (id) =>
+    id === 'test-owner'
+      ? {
+          _id: { toString: () => 'test-owner' },
+          role: 'USER',
+        }
+      : null,
+  ),
   updateUser: jest.fn(),
 }));
 jest.mock('@librechat/api', () => ({
@@ -52,24 +57,42 @@ describe('BOT MODE signed JWT authentication over HTTP', () => {
     const noToken = await request(app).post('/api/agents/botmode/setup');
     expect(noToken.status).toBe(401);
     const badToken = jwt.sign({ id: 'test-owner' }, 'incorrect-secret');
-    const forged = await request(app).post('/api/agents/botmode/setup').set('Authorization', `Bearer ${badToken}`);
+    const forged = await request(app)
+      .post('/api/agents/botmode/setup')
+      .set('Authorization', `Bearer ${badToken}`);
     expect(forged.status).toBe(401);
   });
 
   test('accepts correctly signed owner token for both onboarding routes', async () => {
     const token = jwt.sign({ id: 'test-owner' }, SECRET, { expiresIn: '5m' });
-    const setup = await request(app).post('/api/agents/botmode/setup').set('Authorization', `Bearer ${token}`);
+    const setup = await request(app)
+      .post('/api/agents/botmode/setup')
+      .set('Authorization', `Bearer ${token}`);
     expect(setup.status).toBe(200);
     expect(setup.body.owner).toBe('test-owner');
-    const status = await request(app).get('/api/agents/botmode/setup-status').set('Authorization', `Bearer ${token}`);
+    const status = await request(app)
+      .get('/api/agents/botmode/setup-status')
+      .set('Authorization', `Bearer ${token}`);
     expect(status.status).toBe(200);
     expect(status.body.owner).toBe('test-owner');
   });
 
   test('rejects a signed token for a nonexistent account and scoped trigger token', async () => {
     const missing = jwt.sign({ id: 'unknown' }, SECRET);
-    expect((await request(app).post('/api/agents/botmode/setup').set('Authorization', `Bearer ${missing}`)).status).toBe(401);
+    expect(
+      (
+        await request(app)
+          .post('/api/agents/botmode/setup')
+          .set('Authorization', `Bearer ${missing}`)
+      ).status,
+    ).toBe(401);
     const scoped = jwt.sign({ id: 'test-owner', scope: 'agent_trigger' }, SECRET);
-    expect((await request(app).post('/api/agents/botmode/setup').set('Authorization', `Bearer ${scoped}`)).status).toBe(401);
+    expect(
+      (
+        await request(app)
+          .post('/api/agents/botmode/setup')
+          .set('Authorization', `Bearer ${scoped}`)
+      ).status,
+    ).toBe(401);
   });
 });

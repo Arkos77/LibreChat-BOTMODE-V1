@@ -4,15 +4,17 @@
 const mockAgents = [];
 const mockAccess = jest.fn((req, res, next, permissions) => {
   if (!req.user?.id) return res.status(401).json({ error: 'Authentication required' });
-  if (permissions.includes('CREATE') && !req.user.canCreate) return res.status(403).json({ error: 'Forbidden' });
+  if (permissions.includes('CREATE') && !req.user.canCreate)
+    return res.status(403).json({ error: 'Forbidden' });
   next();
 });
 const mockPermissions = new Map();
 let mockNextId = 0;
 const mockGetAgents = jest.fn(async (query) =>
-  mockAgents.filter((agent) =>
-    String(agent.author) === String(query.author) &&
-    (query.name?.$in ? query.name.$in.includes(agent.name) : agent.name === query.name),
+  mockAgents.filter(
+    (agent) =>
+      String(agent.author) === String(query.author) &&
+      (query.name?.$in ? query.name.$in.includes(agent.name) : agent.name === query.name),
   ),
 );
 const mockGrantPermission = jest.fn(async ({ resourceId }) => {
@@ -36,7 +38,10 @@ const mockUpdateAgent = jest.fn(async (req, res) => {
   res.status(200).json(agent);
 });
 jest.mock('@librechat/api', () => ({
-  generateCheckAccess: ({ permissions }) => (req, res, next) => mockAccess(req, res, next, permissions),
+  generateCheckAccess:
+    ({ permissions }) =>
+    (req, res, next) =>
+      mockAccess(req, res, next, permissions),
 }));
 jest.mock('~/server/middleware', () => ({
   configMiddleware: (_req, _res, next) => next(),
@@ -76,15 +81,25 @@ function response() {
   return {
     code: 200,
     payload: undefined,
-    status(code) { this.code = code; return this; },
-    json(value) { this.payload = value; return this; },
+    status(code) {
+      this.code = code;
+      return this;
+    },
+    json(value) {
+      this.payload = value;
+      return this;
+    },
   };
 }
 const setupLayer = router.stack.find((layer) => layer.route?.path === '/botmode/setup');
 const statusLayer = router.stack.find((layer) => layer.route?.path === '/botmode/setup-status');
 const setup = setupLayer.route.stack.at(-1).handle;
 const inspect = statusLayer.route.stack.at(-1).handle;
-const request = () => ({ user: { id: 'owner-1', role: 'USER', canCreate: true }, body: { provider: 'openai', model: 'test-model' }, params: {} });
+const request = () => ({
+  user: { id: 'owner-1', role: 'USER', canCreate: true },
+  body: { provider: 'openai', model: 'test-model' },
+  params: {},
+});
 
 beforeEach(() => {
   mockAgents.length = 0;
@@ -150,16 +165,26 @@ test('HTTP permission boundary blocks anonymous and non-creator setup requests',
     next();
   });
   app.use('/agents', router);
-  const anonymous = await supertest(app).post('/agents/botmode/setup').send({ provider: 'openai', model: 'test-model' });
+  const anonymous = await supertest(app)
+    .post('/agents/botmode/setup')
+    .send({ provider: 'openai', model: 'test-model' });
   expect(anonymous.status).toBe(401);
-  const viewer = await supertest(app).post('/agents/botmode/setup').set('x-test-identity', 'viewer').send({ provider: 'openai', model: 'test-model' });
+  const viewer = await supertest(app)
+    .post('/agents/botmode/setup')
+    .set('x-test-identity', 'viewer')
+    .send({ provider: 'openai', model: 'test-model' });
   expect(viewer.status).toBe(403);
   expect(mockAgents).toHaveLength(0);
-  const allowed = await supertest(app).post('/agents/botmode/setup').set('x-test-identity', 'creator').send({ provider: 'openai', model: 'test-model' });
+  const allowed = await supertest(app)
+    .post('/agents/botmode/setup')
+    .set('x-test-identity', 'creator')
+    .send({ provider: 'openai', model: 'test-model' });
   expect(allowed.status).toBe(200);
   expect(mockAgents).toHaveLength(6);
   const forbiddenStatus = await supertest(app).get('/agents/botmode/setup-status');
   expect(forbiddenStatus.status).toBe(401);
-  const viewerStatus = await supertest(app).get('/agents/botmode/setup-status').set('x-test-identity', 'viewer');
+  const viewerStatus = await supertest(app)
+    .get('/agents/botmode/setup-status')
+    .set('x-test-identity', 'viewer');
   expect(viewerStatus.status).toBe(200);
 });

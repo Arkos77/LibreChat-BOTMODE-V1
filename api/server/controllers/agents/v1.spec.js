@@ -4556,15 +4556,23 @@ describe('Agent Controllers - Mass Assignment Protection', () => {
         expect(mockRes.status).toHaveBeenCalledWith(201);
       }
       const stored = await Agent.find({ author: owner._id }).lean();
-      const grants = await AclEntry.find({ principalId: owner._id, resourceType: ResourceType.AGENT }).lean();
+      const grants = await AclEntry.find({
+        principalId: owner._id,
+        resourceType: ResourceType.AGENT,
+      }).lean();
       expect(stored).toHaveLength(6);
       expect(new Set(stored.map((a) => a.name))).toEqual(new Set(names));
       expect(grants).toHaveLength(6);
       expect(new Set(grants.map((g) => String(g.resourceId)))).toEqual(
         new Set(stored.map((a) => String(a._id))),
       );
-      expect(grants.every((g) => (g.permBits & (PermissionBits.VIEW | PermissionBits.EDIT)) ===
-        (PermissionBits.VIEW | PermissionBits.EDIT))).toBe(true);
+      expect(
+        grants.every(
+          (g) =>
+            (g.permBits & (PermissionBits.VIEW | PermissionBits.EDIT)) ===
+            (PermissionBits.VIEW | PermissionBits.EDIT),
+        ),
+      ).toBe(true);
     });
   });
 
@@ -4611,11 +4619,14 @@ describe('Agent Controllers - Mass Assignment Protection', () => {
       expect(new Set(persisted.map((agent) => agent.id)).size).toBe(6);
       expect(grants).toHaveLength(6);
       for (const agent of persisted) {
-        expect(grants.some((grant) =>
-          String(grant.resourceId) === String(agent._id) &&
-          (grant.permBits & (PermissionBits.VIEW | PermissionBits.EDIT)) ===
-            (PermissionBits.VIEW | PermissionBits.EDIT)
-        )).toBe(true);
+        expect(
+          grants.some(
+            (grant) =>
+              String(grant.resourceId) === String(agent._id) &&
+              (grant.permBits & (PermissionBits.VIEW | PermissionBits.EDIT)) ===
+                (PermissionBits.VIEW | PermissionBits.EDIT),
+          ),
+        ).toBe(true);
       }
       const storedWorker = persisted.find((agent) => agent.name === names[0]);
       expect(storedWorker.subagents.enabled).toBe(true);
