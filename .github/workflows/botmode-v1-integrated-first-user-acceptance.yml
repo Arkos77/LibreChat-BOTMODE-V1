@@ -1,6 +1,8 @@
 name: BOTMODE V1 Integrated First User GHCR Acceptance
 
 on:
+  pull_request:
+    paths: ['.github/workflows/botmode-v1-integrated-first-user-acceptance.yml']
   push:
     branches: [main]
     paths: ['.github/workflows/botmode-v1-integrated-first-user-acceptance.yml']
