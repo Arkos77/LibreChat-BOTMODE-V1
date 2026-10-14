@@ -563,9 +563,21 @@ jobs:
           hits=[i for i,line in enumerate(lines) if '[subagentThreads] Child-thread execution failed' in line]
           print('CI_CHILD_EXCEPTION_LOG_ENTRIES='+str(len(hits)))
           for i in hits[-3:]:
-              block='\\n'.join(lines[i:i+14])
+              block='\n'.join(lines[i:i+14])
               names=re.findall(r'errorName[^A-Za-z]+([A-Za-z][A-Za-z0-9]*)',block)
               print('CI_CHILD_EXCEPTION_NAME='+(','.join(names[:2]) or 'unknown'))
+              # Winston may serialize the exception as a one-line JSON string;
+              # report only field names and bounded, non-sensitive stack locations.
+              try:
+                  payload=lines[i].split(' | ',1)[-1]
+                  obj=__import__('json').loads(payload)
+                  if isinstance(obj,dict):
+                      print('CI_CHILD_EXCEPTION_FIELDS='+','.join(sorted(obj.keys()))[:150])
+                      value=obj.get('errorName') or obj.get('name')
+                      if isinstance(value,str) and re.fullmatch(r'[A-Za-z][A-Za-z0-9]{0,63}',value):
+                          print('CI_CHILD_EXCEPTION_JSON_NAME='+value)
+              except (ValueError,TypeError):
+                  pass
               for candidate in ('TypeError','ReferenceError','ValidationError','AbortError','MongoServerError','SubagentThreadPublicError'):
                   if candidate in block:
                       print('CI_CHILD_EXCEPTION_CLASS='+candidate)
