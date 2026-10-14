@@ -16,7 +16,7 @@ describe('Jobicy opportunity adapter', () => {
       ],
     };
     const adapter = new JobicyOpportunityAdapter({
-      fetchImpl: (async () => new Response(JSON.stringify(payload), { status: 200 })) as typeof fetch,
+      fetchImpl: (async () => new Response(JSON.stringify(payload), { status: 200 })) as unknown as typeof fetch,
     });
     await expect(adapter.discover({ query: 'engineer', limit: 1 })).resolves.toEqual([
       {
@@ -36,12 +36,12 @@ describe('Jobicy opportunity adapter', () => {
       fetchImpl: (async () =>
         new Response(JSON.stringify({
           jobs: [{ id: 1, url: 'https://jobicy.com/jobs/1', jobTitle: 'Engineer', jobGeo: 'Europe' }],
-        }), { status: 200 })) as typeof fetch,
+        }), { status: 200 })) as unknown as typeof fetch,
     });
     await expect(adapter.discover({ query: 'eng' })).resolves.toMatchObject([{ geography: 'EUROPE', externalId: '1' }]);
 
     const failing = new JobicyOpportunityAdapter({
-      fetchImpl: (async () => new Response('', { status: 429 })) as typeof fetch,
+      fetchImpl: (async () => new Response('', { status: 429 })) as unknown as typeof fetch,
     });
     await expect(failing.discover({ query: 'eng' })).rejects.toThrow('Jobicy HTTP 429');
   });
