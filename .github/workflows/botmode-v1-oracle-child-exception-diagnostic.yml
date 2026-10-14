@@ -24,6 +24,18 @@ jobs:
           docker image inspect botmode-pr27-child-context:local >/dev/null
           echo CI_PR27_UNPUBLISHED_IMAGE=PASS
           echo CI_PR27_TESTED_COMMIT=8c6c2c42476a269528a44a00d0cd3387102a610f
+      - name: Restore pinned isolated compose topology missing from current branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          pinned_compose_sha=54b30a342bf8f3480d7385b30cfa669b73c92878
+          for filename in docker-compose.botmode.yml docker-compose.botmode-lite.yml; do
+            curl -fsSL --retry 3 "https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/${pinned_compose_sha}/${filename}" -o "${filename}"
+            test -s "${filename}"
+          done
+          grep -Fq 'SCHEDULES_SINGLE_PROCESS=true' docker-compose.botmode-lite.yml
+          grep -Fq 'image: ${BOTMODE_IMAGE:-' docker-compose.botmode.yml
+          echo CI_PINNED_COMPOSE_TOPOLOGY=PASS
       - name: Boot isolated candidate with disposable MongoDB
         env:
           OPENROUTER_API_KEY: ci-local-fixture-no-real-key
