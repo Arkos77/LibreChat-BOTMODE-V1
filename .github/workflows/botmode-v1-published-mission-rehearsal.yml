@@ -54,8 +54,6 @@ jobs:
           curl -fsS http://127.0.0.1:8088/health >/dev/null
           echo 'CI_SYNTHETIC_FIXTURE_HEALTH=PASS'
           # Disposable GitHub runner: the non-root LibreChat API must read this bind-mounted file.
-          chmod 600 .env
-          sudo chown 1000:1000 .env
           # Isolated, runtime-only signing material. Never reuse in production.
           ci_jwt_secret=$(openssl rand -hex 48)
           ci_jwt_refresh_secret=$(openssl rand -hex 48)
@@ -95,6 +93,8 @@ jobs:
           path.write_text(json.dumps(conf,ensure_ascii=False,indent=2)+'\n')
           print('CI_HOST_MODEL_ROUTING_DISABLED_FOR_ISOLATED_TEST='+str(len(routes)))
           PY
+          chmod 600 .env
+          sudo chown 1000:1000 .env
           export BOTMODE_MONGO_PASSWORD=ci-isolated-only
           export POSTGRES_PASSWORD=ci-isolated-only
           export BOTMODE_IMAGE=ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95
@@ -485,4 +485,4 @@ jobs:
           BOTMODE_MONGO_PASSWORD: ci-isolated-only
           POSTGRES_PASSWORD: ci-isolated-only
           BOTMODE_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95
-        run: docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
+        run: sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
