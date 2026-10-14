@@ -501,6 +501,14 @@ jobs:
               time.sleep(2)
           for key in ('completion_calls','parent_tool_requests','child_responses','parent_final','missing_tool'):
               print('CI_SUBAGENT_'+key.upper()+'='+str(data.get(key,0)))
+          # Capture persisted task status before enforcing child activity. A parent
+          # tool reply may contain a rejected detached invocation, not a child run.
+          if data.get('child_responses',0)<1:
+              print('CI_SUBAGENT_CHILD_MODEL_NOT_INVOKED=True')
+              import subprocess
+              subprocess.run(['docker','compose','-f','docker-compose.botmode.yml',
+                  '-f','docker-compose.botmode-lite.yml','exec','-T','api','node','-e',
+                  """const mongoose=require('mongoose');(async()=>{await mongoose.connect(process.env.MONGO_URI);const d=mongoose.connection.db;const c=await d.collection('conversations').find({'subagentThread.parentConversationId':{$exists:true}},{projection:{'subagentThread.depth':1,'subagentThread.subagentType':1}}).toArray();console.log('CI_CHILD_PERSISTED_COUNT='+c.length);await mongoose.disconnect()})().catch(e=>{console.log('CI_CHILD_DIAG_ERROR='+e.name)})"""],check=False)
           for key in ('parent_tool_requests','child_responses'):
               value=data.get(key,0)
               if not isinstance(value,int) or value<1: raise SystemExit('CI_SUBAGENT_MODEL_CYCLE_MISSING='+key)
