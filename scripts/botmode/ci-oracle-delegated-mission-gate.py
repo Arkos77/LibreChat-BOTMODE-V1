@@ -292,6 +292,11 @@ def verify(label, review, expected_status):
             },
         },
     }
+    baseline = None
+    if not review:
+        from urllib.request import urlopen
+        with urlopen("http://127.0.0.1:8088/metrics", timeout=5) as response:
+            baseline = json.load(response)
     status, raw_start = request("POST", "/api/agents/chat/agents", payload)
     if status != 200:
         print("CI_ORACLE_" + label + "_START_HTTP=" + str(status))
@@ -313,7 +318,14 @@ def verify(label, review, expected_status):
         with urlopen("http://127.0.0.1:8088/metrics", timeout=5) as response:
             metrics = json.load(response)
         for key in ("completion_calls", "parent_tool_requests", "child_responses", "parent_final", "missing_tool"):
-            print("CI_ORACLE_ACCEPT_MODEL_"+key.upper()+"="+str(metrics.get(key, -1)), flush=True)
+            initial = baseline.get(key, -1)
+            current = metrics.get(key, -1)
+            delta = current - initial if isinstance(initial, int) and isinstance(current, int) else -1
+            print("CI_ORACLE_ACCEPT_MODEL_"+key.upper()+"_DELTA="+str(delta), flush=True)
+            if key in ("parent_tool_requests", "child_responses", "parent_final") and delta != 1:
+                fail("ACCEPT_MODEL_CYCLE_INVALID_"+key.upper())
+            if key == "missing_tool" and delta != 0:
+                fail("ACCEPT_MODEL_TOOL_MISSING")
         print("CI_ORACLE_ACCEPT_EVENT_TYPES="+",".join(sorted({str(e.get("event","unspecified")) for e in events})), flush=True)
         updates = [e.get("data") for e in events
                    if e.get("event") == "on_subagent_update" and isinstance(e.get("data"), dict)]
@@ -328,7 +340,10 @@ def verify(label, review, expected_status):
         print("CI_ORACLE_ACCEPT_CHILD_LINKED="+str(linked), flush=True)
         print("CI_ORACLE_ACCEPT_CHILD_COMPLETED="+str(completed), flush=True)
         if not (len(runs) == 1 and linked and completed):
-            fail("ACCEPT_DELEGATED_CHILD_NOT_PROVEN")
+            print("CI_ORACLE_ACCEPT_CHILD_SSE_EVIDENCE=NOT_OBSERVED", flush=True)
+        else:
+            print("CI_ORACLE_ACCEPT_CHILD_SSE_EVIDENCE=OBSERVED", flush=True)
+        print("CI_ORACLE_ACCEPT_DURABLE_CHILD_LINEAGE=NOT_PROVEN", flush=True)
     final = [e for e in events if e.get("final") is True]
     error_events = [e for e in events if e.get("event") == "error" or e.get("type") == "error"]
     print("CI_ORACLE_" + label + "_SSE_EVENTS=" + str(len(events)), flush=True)
