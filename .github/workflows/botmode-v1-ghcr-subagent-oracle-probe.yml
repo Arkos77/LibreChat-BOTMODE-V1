@@ -498,6 +498,27 @@ jobs:
 
 
 
+          # Distinguish configured capability from effective child-thread persistence.
+          # Log only booleans/counts; never IDs, credentials or message contents.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE_LINEAGE'
+          const fs=require('fs');
+          const mongoose=require('mongoose');
+          (async()=>{
+            const cfg=JSON.parse(fs.readFileSync('/app/librechat.yaml','utf8'));
+            const caps=cfg?.endpoints?.agents?.capabilities||[];
+            console.log('CI_CHILD_RUNTIME_BACKGROUND_CAPABILITY='+caps.includes('run_in_background'));
+            console.log('CI_CHILD_RUNTIME_SUBAGENT_CAPABILITY='+caps.includes('subagents'));
+            await mongoose.connect(process.env.MONGO_URI);
+            const db=mongoose.connection.db;
+            const worker=await db.collection('agents').findOne({name:'BOT MODE Worker'}, {projection:{subagents:1}});
+            console.log('CI_CHILD_WORKER_SUBAGENTS_ENABLED='+Boolean(worker?.subagents?.enabled));
+            console.log('CI_CHILD_WORKER_SUBAGENT_COUNT='+(worker?.subagents?.agent_ids?.length||0));
+            const total=await db.collection('conversations').countDocuments({'subagentThread.parentConversationId':{$exists:true}});
+            console.log('CI_CHILD_ANY_DURABLE_THREAD_COUNT='+total);
+            await mongoose.disconnect();
+          })().catch(e=>{console.error('CI_CHILD_DIAGNOSTIC_CLASS='+e.name);process.exitCode=1});
+          NODE_LINEAGE
+
           # The pinned candidate does not contain this main-branch CI harness.
           # Pull the exact harness bytes from a reviewed main commit, not a
           # mutable branch reference during the running job.
