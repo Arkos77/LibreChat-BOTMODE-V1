@@ -31,7 +31,7 @@ jobs:
           const orig = Module._load;
           const visited = [];
           Module._load = function(request,parent,isMain) {
-            if (request === 'argparse' || request === 'sprintf-js' || /(?:^|\\/)(?:argparse|sprintf-js)(?:\\/|$)/.test(request)) visited.push(request);
+            if (request === 'argparse' || request === 'sprintf-js' || request.includes('/argparse/') || request.includes('/sprintf-js/')) visited.push(request);
             return orig.apply(this,arguments);
           };
           (async () => {
