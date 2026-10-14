@@ -1,0 +1,94 @@
+name: BOTMODE V1 Coordinated Disposable Restore
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-coordinated-restore.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coordinated-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+      - name: Prepare disposable services with correlated restore marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name ci-coord-mongo mongo:8.0.20
+          docker run -d --name ci-coord-pg -e POSTGRES_PASSWORD=disposable-only -e POSTGRES_USER=myuser -e POSTGRES_DB=mydatabase pgvector/pgvector:0.8.0-pg15-trixie
+          docker run -d --name ci-coord-meili -p 127.0.0.1:17710:7700 -e MEILI_ENV=development -e MEILI_NO_ANALYTICS=true getmeili/meilisearch:v1.35.1
+          docker volume create ci-coord-files >/dev/null
+          for n in $(seq 1 90); do
+            if docker exec ci-coord-mongo mongosh --quiet --eval 'db.adminCommand({ping:1}).ok' | grep -q 1 && docker exec ci-coord-pg pg_isready -U myuser -d mydatabase >/dev/null && curl -fsS http://127.0.0.1:17710/health | grep -q available; then break; fi
+            sleep 2
+          done
+          docker exec ci-coord-mongo mongosh --quiet LibreChat --eval 'db.restore_epoch.insertOne({_id:"epoch-001",state:"committed"})'
+          docker exec -i ci-coord-pg psql -v ON_ERROR_STOP=1 -U myuser -d mydatabase <<'SQL'
+          CREATE EXTENSION IF NOT EXISTS vector;
+          CREATE TABLE restore_epoch (id text PRIMARY KEY, embedding vector(3));
+          INSERT INTO restore_epoch VALUES ('epoch-001','[1,2,3]');
+          SQL
+          curl -fsS -X POST http://127.0.0.1:17710/indexes -H 'Content-Type: application/json' -d '{"uid":"restore_epoch","primaryKey":"id"}' >/dev/null
+          curl -fsS -X POST http://127.0.0.1:17710/indexes/restore_epoch/documents -H 'Content-Type: application/json' -d '[{"id":"epoch-001","state":"committed"}]' >/dev/null
+          docker run --rm -v ci-coord-files:/data alpine:3.20 sh -c 'printf "epoch-001" > /data/restore-epoch.txt'
+          ready=0
+          for n in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:17710/indexes/restore_epoch/documents/epoch-001 2>/dev/null | grep -q committed; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          echo 'BOTMODE_COORDINATED_EPOCH_WRITTEN=PASS'
+      - name: Quiesce writers and capture four source datasets
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker stop ci-coord-meili >/dev/null
+          docker exec ci-coord-mongo mongodump --db LibreChat --archive --gzip > "$RUNNER_TEMP/mongo.archive.gz"
+          docker exec ci-coord-pg pg_dump -U myuser -d mydatabase -Fc > "$RUNNER_TEMP/postgres.dump"
+          docker cp ci-coord-meili:/meili_data "$RUNNER_TEMP/meili-data"
+          docker run --rm -v ci-coord-files:/source:ro -v "$RUNNER_TEMP:/backup" alpine:3.20 tar czf /backup/files.tar.gz -C /source .
+          test -s "$RUNNER_TEMP/mongo.archive.gz"
+          test -s "$RUNNER_TEMP/postgres.dump"
+          test -s "$RUNNER_TEMP/files.tar.gz"
+          test -d "$RUNNER_TEMP/meili-data"
+          echo 'BOTMODE_COORDINATED_OFFLINE_CAPTURE=PASS'
+      - name: Restore into four independent disposable targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name ci-coord-mongo-restore mongo:8.0.20
+          docker run -d --name ci-coord-pg-restore -e POSTGRES_PASSWORD=disposable-only -e POSTGRES_USER=myuser -e POSTGRES_DB=mydatabase pgvector/pgvector:0.8.0-pg15-trixie
+          docker volume create ci-coord-files-restore >/dev/null
+          docker volume create ci-coord-meili-restore >/dev/null
+          for n in $(seq 1 90); do
+            if docker exec ci-coord-mongo-restore mongosh --quiet --eval 'db.adminCommand({ping:1}).ok' | grep -q 1 && docker exec ci-coord-pg-restore pg_isready -U myuser -d mydatabase >/dev/null; then break; fi
+            sleep 2
+          done
+          docker exec -i ci-coord-mongo-restore mongorestore --archive --gzip < "$RUNNER_TEMP/mongo.archive.gz"
+          docker exec -i ci-coord-pg-restore pg_restore --exit-on-error -U myuser -d mydatabase < "$RUNNER_TEMP/postgres.dump"
+          docker run --rm -v ci-coord-files-restore:/target -v "$RUNNER_TEMP:/backup:ro" alpine:3.20 tar xzf /backup/files.tar.gz -C /target
+          docker run --rm -v ci-coord-meili-restore:/target -v "$RUNNER_TEMP/meili-data:/source:ro" alpine:3.20 sh -c 'cp -a /source/. /target/'
+          docker run -d --name ci-coord-meili-restore -p 127.0.0.1:17711:7700 -e MEILI_ENV=development -e MEILI_NO_ANALYTICS=true -v ci-coord-meili-restore:/meili_data getmeili/meilisearch:v1.35.1
+          ready=0
+          for n in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:17711/indexes/restore_epoch/documents/epoch-001 2>/dev/null | grep -q committed; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          test "$(docker exec ci-coord-mongo-restore mongosh --quiet LibreChat --eval 'print(db.restore_epoch.countDocuments({_id:"epoch-001",state:"committed"}))' | tail -1 | tr -d '\r')" = 1
+          test "$(docker exec ci-coord-pg-restore psql -tA -U myuser -d mydatabase -c "SELECT count(*) FROM restore_epoch WHERE id='epoch-001' AND embedding='[1,2,3]'::vector" | tr -d '\r')" = 1
+          test "$(docker run --rm -v ci-coord-files-restore:/data:ro alpine:3.20 cat /data/restore-epoch.txt)" = epoch-001
+          echo 'BOTMODE_COORDINATED_FOUR_DATASETS_RESTORE=PASS'
+          echo 'SCOPE=correlated marker in four restored datasets; NOT authenticated API, schema migration, ACL or durable agent recovery'
+      - name: Remove disposable services and snapshots
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f -v ci-coord-mongo ci-coord-pg ci-coord-meili ci-coord-mongo-restore ci-coord-pg-restore ci-coord-meili-restore >/dev/null 2>&1 || true
+          docker volume rm -f ci-coord-files ci-coord-files-restore ci-coord-meili-restore >/dev/null 2>&1 || true
+          rm -rf "$RUNNER_TEMP/mongo.archive.gz" "$RUNNER_TEMP/postgres.dump" "$RUNNER_TEMP/meili-data" "$RUNNER_TEMP/files.tar.gz"

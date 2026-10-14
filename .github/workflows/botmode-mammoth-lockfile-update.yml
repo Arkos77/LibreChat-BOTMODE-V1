@@ -1,0 +1,49 @@
+name: BOTMODE Mammoth Lockfile Update
+
+on:
+  pull_request:
+    paths:
+      - 'packages/api/package.json'
+      - '.github/workflows/botmode-mammoth-lockfile-update.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  update-locked-dependency:
+    if: github.repository == 'Arkos77/LibreChat-BOTMODE-V1' && github.head_ref == 'botmode-v1-mammoth-security-trial-20261013'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: botmode-v1-mammoth-security-trial-20261013
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Regenerate lockfile only
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Prove deterministic install and pinned candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          node -e "const m=require('mammoth/package.json'); if (m.version !== '1.12.3') throw Error('Unexpected Mammoth '+m.version)"
+          npm run build:data-provider
+          npm exec --workspace=packages/api -- jest --runInBand --coverage=false --runTestsByPath src/files/documents/docxWorker.spec.ts src/files/documents/html.spec.ts src/files/documents/crud.spec.ts src/files/documents/zipSafety.spec.ts
+      - name: Commit only resolved package-lock.json to trial branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_HEAD_REF" = "botmode-v1-mammoth-security-trial-20261013"
+          if git diff --quiet -- package-lock.json; then
+            echo BOTMODE_LOCKFILE_ALREADY_CURRENT=PASS
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- package-lock.json
+          git commit -m 'chore(botmode): lock verified Mammoth 1.12.3'
+          git push origin "HEAD:refs/heads/$GITHUB_HEAD_REF"

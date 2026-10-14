@@ -329,7 +329,7 @@ export function createToolGenerationProvider(input: {
       executionMode: 'tool',
       signals: input.signals,
     }),
-    generate: (brief, context) =>
+    generate: async (brief, context) =>
       input.execute({
         toolName: input.toolName,
         args: {

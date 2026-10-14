@@ -16,6 +16,7 @@ import type { ResolvedAskUserQuestion } from '~/agents/hitl/resume';
 import type { MissionPlan } from '~/agents/orchestrator/types';
 import type { RecoveredSteerPayload } from '../SteerRecovery';
 import type { MCPRuntimeRequestBody } from '~/mcp/types';
+import type { GenerationJobMetadata } from '~/types';
 
 /**
  * Detached Event Actor execution guarantee advertised by a generation store.

@@ -1,3 +1,4 @@
+import type { MissionPlan } from '../../agents/orchestrator/types';
 /* eslint jest/no-standalone-expect: ["error", { "additionalTestBlockFunctions": ["testRedis"] }] */
 import type { Redis, Cluster } from 'ioredis';
 import type { ServerSentEvent, StreamEvent, CreatedEvent } from '~/types';
@@ -405,7 +406,7 @@ describe('GenerationJobManager Integration Tests', () => {
         const hasJob = await GenerationJobManager.hasJob(streamId);
         expect(hasJob).toBe(true);
 
-        const orchestratorPlan = {
+        const orchestratorPlan: MissionPlan = {
           planId: 'mission-p6:v1',
           planVersion: 1,
           mission: {

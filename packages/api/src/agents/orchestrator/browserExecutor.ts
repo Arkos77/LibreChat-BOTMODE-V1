@@ -1,4 +1,4 @@
-import { chromium, type Browser } from 'playwright';
+import type { Browser } from 'playwright';
 import { canExecuteBrowserGrant, type BrowserExecutionGrant } from './browserSecurity';
 
 export interface BrowserActionInput {
@@ -18,28 +18,38 @@ export interface BrowserExecutionResult {
 }
 
 const requireText = (name: string, value: string | undefined): string => {
-  if (typeof value !== 'string' || value.trim() === '') throw new Error(`${name} must be non-empty`);
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error(`${name} must be non-empty`);
+  }
   return value.trim();
 };
 
 function assertDestination(grant: BrowserExecutionGrant, url: string): void {
   const parsed = new URL(url);
   if (grant.networkMode === 'NONE') throw new Error('Browser network mode NONE forbids navigation');
-  if (grant.networkMode === 'LOCAL_LAB' && !['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)) {
+  if (
+    grant.networkMode === 'LOCAL_LAB' &&
+    !['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)
+  ) {
     throw new Error('LOCAL_LAB permits only local targets');
   }
   if (grant.networkMode === 'ALLOWLIST' || grant.networkMode === 'TOR_ALLOWLIST') {
     const allowed = grant.allowlistedDestinations ?? [];
-    if (!allowed.some((destination) => {
-      const target = new URL(destination);
-      return target.protocol === parsed.protocol && target.host === parsed.host;
-    })) {
+    if (
+      !allowed.some((destination) => {
+        const target = new URL(destination);
+        return target.protocol === parsed.protocol && target.host === parsed.host;
+      })
+    ) {
       throw new Error('Destination is not allowlisted');
     }
   }
 }
 
-function assertInputForAction(action: BrowserExecutionGrant['action'], input: BrowserActionInput): void {
+function assertInputForAction(
+  action: BrowserExecutionGrant['action'],
+  input: BrowserActionInput,
+): void {
   if (action === 'OPEN') requireText('url', input.url);
   if (['CLICK', 'SELECT', 'TYPE'].includes(action)) requireText('selector', input.selector);
   if (action === 'TYPE') requireText('text', input.text);
@@ -58,9 +68,13 @@ async function executeOnPage(
   } else if (grant.action === 'CLICK') {
     await page.locator(requireText('selector', input.selector)).click();
   } else if (grant.action === 'TYPE') {
-    await page.locator(requireText('selector', input.selector)).fill(requireText('text', input.text));
+    await page
+      .locator(requireText('selector', input.selector))
+      .fill(requireText('text', input.text));
   } else if (grant.action === 'SELECT') {
-    await page.locator(requireText('selector', input.selector)).selectOption(requireText('value', input.value));
+    await page
+      .locator(requireText('selector', input.selector))
+      .selectOption(requireText('value', input.value));
   } else if (grant.action === 'SCROLL') {
     await page.mouse.wheel(0, Math.max(-10_000, Math.min(input.amount ?? 600, 10_000)));
   } else if (grant.action === 'BACK') {
@@ -78,6 +92,16 @@ async function executeOnPage(
     title: await page.title(),
     text: await page.locator('body').innerText({ timeout }),
   };
+}
+
+async function launchBrowser(): Promise<Browser> {
+  try {
+    const { chromium } = await import('playwright');
+    return await chromium.launch({ headless: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Browser runtime unavailable: ${message}`);
+  }
 }
 
 export class BrowserExecutionSession {
@@ -131,7 +155,7 @@ export async function executeBrowserGrant(
     assertDestination(grant, requireText('url', input.url));
   }
 
-  const browser = deps.browser ?? (await chromium.launch({ headless: true }));
+  const browser = deps.browser ?? (await launchBrowser());
   const ownsBrowser = deps.browser == null;
   const session = await new BrowserExecutionSession(browser, ownsBrowser).init();
   try {

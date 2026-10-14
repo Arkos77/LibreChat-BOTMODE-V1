@@ -1,0 +1,68 @@
+name: BOTMODE V1 Disposable Full Runtime Qualification
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-full-runtime-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Prepare isolated credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "BOTMODE_MONGO_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo "MEILI_MASTER_KEY=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo 'BOTMODE_HOST_PORT=3090' >> "$GITHUB_ENV"
+          echo 'ADMIN_PANEL_PORT=3091' >> "$GITHUB_ENV"
+
+      - name: Install Full candidate from immutable commit tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,MEILI_MASTER_KEY,BOTMODE_HOST_PORT,ADMIN_PANEL_PORT ./install.sh --full --image ghcr.io/arkos77/librechat-botmode-v1:sha-d4e82dded5df
+
+      - name: Verify Full runtime and dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose=(sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,MEILI_MASTER_KEY,BOTMODE_HOST_PORT,ADMIN_PANEL_PORT docker compose -f docker-compose.botmode.yml)
+          ready=0
+          for n in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then ready=1; break; fi
+            sleep 2
+          done
+          if [ "$ready" != 1 ]; then
+            echo 'CI_FULL_API_READY=FAIL'
+            "${compose[@]}" ps
+            exit 1
+          fi
+          echo 'CI_FULL_API_READY=PASS'
+          for svc in mongodb vectordb meilisearch rag_api; do
+            test -n "$("${compose[@]}" ps -q "$svc")"
+            test "$(sudo docker inspect --format '{{.State.Running}}' "$("${compose[@]}" ps -q "$svc")")" = true
+            echo "CI_FULL_SERVICE_${svc}=RUNNING"
+          done
+          "${compose[@]}" exec -T vectordb sh -ec 'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT 1" | grep -q 1'
+          echo 'CI_FULL_POSTGRES_AUTH=PASS'
+
+      - name: Remove runner-only containers and volumes
+        if: always()
+        shell: bash
+        env:
+          BOTMODE_MONGO_PASSWORD: ci-cleanup-only
+          POSTGRES_PASSWORD: ci-cleanup-only
+          MEILI_MASTER_KEY: ci-cleanup-only
+        run: |
+          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,MEILI_MASTER_KEY docker compose -f docker-compose.botmode.yml down --volumes --remove-orphans || true
