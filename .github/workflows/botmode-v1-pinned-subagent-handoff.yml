@@ -1,0 +1,49 @@
+name: BOTMODE V1 Pinned Subagent Handoff E2E
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-pinned-subagent-handoff.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-subagent-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CI: 'true'
+      NODE_OPTIONS: --max-old-space-size=6144
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      E2E_CHROMIUM_CHANNEL: chrome
+      E2E_STREAM_STORE: memory
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: 54b30a342bf8f3480d7385b30cfa669b73c92878
+          persist-credentials: false
+      - name: Assert pinned candidate
+        run: test "$(git rev-parse HEAD)" = 54b30a342bf8f3480d7385b30cfa669b73c92878
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.16.0'
+      - run: npm ci
+      - name: Build app and internal packages
+        run: |
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:api
+          npm run build:client-package
+          npm run build:client
+      - name: Exercise actual mock-model nested and parallel handoffs
+        run: |
+          google-chrome --version
+          npx playwright test --config=e2e/playwright.config.mock.ts \
+            e2e/specs/mock/agent-handoffs.spec.ts \
+            e2e/specs/mock/subagent-results.spec.ts
+          echo 'BOTMODE_PINNED_HANDOFF_E2E=PASS'
+      - name: Evidence boundary
+        if: always()
+        run: |
+          echo 'Pinned candidate with UI-level nested/parallel mock-model handoffs; no proof of GHCR-runtime subagent Oracle mission.' >> "$GITHUB_STEP_SUMMARY"
