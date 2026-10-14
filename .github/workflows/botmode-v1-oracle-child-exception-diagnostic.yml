@@ -17,13 +17,26 @@ jobs:
           persist-credentials: false
       - name: Prove corrected revision
         run: test "$(git rev-parse HEAD)" = '8c6c2c42476a269528a44a00d0cd3387102a610f'
-      - name: Build PR27 runtime from pinned corrected commit without publishing
+      - name: Build CI-only corrected runtime on the verified candidate image
         run: |
           set -euo pipefail
-          docker build --target node --build-arg BUILD_COMMIT=8c6c2c42476a269528a44a00d0cd3387102a610f -t botmode-pr27-child-context:local -f Dockerfile .
+          # The integration branch has no /api/agents/botmode/setup-status route.
+          # That route exists in the previously exercised candidate image.
+          # Overlay ONLY the corrected AgentClient file and never publish it.
+          # Keep the SDK, bootstrap, ACL and Oracle implementation from the pinned candidate.
+          cat > .ci-pr27-detached-overlay.Dockerfile <<'DOCKERFILE'
+          FROM ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95
+          COPY --chown=node:node api/server/controllers/agents/client.js /app/api/server/controllers/agents/client.js
+          DOCKERFILE
+          docker build -f .ci-pr27-detached-overlay.Dockerfile -t botmode-pr27-child-context:local .
           docker image inspect botmode-pr27-child-context:local >/dev/null
-          echo CI_PR27_UNPUBLISHED_IMAGE=PASS
-          echo CI_PR27_TESTED_COMMIT=8c6c2c42476a269528a44a00d0cd3387102a610f
+          host_sha=$(sha256sum api/server/controllers/agents/client.js | cut -d' ' -f1)
+          runtime_sha=$(docker run --rm --entrypoint sha256sum botmode-pr27-child-context:local /app/api/server/controllers/agents/client.js | cut -d' ' -f1)
+          test "$host_sha" = "$runtime_sha"
+          docker run --rm --entrypoint node botmode-pr27-child-context:local -e "require.resolve('@librechat/agents'); console.log('CI_PR27_SDK_LOAD=PASS')"
+          echo CI_PR27_TEST_OVERLAY_MATCH=PASS
+          echo CI_PR27_IMAGE_IS_CI_ONLY=true
+          echo CI_PR27_CORRECTED_SOURCE_COMMIT=8c6c2c42476a269528a44a00d0cd3387102a610f
       - name: Restore pinned isolated compose topology missing from current branch
         shell: bash
         run: |
@@ -713,7 +726,7 @@ jobs:
           python3 /tmp/botmode-ci-oracle-publication-gate.py
           echo 'BOTMODE_PR27_CHILD_ORACLE_PROBE=PASS'
           echo '### Release-fix branch Oracle/QA E2E (local synthetic provider)' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Test image built without source-code CI hotpatches; local fixture is not hosted inference.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'CI-only image: immutable published candidate runtime plus one reviewed AgentClient file from PR27; NOT a publishable/release image. Local model fixture is not hosted inference.' >> "$GITHUB_STEP_SUMMARY"
       - name: Classify child execution exception from API logs
         if: failure()
         env:
