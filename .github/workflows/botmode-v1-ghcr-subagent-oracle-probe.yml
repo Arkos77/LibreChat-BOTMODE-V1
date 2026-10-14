@@ -573,7 +573,7 @@ jobs:
                   if re.search(r'(?<![A-Za-z])'+kind+r'(?![A-Za-z])',window):
                       print('CI_CHILD_LOG_ERROR_KIND='+kind)
                       break
-              for match in re.finditer(r'(?:at\\s+)([A-Za-z0-9_$.<>]+)\\s*\\(',window):
+              for match in re.finditer(r'at\s+([A-Za-z0-9_$.<>]+)\s*\(',window):
                   print('CI_CHILD_LOG_FRAME_FUNCTION='+match.group(1)[:100])
                   break
           for i in hits[-3:]:
