@@ -61,6 +61,20 @@ RUN \
     npm prune --production; \
     npm cache clean --force
 
+# The API is Alpine; Chromium runs in an isolated glibc-based Playwright service.
+# Retain only the version-pinned JS client in this API image. Installing in
+# a temporary prefix avoids npm re-resolving the LibreChat workspace lockfile.
+ARG BOTMODE_PLAYWRIGHT_VERSION=1.62.1
+RUN set -eu; \
+    mkdir -p /tmp/botmode-playwright-client; \
+    printf '{"name":"botmode-playwright-client","private":true,"version":"1.0.0"}\n' > /tmp/botmode-playwright-client/package.json; \
+    npm --prefix /tmp/botmode-playwright-client install --ignore-scripts --no-save --package-lock=false --omit=dev "playwright@${BOTMODE_PLAYWRIGHT_VERSION}"; \
+    cp -a /tmp/botmode-playwright-client/node_modules/playwright /app/node_modules/; \
+    cp -a /tmp/botmode-playwright-client/node_modules/playwright-core /app/node_modules/; \
+    rm -rf /tmp/botmode-playwright-client; \
+    node -e "if(typeof require('playwright').chromium.connect!=='function')process.exit(1)"; \
+    npm cache clean --force
+
 # Optional build metadata surfaced in Settings -> About for support triage.
 # Declared here (after the heavy install/build steps) so that commit/date
 # changing on every CI run does not bust the cache for dependency install

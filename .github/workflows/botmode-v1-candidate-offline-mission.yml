@@ -1,0 +1,63 @@
+name: BOTMODE V1 Candidate Offline Mission Contract
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-candidate-offline-mission.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  mission-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NODE_ENV: test
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: 54b30a342bf8f3480d7385b30cfa669b73c92878
+          persist-credentials: false
+      - name: Check pinned candidate
+        run: |
+          test "$(git rev-parse HEAD)" = 54b30a342bf8f3480d7385b30cfa669b73c92878
+          echo 'BOTMODE_MISSION_SOURCE=PASS'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.16.0
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Build internal packages
+        run: |
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:api
+      - name: Deterministic planner, routing, Oracle and publication readiness contracts
+        working-directory: packages/api
+        run: |
+          npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            src/agents/orchestrator/planner.spec.ts \
+            src/agents/orchestrator/routing.spec.ts \
+            src/agents/orchestrator/native.spec.ts \
+            src/agents/orchestrator/missionOracle.spec.ts \
+            src/agents/orchestrator/synthesisReadiness.integration.spec.ts \
+            src/agents/orchestrator/synthesisReadiness.spec.ts \
+            src/agents/oracle/runtime.spec.ts \
+            src/stream/metadata.spec.ts
+          echo 'BOTMODE_OFFLINE_MISSION_CONTRACT=PASS'
+      - name: Publication barrier and durable resume contracts
+        working-directory: api
+        run: |
+          npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            server/controllers/agents/__tests__/callbacks.spec.js \
+            server/controllers/agents/__tests__/request.resumeMetadata.spec.js \
+            server/controllers/agents/__tests__/resume.spec.js
+          echo 'BOTMODE_PUBLICATION_RESUME_CONTRACT=PASS'
+      - name: Declare bounded evidence
+        if: always()
+        run: |
+          echo 'Tests pinned integrated candidate at exact commit 54b30a3.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Deterministic tests only; this is NOT a single fully integrated first-user live mission.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No API key, external inference, database migration or stable promotion.' >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,44 @@
+name: BOTMODE V1 Native Subagent Contract Gate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-native-subagent-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native-subagent-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NODE_ENV: test
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: 54b30a342bf8f3480d7385b30cfa669b73c92878
+          persist-credentials: false
+      - name: Assert exact source
+        run: test "$(git rev-parse HEAD)" = 54b30a342bf8f3480d7385b30cfa669b73c92878
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.16.0
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Build packages
+        run: |
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:api
+      - name: Execute native parent-subagent-parent model contract
+        working-directory: packages/api
+        run: |
+          npx jest --ci --runInBand --coverage=false --runTestsByPath src/agents/__tests__/custom-endpoint-tenant.e2e.test.ts
+          echo 'BOTMODE_NATIVE_PARENT_CHILD_PARENT_CONTRACT=PASS'
+      - name: Evidence boundary
+        if: always()
+        run: |
+          echo 'Proves native SDK root tool-use -> child call -> parent final and tenant propagation under deterministic fetch mock.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Does NOT prove deployed GHCR image, durable child task identity, Oracle acceptance, or final publication in the same run.' >> "$GITHUB_STEP_SUMMARY"
