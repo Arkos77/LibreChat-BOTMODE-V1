@@ -84,7 +84,8 @@ class Handler(BaseHTTPRequestHandler):
                 "id":"call_ci_child_"+str(number),"type":"function",
                 "function":{"name":"subagent","arguments":json.dumps({
                     "description":"Return the delegated fixture result for parent verification.",
-                    "subagent_type":child_id
+                    "subagent_type":child_id,
+                    "run_in_background":True
                 })}
             }]}
             reason="tool_calls"
