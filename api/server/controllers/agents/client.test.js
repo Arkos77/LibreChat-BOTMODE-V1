@@ -6943,6 +6943,49 @@ describe('AgentClient - titleConvo', () => {
       expect(mockAgent.additional_instructions).toContain('Direct primary context');
     });
 
+    it('hydrates lazy child context after the parent options are disposed', async () => {
+      const childContext = makeTextFile('detached-child', 'detached.txt', 'Detached private context');
+      const resolvedChild = {
+        id: 'detached-child-agent',
+        endpoint: EModelEndpoint.openAI,
+        provider: EModelEndpoint.openAI,
+        instructions: 'Detached child instructions',
+        model_parameters: { model: 'gpt-4' },
+        tools: [],
+        agentContextAttachments: [childContext],
+      };
+      const descriptor = {
+        id: resolvedChild.id,
+        resolve: jest.fn().mockResolvedValue(resolvedChild),
+      };
+      mockAgent.lazySubagentConfigs = [descriptor];
+      client.agentConfigs = new Map();
+      await client.buildMessages(
+        [{ messageId: 'detached-msg', parentMessageId: null, sender: 'User',
+          text: 'Delegate this task.', isCreatedByUser: true }],
+        'detached-msg',
+        {},
+      );
+
+      // Reproduce the detached SDK callback after disposeClient() clears the parent.
+      client.options.req = null;
+      client.options = null;
+      client.agentConfigs = null;
+      const resolved = await descriptor.resolve({ signal: new AbortController().signal });
+
+      expect(resolved).toBe(resolvedChild);
+      expect(resolvedChild.additional_instructions).toContain('Detached private context');
+      expect(mockBuildAgentScopedContext).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          agentIds: ['detached-child-agent'],
+          attachmentsByAgentId: new Map([['detached-child-agent', [childContext]]]),
+          req: expect.objectContaining({
+            body: { fileTokenLimit: 1000 },
+          }),
+        }),
+      );
+    });
+
     it('hydrates a pure lazy subagent with its own File Context when selected', async () => {
       const childContext = makeTextFile('child-context', 'child.txt', 'Pure child private context');
       const resolvedChild = {
