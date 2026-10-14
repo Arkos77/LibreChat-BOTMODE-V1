@@ -51,7 +51,7 @@ jobs:
             sleep 2
           done
           test "$ready" = 1
-          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps --status running
+          sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps --status running
           echo 'BOTMODE_FRESH_HTTP=PASS'
           echo 'SCOPE=fresh CLI install, generated credentials, authenticated database readiness and HTTP config; not registration, provider API key, mission execution or DOCX user flow'
       - name: Destroy runner-only installation
