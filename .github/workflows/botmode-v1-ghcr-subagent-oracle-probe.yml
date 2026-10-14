@@ -43,7 +43,7 @@ jobs:
           YAML
           # Fixture is pinned to this commit, copied into the ephemeral checkout;
           # the source candidate and its lockfile remain immutable.
-          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/d3a6042413d341935808e11f74e449989bfa525f/scripts/botmode/ci-openai-subagent-fixture.py -o /tmp/botmode-ci-model-fixture.py
+          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/9bea457641245e04f1cb5cf2dc0e49662d05994f/scripts/botmode/ci-openai-subagent-fixture.py -o /tmp/botmode-ci-model-fixture.py
           python3 /tmp/botmode-ci-model-fixture.py >/tmp/botmode-ci-fixture.log 2>&1 &
           fixture_pid=$!
           echo "$fixture_pid" > /tmp/botmode-ci-fixture.pid
