@@ -309,6 +309,12 @@ def verify(label, review, expected_status):
         fail(label + "_SSE_HTTP_" + str(stream_status))
     events = result_events(sse)
     if not review:
+        from urllib.request import urlopen
+        with urlopen("http://127.0.0.1:8088/metrics", timeout=5) as response:
+            metrics = json.load(response)
+        for key in ("completion_calls", "parent_tool_requests", "child_responses", "parent_final", "missing_tool"):
+            print("CI_ORACLE_ACCEPT_MODEL_"+key.upper()+"="+str(metrics.get(key, -1)), flush=True)
+        print("CI_ORACLE_ACCEPT_EVENT_TYPES="+",".join(sorted({str(e.get("event","unspecified")) for e in events})), flush=True)
         updates = [e.get("data") for e in events
                    if e.get("event") == "on_subagent_update" and isinstance(e.get("data"), dict)]
         starts = [e for e in updates if e.get("phase") == "start"]
