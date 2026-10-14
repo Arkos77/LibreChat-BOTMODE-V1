@@ -22,7 +22,7 @@ describe('Remotive opportunity adapter', () => {
             candidate_required_location: 'Europe, USA, UK',
           }],
         }), { status: 200 });
-      }) as typeof fetch,
+      }) as unknown as typeof fetch,
     });
 
     await expect(adapter.discover({ query: 'engineer', limit: 2 })).resolves.toEqual([{
@@ -38,7 +38,7 @@ describe('Remotive opportunity adapter', () => {
 
   it('fails closed on non-2xx responses', async () => {
     const adapter = new RemotiveOpportunityAdapter({
-      fetchImpl: (async () => new Response('', { status: 429 })) as typeof fetch,
+      fetchImpl: (async () => new Response('', { status: 429 })) as unknown as typeof fetch,
     });
     await expect(adapter.discover({ query: 'engineer' })).rejects.toThrow('Remotive HTTP 429');
   });
