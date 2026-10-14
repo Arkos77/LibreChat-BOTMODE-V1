@@ -245,7 +245,7 @@ export function normalizeMissionOracleState(value: unknown): MissionOracleState 
     }
   }
 
-  return structuredClone(value) as MissionOracleState;
+  return structuredClone(value) as unknown as MissionOracleState;
 }
 
 function requiredText(value: string, name: string): string {
