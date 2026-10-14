@@ -96,6 +96,26 @@ jobs:
           export POSTGRES_PASSWORD=ci-isolated-only
           export BOTMODE_IMAGE=ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95
           export BOTMODE_HOST_PORT=3090
+          # Before instrumenting, prove which SDK version actually runs in the pinned image.
+          # Abort the diagnostic if the installed package cannot be resolved.
+          docker run --rm --entrypoint node \
+            ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95 \
+            -e '
+              const fs=require("node:fs"), path=require("node:path");
+              const entry=require.resolve("@librechat/agents");
+              let dir=path.dirname(entry), pkg;
+              for (let i=0;i<8;i++) {
+                const name=path.join(dir,"package.json");
+                if (fs.existsSync(name)) {
+                  const p=JSON.parse(fs.readFileSync(name,"utf8"));
+                  if(p.name==="@librechat/agents"){pkg=p;break;}
+                }
+                dir=path.dirname(dir);
+              }
+              if (!pkg) throw new Error("Pinned runtime SDK package metadata unavailable");
+              console.log("CI_ORACLE_RUNTIME_SDK_VERSION="+pkg.version);
+              console.log("CI_ORACLE_RUNTIME_SDK_ENTRY_CLASS="+(entry.endsWith(".cjs")?"cjs":entry.endsWith(".mjs")?"mjs":entry.endsWith(".js")?"js":"other"));
+            '
           # Diagnostic only: intercept the already-logged exception in the disposable API process.
           # The pinned image, SHA, application code and public error payload remain unchanged.
           cat > .ci-oracle-error-probe.cjs <<'NODE_PROBE'
