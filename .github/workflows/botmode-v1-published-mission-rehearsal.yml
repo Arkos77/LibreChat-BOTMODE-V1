@@ -93,8 +93,8 @@ jobs:
           path.write_text(json.dumps(conf,ensure_ascii=False,indent=2)+'\n')
           print('CI_HOST_MODEL_ROUTING_DISABLED_FOR_ISOLATED_TEST='+str(len(routes)))
           PY
-          chmod 600 .env
-          sudo chown 1000:1000 .env
+          sudo chown 1000:$(id -g) .env
+          sudo chmod 640 .env
           export BOTMODE_MONGO_PASSWORD=ci-isolated-only
           export POSTGRES_PASSWORD=ci-isolated-only
           export BOTMODE_IMAGE=ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95
