@@ -1,0 +1,62 @@
+name: BOTMODE V1 Fresh GHCR Lite Install
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-fresh-ghcr-install.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  fresh-lite-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: 54b30a342bf8f3480d7385b30cfa669b73c92878
+          persist-credentials: false
+      - name: Confirm exact candidate commit and clean state
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 54b30a342bf8f3480d7385b30cfa669b73c92878
+          test ! -e .env
+          test ! -e .botmode-database-auth-initialized
+          echo 'BOTMODE_FRESH_SOURCE=PASS'
+      - name: Install published GHCR candidate into disposable Lite stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          sudo ./install.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95 > "$RUNNER_TEMP/botmode-install.log" 2>&1 || {
+            tail -65 "$RUNNER_TEMP/botmode-install.log" | sed -E 's/(password|secret|token|api[_-]?key)([=: ]+)[^ ]+/\1\2[REDACTED]/Ig'
+            exit 1
+          }
+          grep -q 'BOTMODE_BOOTSTRAP=PASS' "$RUNNER_TEMP/botmode-install.log"
+          grep -q 'BOTMODE_PROFILE=lite' "$RUNNER_TEMP/botmode-install.log"
+          grep -q 'BOTMODE_IMAGE_PULL=PASS' "$RUNNER_TEMP/botmode-install.log"
+          grep -q 'BOTMODE_STACK=STARTED' "$RUNNER_TEMP/botmode-install.log"
+          test -s .botmode-database-auth-initialized
+          test "$(stat -c '%a' .env)" = 600
+          echo 'BOTMODE_FRESH_INSTALL=PASS'
+      - name: Readiness and authentication smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=0
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:3080/api/config > "$RUNNER_TEMP/botmode-api-config.json"; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps --status running
+          echo 'BOTMODE_FRESH_HTTP=PASS'
+          echo 'SCOPE=fresh CLI install, generated credentials, authenticated database readiness and HTTP config; not registration, provider API key, mission execution or DOCX user flow'
+      - name: Destroy runner-only installation
+        if: always()
+        shell: bash
+        run: |
+          sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down -v --remove-orphans || true
+          sudo rm -f .env .botmode-database-auth-initialized
