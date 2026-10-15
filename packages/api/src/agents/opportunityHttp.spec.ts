@@ -26,7 +26,7 @@ describe('Opportunity HTTP adapter', () => {
     const adapter = new OpportunityHttpAdapter({
       descriptor,
       endpoint: 'https://example.com/jobs',
-      fetchImpl: (async (input, init) => {
+      fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
         request = { url: String(input), headers: init?.headers };
         return new Response('payload', {
           status: 200,
