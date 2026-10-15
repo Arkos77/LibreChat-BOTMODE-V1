@@ -690,7 +690,7 @@ describe('LazyMongoSaver (lazy persistence — mongodb-memory-server)', () => {
     );
     const tuple = await saver!.getTuple(readConfig(threadId));
     expect(tuple?.checkpoint.id).toBe(checkpoint.id);
-    expect(tuple?.pendingWrites.some((write) => write[1] === '__no_writes__')).toBe(true);
+    expect(tuple?.pendingWrites?.some((write) => write[1] === '__no_writes__')).toBe(true);
   });
 
   it('continues from a saved sync mission step without rerunning preceding steps', async () => {

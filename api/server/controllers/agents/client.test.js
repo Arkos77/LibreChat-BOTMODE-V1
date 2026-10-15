@@ -3462,6 +3462,10 @@ describe('AgentClient - startup telemetry', () => {
       artifactPromises: [],
     });
     client.conversationId = 'conversation-terminal-oracle-rejected';
+    // Isolate this mocked job's durable generation: mission checkpoints must
+    // not fall into the legacy cleanup path before Oracle is exercised.
+    client.checkpointNamespace = 'oracle-rejected-generation';
+    mockDeleteAgentCheckpoint.mockResolvedValue();
     client.responseMessageId = 'response-terminal-oracle-rejected';
     client.parentMessageId = 'parent-terminal-oracle-rejected';
     client.jobCreatedAt = 1000;
@@ -3545,6 +3549,10 @@ describe('AgentClient - startup telemetry', () => {
       artifactPromises: [],
     });
     client.conversationId = 'conversation-terminal-oracle-unknown';
+    // Isolate this mocked job's durable generation: mission checkpoints must
+    // not fall into the legacy cleanup path before Oracle is exercised.
+    client.checkpointNamespace = 'oracle-unknown-generation';
+    mockDeleteAgentCheckpoint.mockResolvedValue();
     client.responseMessageId = 'response-terminal-oracle-unknown';
     client.parentMessageId = 'parent-terminal-oracle-unknown';
     client.jobCreatedAt = 1000;
