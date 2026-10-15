@@ -25,9 +25,11 @@ OpenAI.mockImplementation(() => ({
 
 jest.mock('fs', () => {
   return {
+    ...jest.requireActual('fs'),
     existsSync: jest.fn(),
     mkdirSync: jest.fn(),
     promises: {
+      ...jest.requireActual('fs').promises,
       writeFile: jest.fn(),
       readFile: jest.fn(),
       unlink: jest.fn(),
@@ -37,6 +39,7 @@ jest.mock('fs', () => {
 
 jest.mock('path', () => {
   return {
+    ...jest.requireActual('path'),
     resolve: jest.fn(),
     join: jest.fn(),
     relative: jest.fn(),
