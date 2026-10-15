@@ -10,7 +10,7 @@ describe('browser executor', () => {
   ) {
     const browser = await chromium.launch({
       headless: true,
-      executablePath: process.env.HOME + '/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome',
+      // Use the installed Playwright browser; avoid a stale runner-specific revision path.
     });
     try {
       await fn(browser);
