@@ -30,9 +30,7 @@ jest.mock('@librechat/data-schemas', () => ({
 }));
 jest.mock('path', () => ({
   ...jest.requireActual('path'),
-  resolve: jest.fn(),
-  join: jest.fn().mockReturnValue('/mock/path'),
-  relative: jest.fn().mockReturnValue('relative/path'),
+  // Preserve Node's actual path resolution for Playwright and its dependencies.
   extname: jest.fn().mockReturnValue('.png'),
 }));
 jest.mock('fs', () => ({
