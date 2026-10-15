@@ -40,9 +40,7 @@ jest.mock('fs', () => {
 jest.mock('path', () => {
   return {
     ...jest.requireActual('path'),
-    resolve: jest.fn(),
-    join: jest.fn(),
-    relative: jest.fn(),
+    // Preserve Node's real resolution for transitive dependencies.
     extname: jest.fn().mockImplementation((filename) => {
       return filename.slice(filename.lastIndexOf('.'));
     }),
