@@ -869,6 +869,9 @@ export function isStopConfirmed(result: AbortResult | null | undefined): boolean
  * Resume state for reconnecting clients
  */
 export interface ResumeState {
+  /** Host-approved plan retained across durable resume. */
+  orchestratorPlan?: MissionPlan;
+  isRegenerate?: boolean;
   runSteps: Agents.RunStep[];
   aggregatedContent: Agents.MessageContentComplex[];
   userMessage?: SerializableJobData['userMessage'];
