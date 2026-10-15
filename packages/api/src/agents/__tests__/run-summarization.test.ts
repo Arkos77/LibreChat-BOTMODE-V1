@@ -469,13 +469,13 @@ describe('model-level callbacks', () => {
       raiseError: true,
       awaitHandlers: true,
       handleChatModelStart: jest.fn(),
-    } satisfies ReturnType<ModelBindingCallbackFactory>[number];
+    } satisfies ModelBoundChatModelCallback;
     const fallbackCallback = {
       name: 'librechat-model-bound-content-filter',
       raiseError: true,
       awaitHandlers: true,
       handleChatModelStart: jest.fn(),
-    } satisfies ReturnType<ModelBindingCallbackFactory>[number];
+    } satisfies ModelBoundChatModelCallback;
     const factory = jest.fn((binding: Parameters<ModelBindingCallbackFactory>[0]) =>
       binding.provider === 'anthropic' ? [fallbackCallback] : [rootCallback],
     );
@@ -3411,6 +3411,9 @@ describe('createRun P6 orchestrator topology', () => {
 
     const runConfig = (Run.create as jest.Mock).mock.calls[0][0] as Record<string, unknown>;
     const hooks = runConfig.hooks as Parameters<typeof executeHooks>[0]['registry'];
+    if (!hooks) {
+      throw new Error('Expected registered HITL hooks for BYOM tool approval');
+    }
     const result = await executeHooks({
       phase: 'admission',
       registry: hooks,
