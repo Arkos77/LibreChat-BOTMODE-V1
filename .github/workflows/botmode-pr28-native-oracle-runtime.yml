@@ -1,0 +1,97 @@
+name: BOTMODE PR28 Native Oracle Runtime Qualification
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-pr28-native-oracle-runtime.yml'
+      - 'e2e/specs/qualification/**'
+      - 'e2e/playwright.config.oracle.ts'
+      - 'e2e/setup/fake-model.js'
+      - 'packages/api/src/agents/orchestrator/**'
+      - 'api/server/controllers/agents/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: botmode-pr28-runtime-oracle-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  native-oracle-runtime:
+    name: Authenticated Worker-specialist Oracle publication and block
+    if: github.event.pull_request.number == 28
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: 'true'
+      E2E_CHROMIUM_CHANNEL: chrome
+      E2E_STREAM_STORE: redis
+      REDIS_URI: redis://127.0.0.1:6379
+      STREAM_KEEP_COMPLETED_JOBS: 'true'
+      NODE_OPTIONS: '--max-old-space-size=6144'
+    steps:
+      - name: Checkout the exact PR head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Prove checked-out revision, never historical candidates
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          echo "PR28_ORACLE_RUNTIME_SOURCE_SHA=$EXPECTED_SHA"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - name: Reproduce dependency graph
+        run: npm ci --no-audit --no-fund
+      - name: Build complete runtime and UI
+        run: |
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:api
+          npm run build:client-package
+          npm run build:client
+      - name: Confirm Chromium availability
+        run: google-chrome --version
+      - name: Execute real HTTP/SDK graph with deterministic local model and durable Redis
+        run: >-
+          npx playwright test
+          --config=e2e/playwright.config.oracle.ts
+          --workers=1 --retries=0
+      - name: Upload failed Oracle traces only
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr28-native-oracle-runtime-failures
+          path: |
+            e2e/specs/.test-results/
+            e2e/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Declare the evidence boundary
+        if: always()
+        run: |
+          {
+            echo '### PR28 native mission runtime qualification'
+            echo "Exact checked-out PR head: $(git rev-parse HEAD)"
+            echo 'Tests: authenticated HTTP admission, two persisted agents, actual native mission graph, Redis Oracle results, SSE and saved MongoDB messages.'
+            echo 'Human-review branch must suppress the Oracle-blocked candidate.'
+            echo 'Uses a deterministic local fake model; no provider costs or paid calls.'
+            echo 'Does NOT prove provider reliability or API process crash/restart.'
+            echo 'NO-GO until all jobs succeed and remaining release criteria are verified.'
+          } >> "$GITHUB_STEP_SUMMARY"
