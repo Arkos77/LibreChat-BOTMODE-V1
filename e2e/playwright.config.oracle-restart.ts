@@ -12,7 +12,7 @@ export default defineConfig({
   ...mockConfig,
   testDir: 'specs/qualification',
   testMatch: 'mission-oracle-runtime.spec.ts',
-  grep: /worker -> specialist -> verified durable Oracle/,
+  grep: /worker -> specialist -> verified durable Oracle|in-flight SIGKILL retains plan/,
   workers: 1,
   retries: 0,
   webServer: [

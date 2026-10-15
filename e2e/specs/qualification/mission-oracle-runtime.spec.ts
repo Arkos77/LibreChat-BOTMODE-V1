@@ -302,6 +302,77 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
     }
   });
 
+
+  test('in-flight SIGKILL retains plan and never publishes an unverified candidate', async ({ page }) => {
+    test.setTimeout(220_000);
+    if (!process.env.E2E_RESTART_CONTROL_PORT) {
+      test.skip(true, 'Requires the isolated process-restart harness');
+    }
+    await page.goto('/c/new');
+    const token = await getAccessToken(page);
+    const redis = new Redis(process.env.REDIS_URI || 'redis://127.0.0.1:6379', {
+      maxRetriesPerRequest: 1,
+    });
+    let workerId: string | undefined;
+    let specialistId: string | undefined;
+    try {
+      const specialist = await createSavedAgent(page, token, 'Specialist');
+      specialistId = specialist.id;
+      const worker = await createSavedAgent(page, token, 'Worker', specialist.id);
+      workerId = worker.id;
+      const mission = makeMission(worker.id, specialist.id, false);
+      const conversationId = randomUUID();
+
+      // Use the existing intentionally slow streaming fixture. Admission
+      // succeeds before the output becomes a valid JSON Oracle candidate.
+      const admitted = await page.request.post('/api/agents/chat/agents', {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          endpoint: 'agents',
+          agent_id: worker.id,
+          conversationId,
+          messageId: randomUUID(),
+          parentMessageId: '00000000-0000-0000-0000-000000000000',
+          isNewConvo: true,
+          text: `E2E_SLOW_REPLY:oracle-crash-${mission.missionId}`,
+          orchestratorMission: { mission: mission.mission, plannerContext: mission.plannerContext },
+        },
+        timeout: 60_000,
+      });
+      expect(admitted.status()).toBe(200);
+      const started = (await admitted.json()) as MissionRun;
+      expect(started.status).toBe('started');
+      const streamId = started.streamId;
+      expect(streamId).toBeTruthy();
+      await expect.poll(async () => {
+        const snapshot = await loadDurableJob(redis, streamId!);
+        return snapshot.status === 'running' && snapshot.plan?.mission?.missionId === mission.missionId;
+      }, { timeout: 15_000, intervals: [100, 250, 500] }).toBe(true);
+
+      const before = await loadDurableJob(redis, streamId!);
+      expect(before.state?.results == null || Object.keys(before.state.results).length === 0).toBe(true);
+      const restart = await page.request.post(
+        `http://127.0.0.1:${process.env.E2E_RESTART_CONTROL_PORT}/restart`,
+        { headers: { 'x-e2e-restart-intent': 'oracle-runtime' }, timeout: 150_000 },
+      );
+      expect(restart.status()).toBe(200);
+      const after = await loadDurableJob(redis, streamId!);
+      expect(after.plan).toEqual(before.plan);
+      const messages = await requestJson<Array<{ messageId?: string; isCreatedByUser?: boolean; text?: string; content?: unknown }>>(page, {
+        path: `/api/messages/${encodeURIComponent(conversationId)}`,
+        token,
+      });
+      expect(messages.filter((m) => m.isCreatedByUser === false && responseText(m).includes('{"ok":true}'))).toHaveLength(0);
+      expect(new Set(messages.map((m) => m.messageId)).size).toBe(messages.length);
+      console.log('PR28_ORACLE_INFLIGHT_CRASH_UNVERIFIED_NOT_PUBLISHED=PASS');
+      console.log('PR28_ORACLE_INFLIGHT_RECOVERY_AUTO_RESUME=NOT_PROVEN');
+    } finally {
+      if (workerId) await cleanupAgent(page, workerId);
+      if (specialistId) await cleanupAgent(page, specialistId);
+      await redis.quit();
+    }
+  });
+
   test('human-review Oracle verdict blocks candidate publication', async ({ page }) => {
     test.setTimeout(180_000);
     await page.goto('/c/new');
