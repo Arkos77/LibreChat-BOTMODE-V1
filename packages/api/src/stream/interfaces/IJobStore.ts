@@ -1199,6 +1199,13 @@ export interface IJobStoreV2 extends IJobStore {
   /** Check if job exists */
   hasJob(streamId: string): Promise<boolean>;
 
+  /** Exact-owner liveness lease, Redis-only; other stores omit it. */
+  heartbeatMissionProvider?(
+    streamId: string,
+    generationId: number,
+    providerExecutionId: string,
+  ): Promise<boolean>;
+
   /** Get all running jobs (for cleanup) */
   getRunningJobs(): Promise<SerializableJobData[]>;
 
