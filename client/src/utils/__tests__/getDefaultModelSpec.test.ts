@@ -5,7 +5,11 @@ import type {
   TEndpointsConfig,
   TAgentsMap,
 } from 'librechat-data-provider';
-import { getDefaultModelSpec, defaultSpecAwaitsAgents, getStoredAvailableAgentPreset } from '../endpoints';
+import {
+  getDefaultModelSpec,
+  defaultSpecAwaitsAgents,
+  getStoredAvailableAgentPreset,
+} from '../endpoints';
 
 const createModelSpec = (name: string, overrides: Partial<TModelSpec> = {}): TModelSpec =>
   ({
@@ -722,7 +726,9 @@ describe('getStoredAvailableAgentPreset', () => {
 
   it('ignores an ephemeral agent id as a saved agent selection', () => {
     persistAgentSelection(Constants.EPHEMERAL_AGENT_ID);
-    const agents = { [Constants.EPHEMERAL_AGENT_ID]: { id: Constants.EPHEMERAL_AGENT_ID } } as unknown as TAgentsMap;
+    const agents = {
+      [Constants.EPHEMERAL_AGENT_ID]: { id: Constants.EPHEMERAL_AGENT_ID },
+    } as unknown as TAgentsMap;
     expect(getStoredAvailableAgentPreset(agents)).toBeUndefined();
   });
 });

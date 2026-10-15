@@ -26,6 +26,7 @@ import type {
 import type { AssistantListItem } from '~/common';
 import {
   updateLastSelectedModel,
+  mergeChatSelectionParams,
   getLocalStorageItems,
   getDefaultModelSpec,
   getDefaultEndpoint,
@@ -259,7 +260,9 @@ const useNewConvo = (index = 0) => {
         }
 
         const getParams = (nextConversation: TConversation) => {
-          const nextParams = new URLSearchParams(searchParams);
+          // Never navigate with the previous model/agent identity still in the URL.
+          // A cold reload interprets query settings as authoritative selection.
+          const nextParams = mergeChatSelectionParams(searchParams, nextConversation);
           nextParams.delete('projectId');
           if (
             nextConversation.conversationId === Constants.NEW_CONVO &&
