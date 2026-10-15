@@ -1663,6 +1663,13 @@ export interface IEventTransport {
    * A delayed replacement can use the proof after the owner's listeners retire. */
   recordAbortAcknowledgement?(streamId: string, generationId: number): Promise<boolean>;
 
+  /** Exact-owner presence lease for native mission recovery (Redis only). */
+  heartbeatMissionProvider?(
+    streamId: string,
+    generationId: number,
+    providerExecutionId: string,
+  ): Promise<boolean>;
+
   /** Persist/read exact proof that a provider segment can no longer mutate user data. */
   recordProviderDrain?(
     streamId: string,

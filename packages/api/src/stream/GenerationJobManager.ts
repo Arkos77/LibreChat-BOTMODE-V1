@@ -768,6 +768,66 @@ class GenerationJobManagerClass {
   private terminalErrorPublicationSuppressions = new WeakSet<TerminalJobClaim>();
 
   private cleanupInterval: NodeJS.Timeout | null = null;
+  private missionProviderHeartbeatInterval: NodeJS.Timeout | null = null;
+  private missionProviderHeartbeatBusy = false;
+  private missionRecoveryInspectionBusy = false;
+
+  /** Startup/periodic orphan discovery is observational. A job's running status
+   * is not sufficient proof that its former process is dead, so neither this
+   * method nor initialize() may start providers or rotate execution identities. */
+  async inspectOrphanedNativeMissions(): Promise<Array<Pick<SerializableJobData, 'streamId' | 'createdAt' | 'checkpointNamespace'>>> {
+    if (!this._isRedis || this.shuttingDown || this.missionRecoveryInspectionBusy) return [];
+    this.missionRecoveryInspectionBusy = true;
+    try {
+      const jobs = await this.jobStore.getRunningJobs();
+      return jobs.filter((job) =>
+        job.orchestratorPlan != null &&
+        job.providerDrained === false &&
+        typeof job.providerExecutionId === 'string' && job.providerExecutionId.length > 0 &&
+        job.providerExecutionStartedId === job.providerExecutionId &&
+        typeof job.checkpointNamespace === 'string' && job.checkpointNamespace !== '' &&
+        this.ownedJobs.get(job.streamId) !== job.createdAt,
+      ).map(({ streamId, createdAt, checkpointNamespace }) => ({ streamId, createdAt, checkpointNamespace }));
+    } finally {
+      this.missionRecoveryInspectionBusy = false;
+    }
+  }
+
+  /** A missed heartbeat only removes eligibility for automatic takeover after
+   * the Redis-server deadline; it never confers publication permission. */
+  private async heartbeatOwnedMissionProviders(): Promise<void> {
+    if (this.missionProviderHeartbeatBusy || this.shuttingDown ||
+        !this.jobStore.heartbeatMissionProvider) return;
+    this.missionProviderHeartbeatBusy = true;
+    try {
+      for (const [streamId, createdAt] of this.ownedJobs) {
+        // Durable ownership by itself does not prove the local provider still
+        // runs. A stopped/aborted runtime must cease renewing its liveness.
+        const runtime = this.runtimeState.get(streamId);
+        if (runtime?.createdAt !== createdAt || runtime.abortController.signal.aborted) continue;
+        try {
+          const job = await this.jobStore.getJob(streamId);
+          if (job?.createdAt !== createdAt || job.status !== 'running' ||
+              job.orchestratorPlan == null || job.providerDrained !== false ||
+              !job.providerExecutionId ||
+              job.providerExecutionStartedId !== job.providerExecutionId) continue;
+          const current = this.runtimeState.get(streamId);
+          if (current !== runtime || runtime.abortController.signal.aborted ||
+              this.ownedJobs.get(streamId) !== createdAt) continue;
+          await this.jobStore.heartbeatMissionProvider(
+            streamId, createdAt, job.providerExecutionId,
+          );
+        } catch (error) {
+          logger.warn(`[GenerationJobManager] Mission heartbeat failed for ${streamId}`, error);
+        }
+      }
+    } catch (error) {
+      logger.warn('[GenerationJobManager] Mission provider heartbeat failed', error);
+    } finally {
+      this.missionProviderHeartbeatBusy = false;
+    }
+  }
+
 
   /** Generation-scoped retirement callbacks must not outlive the configured
    * store/transport pair that created them. */
@@ -817,7 +877,21 @@ class GenerationJobManagerClass {
       return;
     }
 
-    this.jobStore.initialize();
+    const storeReady = this.jobStore.initialize();
+
+    // Enumerate after Redis initializes, without treating apparent orphanhood
+    // as authorization. A later host-managed recovery must recheck provider
+    // lease + tenant/agent policies and an exact Mongo checkpoint before claim.
+    if (this._isRedis) {
+      void storeReady.then(() => this.inspectOrphanedNativeMissions()).catch((error) => {
+        logger.warn('[GenerationJobManager] Startup mission inspection failed', error);
+      });
+    }
+
+    this.missionProviderHeartbeatInterval = setInterval(() => {
+      void this.heartbeatOwnedMissionProviders();
+    }, 5_000);
+    this.missionProviderHeartbeatInterval.unref?.();
 
     this.cleanupInterval = setInterval(() => {
       this.cleanup();
@@ -859,6 +933,10 @@ class GenerationJobManagerClass {
       );
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
+      if (this.missionProviderHeartbeatInterval) {
+        clearInterval(this.missionProviderHeartbeatInterval);
+        this.missionProviderHeartbeatInterval = null;
+      }
 
       const replacedJobStore = this.jobStore;
       const replacedEventTransport = this.eventTransport;
@@ -8103,6 +8181,14 @@ class GenerationJobManagerClass {
   }
 
   private async cleanup(): Promise<void> {
+    // A restart may precede the crashed provider's 15-second Redis lease
+    // expiry. Reinspect on the existing cleanup cadence rather than adding
+    // another scheduler. Discovery is read-only: no provider starts here.
+    if (this._isRedis) {
+      await this.inspectOrphanedNativeMissions().catch((error) => {
+        logger.warn('[GenerationJobManager] Periodic mission inspection failed', error);
+      });
+    }
     // A crashed pause writer must never become resumable merely because its
     // lease elapsed. Give a locally-observed runtime the first chance to fail
     // closed so its attached subscriber receives the terminal error.
@@ -8428,6 +8514,10 @@ class GenerationJobManagerClass {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
+    }
+    if (this.missionProviderHeartbeatInterval) {
+      clearInterval(this.missionProviderHeartbeatInterval);
+      this.missionProviderHeartbeatInterval = null;
     }
 
     for (const runtime of this.runtimeState.values()) {
