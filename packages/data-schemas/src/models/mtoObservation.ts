@@ -1,6 +1,6 @@
 import type { Model } from 'mongoose';
-import { applyTenantIsolation } from '~/models/plugins/tenantIsolation';
 import type { IMtoObservationRecord } from '~/types/mtoObservation';
+import { applyTenantIsolation } from '~/models/plugins/tenantIsolation';
 import mtoObservationSchema from '~/schema/mtoObservation';
 
 export function createMtoObservationModel(

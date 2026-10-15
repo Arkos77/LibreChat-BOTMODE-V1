@@ -43,10 +43,12 @@ describe('Opportunity HTTP adapter', () => {
 
     await expect(adapter.discover({ query: ' jobs ', limit: 2 })).resolves.toEqual([signal]);
     expect(request?.url).toBe('https://example.com/jobs?q=jobs&limit=2');
-    expect(request?.headers).toEqual(expect.objectContaining({
-      accept: expect.stringContaining('application/rss+xml'),
-      'user-agent': 'BOT-MODE-opportunity-reader/1.0',
-    }));
+    expect(request?.headers).toEqual(
+      expect.objectContaining({
+        accept: expect.stringContaining('application/rss+xml'),
+        'user-agent': 'BOT-MODE-opportunity-reader/1.0',
+      }),
+    );
   });
 
   it('fails closed on non-2xx sources', async () => {
@@ -56,7 +58,9 @@ describe('Opportunity HTTP adapter', () => {
       fetchImpl: (async () => new Response('', { status: 403 })) as unknown as typeof fetch,
       parse: () => [signal],
     });
-    await expect(adapter.discover({ query: 'jobs' })).rejects.toThrow('Opportunity source HTTP 403');
+    await expect(adapter.discover({ query: 'jobs' })).rejects.toThrow(
+      'Opportunity source HTTP 403',
+    );
   });
 
   it('caps request timeout configuration', async () => {

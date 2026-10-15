@@ -1,9 +1,7 @@
-import { createControlPlaneProjection } from './controlPlane';
 import type { ControlPlaneProjection } from './controlPlane';
+import { createControlPlaneProjection } from './controlPlane';
 
-const projection = (
-  overrides: Partial<ControlPlaneProjection> = {},
-): ControlPlaneProjection => ({
+const projection = (overrides: Partial<ControlPlaneProjection> = {}): ControlPlaneProjection => ({
   goal: {
     goalId: 'goal-1',
     objective: 'Launch project',

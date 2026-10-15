@@ -330,8 +330,13 @@ jobs:
           for KEY in $KEYS; do
             FOUND=false
 
+            # Project status labels are generated dynamically in BotModeProjectPanel.tsx.
+            # Only skip keys in this family when the dynamic lookup is present.
+            if [[ "$KEY" == com_ui_bot_mode_project_state_* ]] && \
+               grep -Fq 'com_ui_bot_mode_project_state_${missionState}' client/src/components/Projects/BotModeProjectPanel.tsx; then
+              FOUND=true
             # Special case for dynamically constructed special variable keys
-            if [[ "$KEY" == com_ui_special_var_* ]]; then
+            elif [[ "$KEY" == com_ui_special_var_* ]]; then
               # Check if TSpecialVarLabel is used in the codebase
               for DIR in "${SOURCE_DIRS[@]}"; do
                 if grep -r --include=\*.{js,jsx,ts,tsx} -q "TSpecialVarLabel" "$DIR"; then

@@ -1,8 +1,8 @@
+import type { CapabilityEvolutionCandidate } from './capabilityEvolution';
 import {
   capabilityEvolutionStages,
   createCapabilityEvolutionCandidate,
 } from './capabilityEvolution';
-import type { CapabilityEvolutionCandidate } from './capabilityEvolution';
 
 describe('capability evolution contract', () => {
   const base: CapabilityEvolutionCandidate = {
@@ -40,22 +40,45 @@ describe('capability evolution contract', () => {
   });
 
   it('requires non-empty provenance and capability identities', () => {
-    expect(() => createCapabilityEvolutionCandidate({ ...base, sourceRefs: [] })).toThrow(/sourceRefs/);
-    expect(() => createCapabilityEvolutionCandidate({ ...base, capabilityIds: [] })).toThrow(/capabilityIds/);
+    expect(() => createCapabilityEvolutionCandidate({ ...base, sourceRefs: [] })).toThrow(
+      /sourceRefs/,
+    );
+    expect(() => createCapabilityEvolutionCandidate({ ...base, capabilityIds: [] })).toThrow(
+      /capabilityIds/,
+    );
   });
 
   it('rejects an approved candidate before the proposal stage', () => {
-    expect(() => createCapabilityEvolutionCandidate({
-      ...base,
-      status: 'APPROVED',
-      stage: 'ORACLE',
-      evidenceRefs: ['evidence:test'],
-    })).toThrow(/proposal/);
+    expect(() =>
+      createCapabilityEvolutionCandidate({
+        ...base,
+        status: 'APPROVED',
+        stage: 'ORACLE',
+        evidenceRefs: ['evidence:test'],
+      }),
+    ).toThrow(/proposal/);
   });
 
   it('requires evidence and no blockers for an approved proposal', () => {
-    expect(() => createCapabilityEvolutionCandidate({ ...base, status: 'APPROVED', stage: 'PROPOSAL' })).toThrow(/evidence/);
-    expect(() => createCapabilityEvolutionCandidate({ ...base, status: 'APPROVED', stage: 'PROPOSAL', evidenceRefs: ['evidence:test'], blockers: ['blocked'] })).toThrow(/unblocked/);
-    expect(createCapabilityEvolutionCandidate({ ...base, status: 'APPROVED', stage: 'PROPOSAL', evidenceRefs: ['evidence:test'] })).toMatchObject({ status: 'APPROVED', stage: 'PROPOSAL' });
+    expect(() =>
+      createCapabilityEvolutionCandidate({ ...base, status: 'APPROVED', stage: 'PROPOSAL' }),
+    ).toThrow(/evidence/);
+    expect(() =>
+      createCapabilityEvolutionCandidate({
+        ...base,
+        status: 'APPROVED',
+        stage: 'PROPOSAL',
+        evidenceRefs: ['evidence:test'],
+        blockers: ['blocked'],
+      }),
+    ).toThrow(/unblocked/);
+    expect(
+      createCapabilityEvolutionCandidate({
+        ...base,
+        status: 'APPROVED',
+        stage: 'PROPOSAL',
+        evidenceRefs: ['evidence:test'],
+      }),
+    ).toMatchObject({ status: 'APPROVED', stage: 'PROPOSAL' });
   });
 });

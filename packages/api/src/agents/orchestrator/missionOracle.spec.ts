@@ -120,7 +120,13 @@ describe('Mission Oracle result replay semantics', () => {
         },
       ],
     };
-    const right: typeof left | (Omit<typeof left, 'verdicts'> & { verdicts: Array<Omit<(typeof left.verdicts)[number], 'status'> & { status: 'VERIFIED' | 'REJECTED' }> }) = structuredClone(left);
+    const right:
+      | typeof left
+      | (Omit<typeof left, 'verdicts'> & {
+          verdicts: Array<
+            Omit<(typeof left.verdicts)[number], 'status'> & { status: 'VERIFIED' | 'REJECTED' }
+          >;
+        }) = structuredClone(left);
     right.verdicts[0].status = 'REJECTED';
     right.verdicts[0].timestamp = '2026-09-30T10:00:01.000Z';
     expect(missionOracle.areMissionOracleResultsEquivalent(left, right)).toBe(false);

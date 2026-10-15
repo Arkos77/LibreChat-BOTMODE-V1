@@ -1,6 +1,6 @@
 import type { Model } from 'mongoose';
-import { applyTenantIsolation } from '~/models/plugins/tenantIsolation';
 import type { IImprovementSkillProposalRecord } from '~/types/improvementSkillProposal';
+import { applyTenantIsolation } from '~/models/plugins/tenantIsolation';
 import schema from '~/schema/improvementSkillProposal';
 
 export function createImprovementSkillProposalModel(

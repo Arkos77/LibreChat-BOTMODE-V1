@@ -179,14 +179,17 @@ describe('P11 governed media generation', () => {
   });
 
   it('adapts registered image generation tools without coupling the pipeline to a provider SDK', async () => {
-    const execute = jest.fn(
-      async ({ toolName, args }: { toolName: string; args: unknown }) => {
-        if (args == null || typeof args !== 'object' || !('prompt' in args) || typeof args.prompt !== 'string') {
-          throw new Error('Expected prompt in media tool arguments');
-        }
-        return { mimeType: 'image/png', uri: `mem://${toolName}/${args.prompt}` };
-      },
-    );
+    const execute = jest.fn(async ({ toolName, args }: { toolName: string; args: unknown }) => {
+      if (
+        args == null ||
+        typeof args !== 'object' ||
+        !('prompt' in args) ||
+        typeof args.prompt !== 'string'
+      ) {
+        throw new Error('Expected prompt in media tool arguments');
+      }
+      return { mimeType: 'image/png', uri: `mem://${toolName}/${args.prompt}` };
+    });
     const openai = createToolGenerationProvider({
       id: 'openai:image_gen_oai',
       toolName: 'image_gen_oai',

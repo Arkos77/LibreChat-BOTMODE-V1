@@ -1,5 +1,5 @@
-import { sanitizeJobMetadata } from './metadata';
 import type { MissionPlan } from '~/agents/orchestrator/types';
+import { sanitizeJobMetadata } from './metadata';
 
 describe('sanitizeJobMetadata', () => {
   it('preserves a host-owned MTO trace id without deriving it from run identities', () => {

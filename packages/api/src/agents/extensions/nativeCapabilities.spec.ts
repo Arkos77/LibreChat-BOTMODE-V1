@@ -22,7 +22,14 @@ describe('native capability activation', () => {
     ).toEqual(['media:openai:image-gen', 'media:gemini:image-gen', 'media:higgsfield:media']);
     expect(
       MEDIA_PROVIDER_CAPABILITIES.filter((resource) => !resource.enabled).map((r) => r.id),
-    ).toEqual(['media:elevenlabs:tts', 'media:minimax:video', 'media:ltx:video', 'media:elevenlabs:music', 'media:tripo:3d', 'media:local:gstreamer-compose']);
+    ).toEqual([
+      'media:elevenlabs:tts',
+      'media:minimax:video',
+      'media:ltx:video',
+      'media:elevenlabs:music',
+      'media:tripo:3d',
+      'media:local:gstreamer-compose',
+    ]);
     expect(VERIFIED_EXTERNAL_CAPABILITIES).toContainEqual(
       expect.objectContaining({
         id: 'source:skipthedrive',

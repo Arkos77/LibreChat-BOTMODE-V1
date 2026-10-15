@@ -1,7 +1,7 @@
 import type { Model } from 'mongoose';
-import { applyTenantIsolation } from '~/models/plugins/tenantIsolation';
 import type { IImprovementLifecycleEventRecord } from '~/types/improvementLifecycleEvent';
 import improvementLifecycleEventSchema from '~/schema/improvementLifecycleEvent';
+import { applyTenantIsolation } from '~/models/plugins/tenantIsolation';
 
 export function createImprovementLifecycleEventModel(
   mongoose: typeof import('mongoose'),
