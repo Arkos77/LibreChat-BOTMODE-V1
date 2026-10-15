@@ -25,5 +25,7 @@ module.exports = () => () => async (input) => {
     };
   }
 
-  return {};
+  // A matched PreToolUse hook must return an explicit authorization decision.
+  // This is neutral: the endpoint policy's ask/deny still takes precedence.
+  return { decision: 'allow' };
 };
