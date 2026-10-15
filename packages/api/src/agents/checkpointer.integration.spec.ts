@@ -20,6 +20,7 @@ import {
   CheckpointTooLargeError,
   LIBRECHAT_CHECKPOINT_NAMESPACE_KEY,
   LIBRECHAT_EVENT_ACTOR_INVOCATION_KEY,
+  LIBRECHAT_MISSION_SYNC_KEY,
   __resetCheckpointerForTests,
 } from './checkpointer';
 
@@ -671,6 +672,65 @@ describe('LazyMongoSaver (lazy persistence — mongodb-memory-server)', () => {
       .db!.collection('agent_checkpoints')
       .countDocuments({ thread_id: threadId });
     expect(count).toBe(0);
+  });
+
+  it('retains a sync mission checkpoint and its subsequent bookkeeping write', async () => {
+    const saver = await getAgentCheckpointer(MONGO_CFG);
+    const threadId = `mission-${new mongoose.Types.ObjectId().toString()}`;
+    const { config, checkpoint, metadata } = putArgs(threadId);
+    const missionConfig = {
+      configurable: { ...config.configurable, [LIBRECHAT_MISSION_SYNC_KEY]: true },
+    };
+    // sync persists checkpoints before downstream pending writes.
+    await saver!.put(missionConfig, checkpoint, metadata);
+    await saver!.putWrites(
+      { configurable: { ...missionConfig.configurable, checkpoint_id: checkpoint.id } },
+      [['__no_writes__', null]],
+      'completed-sibling',
+    );
+    const tuple = await saver!.getTuple(readConfig(threadId));
+    expect(tuple?.checkpoint.id).toBe(checkpoint.id);
+    expect(tuple?.pendingWrites.some((write) => write[1] === '__no_writes__')).toBe(true);
+  });
+
+  it('continues from a saved sync mission step without rerunning preceding steps', async () => {
+    const { StateGraph, Annotation, START, END } = await import('@langchain/langgraph');
+    const saver = await getAgentCheckpointer(MONGO_CFG);
+    const threadId = `mission-${new mongoose.Types.ObjectId().toString()}`;
+    const config = {
+      configurable: { thread_id: threadId, [LIBRECHAT_MISSION_SYNC_KEY]: true },
+      durability: 'sync' as const,
+    };
+    const State = Annotation.Root({ value: Annotation<number> });
+    let firstCalls = 0;
+    let secondCalls = 0;
+    const makeGraph = () =>
+      new StateGraph(State)
+        .addNode('first', () => {
+          firstCalls++;
+          return { value: 7 };
+        })
+        .addNode('second', (state) => {
+          secondCalls++;
+          if (secondCalls === 1) throw new Error('simulated provider crash');
+          return { value: state.value + 1 };
+        })
+        .addEdge(START, 'first')
+        .addEdge('first', 'second')
+        .addEdge('second', END)
+        .compile({ checkpointer: saver as never });
+
+    await expect(makeGraph().invoke({ value: 0 }, config)).rejects.toThrow(
+      'simulated provider crash',
+    );
+    const restored = makeGraph();
+    const snapshot = await restored.getState(config);
+    expect(snapshot.next).toContain('second');
+    expect(snapshot.values.value).toBe(7);
+    const result = await restored.invoke(null, config);
+    expect(result.value).toBe(8);
+    expect(firstCalls).toBe(1);
+    expect(secondCalls).toBe(2);
   });
 
   it('persists a checkpoint anchored by a NON-interrupt write (delta-channel safety)', async () => {
