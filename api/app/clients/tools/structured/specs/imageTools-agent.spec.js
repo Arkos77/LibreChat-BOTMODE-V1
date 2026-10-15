@@ -29,15 +29,22 @@ jest.mock('@librechat/data-schemas', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), debug: jest.fn(), error: jest.fn() },
 }));
 jest.mock('path', () => ({
+  ...jest.requireActual('path'),
   resolve: jest.fn(),
   join: jest.fn().mockReturnValue('/mock/path'),
   relative: jest.fn().mockReturnValue('relative/path'),
   extname: jest.fn().mockReturnValue('.png'),
 }));
 jest.mock('fs', () => ({
+  ...jest.requireActual('fs'),
   existsSync: jest.fn().mockReturnValue(true),
   mkdirSync: jest.fn(),
-  promises: { writeFile: jest.fn(), readFile: jest.fn(), unlink: jest.fn() },
+  promises: {
+    ...jest.requireActual('fs').promises,
+    writeFile: jest.fn(),
+    readFile: jest.fn(),
+    unlink: jest.fn(),
+  },
 }));
 
 const FAKE_BASE64 = 'aGVsbG8=';
