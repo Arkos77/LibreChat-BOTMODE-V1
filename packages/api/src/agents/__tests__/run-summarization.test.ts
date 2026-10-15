@@ -469,14 +469,14 @@ describe('model-level callbacks', () => {
       raiseError: true,
       awaitHandlers: true,
       handleChatModelStart: jest.fn(),
-    } as ModelBoundChatModelCallback;
+    } satisfies ReturnType<ModelBindingCallbackFactory>[number];
     const fallbackCallback = {
       name: 'librechat-model-bound-content-filter',
       raiseError: true,
       awaitHandlers: true,
       handleChatModelStart: jest.fn(),
-    } as ModelBoundChatModelCallback;
-    const factory = jest.fn((binding: { agentId?: string; provider?: string; model?: string }) =>
+    } satisfies ReturnType<ModelBindingCallbackFactory>[number];
+    const factory = jest.fn((binding: Parameters<ModelBindingCallbackFactory>[0]) =>
       binding.provider === 'anthropic' ? [fallbackCallback] : [rootCallback],
     );
 
@@ -3413,7 +3413,6 @@ describe('createRun P6 orchestrator topology', () => {
     const hooks = runConfig.hooks as Parameters<typeof executeHooks>[0]['registry'];
     const result = await executeHooks({
       phase: 'admission',
-      authorityRequired: true,
       registry: hooks,
       matchQuery: 'bash_tool',
       input: {
