@@ -1190,7 +1190,7 @@ describe('durable subagent recovery checkpoint proof', () => {
         },
       },
       child,
-      { source: 'input', step: -1, writes: null, parents: {} },
+      { source: 'input', step: -1, parents: {} },
     );
 
     const parent = emptyCheckpoint();
@@ -1241,7 +1241,7 @@ describe('durable subagent recovery checkpoint proof', () => {
         },
       },
       parent,
-      { source: 'input', step: -1, writes: null, parents: {} },
+      { source: 'input', step: -1, parents: {} },
     );
 
     await expect(

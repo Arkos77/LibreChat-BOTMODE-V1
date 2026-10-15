@@ -7,12 +7,13 @@ import {
   MAX_SUBAGENT_DEPTH,
   MAX_SUBAGENT_RUN_CONFIGS,
 } from 'librechat-data-provider';
-import type { CompactionSemanticIndex, SubagentTaskConfig, ModelBindingCallbackFactory } from '@librechat/agents';
+import type { CompactionSemanticIndex, SubagentTaskConfig } from '@librechat/agents';
 import type { SummarizationConfig, TEndpoint } from 'librechat-data-provider';
 import type { AppConfig, IUser } from '@librechat/data-schemas';
 import type { BaseMessage } from '@langchain/core/messages';
 import type { ModelBoundChatModelCallback } from '~/middleware/modelBoundContent';
 import { createRun, isAskUserQuestionAdminDisabled } from '~/agents/run';
+import type { ModelBindingCallbackFactory } from '~/agents/run';
 import { deterministicPlanner } from '~/agents/orchestrator/planner';
 
 // Mock winston logger — `format` must be callable so @librechat/data-schemas
@@ -3411,7 +3412,7 @@ describe('createRun P6 orchestrator topology', () => {
     const runConfig = (Run.create as jest.Mock).mock.calls[0][0] as Record<string, unknown>;
     const hooks = runConfig.hooks as Parameters<typeof executeHooks>[0]['registry'];
     const result = await executeHooks({
-      phase: 'PreToolUse',
+      phase: 'admission',
       authorityRequired: true,
       registry: hooks,
       matchQuery: 'bash_tool',
