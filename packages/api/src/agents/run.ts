@@ -2014,8 +2014,8 @@ export async function createRun({
       resolveMissionOracleEvidence,
       persistMissionOracleResult,
     );
-    graphConfig = nativePlan.graphConfig;
-    graphConfig.signal = signal;
+    // Preserve cancellation while retaining SDK graph configuration typing.
+    graphConfig = Object.assign(nativePlan.graphConfig, { signal });
 
     /**
      * Native task nodes intentionally use task-scoped `nodeId`s as SDK agent identities.
