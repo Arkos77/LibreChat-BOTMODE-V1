@@ -2,9 +2,10 @@ import {
   capabilityEvolutionStages,
   createCapabilityEvolutionCandidate,
 } from './capabilityEvolution';
+import type { CapabilityEvolutionCandidate } from './capabilityEvolution';
 
 describe('capability evolution contract', () => {
-  const base = {
+  const base: CapabilityEvolutionCandidate = {
     resourceId: 'resource:test',
     stage: 'DISCOVER',
     status: 'CANDIDATE',
