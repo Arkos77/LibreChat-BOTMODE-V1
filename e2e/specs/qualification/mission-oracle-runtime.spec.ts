@@ -373,6 +373,108 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
     }
   });
 
+  test('in-flight crash resumes and publishes the same mission exactly once', async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!process.env.E2E_RESTART_CONTROL_PORT) {
+      test.skip(true, 'Requires API SIGKILL/restart with Redis and Mongo preserved');
+    }
+    await page.goto('/c/new');
+    const token = await getAccessToken(page);
+    const redis = new Redis(process.env.REDIS_URI || 'redis://127.0.0.1:6379', {
+      maxRetriesPerRequest: 1,
+    });
+    let workerId: string | undefined;
+    let specialistId: string | undefined;
+    try {
+      const specialist = await createSavedAgent(page, token, 'Specialist');
+      specialistId = specialist.id;
+      const worker = await createSavedAgent(page, token, 'Worker', specialist.id);
+      workerId = worker.id;
+      const mission = makeMission(worker.id, specialist.id, false);
+      const conversationId = randomUUID();
+      const admitted = await page.request.post('/api/agents/chat/agents', {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          endpoint: 'agents',
+          agent_id: worker.id,
+          conversationId,
+          messageId: randomUUID(),
+          parentMessageId: '00000000-0000-0000-0000-000000000000',
+          isNewConvo: true,
+          text: `E2E_MISSION_ORACLE_DELAYED_JSON:${mission.missionId}`,
+          orchestratorMission: { mission: mission.mission, plannerContext: mission.plannerContext },
+        },
+        timeout: 60_000,
+      });
+      expect(admitted.status()).toBe(200);
+      const start = (await admitted.json()) as MissionRun;
+      expect(start.status).toBe('started');
+      expect(start.streamId).toBeTruthy();
+      const streamId = start.streamId!;
+      await expect.poll(async () => {
+        const job = await loadDurableJob(redis, streamId);
+        return job.status === 'running' &&
+          job.plan?.mission?.missionId === mission.missionId &&
+          Object.keys(job.state?.results ?? {}).length === 0;
+      }, { timeout: 15_000, intervals: [100, 200, 300] }).toBe(true);
+
+      const restart = await page.request.post(
+        `http://127.0.0.1:${process.env.E2E_RESTART_CONTROL_PORT}/restart`,
+        { headers: { 'x-e2e-restart-intent': 'oracle-runtime' }, timeout: 150_000 },
+      );
+      expect(restart.status(), 'the API process must genuinely restart').toBe(200);
+      const restarted = (await restart.json()) as {
+        oldPid: number;
+        newPid: number;
+        recovered: boolean;
+      };
+      expect(restarted.recovered).toBe(true);
+      expect(restarted.newPid).not.toBe(restarted.oldPid);
+
+      // RELEASE CONDITION: no new user request, no manual tool or replay action.
+      // The replacement host must continue the previous authorized mission and
+      // publish only AFTER both task-level Oracle verdicts become durable.
+      const expectedTasks = [`${mission.taskId}/worker`, `${mission.taskId}/specialist`];
+      let observedStatus = 'unknown';
+      try {
+        await expect.poll(async () => {
+          const job = await loadDurableJob(redis, streamId);
+          observedStatus = job.status ?? 'missing';
+          return expectedTasks.every((taskId) =>
+            job.state?.results?.[taskId]?.verdicts?.every((verdict) => verdict.status === 'VERIFIED') === true &&
+            (job.state.results[taskId].verdicts?.length ?? 0) > 0,
+          );
+        }, {
+          timeout: 55_000,
+          intervals: [500, 1000, 2500],
+          message: 'post-SIGKILL automatic Oracle mission continuation',
+        }).toBe(true);
+      } catch (error) {
+        console.log(`PR28_AUTO_RESUME_UNPROVEN_JOB_STATUS=${observedStatus}`);
+        throw error;
+      }
+
+      const messages = await requestJson<Array<{
+        messageId?: string;
+        isCreatedByUser?: boolean;
+        text?: string;
+        content?: unknown;
+      }>>(page, {
+        path: `/api/messages/${encodeURIComponent(conversationId)}`,
+        token,
+      });
+      expect(messages.filter((m) =>
+        m.isCreatedByUser === false && responseText(m).includes('{"ok":true}'),
+      )).toHaveLength(1);
+      expect(new Set(messages.map((m) => m.messageId)).size).toBe(messages.length);
+      console.log('PR28_ORACLE_INFLIGHT_AUTO_RESUME_EXACTLY_ONCE=PASS');
+    } finally {
+      if (workerId) await cleanupAgent(page, workerId);
+      if (specialistId) await cleanupAgent(page, specialistId);
+      await redis.quit();
+    }
+  });
+
   test('human-review Oracle verdict blocks candidate publication', async ({ page }) => {
     test.setTimeout(180_000);
     await page.goto('/c/new');

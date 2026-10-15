@@ -488,6 +488,12 @@ function replyResponses(text) {
     };
   }
 
+  // Intentionally delayed *valid* JSON: an in-flight crash/recovery probe must
+  // be able to distinguish a resumed model from a replay that rejects invalid text.
+  if (text.includes('E2E_MISSION_ORACLE_DELAYED_JSON:')) {
+    return { responses: ['{"ok":true}'], sleep: 10_000 };
+  }
+
   // Deterministic, strict JSON for a real mission graph's Oracle validators.
   // The model is a CI fixture; it cannot grant authorization or fake persisted verdicts.
   if (getMarkerValue(text, MISSION_ORACLE_JSON_MARKER)) {
