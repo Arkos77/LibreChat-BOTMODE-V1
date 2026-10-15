@@ -7,7 +7,7 @@ import {
   MAX_SUBAGENT_DEPTH,
   MAX_SUBAGENT_RUN_CONFIGS,
 } from 'librechat-data-provider';
-import type { CompactionSemanticIndex, SubagentTaskConfig } from '@librechat/agents';
+import type { CompactionSemanticIndex, SubagentTaskConfig, ModelBindingCallbackFactory } from '@librechat/agents';
 import type { SummarizationConfig, TEndpoint } from 'librechat-data-provider';
 import type { AppConfig, IUser } from '@librechat/data-schemas';
 import type { BaseMessage } from '@langchain/core/messages';
@@ -189,11 +189,7 @@ async function callAndCapture(
     compactionSemanticIndex?: CompactionSemanticIndex;
     subagentTasks?: SubagentTaskConfig;
     modelCallbacks?: readonly ModelBoundChatModelCallback[];
-    modelCallbackFactory?: (binding: {
-      agentId?: string;
-      provider?: string;
-      model?: string;
-    }) => readonly ModelBoundChatModelCallback[];
+    modelCallbackFactory?: ModelBindingCallbackFactory;
     user?: IUser;
     tenantId?: string;
   } = {},
@@ -3415,6 +3411,8 @@ describe('createRun P6 orchestrator topology', () => {
     const runConfig = (Run.create as jest.Mock).mock.calls[0][0] as Record<string, unknown>;
     const hooks = runConfig.hooks as Parameters<typeof executeHooks>[0]['registry'];
     const result = await executeHooks({
+      phase: 'PreToolUse',
+      authorityRequired: true,
       registry: hooks,
       matchQuery: 'bash_tool',
       input: {

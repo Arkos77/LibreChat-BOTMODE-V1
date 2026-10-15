@@ -1,4 +1,5 @@
 import { sanitizeJobMetadata } from './metadata';
+import type { MissionPlan } from '~/agents/orchestrator/types';
 
 describe('sanitizeJobMetadata', () => {
   it('preserves a host-owned MTO trace id without deriving it from run identities', () => {
@@ -8,7 +9,7 @@ describe('sanitizeJobMetadata', () => {
   });
 
   it('preserves an exact durable orchestrator plan without sharing caller mutation', () => {
-    const orchestratorPlan = {
+    const orchestratorPlan: MissionPlan = {
       planId: 'mission-p6:v1',
       planVersion: 1,
       mission: {
