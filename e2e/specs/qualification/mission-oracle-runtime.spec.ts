@@ -257,6 +257,41 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
         token,
       });
       expect(saved.some((message) => message.isCreatedByUser === false && responseText(message).includes('{"ok":true}'))).toBe(true);
+
+      // The restart lane uses an external CI-only controller that SIGKILLs just
+      // the API process. Mongo and Redis are separate surviving processes.
+      if (process.env.E2E_RESTART_CONTROL_PORT) {
+        const beforeMessages = await requestJson<Array<{ messageId?: string; isCreatedByUser?: boolean; text?: string; content?: unknown }>>(page, {
+          path: `/api/messages/${encodeURIComponent(run.conversationId)}`,
+          token,
+        });
+        const before = await loadDurableJob(redis, run.streamId);
+        const restart = await page.request.post(
+          `http://127.0.0.1:${process.env.E2E_RESTART_CONTROL_PORT}/restart`,
+          { headers: { 'x-e2e-restart-intent': 'oracle-runtime' }, timeout: 150_000 },
+        );
+        expect(restart.status(), 'CI-only SIGKILL + API restart must succeed').toBe(200);
+        const ids = (await restart.json()) as { oldPid: number; newPid: number; recovered: boolean };
+        expect(ids.recovered).toBe(true);
+        expect(ids.oldPid).not.toBe(ids.newPid);
+
+        // The old access token must still authorize canonical history and the
+        // Redis Oracle result must remain unchanged after a fresh API process.
+        const afterMessages = await requestJson<typeof beforeMessages>(page, {
+          path: `/api/messages/${encodeURIComponent(run.conversationId)}`,
+          token,
+        });
+        const after = await loadDurableJob(redis, run.streamId);
+        const normalize = (messages: typeof beforeMessages) =>
+          messages.map((message) => ({ id: message.messageId, author: message.isCreatedByUser, response: responseText(message) }));
+        expect(normalize(afterMessages)).toEqual(normalize(beforeMessages));
+        expect(after.state).toEqual(before.state);
+        expect(after.plan).toEqual(before.plan);
+        expect(afterMessages.filter((message) =>
+          message.isCreatedByUser === false && responseText(message).includes('{"ok":true}'),
+        )).toHaveLength(1);
+        console.log('PR28_ORACLE_RUNTIME_CRASH_RESTART_DURABLE_NO_DUPLICATES=PASS');
+      }
       console.log('PR28_ORACLE_RUNTIME_ACCEPT_PERSISTED_PUBLISHED=PASS');
       console.log('PR28_ORACLE_RUNTIME_CHILD_PLAN_AND_VERDICTS=PASS');
       console.log('PR28_ORACLE_RUNTIME_RELOAD_READBACK=PASS');
