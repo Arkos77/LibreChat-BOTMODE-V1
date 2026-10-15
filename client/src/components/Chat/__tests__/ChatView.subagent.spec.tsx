@@ -6,6 +6,7 @@ let mockConversation: Record<string, unknown> | null;
 
 jest.mock('react-router-dom', () => ({
   useParams: () => ({ conversationId: 'child-thread' }),
+  useSearchParams: () => [new URLSearchParams()],
 }));
 
 jest.mock('recoil', () => ({
