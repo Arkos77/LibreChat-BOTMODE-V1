@@ -19,6 +19,7 @@ jest.mock('@librechat/data-schemas', () => ({
 }));
 
 jest.mock('@librechat/api', () => ({
+  ...jest.requireActual('@librechat/api'),
   isEnabled: jest.fn(() => true),
   detectGenerationRetry: async (req, _res, next) => {
     req._isConfirmedGenerationRetry = await mockHasGenerationClaim(
