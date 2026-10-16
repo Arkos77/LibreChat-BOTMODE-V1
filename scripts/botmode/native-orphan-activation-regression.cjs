@@ -12,11 +12,14 @@ assert.ok(klass);
 const method = klass.members.find((n) => ts.isMethodDeclaration(n) &&
   n.name.getText(managerTree) === 'activateCheckpointedOrphanAfterGraphQualification');
 assert.ok(method);
+const bridge = klass.members.find((n) => ts.isMethodDeclaration(n) &&
+  n.name.getText(managerTree) === 'qualifyReconstructedGraphAndActivateClaim');
+assert.ok(bridge, 'reconstructed graph must reach Redis activation gate');
 const snapshotSource = fs.readFileSync(
   '/work/packages/api/src/agents/nativeMissionRecoverySnapshot.ts', 'utf8',
 );
 const compiled = ts.transpileModule(
-  'class Harness {' + method.getText(managerTree) + '}\nmodule.exports=Harness;',
+  'class Harness {' + method.getText(managerTree) + '\n' + bridge.getText(managerTree) + '}\nmodule.exports=Harness;',
   { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } },
 ).outputText;
 const scope = {
@@ -33,6 +36,7 @@ vm.runInNewContext(
   { module: snapMod, exports: snapMod.exports },
 );
 scope.qualifyNativeMissionRecoverySnapshot = snapMod.exports.qualifyNativeMissionRecoverySnapshot;
+scope.readQualifiedReconstructedNativeMissionSnapshot = snapMod.exports.readQualifiedReconstructedNativeMissionSnapshot;
 vm.runInNewContext(compiled, scope);
 const Harness = scope.module.exports;
 const claim = {
@@ -109,6 +113,39 @@ async function runCase({ mutateSnapshot, invalidJob, denyPolicy, activated = tru
   return { result, calls, error };
 }
 (async () => {
+  // The bridge must carry the ORIGINAL SDK state into the existing fenced gate.
+  // Do not fabricate an interruption-free task list from graph.next.
+  const probe = new Harness();
+  probe._isRedis = true;
+  probe.shuttingDown = false;
+  let released = 0, invoked = 0, observedState;
+  probe.jobStore = {
+    getJob: async () => ({ orchestratorPlan: { tasks: [{ nodeId: 'worker' }] } }),
+    releaseDrainedMissionRecovery: async () => { released++; return true; },
+  };
+  probe.activateCheckpointedOrphanAfterGraphQualification = async (_claim, head) => {
+    observedState = head;
+    return { providerExecutionId: 'test-only' };
+  };
+  const graph = { getState: async (config) => {
+    assert.equal(config.configurable.__librechat_checkpoint_ns, claim.checkpointNamespace);
+    return snapshot;
+  }, invoke: () => { invoked++; throw Error('unsafe execution'); } };
+  const bridgeResult = await probe.qualifyReconstructedGraphAndActivateClaim(
+    claim, graph, async () => {}, async () => {},
+  );
+  assert.equal(bridgeResult.providerExecutionId, 'test-only');
+  assert.equal(observedState, snapshot);
+  assert.equal(released, 0);
+  assert.equal(invoked, 0);
+  const blocked = await probe.qualifyReconstructedGraphAndActivateClaim(
+    claim, { getState: async () => ({ ...snapshot, tasks: [{name:'worker',interrupts:[{id:'HITL'}]}] }) },
+    async () => {}, async () => {},
+  );
+  assert.equal(blocked, null);
+  assert.equal(released, 1);
+  console.log('BOTMODE_ORPHAN_REAL_SDK_SNAPSHOT_BRIDGE=PASS');
+
   const ok = await runCase();
   assert.ok(ok.result?.providerExecutionId.startsWith('recovered-'));
   assert.deepEqual(ok.calls, { auth: 1, replay: 1, promote: 1, release: 0 });
