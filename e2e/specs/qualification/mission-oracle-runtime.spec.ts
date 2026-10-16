@@ -15,6 +15,7 @@ import { getAccessToken, MOCK_ENDPOINTS, requestJson } from '../mock/helpers';
  */
 type SavedAgent = { id: string };
 type MissionRun = {
+  generationProtocolVersion?: number;
   status?: string;
   streamId?: string;
   conversationId?: string;
@@ -422,8 +423,15 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       const mission = makeMission(worker.id, specialist.id, false);
       const conversationId = randomUUID();
       const admitted = await page.request.post('/api/agents/chat/agents', {
-        headers: { Authorization: `Bearer ${token}` },
+        // Match the real current browser's generation negotiation. A v1 job
+        // intentionally has no isolated checkpoint namespace and MUST NOT
+        // be auto-replayed as if it were a v2 durable mission.
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'x-librechat-generation-protocol': '2',
+        },
         data: {
+          generationProtocolVersion: 2,
           endpoint: 'agents',
           agent_id: worker.id,
           conversationId,
@@ -438,6 +446,7 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       expect(admitted.status()).toBe(200);
       const start = (await admitted.json()) as MissionRun;
       expect(start.status).toBe('started');
+      expect(start.generationProtocolVersion, 'native mission must negotiate protocol v2').toBe(2);
       expect(start.streamId).toBeTruthy();
       const streamId = start.streamId!;
       await expect.poll(async () => {
@@ -447,10 +456,10 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
           Object.keys(job.state?.results ?? {}).length === 0;
       }, { timeout: 15_000, intervals: [100, 200, 300] }).toBe(true);
 
-      console.log(
-        'PR28_PRE_SIGKILL_RECOVERY_GATES=' +
-          JSON.stringify(await getRecoveryGateFlags(redis, streamId)),
-      );
+      const beforeKill = await getRecoveryGateFlags(redis, streamId);
+      console.log('PR28_PRE_SIGKILL_RECOVERY_GATES=' + JSON.stringify(beforeKill));
+      expect(beforeKill.namespaced, 'protocol v2 must create an isolated checkpoint namespace')
+        .toBe(true);
 
       const restart = await page.request.post(
         `http://127.0.0.1:${process.env.E2E_RESTART_CONTROL_PORT}/restart`,
