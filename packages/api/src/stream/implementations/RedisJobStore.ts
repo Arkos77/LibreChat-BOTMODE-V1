@@ -2332,32 +2332,46 @@ export class RedisJobStore implements IJobStoreV2 {
     expectedCreatedAt: number,
     ownerToken: string,
     providerExecutionId: string,
-    updates: Pick<Partial<SerializableJobData>,
-      'missionOracleState' | 'missionCandidateContent' | 'missionCandidateAttachments'>,
+    updates: Pick<
+      Partial<SerializableJobData>,
+      'missionOracleState' | 'missionCandidateContent' | 'missionCandidateAttachments'
+    >,
   ): Promise<boolean> {
-    if (!Number.isSafeInteger(expectedCreatedAt) || expectedCreatedAt <= 0 ||
+    if (
+      !Number.isSafeInteger(expectedCreatedAt) ||
+      expectedCreatedAt <= 0 ||
       !/^[A-Za-z0-9:_-]{16,128}$/.test(ownerToken) ||
-      !/^[A-Za-z0-9:_-]{16,128}$/.test(providerExecutionId)) {
+      !/^[A-Za-z0-9:_-]{16,128}$/.test(providerExecutionId)
+    ) {
       throw new Error('Invalid recovered mission evidence ownership');
     }
     const allowed = new Set([
-      'missionOracleState', 'missionCandidateContent', 'missionCandidateAttachments',
+      'missionOracleState',
+      'missionCandidateContent',
+      'missionCandidateAttachments',
     ]);
-    if (!updates || Object.keys(updates).length === 0 ||
-        Object.keys(updates).some((name) => !allowed.has(name))) {
+    if (
+      !updates ||
+      Object.keys(updates).length === 0 ||
+      Object.keys(updates).some((name) => !allowed.has(name))
+    ) {
       throw new Error('Invalid recovered mission evidence fields');
     }
     const serialized = this.serializeJob(updates);
     const fields = Object.entries(serialized).flat();
     if (fields.length === 0) return false;
-    return (await this.redis.eval(
-      RECOVERED_MISSION_METADATA_UPDATE_LUA,
-      2,
-      KEYS.job(streamId),
-      `stream:{${streamId}}:mission-recovery-claim`,
-      String(expectedCreatedAt), ownerToken, providerExecutionId,
-      ...fields,
-    )) === 1;
+    return (
+      (await this.redis.eval(
+        RECOVERED_MISSION_METADATA_UPDATE_LUA,
+        2,
+        KEYS.job(streamId),
+        `stream:{${streamId}}:mission-recovery-claim`,
+        String(expectedCreatedAt),
+        ownerToken,
+        providerExecutionId,
+        ...fields,
+      )) === 1
+    );
   }
 
   async updateJob(
@@ -2476,14 +2490,16 @@ export class RedisJobStore implements IJobStoreV2 {
     expectedCreatedAt: number,
     providerExecutionId: string,
   ): Promise<boolean> {
-    return (await this.redis.eval(
-      HEARTBEAT_MISSION_PROVIDER_LUA,
-      1,
-      KEYS.job(streamId),
-      String(expectedCreatedAt),
-      providerExecutionId,
-      String(MISSION_PROVIDER_LEASE_MS),
-    )) === 1;
+    return (
+      (await this.redis.eval(
+        HEARTBEAT_MISSION_PROVIDER_LUA,
+        1,
+        KEYS.job(streamId),
+        String(expectedCreatedAt),
+        providerExecutionId,
+        String(MISSION_PROVIDER_LEASE_MS),
+      )) === 1
+    );
   }
 
   async finalizeTerminalPersistence(
@@ -3096,9 +3112,12 @@ export class RedisJobStore implements IJobStoreV2 {
     leaseMs: number,
   ): Promise<boolean> {
     if (
-      !Number.isSafeInteger(expectedCreatedAt) || expectedCreatedAt <= 0 ||
+      !Number.isSafeInteger(expectedCreatedAt) ||
+      expectedCreatedAt <= 0 ||
       !Number.isSafeInteger(staleBeforeMs) ||
-      !Number.isSafeInteger(leaseMs) || leaseMs < 1000 || leaseMs > 60000 ||
+      !Number.isSafeInteger(leaseMs) ||
+      leaseMs < 1000 ||
+      leaseMs > 60000 ||
       !/^[A-Za-z0-9:_-]{16,128}$/.test(ownerToken)
     ) {
       throw new Error('Invalid mission recovery claim arguments');
@@ -3125,7 +3144,8 @@ export class RedisJobStore implements IJobStoreV2 {
     nextProviderExecutionId: string,
   ): Promise<boolean> {
     if (
-      !Number.isSafeInteger(expectedCreatedAt) || expectedCreatedAt <= 0 ||
+      !Number.isSafeInteger(expectedCreatedAt) ||
+      expectedCreatedAt <= 0 ||
       !/^[A-Za-z0-9:_-]{16,128}$/.test(ownerToken) ||
       !/^[A-Za-z0-9:_-]{16,128}$/.test(nextProviderExecutionId)
     ) {
@@ -3152,8 +3172,11 @@ export class RedisJobStore implements IJobStoreV2 {
     leaseMs: number,
   ): Promise<boolean> {
     if (
-      !Number.isSafeInteger(expectedCreatedAt) || expectedCreatedAt <= 0 ||
-      !Number.isSafeInteger(leaseMs) || leaseMs < 1000 || leaseMs > 60000 ||
+      !Number.isSafeInteger(expectedCreatedAt) ||
+      expectedCreatedAt <= 0 ||
+      !Number.isSafeInteger(leaseMs) ||
+      leaseMs < 1000 ||
+      leaseMs > 60000 ||
       !/^[A-Za-z0-9:_-]{16,128}$/.test(ownerToken)
     ) {
       throw new Error('Invalid mission recovery lease arguments');
@@ -3177,7 +3200,8 @@ export class RedisJobStore implements IJobStoreV2 {
     ownerToken: string,
   ): Promise<boolean> {
     if (
-      !Number.isSafeInteger(expectedCreatedAt) || expectedCreatedAt <= 0 ||
+      !Number.isSafeInteger(expectedCreatedAt) ||
+      expectedCreatedAt <= 0 ||
       !/^[A-Za-z0-9:_-]{16,128}$/.test(ownerToken)
     ) {
       throw new Error('Invalid mission recovery release arguments');

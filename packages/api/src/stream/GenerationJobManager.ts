@@ -775,19 +775,30 @@ class GenerationJobManagerClass {
   /** Startup/periodic orphan discovery is observational. A job's running status
    * is not sufficient proof that its former process is dead, so neither this
    * method nor initialize() may start providers or rotate execution identities. */
-  async inspectOrphanedNativeMissions(): Promise<Array<Pick<SerializableJobData, 'streamId' | 'createdAt' | 'checkpointNamespace'>>> {
+  async inspectOrphanedNativeMissions(): Promise<
+    Array<Pick<SerializableJobData, 'streamId' | 'createdAt' | 'checkpointNamespace'>>
+  > {
     if (!this._isRedis || this.shuttingDown || this.missionRecoveryInspectionBusy) return [];
     this.missionRecoveryInspectionBusy = true;
     try {
       const jobs = await this.jobStore.getRunningJobs();
-      return jobs.filter((job) =>
-        job.orchestratorPlan != null &&
-        job.providerDrained === false &&
-        typeof job.providerExecutionId === 'string' && job.providerExecutionId.length > 0 &&
-        job.providerExecutionStartedId === job.providerExecutionId &&
-        typeof job.checkpointNamespace === 'string' && job.checkpointNamespace !== '' &&
-        this.ownedJobs.get(job.streamId) !== job.createdAt,
-      ).map(({ streamId, createdAt, checkpointNamespace }) => ({ streamId, createdAt, checkpointNamespace }));
+      return jobs
+        .filter(
+          (job) =>
+            job.orchestratorPlan != null &&
+            job.providerDrained === false &&
+            typeof job.providerExecutionId === 'string' &&
+            job.providerExecutionId.length > 0 &&
+            job.providerExecutionStartedId === job.providerExecutionId &&
+            typeof job.checkpointNamespace === 'string' &&
+            job.checkpointNamespace !== '' &&
+            this.ownedJobs.get(job.streamId) !== job.createdAt,
+        )
+        .map(({ streamId, createdAt, checkpointNamespace }) => ({
+          streamId,
+          createdAt,
+          checkpointNamespace,
+        }));
     } finally {
       this.missionRecoveryInspectionBusy = false;
     }
@@ -796,8 +807,12 @@ class GenerationJobManagerClass {
   /** A missed heartbeat only removes eligibility for automatic takeover after
    * the Redis-server deadline; it never confers publication permission. */
   private async heartbeatOwnedMissionProviders(): Promise<void> {
-    if (this.missionProviderHeartbeatBusy || this.shuttingDown ||
-        !this.jobStore.heartbeatMissionProvider) return;
+    if (
+      this.missionProviderHeartbeatBusy ||
+      this.shuttingDown ||
+      !this.jobStore.heartbeatMissionProvider
+    )
+      return;
     this.missionProviderHeartbeatBusy = true;
     try {
       for (const [streamId, createdAt] of this.ownedJobs) {
@@ -807,15 +822,26 @@ class GenerationJobManagerClass {
         if (runtime?.createdAt !== createdAt || runtime.abortController.signal.aborted) continue;
         try {
           const job = await this.jobStore.getJob(streamId);
-          if (job?.createdAt !== createdAt || job.status !== 'running' ||
-              job.orchestratorPlan == null || job.providerDrained !== false ||
-              !job.providerExecutionId ||
-              job.providerExecutionStartedId !== job.providerExecutionId) continue;
+          if (
+            job?.createdAt !== createdAt ||
+            job.status !== 'running' ||
+            job.orchestratorPlan == null ||
+            job.providerDrained !== false ||
+            !job.providerExecutionId ||
+            job.providerExecutionStartedId !== job.providerExecutionId
+          )
+            continue;
           const current = this.runtimeState.get(streamId);
-          if (current !== runtime || runtime.abortController.signal.aborted ||
-              this.ownedJobs.get(streamId) !== createdAt) continue;
+          if (
+            current !== runtime ||
+            runtime.abortController.signal.aborted ||
+            this.ownedJobs.get(streamId) !== createdAt
+          )
+            continue;
           await this.jobStore.heartbeatMissionProvider(
-            streamId, createdAt, job.providerExecutionId,
+            streamId,
+            createdAt,
+            job.providerExecutionId,
           );
         } catch (error) {
           logger.warn(`[GenerationJobManager] Mission heartbeat failed for ${streamId}`, error);
@@ -827,7 +853,6 @@ class GenerationJobManagerClass {
       this.missionProviderHeartbeatBusy = false;
     }
   }
-
 
   /** Generation-scoped retirement callbacks must not outlive the configured
    * store/transport pair that created them. */
@@ -883,9 +908,11 @@ class GenerationJobManagerClass {
     // as authorization. A later host-managed recovery must recheck provider
     // lease + tenant/agent policies and an exact Mongo checkpoint before claim.
     if (this._isRedis) {
-      void storeReady.then(() => this.inspectOrphanedNativeMissions()).catch((error) => {
-        logger.warn('[GenerationJobManager] Startup mission inspection failed', error);
-      });
+      void storeReady
+        .then(() => this.inspectOrphanedNativeMissions())
+        .catch((error) => {
+          logger.warn('[GenerationJobManager] Startup mission inspection failed', error);
+        });
     }
 
     this.missionProviderHeartbeatInterval = setInterval(() => {
