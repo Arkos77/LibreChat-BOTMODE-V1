@@ -84,7 +84,7 @@ function makeCase({ denyAt = 0, failPersist = false, failCommit = false, failExe
   assert.deepEqual(x.reads(),{authorized:3,executions:1,writes:1,loads:0});
   let again=await executeNativeMissionEffectFenced(x.opts);
   assert.deepEqual(again,first);
-  assert.deepEqual(x.reads(),{authorized:5,executions:1,writes:1,loads:1});
+  assert.deepEqual(x.reads(),{authorized:6,executions:1,writes:1,loads:1});
   console.log('BOTMODE_EXECUTION_ADAPTER_REUSES_ONLY_DURABLE_OUTPUT=PASS');
 
   for(const options of [
