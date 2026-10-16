@@ -773,6 +773,8 @@ class GenerationJobManagerClass {
   private missionProviderHeartbeatInterval: NodeJS.Timeout | null = null;
   private missionProviderHeartbeatBusy = false;
   private missionRecoveryInspectionBusy = false;
+  private missionCheckpointPreflightBusy = false;
+  private lastMissionCheckpointPreflightAt = 0;
 
   /** Startup/periodic orphan discovery is observational. A job's running status
    * is not sufficient proof that its former process is dead, so neither this
@@ -824,42 +826,48 @@ class GenerationJobManagerClass {
       checkpointId: string;
     }>
   > {
-    const candidates = await this.inspectOrphanedNativeMissions();
-    const eligible: Array<{
-      streamId: string;
-      createdAt: number;
-      checkpointNamespace: string;
-      checkpointId: string;
-    }> = [];
-    for (const candidate of candidates.slice(0, 16)) {
-      if (!candidate.checkpointNamespace) continue;
-      const checkpointNamespace = candidate.checkpointNamespace;
-      try {
-        const checkpoint = await inspectDurableNativeMissionCheckpoint(
-          candidate.streamId,
-          checkpointNamespace,
-        );
-        if (checkpoint == null) continue;
-        const current = await this.jobStore.getJob(candidate.streamId);
-        if (
-          current?.createdAt !== candidate.createdAt ||
-          current.status !== 'running' ||
-          current.checkpointNamespace !== candidate.checkpointNamespace ||
-          current.orchestratorPlan == null ||
-          current.providerDrained !== false
-        )
-          continue;
-        eligible.push({
-          streamId: candidate.streamId,
-          createdAt: candidate.createdAt,
-          checkpointNamespace,
-          checkpointId: checkpoint.checkpointId,
-        });
-      } catch (error) {
-        logger.warn('[GenerationJobManager] Native mission checkpoint preflight failed', error);
+    if (this.shuttingDown || this.missionCheckpointPreflightBusy) return [];
+    this.missionCheckpointPreflightBusy = true;
+    try {
+      const candidates = await this.inspectOrphanedNativeMissions();
+      const eligible: Array<{
+        streamId: string;
+        createdAt: number;
+        checkpointNamespace: string;
+        checkpointId: string;
+      }> = [];
+      for (const candidate of candidates.slice(0, 16)) {
+        if (!candidate.checkpointNamespace) continue;
+        const checkpointNamespace = candidate.checkpointNamespace;
+        try {
+          const checkpoint = await inspectDurableNativeMissionCheckpoint(
+            candidate.streamId,
+            checkpointNamespace,
+          );
+          if (checkpoint == null) continue;
+          const current = await this.jobStore.getJob(candidate.streamId);
+          if (
+            current?.createdAt !== candidate.createdAt ||
+            current.status !== 'running' ||
+            current.checkpointNamespace !== candidate.checkpointNamespace ||
+            current.orchestratorPlan == null ||
+            current.providerDrained !== false
+          )
+            continue;
+          eligible.push({
+            streamId: candidate.streamId,
+            createdAt: candidate.createdAt,
+            checkpointNamespace,
+            checkpointId: checkpoint.checkpointId,
+          });
+        } catch (error) {
+          logger.warn('[GenerationJobManager] Native mission checkpoint preflight failed', error);
+        }
       }
+      return eligible;
+    } finally {
+      this.missionCheckpointPreflightBusy = false;
     }
-    return eligible;
   }
 
   /**
@@ -897,9 +905,13 @@ class GenerationJobManagerClass {
     if (candidate == null) return null;
 
     const ownerToken = 'mission-' + randomUUID();
-    // Staleness is assessed against the job's last activity time. Redis also
-    // independently verifies the original provider's server-time lease.
-    const staleBeforeMs = Date.now() - 60_000;
+    // The original provider heartbeat renews its Redis-server-time lease
+    // every five seconds (15-second TTL). A second 60-second stale threshold
+    // made the 55-second host crash/restart qualification unreachable even
+    // with a correct coordinator. Keep an additional 20-second activity
+    // quarantine; Lua independently and atomically rejects ANY live lease.
+    // This still grants inspection only, never graph/tool execution.
+    const staleBeforeMs = Date.now() - 20_000;
     const claimed = await store.claimDrainedMissionRecovery(
       streamId,
       expectedCreatedAt,
@@ -1135,6 +1147,7 @@ class GenerationJobManagerClass {
     // as authorization. A later host-managed recovery must recheck provider
     // lease + tenant/agent policies and an exact Mongo checkpoint before claim.
     if (this._isRedis) {
+      this.lastMissionCheckpointPreflightAt = Date.now();
       void storeReady
         .then(() => this.inspectCheckpointedOrphanedNativeMissions())
         .catch((error) => {
@@ -1144,6 +1157,19 @@ class GenerationJobManagerClass {
 
     this.missionProviderHeartbeatInterval = setInterval(() => {
       void this.heartbeatOwnedMissionProviders();
+      // Reuse the existing heartbeat timer, not a second scheduler. A process
+      // may restart before the old lease expires; its first read-only scan
+      // cannot promote ownership and later scans must not wait 60 seconds.
+      if (
+        this._isRedis &&
+        !this.shuttingDown &&
+        Date.now() - this.lastMissionCheckpointPreflightAt >= 15_000
+      ) {
+        this.lastMissionCheckpointPreflightAt = Date.now();
+        void this.inspectCheckpointedOrphanedNativeMissions().catch((error) => {
+          logger.warn('[GenerationJobManager] Periodic mission checkpoint preflight failed', error);
+        });
+      }
     }, 5_000);
     this.missionProviderHeartbeatInterval.unref?.();
 
@@ -8435,14 +8461,8 @@ class GenerationJobManagerClass {
   }
 
   private async cleanup(): Promise<void> {
-    // A restart may precede the crashed provider's 15-second Redis lease
-    // expiry. Reinspect on the existing cleanup cadence rather than adding
-    // another scheduler. Discovery is read-only: no provider starts here.
-    if (this._isRedis) {
-      await this.inspectCheckpointedOrphanedNativeMissions().catch((error) => {
-        logger.warn('[GenerationJobManager] Periodic mission checkpoint preflight failed', error);
-      });
-    }
+    // Read-only mission inspection runs on the existing provider heartbeat
+    // cadence; cleanup remains independent of recovery preflight.
     // A crashed pause writer must never become resumable merely because its
     // lease elapsed. Give a locally-observed runtime the first chance to fail
     // closed so its attached subscriber receives the terminal error.

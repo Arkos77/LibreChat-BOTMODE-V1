@@ -57,7 +57,7 @@ async function scenario({ claimed = true, status = 'running', nextHead = candida
       calls.claim++;
       assert.equal(epoch, generation);
       assert.equal(ttl, 15000);
-      assert.ok(stale <= Date.now() - 59000);
+      assert.ok(stale <= Date.now() - 19000 && stale >= Date.now() - 21000);
       assert.match(token, /^mission-[\da-f-]{36}$/);
       if (swapStore) manager.jobStore = { getJob: async () => job };
       return claimed;

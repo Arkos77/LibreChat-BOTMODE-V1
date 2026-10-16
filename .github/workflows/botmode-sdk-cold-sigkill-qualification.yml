@@ -9,6 +9,10 @@ on:
       - 'scripts/botmode/sdk-mongo-cold-checkpoint-regression.cjs'
       - 'packages/api/src/agents/nativeMissionRecoverySnapshot.ts'
       - 'packages/api/src/agents/checkpointer.ts'
+      - 'packages/api/src/stream/GenerationJobManager.ts'
+      - 'scripts/botmode/native-orphan-claim-regression.cjs'
+      - 'scripts/botmode/native-orphan-preflight-cadence-regression.cjs'
+      - 'scripts/botmode/native-orphan-activation-regression.cjs'
       - 'vendor/librechat-agents/**'
 
 permissions:
@@ -29,6 +33,18 @@ jobs:
           docker pull "$BOTMODE_TEST_SDK_IMAGE"
         env:
           BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+      - name: Verify bounded read-only orphan preflight and recovery admission
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          set -euo pipefail
+          for script in native-orphan-claim-regression.cjs native-orphan-preflight-cadence-regression.cjs native-orphan-activation-regression.cjs; do
+            docker run --rm --network none --memory 760m --cpus 1 --read-only \
+              --mount "type=bind,src=$PWD/packages/api/src/stream/GenerationJobManager.ts,dst=/work/packages/api/src/stream/GenerationJobManager.ts,readonly" \
+              --mount "type=bind,src=$PWD/packages/api/src/agents/nativeMissionRecoverySnapshot.ts,dst=/work/packages/api/src/agents/nativeMissionRecoverySnapshot.ts,readonly" \
+              --mount "type=bind,src=$PWD/scripts/botmode/$script,dst=/app/$script,readonly" \
+              --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" "/app/$script"
+          done
       - name: Verify SIGKILL and Mongo cold SDK restart
         env:
           BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d

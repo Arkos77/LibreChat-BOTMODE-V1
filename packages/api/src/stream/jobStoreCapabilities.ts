@@ -61,15 +61,23 @@ export type JobStoreV2RequiredMethod = (typeof JOB_STORE_V2_REQUIRED_METHODS)[nu
 type MethodKeys<T> = {
   [Key in keyof T]-?: NonNullable<T[Key]> extends (...args: never[]) => unknown ? Key : never;
 }[keyof T];
-/** Optional Redis-only extension methods do not participate in the v2
- * mandatory capability assertion for in-memory and external job stores. */
-type OptionalMethodKeys<T> = {
-  [Key in keyof T]-?: undefined extends T[Key] ? Key : never;
-}[keyof T];
-type V2OnlyMethod = Exclude<
-  MethodKeys<IJobStoreV2>,
-  keyof IJobStore | OptionalMethodKeys<IJobStoreV2>
->;
+/** Recovery methods remain Redis-only, and are intentionally NOT required
+ * of the public in-memory/external v2 store contract. Other optional v2
+ * declarations (notably acknowledgeReplacedJobs) still have mandatory runtime
+ * capability checks, so excluding all optional keys would silently weaken
+ * the release's v2 contract.
+ *
+ * Keep this explicit, reviewable list in sync with the Redis recovery adapter.
+ */
+type RedisOnlyOptionalMethod =
+  | 'claimDrainedMissionRecovery'
+  | 'activateDrainedMissionRecovery'
+  | 'beginRecoveredMissionProviderExecution'
+  | 'heartbeatRecoveredMissionProvider'
+  | 'transitionRecoveredMissionToComplete'
+  | 'releaseDrainedMissionRecovery'
+  | 'heartbeatMissionProvider';
+type V2OnlyMethod = Exclude<MethodKeys<IJobStoreV2>, keyof IJobStore | RedisOnlyOptionalMethod>;
 type SameUnion<Left, Right> = [Left] extends [Right]
   ? [Right] extends [Left]
     ? true
