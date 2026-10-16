@@ -20,7 +20,7 @@ concurrency:
 jobs:
   native-oracle-runtime:
     name: Authenticated Worker-specialist Oracle publication and block
-    if: github.event.pull_request.number == 28
+    if: github.event.pull_request.number == 28 || github.event.pull_request.number == 29
     runs-on: ubuntu-latest
     timeout-minutes: 35
     services:

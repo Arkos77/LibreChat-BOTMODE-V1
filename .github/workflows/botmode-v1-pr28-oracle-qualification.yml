@@ -26,7 +26,7 @@ env:
 jobs:
   oracle-native-contracts:
     name: Worker/subagent, planning, Oracle and synthesis contracts
-    if: github.event.pull_request.number == 28
+    if: github.event.pull_request.number == 28 || github.event.pull_request.number == 29
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -92,7 +92,7 @@ jobs:
 
   durable-resume-contracts:
     name: Host publication barrier, checkpoint and resume contracts
-    if: github.event.pull_request.number == 28
+    if: github.event.pull_request.number == 28 || github.event.pull_request.number == 29
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:

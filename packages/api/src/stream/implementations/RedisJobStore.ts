@@ -252,8 +252,7 @@ const JOB_CAS_CORE_LUA =
  * checking the owner token, execution identity, immutable generation namespace
  * and BOTH unexpired Redis-server leases in the same transaction. */
 const JOB_CAS_LUA =
-  'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") then return 0 end ' +
-  JOB_CAS_CORE_LUA;
+  'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") then return 0 end ' + JOB_CAS_CORE_LUA;
 
 const JOB_RECOVERED_CAS_LUA =
   'if redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[4] then return 0 end ' +
@@ -2855,7 +2854,11 @@ export class RedisJobStore implements IJobStoreV2 {
     checkpointNamespace: string,
   ): Promise<boolean> {
     this.assertRecoveredProviderArguments(
-      expectedCreatedAt, ownerToken, providerExecutionId, checkpointNamespace, 15000,
+      expectedCreatedAt,
+      ownerToken,
+      providerExecutionId,
+      checkpointNamespace,
+      15000,
     );
     const result = await this.transitionStatusInternal(
       streamId,
@@ -3289,15 +3292,25 @@ export class RedisJobStore implements IJobStoreV2 {
     leaseMs: number,
   ): Promise<boolean> {
     this.assertRecoveredProviderArguments(
-      expectedCreatedAt, ownerToken, providerExecutionId, checkpointNamespace, leaseMs,
+      expectedCreatedAt,
+      ownerToken,
+      providerExecutionId,
+      checkpointNamespace,
+      leaseMs,
     );
-    return (await this.redis.eval(
-      BEGIN_RECOVERED_MISSION_PROVIDER_LUA,
-      2,
-      KEYS.job(streamId),
-      `stream:{${streamId}}:mission-recovery-claim`,
-      String(expectedCreatedAt), ownerToken, providerExecutionId, checkpointNamespace, String(leaseMs),
-    )) === 1;
+    return (
+      (await this.redis.eval(
+        BEGIN_RECOVERED_MISSION_PROVIDER_LUA,
+        2,
+        KEYS.job(streamId),
+        `stream:{${streamId}}:mission-recovery-claim`,
+        String(expectedCreatedAt),
+        ownerToken,
+        providerExecutionId,
+        checkpointNamespace,
+        String(leaseMs),
+      )) === 1
+    );
   }
 
   /** Original-owner heartbeat cannot renew a recovered provider's lease. */
@@ -3310,15 +3323,25 @@ export class RedisJobStore implements IJobStoreV2 {
     leaseMs: number,
   ): Promise<boolean> {
     this.assertRecoveredProviderArguments(
-      expectedCreatedAt, ownerToken, providerExecutionId, checkpointNamespace, leaseMs,
+      expectedCreatedAt,
+      ownerToken,
+      providerExecutionId,
+      checkpointNamespace,
+      leaseMs,
     );
-    return (await this.redis.eval(
-      HEARTBEAT_RECOVERED_MISSION_PROVIDER_LUA,
-      2,
-      KEYS.job(streamId),
-      `stream:{${streamId}}:mission-recovery-claim`,
-      String(expectedCreatedAt), ownerToken, providerExecutionId, checkpointNamespace, String(leaseMs),
-    )) === 1;
+    return (
+      (await this.redis.eval(
+        HEARTBEAT_RECOVERED_MISSION_PROVIDER_LUA,
+        2,
+        KEYS.job(streamId),
+        `stream:{${streamId}}:mission-recovery-claim`,
+        String(expectedCreatedAt),
+        ownerToken,
+        providerExecutionId,
+        checkpointNamespace,
+        String(leaseMs),
+      )) === 1
+    );
   }
 
   private assertRecoveredProviderArguments(

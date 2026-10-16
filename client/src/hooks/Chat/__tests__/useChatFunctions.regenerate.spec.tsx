@@ -17,7 +17,6 @@ const mockLoggerWarn = jest.fn();
 jest.mock('react-router-dom', () => ({
   useSearchParams: () => [new URLSearchParams(), jest.fn()],
   useNavigate: () => mockNavigate,
-  useSearchParams: () => [new URLSearchParams()],
 }));
 
 jest.mock('@tanstack/react-query', () => ({

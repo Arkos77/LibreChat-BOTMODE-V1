@@ -845,7 +845,8 @@ class GenerationJobManagerClass {
           current.checkpointNamespace !== candidate.checkpointNamespace ||
           current.orchestratorPlan == null ||
           current.providerDrained !== false
-        ) continue;
+        )
+          continue;
         eligible.push({ ...candidate, checkpointId: checkpoint.checkpointId });
       } catch (error) {
         logger.warn('[GenerationJobManager] Native mission checkpoint preflight failed', error);
@@ -864,16 +865,13 @@ class GenerationJobManagerClass {
   async claimCheckpointedOrphanForInspection(
     streamId: string,
     expectedCreatedAt: number,
-  ): Promise<
-    | {
-        streamId: string;
-        createdAt: number;
-        checkpointNamespace: string;
-        checkpointId: string;
-        ownerToken: string;
-      }
-    | null
-  > {
+  ): Promise<{
+    streamId: string;
+    createdAt: number;
+    checkpointNamespace: string;
+    checkpointId: string;
+    ownerToken: string;
+  } | null> {
     const store = this.jobStore;
     if (
       !this._isRedis ||
@@ -927,13 +925,11 @@ class GenerationJobManagerClass {
       return { ...candidate, ownerToken };
     } finally {
       if (!retained) {
-        await store.releaseDrainedMissionRecovery(
-          streamId,
-          expectedCreatedAt,
-          ownerToken,
-        ).catch((error) => {
-          logger.warn('[GenerationJobManager] Failed to release orphan inspection claim', error);
-        });
+        await store
+          .releaseDrainedMissionRecovery(streamId, expectedCreatedAt, ownerToken)
+          .catch((error) => {
+            logger.warn('[GenerationJobManager] Failed to release orphan inspection claim', error);
+          });
       }
     }
   }
@@ -1019,13 +1015,11 @@ class GenerationJobManagerClass {
       // After activation, a different owner must wait for lease expiry and
       // make a new CAS takeover. Never silently release promoted ownership.
       if (!activated) {
-        await store.releaseDrainedMissionRecovery(
-          claim.streamId,
-          claim.createdAt,
-          claim.ownerToken,
-        ).catch((error) => {
-          logger.warn('[GenerationJobManager] Failed to release unpromoted mission claim', error);
-        });
+        await store
+          .releaseDrainedMissionRecovery(claim.streamId, claim.createdAt, claim.ownerToken)
+          .catch((error) => {
+            logger.warn('[GenerationJobManager] Failed to release unpromoted mission claim', error);
+          });
       }
     }
   }

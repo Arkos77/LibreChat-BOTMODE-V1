@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   oracle-crash-restart:
-    if: github.event.pull_request.number == 28
+    if: github.event.pull_request.number == 28 || github.event.pull_request.number == 29
     name: SIGKILL API, restart, preserve Oracle verdict and unique publication
     runs-on: ubuntu-latest
     timeout-minutes: 35

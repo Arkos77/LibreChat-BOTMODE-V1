@@ -180,7 +180,10 @@ export function promoteTransientMissionOracleEvidence(
   }
   const taskId = requiredText(observation.taskId ?? '', 'taskId');
   const criterionId = requiredText(observation.criterionId ?? '', 'criterionId');
-  if (!Object.prototype.hasOwnProperty.call(observation, 'value') || !isOracleScalar(observation.value)) {
+  if (
+    !Object.prototype.hasOwnProperty.call(observation, 'value') ||
+    !isOracleScalar(observation.value)
+  ) {
     throw new Error('Mission Oracle evidence requires an explicit scalar value');
   }
 

@@ -772,6 +772,7 @@ describe('userGroup methods', () => {
           await allReadsStarted;
           return undefined;
         }),
+        set: jest.fn(async () => undefined),
       };
       const cachedMethods = createUserGroupMethods(mongoose, { getCache: jest.fn(() => cache) });
       const params = {
