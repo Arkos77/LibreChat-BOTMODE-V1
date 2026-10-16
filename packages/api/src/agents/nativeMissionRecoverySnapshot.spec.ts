@@ -1,4 +1,7 @@
-import { inspectReconstructedNativeMissionGraph } from './nativeMissionRecoverySnapshot';
+import {
+  inspectReconstructedNativeMissionGraph,
+  readQualifiedReconstructedNativeMissionSnapshot,
+} from './nativeMissionRecoverySnapshot';
 
 const candidate = {
   streamId: 'mission-1',
@@ -28,6 +31,18 @@ describe('reconstructed native mission read-only qualification', () => {
       },
     });
     expect(graph.invoke).not.toHaveBeenCalled();
+  });
+
+  it('preserves the exact SDK state and refuses interrupted tasks', async () => {
+    const graph = { getState: jest.fn(async () => state) };
+    await expect(
+      readQualifiedReconstructedNativeMissionSnapshot(graph, candidate, ['worker']),
+    ).resolves.toBe(state);
+    const interrupted = { ...state, tasks: [{ name: 'worker', interrupts: [{ id: 'approval' }] }] };
+    graph.getState.mockResolvedValueOnce(interrupted);
+    await expect(
+      readQualifiedReconstructedNativeMissionSnapshot(graph, candidate, ['worker']),
+    ).resolves.toBeNull();
   });
 
   it('fails closed for an unknown planned node', async () => {

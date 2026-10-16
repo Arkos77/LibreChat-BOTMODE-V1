@@ -86,7 +86,7 @@ import { projectPendingMCPOAuthPrompts } from '~/mcp/oauth/resume';
 import { sanitizeJobMetadata } from './metadata';
 import { inspectDurableNativeMissionCheckpoint } from '~/agents/checkpointer';
 import {
-  inspectReconstructedNativeMissionGraph,
+  readQualifiedReconstructedNativeMissionSnapshot,
   qualifyNativeMissionRecoverySnapshot,
 } from '~/agents/nativeMissionRecoverySnapshot';
 
@@ -1100,23 +1100,17 @@ class GenerationJobManagerClass {
     try {
       const job = await store.getJob(claim.streamId);
       const plannedNodes = job?.orchestratorPlan?.tasks?.map((task) => task.nodeId);
-      const qualified = await inspectReconstructedNativeMissionGraph(
+      const snapshot = await readQualifiedReconstructedNativeMissionSnapshot(
         graph,
         claim,
         Array.isArray(plannedNodes) ? plannedNodes : [],
       );
-      if (qualified == null || this.jobStore !== store || this.shuttingDown) return null;
+      if (snapshot == null || this.jobStore !== store || this.shuttingDown) return null;
       // The existing promotion method owns claim cleanup once delegated.
       delegated = true;
       return await this.activateCheckpointedOrphanAfterGraphQualification(
         claim,
-        {
-          config: {
-            configurable: { thread_id: claim.streamId, checkpoint_id: qualified.checkpointId },
-          },
-          next: qualified.pendingNodes,
-          tasks: qualified.pendingNodes.map((name) => ({ name, interrupts: [] })),
-        },
+        snapshot,
         assertCurrentAuthorization,
         assertReplaySafeForPendingNodes,
       );

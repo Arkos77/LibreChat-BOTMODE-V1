@@ -116,3 +116,37 @@ export async function inspectReconstructedNativeMissionGraph(
     allowedPendingNodes: plannedNodeIds,
   });
 }
+
+/** Return the original checked SDK snapshot, never a fabricated task record.
+ * A later Redis activation must verify this exact head again. */
+export async function readQualifiedReconstructedNativeMissionSnapshot(
+  graph: { getState: (config: { configurable: Record<string, string> }) => Promise<unknown> },
+  candidate: { streamId: string; checkpointNamespace: string; checkpointId: string },
+  plannedNodeIds: readonly string[],
+): Promise<unknown | null> {
+  if (
+    !graph ||
+    typeof graph.getState !== 'function' ||
+    !candidate ||
+    typeof candidate.streamId !== 'string' ||
+    !candidate.streamId ||
+    typeof candidate.checkpointNamespace !== 'string' ||
+    !candidate.checkpointNamespace ||
+    typeof candidate.checkpointId !== 'string' ||
+    !candidate.checkpointId
+  )
+    return null;
+  const snapshot = await graph.getState({
+    configurable: {
+      thread_id: candidate.streamId,
+      checkpoint_ns: '',
+      __librechat_checkpoint_ns: candidate.checkpointNamespace,
+    },
+  });
+  return qualifyNativeMissionRecoverySnapshot(snapshot, candidate.checkpointId, {
+    threadId: candidate.streamId,
+    allowedPendingNodes: plannedNodeIds,
+  })
+    ? snapshot
+    : null;
+}
