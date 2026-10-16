@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import { tool } from '@librechat/agents/langchain/tools';
-import type { DynamicStructuredTool } from '@librechat/agents/langchain/tools';
+import { DynamicStructuredTool } from '@librechat/agents/langchain/tools';
 import { routeRegisteredCapability } from '../agents/orchestrator/capabilityRegistryRouting';
 import { getActivatedCapabilityRegistry } from '../agents/extensions/nativeCapabilities';
 
@@ -458,7 +457,8 @@ export function clearCurrentStateCachesForTests(): void {
 }
 
 export function createCurrentStateTool(): DynamicStructuredTool<z.ZodType<CurrentStateToolInput>> {
-  return tool(async (input) => JSON.stringify(await resolveCurrentState(input)), {
+  return new DynamicStructuredTool<z.ZodType<CurrentStateToolInput>>({
+    func: async (input) => JSON.stringify(await resolveCurrentState(input)),
     name: CURRENT_STATE_TOOL_NAME,
     description:
       'Fast structured resolver for current local time and current weather. Use it before web_search for simple current-state questions about a named city or place. It resolves location, timezone, runtime time, and fresh weather in one call. When ok=true, answer from this result and do not call web_search merely to add citations or a second source. If fallbackRequired is true, use web_search only for the missing or stale fact.',

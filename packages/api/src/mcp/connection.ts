@@ -1339,13 +1339,17 @@ export class MCPConnection extends EventEmitter {
           requestIds: getJSONRPCRequestIds(currentInit?.body),
         };
 
-        if (!isMethodPreservingRedirect || redirects >= MAX_REDIRECTS) {
+        if (!isMethodPreservingRedirect) {
           return guardStreamableHTTPResponses
             ? guardMCPStreamableHTTPResponse(response, responseContext)
             : response;
         }
 
         const location = response.headers.get('location');
+        if (location && redirects >= MAX_REDIRECTS) {
+          await response.body?.cancel().catch(() => undefined);
+          throw new Error(`[MCP] Redirect limit exceeded (${MAX_REDIRECTS} hops)`);
+        }
         if (!location) {
           return guardStreamableHTTPResponses
             ? guardMCPStreamableHTTPResponse(response, responseContext)

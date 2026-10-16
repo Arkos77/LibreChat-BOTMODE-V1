@@ -2014,8 +2014,8 @@ export async function createRun({
       resolveMissionOracleEvidence,
       persistMissionOracleResult,
     );
-    graphConfig = nativePlan.graphConfig;
-    graphConfig.signal = signal;
+    // Preserve cancellation while retaining SDK graph configuration typing.
+    graphConfig = Object.assign(nativePlan.graphConfig, { signal });
 
     /**
      * Native task nodes intentionally use task-scoped `nodeId`s as SDK agent identities.
@@ -2181,8 +2181,18 @@ export async function createRun({
   const durableSubagentCheckpointRecovery =
     (subagentTasks?.store as { supportsDurableCheckpointRecovery?: boolean } | undefined)
       ?.supportsDurableCheckpointRecovery === true;
-  if (hitl || asksUserQuestions || eventActorCheckpointing || durableSubagentCheckpointRecovery) {
+  if (
+    hitl ||
+    asksUserQuestions ||
+    eventActorCheckpointing ||
+    durableSubagentCheckpointRecovery ||
+    orchestratorPlan != null
+  ) {
     const checkpointer = await getAgentCheckpointer(agentsEndpointConfig?.checkpointer);
+    // A mission must not silently use the SDK's process-local MemorySaver.
+    if (orchestratorPlan != null && checkpointer == null) {
+      throw new Error('Native missions require a connected durable MongoDB checkpointer');
+    }
     graphConfig.compileOptions = { ...graphConfig.compileOptions, checkpointer };
   }
 

@@ -11,6 +11,7 @@ import {
   mergeQuerySettingsWithSpec,
   processValidSettings,
   getDefaultModelSpec,
+  getStoredAvailableAgentPreset,
   getModelSpecPreset,
   hasModelSelection,
   isNotFoundError,
@@ -220,11 +221,19 @@ export default function ChatRoute() {
         : getDefaultModelSpec(startupConfig, endpointsQuery.data, agentsMap);
       const spec = urlSpec ?? result?.default ?? result?.last ?? result?.softDefault;
       const specPreset = spec ? getModelSpecPreset(spec) : undefined;
+      // When the soft default yields to a live saved agent, restore the agent
+      // identity as a preset too; the endpoint-only fallback loses it on reload.
+      // URL selections and resolved model specs always take precedence.
+      const retainedAgentPreset =
+        !spec && Object.keys(querySettings).length === 0
+          ? getStoredAvailableAgentPreset(agentsMap)
+          : undefined;
+      const resolvedPreset = specPreset ?? retainedAgentPreset;
 
       if (Object.keys(querySettings).length > 0) {
-        return mergeQuerySettingsWithSpec(specPreset, querySettings);
+        return mergeQuerySettingsWithSpec(resolvedPreset, querySettings);
       }
-      return specPreset;
+      return resolvedPreset;
     };
 
     if (isNewConvo && endpointsQuery.data && modelsQuery.data) {

@@ -293,7 +293,7 @@ describe('RedisJobStore', () => {
     const reapCall = evalCommand.mock.calls[0];
     expect(reapCall[0]).toContain('redis.call("SET", KEYS[7], ARGV[1], "EX", tonumber(ARGV[5]))');
     expect(reapCall.slice(1)).toEqual([
-      9,
+      10,
       'stream:{legacy-reap}:job',
       'stream:{legacy-reap}:chunks',
       'stream:{legacy-reap}:runsteps',
@@ -303,6 +303,7 @@ describe('RedisJobStore', () => {
       'stream:{legacy-reap}:generation-epoch',
       'stream:{legacy-reap}:steer-receipts',
       'stream:{legacy-reap}:steer-receipt-order',
+      'stream:{legacy-reap}:mission-recovery-claim',
       '1',
       '100000',
       '60000',

@@ -25,9 +25,11 @@ OpenAI.mockImplementation(() => ({
 
 jest.mock('fs', () => {
   return {
+    ...jest.requireActual('fs'),
     existsSync: jest.fn(),
     mkdirSync: jest.fn(),
     promises: {
+      ...jest.requireActual('fs').promises,
       writeFile: jest.fn(),
       readFile: jest.fn(),
       unlink: jest.fn(),
@@ -37,9 +39,8 @@ jest.mock('fs', () => {
 
 jest.mock('path', () => {
   return {
-    resolve: jest.fn(),
-    join: jest.fn(),
-    relative: jest.fn(),
+    ...jest.requireActual('path'),
+    // Preserve Node's real resolution for transitive dependencies.
     extname: jest.fn().mockImplementation((filename) => {
       return filename.slice(filename.lastIndexOf('.'));
     }),

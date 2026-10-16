@@ -33,7 +33,9 @@ const terminalPlan = (candidateExpected = true): MissionPlan =>
         canRunInParallel: false,
       },
     ],
-  }) as MissionPlan;
+    specialists: [],
+    reasons: [{ code: 'WORKER_CAPABLE' }],
+  }) satisfies MissionPlan;
 
 describe('normalizeMissionOracleState', () => {
   it('returns a detached clone for valid durable state', () => {
@@ -118,7 +120,13 @@ describe('Mission Oracle result replay semantics', () => {
         },
       ],
     };
-    const right = structuredClone(left);
+    const right:
+      | typeof left
+      | (Omit<typeof left, 'verdicts'> & {
+          verdicts: Array<
+            Omit<(typeof left.verdicts)[number], 'status'> & { status: 'VERIFIED' | 'REJECTED' }
+          >;
+        }) = structuredClone(left);
     right.verdicts[0].status = 'REJECTED';
     right.verdicts[0].timestamp = '2026-09-30T10:00:01.000Z';
     expect(missionOracle.areMissionOracleResultsEquivalent(left, right)).toBe(false);

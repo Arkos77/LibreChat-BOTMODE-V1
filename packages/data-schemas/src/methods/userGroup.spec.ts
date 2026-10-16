@@ -758,9 +758,18 @@ describe('userGroup methods', () => {
 
     it('deduplicates concurrent cache builds for the same member key', async () => {
       const user = await createTestUser({ idOnTheSource: 'dedup-ext-1' });
+      let releaseReads!: () => void;
+      const allReadsStarted = new Promise<void>((resolve) => {
+        releaseReads = resolve;
+      });
+      let readCount = 0;
       const cache = {
         get: jest.fn(async () => {
-          await new Promise((resolve) => setTimeout(resolve, 10));
+          // Make all three cache misses overlap before allowing any build to finish.
+          if (++readCount === 3) {
+            releaseReads();
+          }
+          await allReadsStarted;
           return undefined;
         }),
         set: jest.fn(async () => undefined),

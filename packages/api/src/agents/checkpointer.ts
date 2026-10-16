@@ -24,6 +24,8 @@ export const LIBRECHAT_CHECKPOINT_NAMESPACE_KEY = '__librechat_checkpoint_ns';
 /** Marks a checkpoint write as belonging to an isolated event-actor attempt.
  * Unlike ordinary clean chat exits, these exits are durable candidate heads. */
 export const LIBRECHAT_EVENT_ACTOR_INVOCATION_KEY = '__librechat_event_actor_invocation_id';
+/** A host-authorized mission must persist every synchronous graph superstep. */
+export const LIBRECHAT_MISSION_SYNC_KEY = '__librechat_mission_sync';
 
 const CHECKPOINT_NAMESPACE_SEPARATOR = '|';
 
@@ -343,7 +345,12 @@ export class LazyMongoSaver extends MongoDBSaver {
     taskId: string,
   ): Promise<void> {
     const storageConfig = toStorageCheckpointConfig(config);
-    if (isEventActorInvocation(config)) {
+    if (
+      isEventActorInvocation(config) ||
+      config.configurable?.[LIBRECHAT_MISSION_SYNC_KEY] === true
+    ) {
+      // LangGraph sync mode writes the checkpoint before its pending writes.
+      // Forward bookkeeping too, or completed siblings may run twice on recovery.
       return super.putWrites(storageConfig, writes, taskId);
     }
     const checkpointId = config.configurable?.checkpoint_id as string | undefined;
@@ -401,7 +408,12 @@ export class LazyMongoSaver extends MongoDBSaver {
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata,
   ): Promise<RunnableConfig> {
-    if (isEventActorInvocation(config)) {
+    if (
+      isEventActorInvocation(config) ||
+      config.configurable?.[LIBRECHAT_MISSION_SYNC_KEY] === true
+    ) {
+      // A mission's exact checkpoint must be durable before the next step.
+      // Never use the exit/HITL write-anchor heuristic for this mode.
       await this.assertCheckpointFitsDocument(config, checkpoint, metadata);
       const persisted = await super.put(toStorageCheckpointConfig(config), checkpoint, metadata);
       logger.debug(
@@ -839,6 +851,44 @@ export async function getAgentCheckpointer(
     saverPromise = buildMongoSaver(resolved);
   }
   return saverPromise;
+}
+
+/**
+ * Read-only, fail-closed preflight of a native mission after process loss.
+ * The Redis running status does not authorize execution: a durable checkpoint
+ * must exist in this exact generation namespace. HITL interrupts are excluded.
+ * Ownership, authorization and publication must be verified separately.
+ */
+export async function inspectDurableNativeMissionCheckpoint(
+  threadId: string,
+  checkpointNamespace: string,
+  cfg?: TCheckpointerConfig,
+): Promise<{ checkpointId: string; pendingNodes: string[] } | null> {
+  if (
+    typeof threadId !== 'string' ||
+    threadId.trim() === '' ||
+    typeof checkpointNamespace !== 'string' ||
+    checkpointNamespace.trim() === ''
+  ) {
+    return null;
+  }
+  const saver = await getAgentCheckpointer(cfg);
+  if (!saver) return null;
+  const tuple = await saver.getTuple({
+    configurable: {
+      thread_id: threadId,
+      checkpoint_ns: '',
+      [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: checkpointNamespace,
+    },
+  });
+  if (!tuple?.checkpoint?.id || tuple.config?.configurable?.thread_id !== threadId) {
+    return null;
+  }
+  if ((tuple.pendingWrites ?? []).some((write) => write[1] === INTERRUPT)) return null;
+  // LangGraph checkpoint pending work is represented by pendingWrites/tasks,
+  // not a Checkpoint.pending_sends field in the installed checkpoint contract.
+  // Do not invent node names from a different SDK version.
+  return { checkpointId: tuple.checkpoint.id, pendingNodes: [] };
 }
 
 export interface AgentEventCheckpointReference {

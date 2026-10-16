@@ -5,7 +5,11 @@ import type {
   TEndpointsConfig,
   TAgentsMap,
 } from 'librechat-data-provider';
-import { getDefaultModelSpec, defaultSpecAwaitsAgents } from '../endpoints';
+import {
+  getDefaultModelSpec,
+  defaultSpecAwaitsAgents,
+  getStoredAvailableAgentPreset,
+} from '../endpoints';
 
 const createModelSpec = (name: string, overrides: Partial<TModelSpec> = {}): TModelSpec =>
   ({
@@ -693,5 +697,38 @@ describe('defaultSpecAwaitsAgents', () => {
         fullEndpointsConfig,
       ),
     ).toBe(false);
+  });
+});
+
+describe('getStoredAvailableAgentPreset', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('rehydrates a selected agent after a cold load when it is still accessible', () => {
+    persistAgentSelection('agent_123');
+    const agents = { agent_123: { id: 'agent_123' } } as unknown as TAgentsMap;
+    expect(getStoredAvailableAgentPreset(agents)).toEqual({
+      endpoint: EModelEndpoint.agents,
+      agent_id: 'agent_123',
+      spec: null,
+    });
+  });
+
+  it('never restores a deleted or cross-organization agent', () => {
+    persistAgentSelection('agent_old');
+    const agents = { agent_other: { id: 'agent_other' } } as unknown as TAgentsMap;
+    expect(getStoredAvailableAgentPreset(agents)).toBeUndefined();
+  });
+
+  it('does not restore an agent while its availability is unknown', () => {
+    persistAgentSelection('agent_123');
+    expect(getStoredAvailableAgentPreset(undefined)).toBeUndefined();
+  });
+
+  it('ignores an ephemeral agent id as a saved agent selection', () => {
+    persistAgentSelection(Constants.EPHEMERAL_AGENT_ID);
+    const agents = {
+      [Constants.EPHEMERAL_AGENT_ID]: { id: Constants.EPHEMERAL_AGENT_ID },
+    } as unknown as TAgentsMap;
+    expect(getStoredAvailableAgentPreset(agents)).toBeUndefined();
   });
 });

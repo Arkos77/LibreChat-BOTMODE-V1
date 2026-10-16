@@ -668,6 +668,10 @@ jobs:
           key: mongodb-binaries-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: |
             mongodb-binaries-${{ runner.os }}-
+      - name: Install browser for browser-executor integration test
+        if: matrix.shard == 1
+        run: npx playwright install --with-deps chromium
+
       - name: Run unit tests (shard ${{ matrix.shard }}/4)
         env:
           SELECTED: ${{ needs.codegraph_select.outputs.pkgapi_files }}

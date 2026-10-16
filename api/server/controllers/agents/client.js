@@ -68,6 +68,7 @@ const {
   deleteAgentCheckpoint,
   LIBRECHAT_CHECKPOINT_NAMESPACE_KEY,
   LIBRECHAT_EVENT_ACTOR_INVOCATION_KEY,
+  LIBRECHAT_MISSION_SYNC_KEY,
   isAskUserQuestionAdminDisabled,
   attachAskUserQuestionArgs,
   hydrateResumeRunSteps,
@@ -4169,11 +4170,14 @@ class AgentClient extends BaseClient {
         pluginHookSource: getPluginHookSource(),
         askUserQuestionAdminDisabled,
       });
-      const runUsesCheckpointer = agentRunUsesCheckpointer({
-        policy: effectiveToolApprovalPolicy,
-        agents: topLevelAgents,
-        askUserQuestionAdminDisabled,
-      });
+      const missionCheckpointing = this.orchestratorPlan != null;
+      const runUsesCheckpointer =
+        missionCheckpointing ||
+        agentRunUsesCheckpointer({
+          policy: effectiveToolApprovalPolicy,
+          agents: topLevelAgents,
+          askUserQuestionAdminDisabled,
+        });
       if (this.options.req?._isScheduledFire === true && runCanPause) {
         if (!GenerationJobManager.isRedis) {
           const error = new Error(
@@ -4205,7 +4209,9 @@ class AgentClient extends BaseClient {
 
       config = {
         runName: 'AgentRun',
+        ...(missionCheckpointing && { durability: 'sync' }),
         configurable: {
+          ...(missionCheckpointing && { [LIBRECHAT_MISSION_SYNC_KEY]: true }),
           thread_id: this.conversationId,
           // LangGraph owns `checkpoint_ns` and resets it to '' at every root
           // invocation. The saver maps this private immutable generation key
@@ -5145,7 +5151,9 @@ class AgentClient extends BaseClient {
 
       config = {
         runName: 'AgentRun',
+        ...(this.orchestratorPlan != null && { durability: 'sync' }),
         configurable: {
+          ...(this.orchestratorPlan != null && { [LIBRECHAT_MISSION_SYNC_KEY]: true }),
           thread_id: this.conversationId,
           checkpoint_ns: '',
           [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: this.checkpointNamespace,
