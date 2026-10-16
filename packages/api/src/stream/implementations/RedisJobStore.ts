@@ -47,6 +47,16 @@ import {
 } from '~/stream/internal/coalescing';
 import { instrumentIORedisClient, RedisUseCases } from '~/cache/redisTelemetry';
 import { RecoveredSteerPayloadMismatchError } from '~/stream/SteerRecovery';
+import {
+  MISSION_EFFECT_RESERVE_LUA,
+  MISSION_EFFECT_COMMIT_LUA,
+  MISSION_EFFECT_READ_LUA,
+} from '~/stream/nativeMissionEffectReceipts';
+import type {
+  NativeMissionEffectIdentity,
+  NativeMissionEffectCommit,
+  NativeMissionEffectOutcome,
+} from '~/stream/nativeMissionEffectReceipts';
 
 const CLIENT_REQUEST_ID_PATTERN = /^[A-Za-z0-9:_-]{1,128}$/;
 /** Bounded Redis-server-time presence proof for native mission provider segments. */
@@ -3302,6 +3312,131 @@ export class RedisJobStore implements IJobStoreV2 {
       String(Date.now()),
     );
     return activated === 1;
+  }
+
+  /**
+   * Durable side-effect intent. A successful reservation authorizes no
+   * provider/model/tool by itself; the caller must have current tool grants.
+   * A crashed started intent is never auto-reserved again.
+   */
+  async reserveNativeMissionEffect(
+    identity: NativeMissionEffectIdentity,
+  ): Promise<NativeMissionEffectOutcome> {
+    this.assertNativeMissionEffectIdentity(identity);
+    const raw = await this.redis.eval(
+      MISSION_EFFECT_RESERVE_LUA,
+      2,
+      KEYS.job(identity.streamId),
+      `stream:{${identity.streamId}}:mission-recovery-claim`,
+      String(identity.createdAt),
+      identity.checkpointNamespace,
+      identity.providerExecutionId,
+      identity.recoveryOwnerToken,
+      identity.operationKey,
+      identity.argumentsDigest,
+    );
+    return this.parseNativeMissionEffectOutcome(raw);
+  }
+
+  /**
+   * Record a result ONLY after its immutable private output is durable.
+   * If this fails after an external call, the operation remains uncertain,
+   * never replayable on the strength of the Redis lease alone.
+   */
+  async commitNativeMissionEffect(
+    receipt: NativeMissionEffectCommit,
+  ): Promise<NativeMissionEffectOutcome> {
+    this.assertNativeMissionEffectIdentity(receipt);
+    if (
+      typeof receipt.resultRef !== 'string' ||
+      receipt.resultRef.length === 0 ||
+      Buffer.byteLength(receipt.resultRef, 'utf8') > 256 ||
+      !/^[a-f0-9]{64}$/.test(receipt.resultDigest)
+    ) {
+      throw new Error('Invalid mission side-effect result reference');
+    }
+    const raw = await this.redis.eval(
+      MISSION_EFFECT_COMMIT_LUA,
+      2,
+      KEYS.job(receipt.streamId),
+      `stream:{${receipt.streamId}}:mission-recovery-claim`,
+      String(receipt.createdAt),
+      receipt.checkpointNamespace,
+      receipt.providerExecutionId,
+      receipt.recoveryOwnerToken,
+      receipt.operationKey,
+      receipt.argumentsDigest,
+      receipt.resultRef,
+      receipt.resultDigest,
+    );
+    return this.parseNativeMissionEffectOutcome(raw);
+  }
+
+  /** Read-only receipt lookup, never an authorization or execution decision. */
+  async readNativeMissionEffect(
+    identity: Pick<
+      NativeMissionEffectIdentity,
+      'streamId' | 'createdAt' | 'checkpointNamespace' | 'operationKey' | 'argumentsDigest'
+    >,
+  ): Promise<NativeMissionEffectOutcome & { resultRef?: string; resultDigest?: string }> {
+    if (
+      !identity.streamId ||
+      !Number.isSafeInteger(identity.createdAt) ||
+      identity.createdAt <= 0 ||
+      !identity.checkpointNamespace ||
+      !/^[a-f0-9]{64}$/.test(identity.operationKey) ||
+      !/^[a-f0-9]{64}$/.test(identity.argumentsDigest)
+    ) {
+      throw new Error('Invalid mission side-effect lookup identity');
+    }
+    const raw = await this.redis.eval(
+      MISSION_EFFECT_READ_LUA,
+      1,
+      KEYS.job(identity.streamId),
+      String(identity.createdAt),
+      identity.checkpointNamespace,
+      identity.operationKey,
+      identity.argumentsDigest,
+    );
+    const outcome = this.parseNativeMissionEffectOutcome(raw);
+    if (
+      outcome.accepted &&
+      outcome.reason === 'committed' &&
+      Array.isArray(raw) &&
+      typeof raw[2] === 'string' &&
+      typeof raw[3] === 'string'
+    ) {
+      return { ...outcome, resultRef: raw[2], resultDigest: raw[3] };
+    }
+    return outcome;
+  }
+
+  private assertNativeMissionEffectIdentity(identity: NativeMissionEffectIdentity): void {
+    if (
+      !identity ||
+      typeof identity.streamId !== 'string' ||
+      identity.streamId.length === 0 ||
+      identity.streamId.length > 256 ||
+      !Number.isSafeInteger(identity.createdAt) ||
+      identity.createdAt <= 0 ||
+      typeof identity.checkpointNamespace !== 'string' ||
+      identity.checkpointNamespace.length === 0 ||
+      identity.checkpointNamespace.length > 512 ||
+      !/^[A-Za-z0-9:_-]{16,128}$/.test(identity.providerExecutionId) ||
+      (identity.recoveryOwnerToken !== '' &&
+        !/^[A-Za-z0-9:_-]{16,128}$/.test(identity.recoveryOwnerToken)) ||
+      !/^[a-f0-9]{64}$/.test(identity.operationKey) ||
+      !/^[a-f0-9]{64}$/.test(identity.argumentsDigest)
+    ) {
+      throw new Error('Invalid mission side-effect identity');
+    }
+  }
+
+  private parseNativeMissionEffectOutcome(raw: unknown): NativeMissionEffectOutcome {
+    if (!Array.isArray(raw) || (raw[0] !== 0 && raw[0] !== 1) || typeof raw[1] !== 'string') {
+      throw new Error('Unexpected Redis native side-effect receipt response');
+    }
+    return { accepted: raw[0] === 1, reason: raw[1] };
   }
 
   /**

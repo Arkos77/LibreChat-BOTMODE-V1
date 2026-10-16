@@ -27,6 +27,10 @@ on:
       - 'scripts/botmode/langgraph-cold-midstep-continuation-regression.cjs'
       - 'scripts/botmode/run-langgraph-cold-midstep-regression.sh'
       - 'packages/api/src/stream/implementations/RedisJobStore.ts'
+      - 'packages/api/src/stream/interfaces/IJobStore.ts'
+      - 'packages/api/src/stream/nativeMissionEffectReceipts.ts'
+      - 'scripts/botmode/native-effect-receipts-redis-regression.cjs'
+      - 'scripts/botmode/run-native-effect-receipts-redis-regression.sh'
       - 'vendor/librechat-agents/**'
 
 permissions:
@@ -94,6 +98,16 @@ jobs:
           after="$(docker volume ls -q --filter dangling=true | wc -l)"
           test "$before" -eq "$after"
           echo 'BOTMODE_LATE_PLAN_PROVIDER_LEASE_CI=PASS'
+      - name: Verify native side-effect journal never retries uncertain external calls
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          set -euo pipefail
+          before="$(docker volume ls -q --filter dangling=true | wc -l)"
+          bash scripts/botmode/run-native-effect-receipts-redis-regression.sh
+          after="$(docker volume ls -q --filter dangling=true | wc -l)"
+          test "$before" -eq "$after"
+          echo 'BOTMODE_EFFECT_JOURNAL_REAL_REDIS_CI=PASS'
       - name: Verify SIGKILL and Mongo cold SDK restart
         env:
           BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d

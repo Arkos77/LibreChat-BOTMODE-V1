@@ -17,6 +17,11 @@ import type { MissionPlan } from '~/agents/orchestrator/types';
 import type { RecoveredSteerPayload } from '../SteerRecovery';
 import type { MCPRuntimeRequestBody } from '~/mcp/types';
 import type { GenerationJobMetadata } from '~/types';
+import type {
+  NativeMissionEffectIdentity,
+  NativeMissionEffectCommit,
+  NativeMissionEffectOutcome,
+} from '~/stream/nativeMissionEffectReceipts';
 
 /**
  * Detached Event Actor execution guarantee advertised by a generation store.
@@ -1096,6 +1101,21 @@ export interface IJobStoreV2 extends IJobStore {
     ownerToken: string,
     nextProviderExecutionId: string,
   ): Promise<boolean>;
+
+  /** Optional Redis-only intent/receipt primitives. None starts an action.
+   * Tool adapters must remain fail-closed when these are unavailable. */
+  reserveNativeMissionEffect?(
+    identity: NativeMissionEffectIdentity,
+  ): Promise<NativeMissionEffectOutcome>;
+  commitNativeMissionEffect?(
+    receipt: NativeMissionEffectCommit,
+  ): Promise<NativeMissionEffectOutcome>;
+  readNativeMissionEffect?(
+    identity: Pick<
+      NativeMissionEffectIdentity,
+      'streamId' | 'createdAt' | 'checkpointNamespace' | 'operationKey' | 'argumentsDigest'
+    >,
+  ): Promise<NativeMissionEffectOutcome & { resultRef?: string; resultDigest?: string }>;
 
   /** Optional fenced recovered-provider startup, never invoked by inspection. */
   beginRecoveredMissionProviderExecution?(
