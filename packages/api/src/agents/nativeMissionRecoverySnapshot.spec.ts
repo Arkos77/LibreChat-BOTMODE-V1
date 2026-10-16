@@ -11,7 +11,7 @@ const candidate = {
 const state = {
   config: { configurable: { thread_id: 'mission-1', checkpoint_id: 'head-1' } },
   next: ['worker'],
-  tasks: [{ name: 'worker', interrupts: [] }],
+  tasks: [{ name: 'worker', interrupts: [] as unknown[] }],
 };
 
 describe('reconstructed native mission read-only qualification', () => {
