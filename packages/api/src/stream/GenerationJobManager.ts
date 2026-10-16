@@ -84,6 +84,7 @@ import { toClientPendingAction } from '~/agents/hitl/policy';
 import { ApprovalLifecycle, pausePersistenceActionId } from './ApprovalLifecycle';
 import { projectPendingMCPOAuthPrompts } from '~/mcp/oauth/resume';
 import { sanitizeJobMetadata } from './metadata';
+import { inspectDurableNativeMissionCheckpoint } from '~/agents/checkpointer';
 
 /** Terminal error surfaced to a client still attached when its approval window lapses. */
 const APPROVAL_EXPIRED_ERROR = 'Approval expired before a decision was made';
@@ -804,6 +805,51 @@ class GenerationJobManagerClass {
     }
   }
 
+  /**
+   * Read-only MongoDB preflight for orphaned native missions. The generation
+   * namespace must match exactly, and a pending HITL interrupt excludes
+   * automatic continuation. This grants NO Redis ownership or publication right.
+   * Fail closed per candidate: a temporary MongoDB outage cannot turn a
+   * running Redis receipt into authority to replay tools.
+   */
+  async inspectCheckpointedOrphanedNativeMissions(): Promise<
+    Array<{
+      streamId: string;
+      createdAt: number;
+      checkpointNamespace: string;
+      checkpointId: string;
+    }>
+  > {
+    const candidates = await this.inspectOrphanedNativeMissions();
+    const eligible: Array<{
+      streamId: string;
+      createdAt: number;
+      checkpointNamespace: string;
+      checkpointId: string;
+    }> = [];
+    for (const candidate of candidates.slice(0, 16)) {
+      try {
+        const checkpoint = await inspectDurableNativeMissionCheckpoint(
+          candidate.streamId,
+          candidate.checkpointNamespace,
+        );
+        if (checkpoint == null) continue;
+        const current = await this.jobStore.getJob(candidate.streamId);
+        if (
+          current?.createdAt !== candidate.createdAt ||
+          current.status !== 'running' ||
+          current.checkpointNamespace !== candidate.checkpointNamespace ||
+          current.orchestratorPlan == null ||
+          current.providerDrained !== false
+        ) continue;
+        eligible.push({ ...candidate, checkpointId: checkpoint.checkpointId });
+      } catch (error) {
+        logger.warn('[GenerationJobManager] Native mission checkpoint preflight failed', error);
+      }
+    }
+    return eligible;
+  }
+
   /** A missed heartbeat only removes eligibility for automatic takeover after
    * the Redis-server deadline; it never confers publication permission. */
   private async heartbeatOwnedMissionProviders(): Promise<void> {
@@ -909,7 +955,7 @@ class GenerationJobManagerClass {
     // lease + tenant/agent policies and an exact Mongo checkpoint before claim.
     if (this._isRedis) {
       void storeReady
-        .then(() => this.inspectOrphanedNativeMissions())
+        .then(() => this.inspectCheckpointedOrphanedNativeMissions())
         .catch((error) => {
           logger.warn('[GenerationJobManager] Startup mission inspection failed', error);
         });
