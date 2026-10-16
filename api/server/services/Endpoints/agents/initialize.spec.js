@@ -167,8 +167,15 @@ describe('initializeClient — processAgent ACL gate', () => {
         custom: [
           {
             name: 'OpenRouter',
-            baseURL: 'https://openrouter.example.test/api/v1',
-            apiKey: 'fixture-secret',
+            baseURL: 'https://openrouter.ai/api/v1',
+            apiKey: 'fixture-key',
+            models: { default: ['a:free', 'b:free'] },
+          },
+          {
+            name: 'openai',
+            baseURL: 'https://example.invalid/v1',
+            apiKey: 'fixture-key',
+            models: { default: ['gpt-4', 'b:free'] },
           },
         ],
       },

@@ -72,7 +72,9 @@ test.describe('global shortcut yield contract', () => {
     await expect(navRail(page)).toHaveCount(0);
     await blurComposer(page);
     await page.keyboard.press('Alt+Shift+M');
-    await expect(page).toHaveURL(/\/c\/new$/, { timeout: 10000 });
+    // The new-chat action may retain the selected model spec as a URL query.
+    // The shortcut contract is navigation to a new chat, not removing the spec.
+    await expect(page).toHaveURL(/\/c\/new(?:\?.*)?$/, { timeout: 10000 });
 
     // Two turns in the fresh chat: the rail renders and now owns the chord.
     await selectMockEndpoint(page, MOCK_ENDPOINTS[0]);

@@ -155,7 +155,18 @@ export async function executeBrowserGrant(
     assertDestination(grant, requireText('url', input.url));
   }
 
-  const browser = deps.browser ?? (await launchBrowser());
+  const endpoint = process.env.BOTMODE_PLAYWRIGHT_WS_ENDPOINT?.trim();
+  if (endpoint) {
+    const parsed = new URL(endpoint);
+    if (!['ws:', 'wss:'].includes(parsed.protocol)) {
+      throw new Error('BOTMODE_PLAYWRIGHT_WS_ENDPOINT must use ws or wss');
+    }
+  }
+  const browser =
+    deps.browser ??
+    (endpoint
+      ? await chromium.connect(endpoint, { timeout: 15_000 })
+      : await chromium.launch({ headless: true }));
   const ownsBrowser = deps.browser == null;
   const session = await new BrowserExecutionSession(browser, ownsBrowser).init();
   try {

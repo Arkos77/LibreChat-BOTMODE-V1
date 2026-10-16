@@ -1,11 +1,11 @@
 {
   "compilerOptions": {
-    "rootDir": ".",
     "declaration": true,
     "declarationDir": "./dist/types",
     "module": "esnext",
     "noImplicitAny": true,
     "outDir": "./types",
+    "rootDir": ".",
     "target": "es2015",
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,

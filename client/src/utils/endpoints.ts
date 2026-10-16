@@ -172,6 +172,20 @@ function isStoredAgentPick(
   );
 }
 
+/**
+ * Rehydrate a genuine stored agent pick only when the loaded, permission-filtered
+ * agent map confirms it is still available. Returning no model spec is not enough:
+ * the cold New Chat initializer otherwise restores the endpoint without agent_id.
+ * Deleted and cross-organization ids must never be resurrected.
+ */
+export function getStoredAvailableAgentPreset(agentsMap?: t.TAgentsMap): t.TPreset | undefined {
+  const saved = parseStoredModelSelection(localStorage.getItem(firstLocalConvoKey));
+  if (!isStoredAgentPick(saved) || agentsMap?.[saved.agent_id] == null) {
+    return undefined;
+  }
+  return { endpoint: EModelEndpoint.agents, agent_id: saved.agent_id, spec: null };
+}
+
 export function hasModelSelection(selection?: Partial<StoredModelSelection> | null): boolean {
   if (!selection) {
     return false;

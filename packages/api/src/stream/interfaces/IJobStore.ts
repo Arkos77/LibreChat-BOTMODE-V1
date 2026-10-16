@@ -869,6 +869,9 @@ export function isStopConfirmed(result: AbortResult | null | undefined): boolean
  * Resume state for reconnecting clients
  */
 export interface ResumeState {
+  /** Host-approved plan retained across durable resume. */
+  orchestratorPlan?: MissionPlan;
+  isRegenerate?: boolean;
   runSteps: Agents.RunStep[];
   aggregatedContent: Agents.MessageContentComplex[];
   userMessage?: SerializableJobData['userMessage'];
@@ -1195,6 +1198,13 @@ export interface IJobStoreV2 extends IJobStore {
 
   /** Check if job exists */
   hasJob(streamId: string): Promise<boolean>;
+
+  /** Exact-owner liveness lease, Redis-only; other stores omit it. */
+  heartbeatMissionProvider?(
+    streamId: string,
+    generationId: number,
+    providerExecutionId: string,
+  ): Promise<boolean>;
 
   /** Get all running jobs (for cleanup) */
   getRunningJobs(): Promise<SerializableJobData[]>;
@@ -1659,6 +1669,13 @@ export interface IEventTransport {
   /** Persist proof that this process synchronously stopped the exact generation.
    * A delayed replacement can use the proof after the owner's listeners retire. */
   recordAbortAcknowledgement?(streamId: string, generationId: number): Promise<boolean>;
+
+  /** Exact-owner presence lease for native mission recovery (Redis only). */
+  heartbeatMissionProvider?(
+    streamId: string,
+    generationId: number,
+    providerExecutionId: string,
+  ): Promise<boolean>;
 
   /** Persist/read exact proof that a provider segment can no longer mutate user data. */
   recordProviderDrain?(

@@ -49,6 +49,8 @@ import { instrumentIORedisClient, RedisUseCases } from '~/cache/redisTelemetry';
 import { RecoveredSteerPayloadMismatchError } from '~/stream/SteerRecovery';
 
 const CLIENT_REQUEST_ID_PATTERN = /^[A-Za-z0-9:_-]{1,128}$/;
+/** Bounded Redis-server-time presence proof for native mission provider segments. */
+const MISSION_PROVIDER_LEASE_MS = 15_000;
 
 type ReasoningLabelOverlay = {
   stepId: string;
@@ -125,6 +127,9 @@ function assertCreateIdempotencyArguments(
  *   ]
  */
 const JOB_CAS_LUA =
+  // Epoch-only transitions cannot complete, abort or pause a promoted mission.
+  // A recovery-aware controller must prove its exact owner before settlement.
+  'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") then return 0 end ' +
   'if redis.call("HGET", KEYS[1], "status") ~= ARGV[1] then return 0 end ' +
   'if ARGV[2] ~= "" and redis.call("HGET", KEYS[1], "pendingActionId") ~= ARGV[2] then return 0 end ' +
   'if ARGV[3] ~= "" and redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[3] then return 0 end ' +
@@ -603,6 +608,9 @@ const JOB_CREATE_LUA =
 const JOB_UPDATE_LUA =
   'if redis.call("EXISTS", KEYS[1]) == 0 then return 0 end ' +
   'if ARGV[1] ~= "" and redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[1] then return 0 end ' +
+  // Epoch-only metadata writes from the previous process are not authoritative
+  // after a recovery owner is installed; never persist stale Oracle evidence.
+  'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") then return 0 end ' +
   'local hset = {} ' +
   'for i = 6, #ARGV do hset[#hset + 1] = ARGV[i] end ' +
   'if #hset > 0 then redis.call("HSET", KEYS[1], unpack(hset)) end ' +
@@ -616,6 +624,79 @@ const JOB_UPDATE_LUA =
   'if runStepsTtl == 0 then redis.call("DEL", KEYS[3]) else redis.call("EXPIRE", KEYS[3], runStepsTtl) end ' +
   'end ' +
   'return 1';
+
+/** An explicitly authorized recovered owner may update private candidate and
+ * Oracle evidence without reopening epoch-only updates to its predecessor.
+ * The same-slot lease check prevents writes after expiry or another takeover.
+ * Terminal status and publication are deliberately NOT enabled here. */
+const RECOVERED_MISSION_METADATA_UPDATE_LUA =
+  'if redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[1] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "status") ~= "running" then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") ~= ARGV[2] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerExecutionId") ~= ARGV[3] then return 0 end ' +
+  'if redis.call("GET", KEYS[2]) ~= ARGV[2] then return 0 end ' +
+  'if #ARGV < 5 or (#ARGV - 3) % 2 ~= 0 then return 0 end ' +
+  'local allowed = {missionOracleState = true, missionCandidateContent = true, ' +
+  'missionCandidateAttachments = true} ' +
+  'for i = 4, #ARGV, 2 do if not allowed[ARGV[i]] then return 0 end end ' +
+  'redis.call("HSET", KEYS[1], unpack(ARGV, 4)) return 1';
+
+/** Conservative preflight claim only: a drained mission has no live provider
+ * segment. This does NOT authorize graph replay or external side effects.
+ * The key lives in the job hash slot, so competing replicas serialize in Redis. */
+const CLAIM_DRAINED_MISSION_RECOVERY_LUA =
+  'if redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[1] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "status") ~= "running" then return 0 end ' +
+  'local drained = redis.call("HGET", KEYS[1], "providerDrained") ' +
+  'if drained ~= "1" then ' +
+  'if drained ~= "0" or not redis.call("HGET", KEYS[1], "providerExecutionStartedId") then return 0 end ' +
+  'local untilMs = tonumber(redis.call("HGET", KEYS[1], "__missionProviderLeaseUntil") or "") ' +
+  'if not untilMs then return 0 end ' +
+  'local now = redis.call("TIME") local nowMs = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000) ' +
+  'if untilMs > nowMs then return 0 end end ' +
+  'if not redis.call("HGET", KEYS[1], "orchestratorPlan") then return 0 end ' +
+  'local active = tonumber(redis.call("HGET", KEYS[1], "lastActiveAt") or ARGV[1]) ' +
+  'if not active or active > tonumber(ARGV[2]) then return 0 end ' +
+  'return redis.call("SET", KEYS[2], ARGV[3], "NX", "PX", ARGV[4]) and 1 or 0';
+
+/** Atomically fences the predecessor's provider-start CAS before a recovered
+ * graph can be rebuilt. No graph or provider is started by this operation.
+ * Publication remains fail-closed until owner-aware replay is wired end-to-end. */
+const ACTIVATE_DRAINED_MISSION_RECOVERY_LUA =
+  'if redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[1] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "status") ~= "running" then return 0 end ' +
+  'local drained = redis.call("HGET", KEYS[1], "providerDrained") ' +
+  'if drained ~= "1" then ' +
+  'if drained ~= "0" or not redis.call("HGET", KEYS[1], "providerExecutionStartedId") then return 0 end ' +
+  'local untilMs = tonumber(redis.call("HGET", KEYS[1], "__missionProviderLeaseUntil") or "") ' +
+  'if not untilMs then return 0 end ' +
+  'local now = redis.call("TIME") local nowMs = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000) ' +
+  'if untilMs > nowMs then return 0 end end ' +
+  'if not redis.call("HGET", KEYS[1], "orchestratorPlan") then return 0 end ' +
+  'if redis.call("GET", KEYS[2]) ~= ARGV[2] then return 0 end ' +
+  // Each takeover is exclusive under the live claim; the predecessor cannot
+  // publish while this preflight mode is active. A later DIFFERENT owner may
+  // recover when the previous claimant crashes and its Redis lease expires.
+  'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") == ARGV[2] then return 0 end ' +
+  'redis.call("HSET", KEYS[1], "providerExecutionId", ARGV[3], "providerDrained", "1", ' +
+  '"__missionRecoveryOwner", ARGV[2], "lastActiveAt", ARGV[4]) ' +
+  'redis.call("HDEL", KEYS[1], "__missionProviderLeaseUntil", "__missionProviderLeaseIdentity") return 1';
+
+/** A preflight owner can extend only its own still-live, same-generation claim.
+ * An expired lease cannot be resurrected, and a replaced or active generation
+ * invalidates its former owner. This is NOT a publication permission. */
+const RENEW_DRAINED_MISSION_RECOVERY_LUA =
+  'if redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[1] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "status") ~= "running" then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerDrained") ~= "1" then return 0 end ' +
+  'if redis.call("GET", KEYS[2]) ~= ARGV[2] then return 0 end ' +
+  'return redis.call("PEXPIRE", KEYS[2], ARGV[3])';
+
+/** A stale contender cannot release another owner's newer claim. */
+const RELEASE_DRAINED_MISSION_RECOVERY_LUA =
+  'if redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[1] then return 0 end ' +
+  'if redis.call("GET", KEYS[2]) ~= ARGV[2] then return 0 end ' +
+  'return redis.call("DEL", KEYS[2])';
 
 /** Exact provider-segment completion fence. A paused segment finishing after a
  * resume cannot mark the resumed provider drained because its opaque id differs. */
@@ -643,7 +724,30 @@ const PROVIDER_BEGIN_LUA =
   'if redis.call("HGET", KEYS[1], "providerExecutionId") ~= ARGV[2] then return 0 end ' +
   'if redis.call("HGET", KEYS[1], "status") ~= "running" then return 0 end ' +
   'if redis.call("HGET", KEYS[1], "providerDrained") ~= "1" then return 0 end ' +
-  'redis.call("HSET", KEYS[1], "providerDrained", "0", "providerExecutionStartedId", ARGV[2]) return 1';
+  'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") then return 0 end ' +
+  'redis.call("HSET", KEYS[1], "providerDrained", "0", "providerExecutionStartedId", ARGV[2]) ' +
+  'if redis.call("HGET", KEYS[1], "orchestratorPlan") then ' +
+  'local now = redis.call("TIME") local nowMs = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000) ' +
+  'redis.call("HSET", KEYS[1], "__missionProviderLeaseIdentity", ARGV[2], ' +
+  '"__missionProviderLeaseUntil", tostring(nowMs + tonumber(ARGV[3]))) end return 1';
+
+/** A provider lease can be refreshed ONLY by its exact execution identity.
+ * The Redis server clock avoids skew between replicas. This heartbeat itself
+ * gives no authority to write Oracle evidence or publish outputs. */
+const HEARTBEAT_MISSION_PROVIDER_LUA =
+  'if redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[1] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "status") ~= "running" then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerDrained") ~= "0" then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerExecutionId") ~= ARGV[2] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerExecutionStartedId") ~= ARGV[2] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "__missionProviderLeaseIdentity") ~= ARGV[2] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") then return 0 end ' +
+  'local now = redis.call("TIME") local nowMs = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000) ' +
+  // Once a lease expires, a slow predecessor must not resurrect itself while
+  // another replica is preparing a recovery claim.
+  'local untilMs = tonumber(redis.call("HGET", KEYS[1], "__missionProviderLeaseUntil") or "") ' +
+  'if not untilMs or untilMs <= nowMs then return 0 end ' +
+  'redis.call("HSET", KEYS[1], "__missionProviderLeaseUntil", tostring(nowMs + tonumber(ARGV[3]))) return 1';
 
 /** Single-winner promotion from abort-persistence pending to a consumable
  * terminal payload. Owner success/failure and stale-owner recovery share this
@@ -682,6 +786,12 @@ const JOB_DELETE_LUA =
 const STALE_JOB_DELETE_LUA =
   'if redis.call("HGET", KEYS[1], "status") ~= "running" then return 0 end ' +
   'if redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[1] then return 0 end ' +
+  // A claimed recovery must not be reaped between claim and its guarded continuation.
+  // Both keys share the stream hash slot, so claim and cleanup serialize atomically.
+  'if redis.call("EXISTS", KEYS[10]) == 1 then return 0 end ' +
+  // The activated recovery marker outlives a preflight lease. Do not delete
+  // private candidates/evidence if the new owner crashes during handoff.
+  'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") then return 0 end ' +
   'local liveSince = tonumber(redis.call("HGET", KEYS[1], "lastActiveAt")) ' +
   'if not liveSince then liveSince = tonumber(redis.call("HGET", KEYS[1], "createdAt")) end ' +
   'if not liveSince or tonumber(ARGV[2]) - liveSince <= tonumber(ARGV[3]) then return 0 end ' +
@@ -783,6 +893,7 @@ const CHUNK_APPEND_LUA =
   'local currentCreatedAt = redis.call("HGET", KEYS[2], "createdAt") ' +
   'if not currentCreatedAt then return 0 end ' +
   'if ARGV[3] ~= "" and currentCreatedAt ~= ARGV[3] then return 0 end ' +
+  'if redis.call("HGET", KEYS[2], "__missionRecoveryOwner") then return 0 end ' +
   'local currentStatus = redis.call("HGET", KEYS[2], "status") ' +
   'if currentStatus ~= "running" and currentStatus ~= "requires_action" then return 0 end ' +
   'local retainedEpoch = redis.call("GET", KEYS[8]) ' +
@@ -861,6 +972,7 @@ const CHUNK_APPEND_BATCH_LUA =
   'local currentCreatedAt = redis.call("HGET", KEYS[2], "createdAt") ' +
   'if not currentCreatedAt then return 0 end ' +
   'if ARGV[2] ~= "" and currentCreatedAt ~= ARGV[2] then return 0 end ' +
+  'if redis.call("HGET", KEYS[2], "__missionRecoveryOwner") then return 0 end ' +
   'local currentStatus = redis.call("HGET", KEYS[2], "status") ' +
   'if currentStatus ~= "running" and currentStatus ~= "requires_action" then return 0 end ' +
   'local retainedEpoch = redis.call("GET", KEYS[8]) ' +
@@ -2213,6 +2325,55 @@ export class RedisJobStore implements IJobStoreV2 {
     return acknowledged === 1;
   }
 
+  /** Narrow, owner-fenced private evidence writer for a future recovered
+   * LangGraph continuation. This cannot settle a mission or grant publishing. */
+  async updateRecoveredMissionEvidence(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    providerExecutionId: string,
+    updates: Pick<
+      Partial<SerializableJobData>,
+      'missionOracleState' | 'missionCandidateContent' | 'missionCandidateAttachments'
+    >,
+  ): Promise<boolean> {
+    if (
+      !Number.isSafeInteger(expectedCreatedAt) ||
+      expectedCreatedAt <= 0 ||
+      !/^[A-Za-z0-9:_-]{16,128}$/.test(ownerToken) ||
+      !/^[A-Za-z0-9:_-]{16,128}$/.test(providerExecutionId)
+    ) {
+      throw new Error('Invalid recovered mission evidence ownership');
+    }
+    const allowed = new Set([
+      'missionOracleState',
+      'missionCandidateContent',
+      'missionCandidateAttachments',
+    ]);
+    if (
+      !updates ||
+      Object.keys(updates).length === 0 ||
+      Object.keys(updates).some((name) => !allowed.has(name))
+    ) {
+      throw new Error('Invalid recovered mission evidence fields');
+    }
+    const serialized = this.serializeJob(updates);
+    const fields = Object.entries(serialized).flat();
+    if (fields.length === 0) return false;
+    return (
+      (await this.redis.eval(
+        RECOVERED_MISSION_METADATA_UPDATE_LUA,
+        2,
+        KEYS.job(streamId),
+        `stream:{${streamId}}:mission-recovery-claim`,
+        String(expectedCreatedAt),
+        ownerToken,
+        providerExecutionId,
+        ...fields,
+      )) === 1
+    );
+  }
+
   async updateJob(
     streamId: string,
     updates: Partial<SerializableJobData>,
@@ -2317,8 +2478,27 @@ export class RedisJobStore implements IJobStoreV2 {
           KEYS.job(streamId),
           String(expectedCreatedAt),
           providerExecutionId,
+          String(MISSION_PROVIDER_LEASE_MS),
         ),
       ) === 1
+    );
+  }
+
+  /** Exact-owner heartbeat; an expired old owner cannot steal a recovered job. */
+  async heartbeatMissionProvider(
+    streamId: string,
+    expectedCreatedAt: number,
+    providerExecutionId: string,
+  ): Promise<boolean> {
+    return (
+      (await this.redis.eval(
+        HEARTBEAT_MISSION_PROVIDER_LUA,
+        1,
+        KEYS.job(streamId),
+        String(expectedCreatedAt),
+        providerExecutionId,
+        String(MISSION_PROVIDER_LEASE_MS),
+      )) === 1
     );
   }
 
@@ -2872,7 +3052,7 @@ export class RedisJobStore implements IJobStoreV2 {
   ): Promise<boolean> {
     const deleted = await this.redis.eval(
       STALE_JOB_DELETE_LUA,
-      9,
+      10,
       KEYS.job(streamId),
       KEYS.chunks(streamId),
       KEYS.runSteps(streamId),
@@ -2882,6 +3062,7 @@ export class RedisJobStore implements IJobStoreV2 {
       KEYS.generationEpoch(streamId),
       KEYS.steerReceipts(streamId),
       KEYS.steerReceiptOrder(streamId),
+      `stream:{${streamId}}:mission-recovery-claim`,
       String(observedJob.createdAt),
       String(now),
       String(this.ttl.running * 1000),
@@ -2919,6 +3100,121 @@ export class RedisJobStore implements IJobStoreV2 {
       }
     }
     return jobs;
+  }
+
+  /** Claim only quiescent, host-planned mission candidates for inspection.
+   * No execution begins here: a separate epoch-fenced continuation is required. */
+  async claimDrainedMissionRecovery(
+    streamId: string,
+    expectedCreatedAt: number,
+    staleBeforeMs: number,
+    ownerToken: string,
+    leaseMs: number,
+  ): Promise<boolean> {
+    if (
+      !Number.isSafeInteger(expectedCreatedAt) ||
+      expectedCreatedAt <= 0 ||
+      !Number.isSafeInteger(staleBeforeMs) ||
+      !Number.isSafeInteger(leaseMs) ||
+      leaseMs < 1000 ||
+      leaseMs > 60000 ||
+      !/^[A-Za-z0-9:_-]{16,128}$/.test(ownerToken)
+    ) {
+      throw new Error('Invalid mission recovery claim arguments');
+    }
+    const claimed = await this.redis.eval(
+      CLAIM_DRAINED_MISSION_RECOVERY_LUA,
+      2,
+      KEYS.job(streamId),
+      `stream:{${streamId}}:mission-recovery-claim`,
+      String(expectedCreatedAt),
+      String(staleBeforeMs),
+      ownerToken,
+      String(leaseMs),
+    );
+    return claimed === 1;
+  }
+
+  /** Rotate provider identity only for a live claim, preserving the job epoch.
+   * This is a fencing precondition, NOT permission to start or publish a run. */
+  async activateDrainedMissionRecovery(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    nextProviderExecutionId: string,
+  ): Promise<boolean> {
+    if (
+      !Number.isSafeInteger(expectedCreatedAt) ||
+      expectedCreatedAt <= 0 ||
+      !/^[A-Za-z0-9:_-]{16,128}$/.test(ownerToken) ||
+      !/^[A-Za-z0-9:_-]{16,128}$/.test(nextProviderExecutionId)
+    ) {
+      throw new Error('Invalid mission recovery activation arguments');
+    }
+    const activated = await this.redis.eval(
+      ACTIVATE_DRAINED_MISSION_RECOVERY_LUA,
+      2,
+      KEYS.job(streamId),
+      `stream:{${streamId}}:mission-recovery-claim`,
+      String(expectedCreatedAt),
+      ownerToken,
+      nextProviderExecutionId,
+      String(Date.now()),
+    );
+    return activated === 1;
+  }
+
+  /** Extend only the matching active preflight lease; never create one. */
+  async renewDrainedMissionRecovery(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    leaseMs: number,
+  ): Promise<boolean> {
+    if (
+      !Number.isSafeInteger(expectedCreatedAt) ||
+      expectedCreatedAt <= 0 ||
+      !Number.isSafeInteger(leaseMs) ||
+      leaseMs < 1000 ||
+      leaseMs > 60000 ||
+      !/^[A-Za-z0-9:_-]{16,128}$/.test(ownerToken)
+    ) {
+      throw new Error('Invalid mission recovery lease arguments');
+    }
+    const renewed = await this.redis.eval(
+      RENEW_DRAINED_MISSION_RECOVERY_LUA,
+      2,
+      KEYS.job(streamId),
+      `stream:{${streamId}}:mission-recovery-claim`,
+      String(expectedCreatedAt),
+      ownerToken,
+      String(leaseMs),
+    );
+    return renewed === 1;
+  }
+
+  /** Drop only the same owner's exact-generation preflight lease. */
+  async releaseDrainedMissionRecovery(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+  ): Promise<boolean> {
+    if (
+      !Number.isSafeInteger(expectedCreatedAt) ||
+      expectedCreatedAt <= 0 ||
+      !/^[A-Za-z0-9:_-]{16,128}$/.test(ownerToken)
+    ) {
+      throw new Error('Invalid mission recovery release arguments');
+    }
+    const released = await this.redis.eval(
+      RELEASE_DRAINED_MISSION_RECOVERY_LUA,
+      2,
+      KEYS.job(streamId),
+      `stream:{${streamId}}:mission-recovery-claim`,
+      String(expectedCreatedAt),
+      ownerToken,
+    );
+    return released === 1;
   }
 
   async getRequiresActionJobs(): Promise<SerializableJobData[]> {

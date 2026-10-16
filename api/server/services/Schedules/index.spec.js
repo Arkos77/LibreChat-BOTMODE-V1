@@ -5,7 +5,7 @@ const mockCreateSchedulesService = jest.fn(() => ({
 
 jest.mock('@librechat/api', () => ({
   createSchedulesService: (...args) => mockCreateSchedulesService(...args),
-  getActivatedCapabilityRegistry: jest.fn(() => ({})),
+  getActivatedCapabilityRegistry: jest.fn(() => ({ list: jest.fn(() => []) })),
   getOpportunityWatchRunner: jest.fn(() => ({})),
   getInformationWatchRunner: jest.fn(() => ({})),
   getDefaultInformationWatchAdapters: jest.fn(() => []),

@@ -1,0 +1,136 @@
+name: BOTMODE V1 PR28 Oracle Source Qualification
+
+# Check the current PR revision, never an older pinned PR14/PR27 candidate.
+# Offline regression scope only: does not substitute for a single real mission
+# with Worker -> specialist -> durable Oracle verdict -> publication barrier.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-pr28-oracle-qualification.yml'
+      - 'packages/api/src/agents/**'
+      - 'packages/api/src/stream/**'
+      - 'api/server/controllers/agents/**'
+      - 'api/server/services/Endpoints/agents/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: botmode-pr28-oracle-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  NODE_ENV: test
+  NODE_OPTIONS: '--max-old-space-size=6144'
+
+jobs:
+  oracle-native-contracts:
+    name: Worker/subagent, planning, Oracle and synthesis contracts
+    if: github.event.pull_request.number == 28
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact PR head (not synthetic merge or historical candidate)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Verify provenance
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          echo "BOTMODE_PR28_ORACLE_SOURCE_SHA=$(git rev-parse HEAD)"
+          echo "BOTMODE_PR28_ORACLE_EXACT_SOURCE=PASS"
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - name: Install reproducible dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build current repository packages
+        run: |
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:api
+      - name: Verify native parent -> child -> parent graph and tenant identity
+        working-directory: packages/api
+        run: |
+          npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            src/agents/__tests__/custom-endpoint-tenant.e2e.test.ts
+          echo "BOTMODE_PR28_NATIVE_CHILD_CONTRACT=PASS"
+      - name: Verify planner -> Oracle -> synthesis and fail-closed dispositions
+        working-directory: packages/api
+        run: |
+          npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            src/agents/orchestrator/planner.spec.ts \
+            src/agents/orchestrator/native.spec.ts \
+            src/agents/orchestrator/routing.spec.ts \
+            src/agents/orchestrator/missionOracle.spec.ts \
+            src/agents/orchestrator/synthesisReadiness.integration.spec.ts \
+            src/agents/orchestrator/synthesisReadiness.spec.ts \
+            src/agents/orchestrator/disposition.spec.ts \
+            src/agents/orchestrator/improvementAuthorizationChain.spec.ts \
+            src/agents/oracle/runtime.spec.ts \
+            src/agents/oracle/deterministic.spec.ts \
+            src/agents/publication.spec.ts \
+            src/agents/checkpointer.spec.ts
+          echo "BOTMODE_PR28_ORACLE_SOURCE_CONTRACTS=PASS"
+      - name: Record evidence limits
+        if: always()
+        run: |
+          {
+            echo '### PR28 Oracle source qualification'
+            echo "Checked commit: ${GITHUB_SHA} (workflow checkout separately proves PR head)"
+            echo 'Native parent/child tests use deterministic local fixtures.'
+            echo 'Oracle planning, evidence, disposition and publication contracts are tested independently.'
+            echo '**NOT PROVEN:** one executable authenticated Worker -> specialists -> durable Oracle ACCEPT/REJECT -> controlled publication on this runtime.'
+            echo 'No provider key, paid model, GHCR publication, merge or release action.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  durable-resume-contracts:
+    name: Host publication barrier, checkpoint and resume contracts
+    if: github.event.pull_request.number == 28
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Assert exact PR revision
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          echo "BOTMODE_PR28_DURABLE_EXACT_SOURCE=PASS"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Build schema and API packages
+        run: |
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:api
+      - name: Durable resume and publication barrier regression tests
+        working-directory: api
+        run: |
+          npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            server/controllers/agents/__tests__/callbacks.spec.js \
+            server/controllers/agents/__tests__/request.resumeMetadata.spec.js \
+            server/controllers/agents/__tests__/resume.spec.js
+          echo "BOTMODE_PR28_DURABLE_HOST_CONTRACTS=PASS"
+      - name: Record boundaries
+        if: always()
+        run: |
+          {
+            echo '### PR28 durable host contracts'
+            echo 'Native controller persistence and resume regression tests only.'
+            echo 'This does not claim a real end-to-end Oracle publication barrier or crash/restart mission soak.'
+            echo 'RELEASE remains NO-GO pending complete mission evidence and explicit human release approval.'
+          } >> "$GITHUB_STEP_SUMMARY"

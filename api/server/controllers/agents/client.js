@@ -68,6 +68,7 @@ const {
   deleteAgentCheckpoint,
   LIBRECHAT_CHECKPOINT_NAMESPACE_KEY,
   LIBRECHAT_EVENT_ACTOR_INVOCATION_KEY,
+  LIBRECHAT_MISSION_SYNC_KEY,
   isAskUserQuestionAdminDisabled,
   attachAskUserQuestionArgs,
   hydrateResumeRunSteps,
@@ -2537,6 +2538,20 @@ class AgentClient extends BaseClient {
      *  `delete_memory`; everyone else gets the unkeyed values only. */
     /** Partition the loaded memories belong to (the primary agent's). */
     const loadedMemoryAgentId = getMemoryAgentId(this.options.agent);
+    /** Detached subagents can resolve after disposeClient() has cleared the parent.
+     *  Snapshot only the execution authority and file-context options actually
+     *  needed by late resolution; never retain the HTTP request or client. */
+    const lazyContextAuthority = {
+      userId: String(this.options.req.user.id),
+      primaryAgentId: this.options.agent.id,
+      chatProjectId: this.options.chatProjectId,
+      filters: this.options.req.config?.filters,
+      legacyPii: this.options.req.config?.messageFilter?.pii,
+      fileContextRequest: {
+        config: { fileConfig: this.options.req.config?.fileConfig },
+        body: { fileTokenLimit: this.options.req.body?.fileTokenLimit },
+      },
+    };
     const buildMemoryContext = (text) =>
       text ? `${memoryInstructions}\n\n# Existing memory about the user:\n${text}` : undefined;
     /** Resolves formatted memories for an agent's own partition. A defined
@@ -2553,10 +2568,10 @@ class AgentClient extends BaseClient {
       }
       try {
         return await getRequestMemories({
-          req: this.options.req,
-          userId: this.options.req.user.id + '',
+          req: lazyContextAuthority.fileContextRequest,
+          userId: lazyContextAuthority.userId,
           agentId: agentPartition,
-          projectId: this.options.chatProjectId,
+          projectId: lazyContextAuthority.chatProjectId,
           getFormattedMemories: db.getFormattedMemories,
         });
       } catch (error) {
@@ -2566,7 +2581,7 @@ class AgentClient extends BaseClient {
     };
     const canonicalMemoryCache = new Map();
     const getCanonicalAgentMemories = async (agent) => {
-      if (!hasActivePiiPatterns(this.options.req.config?.filters?.memories?.pii)) {
+      if (!hasActivePiiPatterns(lazyContextAuthority.filters?.memories?.pii)) {
         return undefined;
       }
       if (typeof db.getUserMemories !== 'function') {
@@ -2578,9 +2593,9 @@ class AgentClient extends BaseClient {
         canonicalMemoryCache.set(
           cacheKey,
           db.getUserMemories({
-            userId: this.options.req.user.id + '',
+            userId: lazyContextAuthority.userId,
             agentId,
-            projectId: this.options.chatProjectId,
+            projectId: lazyContextAuthority.chatProjectId,
           }),
         );
       }
@@ -2664,7 +2679,7 @@ class AgentClient extends BaseClient {
       const agentRunContextParts = [sharedRunContext];
       const agentMemoryContexts = [];
       const agentHasMemory = agentHasInlineMemoryTools(agent);
-      if (agentId === this.options.agent.id || memoryAgentEnabled || agentHasMemory) {
+      if (agentId === lazyContextAuthority.primaryAgentId || memoryAgentEnabled || agentHasMemory) {
         const partitionMemories = await getAgentPartitionMemories(agent);
         const canonicalMemories =
           partitionMemories != null ? await getCanonicalAgentMemories(agent) : undefined;
@@ -2700,12 +2715,13 @@ class AgentClient extends BaseClient {
         mcpManager,
         configServers,
         sharedRunContext: agentRunContextParts.filter(Boolean).join('\n\n'),
-        ephemeralAgent: agentId === this.options.agent.id ? ephemeralAgent : undefined,
+        ephemeralAgent:
+          agentId === lazyContextAuthority.primaryAgentId ? ephemeralAgent : undefined,
       });
       if (assertLateBoundContent) {
         assertModelBoundContent({
-          filters: this.options.req.config?.filters,
-          legacyPii: this.options.req.config?.messageFilter?.pii,
+          filters: lazyContextAuthority.filters,
+          legacyPii: lazyContextAuthority.legacyPii,
           agents: [agent],
           memories: agentMemoryContexts,
           files: scopedContext ? [scopedContext] : [],
@@ -2785,7 +2801,7 @@ class AgentClient extends BaseClient {
                 agentIds: unpreparedAgents.map((agent) => agent.id),
                 attachmentsByAgentId: buildAgentContextAttachmentsByAgentId(unpreparedAgents),
                 sharedRunAttachmentIds,
-                req: this.options.req,
+                req: lazyContextAuthority.fileContextRequest,
                 tokenCountFn: (text) => countTokens(text),
               }).then((lateScopedContext) =>
                 Promise.all(
@@ -4154,11 +4170,14 @@ class AgentClient extends BaseClient {
         pluginHookSource: getPluginHookSource(),
         askUserQuestionAdminDisabled,
       });
-      const runUsesCheckpointer = agentRunUsesCheckpointer({
-        policy: effectiveToolApprovalPolicy,
-        agents: topLevelAgents,
-        askUserQuestionAdminDisabled,
-      });
+      const missionCheckpointing = this.orchestratorPlan != null;
+      const runUsesCheckpointer =
+        missionCheckpointing ||
+        agentRunUsesCheckpointer({
+          policy: effectiveToolApprovalPolicy,
+          agents: topLevelAgents,
+          askUserQuestionAdminDisabled,
+        });
       if (this.options.req?._isScheduledFire === true && runCanPause) {
         if (!GenerationJobManager.isRedis) {
           const error = new Error(
@@ -4190,7 +4209,9 @@ class AgentClient extends BaseClient {
 
       config = {
         runName: 'AgentRun',
+        ...(missionCheckpointing && { durability: 'sync' }),
         configurable: {
+          ...(missionCheckpointing && { [LIBRECHAT_MISSION_SYNC_KEY]: true }),
           thread_id: this.conversationId,
           // LangGraph owns `checkpoint_ns` and resets it to '' at every root
           // invocation. The saver maps this private immutable generation key
@@ -5130,7 +5151,9 @@ class AgentClient extends BaseClient {
 
       config = {
         runName: 'AgentRun',
+        ...(this.orchestratorPlan != null && { durability: 'sync' }),
         configurable: {
+          ...(this.orchestratorPlan != null && { [LIBRECHAT_MISSION_SYNC_KEY]: true }),
           thread_id: this.conversationId,
           checkpoint_ns: '',
           [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: this.checkpointNamespace,

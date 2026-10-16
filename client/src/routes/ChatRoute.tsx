@@ -220,14 +220,16 @@ export default function ChatRoute() {
         ? undefined
         : getDefaultModelSpec(startupConfig, endpointsQuery.data, agentsMap);
       const spec = urlSpec ?? result?.default ?? result?.last ?? result?.softDefault;
-      const specPreset = spec
+      const resolvedPreset = spec
         ? getModelSpecPreset(spec)
-        : getStoredAgentSelectionPreset(startupConfig, endpointsQuery.data, agentsMap);
+        : Object.keys(querySettings).length === 0
+          ? getStoredAgentSelectionPreset(startupConfig, endpointsQuery.data, agentsMap)
+          : undefined;
 
       if (Object.keys(querySettings).length > 0) {
-        return mergeQuerySettingsWithSpec(specPreset, querySettings);
+        return mergeQuerySettingsWithSpec(resolvedPreset, querySettings);
       }
-      return specPreset;
+      return resolvedPreset;
     };
 
     if (isNewConvo && endpointsQuery.data && modelsQuery.data) {

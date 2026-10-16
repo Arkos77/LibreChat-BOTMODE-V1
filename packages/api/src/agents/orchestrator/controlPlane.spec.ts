@@ -42,8 +42,9 @@ describe('control plane projection', () => {
   it('creates an immutable-by-copy Goal → Project → Task projection', () => {
     const source = projection();
     const result = createControlPlaneProjection(source);
-    (result.goal.constraints as string[]).push('changed');
-    (result.tasks[0].dependsOn as string[]).push('changed');
+    // Test defensive copying at runtime without loosening readonly interfaces.
+    Array.prototype.push.call(result.goal.constraints, 'changed');
+    Array.prototype.push.call(result.tasks[0].dependsOn, 'changed');
     expect(source.goal.constraints).toEqual(['budget-bound']);
     expect(source.tasks[0].dependsOn).toEqual([]);
   });

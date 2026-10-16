@@ -1,0 +1,89 @@
+name: BOTMODE PR28 Oracle Crash Restart Qualification
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-pr28-oracle-crash-restart.yml'
+      - 'e2e/setup/start-server-restartable.js'
+      - 'e2e/playwright.config.oracle-restart.ts'
+      - 'e2e/specs/qualification/mission-oracle-runtime.spec.ts'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: botmode-pr28-oracle-crash-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  oracle-crash-restart:
+    if: github.event.pull_request.number == 28
+    name: SIGKILL API, restart, preserve Oracle verdict and unique publication
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: 'true'
+      E2E_CHROMIUM_CHANNEL: chrome
+      E2E_STREAM_STORE: redis
+      REDIS_URI: redis://127.0.0.1:6379
+      E2E_RESTART_CONTROL_PORT: '8979'
+      STREAM_KEEP_COMPLETED_JOBS: 'true'
+      NODE_OPTIONS: '--max-old-space-size=6144'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate
+        env:
+          EXPECTED: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED"
+          echo "PR28_ORACLE_RESTART_SOURCE_SHA=$EXPECTED"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Build unchanged runtime
+        run: |
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:api
+          npm run build:client-package
+          npm run build:client
+      - name: Verify Chrome
+        run: google-chrome --version
+      - name: Test completed mission survives real API SIGKILL and restart
+        run: npx playwright test --config=e2e/playwright.config.oracle-restart.ts --workers=1 --retries=0
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr28-oracle-crash-restart-failures
+          path: |
+            e2e/specs/.test-results/
+            e2e/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+      - if: always()
+        name: Record strict scope
+        run: |
+          {
+            echo '### PR28 Oracle crash/restart test'
+            echo "Exact SHA: $(git rev-parse HEAD)"
+            echo 'SIGKILL and restart of API AFTER completed Oracle-validated publication.'
+            echo 'Redis verdicts and Mongo message contents must match exactly with no duplicates.'
+            echo 'This does NOT prove interrupted in-flight mission continuation.'
+            echo 'No provider keys, no paid model, no GHCR publishing.'
+          } >> "$GITHUB_STEP_SUMMARY"
