@@ -775,6 +775,16 @@ class GenerationJobManagerClass {
   private missionRecoveryInspectionBusy = false;
   private missionCheckpointPreflightBusy = false;
   private lastMissionCheckpointPreflightAt = 0;
+  /** The host, never Redis discovery, decides whether a run may continue. */
+  private nativeMissionRecoveryHandler:
+    | ((candidate: {
+        streamId: string;
+        createdAt: number;
+        checkpointNamespace: string;
+        checkpointId: string;
+      }) => Promise<void>)
+    | null = null;
+  private nativeMissionRecoveryInFlight = new Set<string>();
 
   /** Startup/periodic orphan discovery is observational. A job's running status
    * is not sufficient proof that its former process is dead, so neither this
@@ -868,6 +878,50 @@ class GenerationJobManagerClass {
     } finally {
       this.missionCheckpointPreflightBusy = false;
     }
+  }
+
+  /**
+   * Optional host-owned dispatch. The manager discovers immutable checkpoint
+   * coordinates, but NEVER constructs an authenticated user, runs a model,
+   * or elevates a Redis observation into tool/publication authority.
+   *
+   * The host must re-fetch the job, claim its lease, rebuild a graph and
+   * revalidate the current user/agent permissions, replay receipts and Oracle.
+   */
+  setNativeMissionRecoveryHandler(
+    handler:
+      | ((candidate: {
+          streamId: string;
+          createdAt: number;
+          checkpointNamespace: string;
+          checkpointId: string;
+        }) => Promise<void>)
+      | null,
+  ): void {
+    this.nativeMissionRecoveryHandler = handler;
+  }
+
+  /** Single-flight per stream+generation, across startup and heartbeat scans. */
+  private async dispatchCheckpointedOrphanedNativeMissions(): Promise<void> {
+    const handler = this.nativeMissionRecoveryHandler;
+    if (handler == null || !this._isRedis || this.shuttingDown) return;
+    const candidates = await this.inspectCheckpointedOrphanedNativeMissions();
+    await Promise.all(
+      candidates.map(async (candidate) => {
+        if (this.shuttingDown || handler !== this.nativeMissionRecoveryHandler) return;
+        const key = candidate.streamId + '\u0000' + candidate.createdAt;
+        if (this.nativeMissionRecoveryInFlight.has(key)) return;
+        this.nativeMissionRecoveryInFlight.add(key);
+        try {
+          // A discovered checkpoint alone NEVER grants replay authority.
+          await handler(Object.freeze({ ...candidate }));
+        } catch (error) {
+          logger.warn('[GenerationJobManager] Host native mission recovery attempt failed', error);
+        } finally {
+          this.nativeMissionRecoveryInFlight.delete(key);
+        }
+      }),
+    );
   }
 
   /**
@@ -1149,7 +1203,7 @@ class GenerationJobManagerClass {
     if (this._isRedis) {
       this.lastMissionCheckpointPreflightAt = Date.now();
       void storeReady
-        .then(() => this.inspectCheckpointedOrphanedNativeMissions())
+        .then(() => this.dispatchCheckpointedOrphanedNativeMissions())
         .catch((error) => {
           logger.warn('[GenerationJobManager] Startup mission inspection failed', error);
         });
@@ -1166,7 +1220,7 @@ class GenerationJobManagerClass {
         Date.now() - this.lastMissionCheckpointPreflightAt >= 15_000
       ) {
         this.lastMissionCheckpointPreflightAt = Date.now();
-        void this.inspectCheckpointedOrphanedNativeMissions().catch((error) => {
+        void this.dispatchCheckpointedOrphanedNativeMissions().catch((error) => {
           logger.warn('[GenerationJobManager] Periodic mission checkpoint preflight failed', error);
         });
       }
@@ -8783,6 +8837,7 @@ class GenerationJobManagerClass {
    */
   async destroy(): Promise<void> {
     this.shuttingDown = true;
+    this.nativeMissionRecoveryHandler = null;
     this.cancelFencedRuntimeRetirements();
 
     if (this.cleanupInterval) {

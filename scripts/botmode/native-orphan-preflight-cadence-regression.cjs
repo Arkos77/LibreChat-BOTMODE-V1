@@ -12,7 +12,8 @@ const tree = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true)
 const managerClass = tree.statements.find((s) => ts.isClassDeclaration(s) &&
   s.name?.text === 'GenerationJobManagerClass');
 assert.ok(managerClass);
-const names = ['initialize', 'inspectCheckpointedOrphanedNativeMissions'];
+const names = ['initialize', 'inspectCheckpointedOrphanedNativeMissions',
+  'setNativeMissionRecoveryHandler', 'dispatchCheckpointedOrphanedNativeMissions'];
 const methods = names.map((name) => {
   const node = managerClass.members.find((m) => ts.isMethodDeclaration(m) &&
     m.name.getText(tree) === name);
@@ -46,6 +47,11 @@ const Harness = moduleBox.exports;
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 (async () => {
   let scans = 0;
+  let delivered = 0;
+  const startupCandidate = {
+    streamId: 'orphan-startup', createdAt: 1700000000000,
+    checkpointNamespace: 'scoped', checkpointId: 'head-1',
+  };
   const manager = new Harness();
   manager._isRedis = true;
   manager.shuttingDown = false;
@@ -55,7 +61,16 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
   manager.activateDrainedMissionRecovery = () => {
     throw Error('inspection may never activate a provider');
   };
-  manager.inspectCheckpointedOrphanedNativeMissions = async () => { scans++; return []; };
+  manager.nativeMissionRecoveryInFlight = new Set();
+  manager.inspectCheckpointedOrphanedNativeMissions = async () => {
+    scans++;
+    return [startupCandidate];
+  };
+  manager.setNativeMissionRecoveryHandler(async (candidate) => {
+    assert.ok(Object.isFrozen(candidate));
+    assert.equal(candidate.streamId, startupCandidate.streamId);
+    delivered++;
+  });
   manager.initialize();
   await flush();
   assert.equal(scans, 1);
@@ -69,8 +84,43 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
     assert.equal(scans, 1 + Math.floor(i / 3));
   }
   assert.equal(scans, 3);
+  assert.equal(delivered, 3);
   assert.equal(warnings.length, 0);
   console.log('BOTMODE_NATIVE_RECOVERY_PREFLIGHT_CADENCE=PASS');
+
+  const noHost = new Harness();
+  noHost.shuttingDown = false;
+  noHost._isRedis = true;
+  noHost.nativeMissionRecoveryInFlight = new Set();
+  noHost.inspectCheckpointedOrphanedNativeMissions = async () => {
+    throw Error('no host must never trigger orphan claim');
+  };
+  await noHost.dispatchCheckpointedOrphanedNativeMissions();
+  console.log('BOTMODE_NATIVE_RECOVERY_NO_HOST_FAIL_CLOSED=PASS');
+
+  let unblock;
+  let blockers = 0;
+  manager.setNativeMissionRecoveryHandler(async () => {
+    blockers++;
+    await new Promise((resolve) => { unblock = resolve; });
+  });
+  const firstDispatch = manager.dispatchCheckpointedOrphanedNativeMissions();
+  await flush();
+  const secondDispatch = manager.dispatchCheckpointedOrphanedNativeMissions();
+  await flush();
+  assert.equal(blockers, 1);
+  unblock();
+  await Promise.all([firstDispatch, secondDispatch]);
+  assert.equal(manager.nativeMissionRecoveryInFlight.size, 0);
+  console.log('BOTMODE_NATIVE_RECOVERY_DISPATCH_SINGLE_FLIGHT=PASS');
+
+  manager.setNativeMissionRecoveryHandler(async () => {
+    throw new Error('host authorization failure');
+  });
+  await manager.dispatchCheckpointedOrphanedNativeMissions();
+  assert.equal(manager.nativeMissionRecoveryInFlight.size, 0);
+  assert.equal(warnings.length, 1);
+  console.log('BOTMODE_NATIVE_RECOVERY_HOST_FAILURE_ISOLATED=PASS');
 
   const candidate = {
     streamId: 'orphan', createdAt: 1700000000000,
