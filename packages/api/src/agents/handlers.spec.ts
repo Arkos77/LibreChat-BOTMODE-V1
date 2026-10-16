@@ -2044,7 +2044,8 @@ describe('createToolExecuteHandler', () => {
         preferModelInvocable: true,
       });
       const callOptions = (getSkillByName.mock.calls[0] as unknown[])[2] as
-        { preferUserInvocable?: boolean } | undefined;
+        | { preferUserInvocable?: boolean }
+        | undefined;
       expect(callOptions).not.toHaveProperty('preferUserInvocable', true);
     });
 
@@ -2076,7 +2077,8 @@ describe('createToolExecuteHandler', () => {
         preferModelInvocable: true,
       });
       const callOptions = (getSkillByName.mock.calls[0] as unknown[])[2] as
-        { preferUserInvocable?: boolean } | undefined;
+        | { preferUserInvocable?: boolean }
+        | undefined;
       expect(callOptions).not.toHaveProperty('preferUserInvocable', true);
     });
 
