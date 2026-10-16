@@ -4712,7 +4712,8 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
               (mergedConfigurable?.thread_id as string | undefined) ??
               (
                 (mergedConfigurable?.req as ServerRequest | undefined)?.body as
-                  { conversationId?: string } | undefined
+                  | { conversationId?: string }
+                  | undefined
               )?.conversationId;
             const markCodeSandboxWarm = (): void => {
               if (runtimeSessionHint) {
@@ -4736,7 +4737,8 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
              * per-tool opt-in (a tool not in the set never had the param).
              */
             const backgroundToolNames = mergedConfigurable?.backgroundToolNames as
-              string[] | undefined;
+              | string[]
+              | undefined;
             const backgroundEnabledForRun = (backgroundToolNames?.length ?? 0) > 0;
             const backgroundControlEnabled = backgroundEnabledForRun || subagentTasks != null;
             const backgroundToolSet: ReadonlySet<string> = backgroundEnabledForRun
@@ -4762,7 +4764,8 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
              * `toolCallId` so graph re-execution (resume/replay) never double-fires.
              */
             const backgroundRunId = (metadata as Record<string, unknown>)?.run_id as
-              string | undefined;
+              | string
+              | undefined;
             const dispatchBackgroundToolCall = async (
               tc: ToolCallRequest,
             ): Promise<ToolExecuteResult> => {
@@ -5934,9 +5937,11 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                           },
                           {
                             run_id: (metadata as Record<string, unknown>)?.run_id as
-                              string | undefined,
+                              | string
+                              | undefined,
                             thread_id: (metadata as Record<string, unknown>)?.thread_id as
-                              string | undefined,
+                              | string
+                              | undefined,
                             ...metadata,
                             executingAgentId: agentId,
                             codeExecutionContext,
@@ -6016,9 +6021,11 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                         toolCallConfig.hookContext = data.hookContext;
                       }
                       const toolRegistry = mergedConfigurable?.toolRegistry as
-                        LCToolRegistry | undefined;
+                        | LCToolRegistry
+                        | undefined;
                       const ptcToolMap = mergedConfigurable?.ptcToolMap as
-                        Map<string, StructuredToolInterface> | undefined;
+                        | Map<string, StructuredToolInterface>
+                        | undefined;
                       if (toolRegistry) {
                         const activeCodeExecutionToolNames = callerCapabilityProjection
                           ? new Set(callerCapabilityProjection.codeExecutionToolNames)
@@ -6095,24 +6102,23 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                         const ptcArgumentPii = ptcReq?.config?.filters?.toolArguments?.pii;
                         // Apply the execution guard BEFORE optional telemetry so
                         // excluded or untraced tools cannot bypass the guard.
-                        const guardedPtcToolMap = guardPtcEffect
-                          ? guardPtcToolMap(eligiblePtcToolMap, (call) =>
-                              guardPtcEffect({
-                                parentToolCallId: tc.id,
-                                ...call,
-                              }),
-                            )
-                          : mergedConfigurable?.nativeMissionEffectFenceRequired === true
-                            ? guardPtcToolMap(eligiblePtcToolMap, async () => {
-                                throw new Error('NATIVE_MISSION_EFFECT_GUARD_REQUIRED');
-                              })
-                            : eligiblePtcToolMap;
+                        let guardedPtcToolMap = eligiblePtcToolMap;
+                        if (guardPtcEffect) {
+                          guardedPtcToolMap = guardPtcToolMap(eligiblePtcToolMap, (call) =>
+                            guardPtcEffect({ parentToolCallId: tc.id, ...call }),
+                          );
+                        } else if (mergedConfigurable?.nativeMissionEffectFenceRequired === true) {
+                          guardedPtcToolMap = guardPtcToolMap(eligiblePtcToolMap, async () => {
+                            throw new Error('NATIVE_MISSION_EFFECT_GUARD_REQUIRED');
+                          });
+                        }
                         toolCallConfig.toolMap = emitPtcProgress
                           ? instrumentPtcToolMap({
                               toolMap: guardedPtcToolMap,
                               toolCallId: tc.id,
                               runId: (metadata as Record<string, unknown>)?.run_id as
-                                string | undefined,
+                                | string
+                                | undefined,
                               includePreviews: !hasActivePiiFields(ptcArgumentPii, [
                                 'name',
                                 'arguments',
@@ -6259,9 +6265,11 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                         },
                         {
                           run_id: (metadata as Record<string, unknown>)?.run_id as
-                            string | undefined,
+                            | string
+                            | undefined,
                           thread_id: (metadata as Record<string, unknown>)?.thread_id as
-                            string | undefined,
+                            | string
+                            | undefined,
                           ...metadata,
                           executingAgentId: agentId,
                           codeExecutionContext,
