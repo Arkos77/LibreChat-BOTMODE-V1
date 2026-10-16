@@ -12,7 +12,8 @@ const tree = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true)
 const managerClass = tree.statements.find((s) => ts.isClassDeclaration(s) &&
   s.name?.text === 'GenerationJobManagerClass');
 assert.ok(managerClass);
-const names = ['initialize', 'inspectCheckpointedOrphanedNativeMissions',
+const names = ['initialize', 'inspectOrphanedNativeMissions',
+  'inspectCheckpointedOrphanedNativeMissions',
   'setNativeMissionRecoveryHandler', 'dispatchCheckpointedOrphanedNativeMissions'];
 const methods = names.map((name) => {
   const node = managerClass.members.find((m) => ts.isMethodDeclaration(m) &&
@@ -24,6 +25,7 @@ const callbacks = [];
 let now = 1700000000000;
 let checkpointBarrier = null;
 const warnings = [];
+const audits = [];
 const moduleBox = { exports: null };
 const src = ts.transpileModule('class Harness {' + methods.join('\n') +
   '}\nmodule.exports=Harness;', {
@@ -31,13 +33,18 @@ const src = ts.transpileModule('class Harness {' + methods.join('\n') +
 }).outputText;
 vm.runInNewContext(src, {
   module: moduleBox,
+  process: { env: { BOTMODE_NATIVE_RECOVERY_READONLY_AUDIT: 'true' } },
   Date: { now: () => now },
   setInterval: (cb, period) => {
     const timer = { cb, period, unref() {} };
     callbacks.push(timer);
     return timer;
   },
-  logger: { debug() {}, warn: (...args) => warnings.push(args) },
+  logger: {
+    debug() {},
+    warn: (...args) => warnings.push(args),
+    info: (...args) => audits.push(args),
+  },
   inspectDurableNativeMissionCheckpoint: async () => {
     if (checkpointBarrier) return checkpointBarrier;
     return { checkpointId: 'checkpoint-1' };
@@ -145,4 +152,34 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
   assert.equal(first[0].checkpointNamespace, 'scoped');
   assert.equal(scanner.missionCheckpointPreflightBusy, false);
   console.log('BOTMODE_NATIVE_PREFLIGHT_SINGLE_FLIGHT=PASS');
+
+  const filtered = new Harness();
+  filtered.shuttingDown = false;
+  filtered._isRedis = true;
+  filtered.missionRecoveryInspectionBusy = false;
+  filtered.ownedJobs = new Map();
+  filtered.jobStore = { getRunningJobs: async () => [
+    {
+      streamId: 'eligible', createdAt: 1700000000000,
+      orchestratorPlan: { tasks: [{ key: 'worker' }] },
+      providerDrained: false, providerExecutionId: 'provider',
+      providerExecutionStartedId: 'provider', checkpointNamespace: 'ns',
+    },
+    {
+      streamId: 'rejected', createdAt: 1700000000000,
+      orchestratorPlan: null, providerDrained: true,
+    },
+  ] };
+  const result = await filtered.inspectOrphanedNativeMissions();
+  assert.equal(result.length, 1);
+  assert.equal(result[0].streamId, 'eligible');
+  const counts = audits.find((a) => String(a[0]).includes('recovery filter counts'));
+  assert.ok(counts);
+  assert.equal(counts[1].running, 2);
+  assert.equal(counts[1].orphaned, 1);
+  assert.equal(Object.keys(counts[1]).length, 6);
+  const checkpointCounts = audits.find((a) => String(a[0]).includes('checkpoint preflight counts'));
+  assert.ok(checkpointCounts);
+  assert.equal(checkpointCounts[1].checkpointEligible, 1);
+  console.log('BOTMODE_NATIVE_PREFLIGHT_CI_AGGREGATES=PASS');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

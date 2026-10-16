@@ -784,6 +784,7 @@ class GenerationJobManagerClass {
         checkpointId: string;
       }) => Promise<void>)
     | null = null;
+
   private nativeMissionRecoveryInFlight = new Set<string>();
 
   /** Startup/periodic orphan discovery is observational. A job's running status
@@ -796,6 +797,36 @@ class GenerationJobManagerClass {
     this.missionRecoveryInspectionBusy = true;
     try {
       const jobs = await this.jobStore.getRunningJobs();
+      if (process.env.BOTMODE_NATIVE_RECOVERY_READONLY_AUDIT === 'true') {
+        // Diagnostics are aggregate counts only: no user IDs, job IDs,
+        // content or execution identity is recorded in CI logs.
+        const counts = {
+          running: jobs.length,
+          planned: 0,
+          providerUndrained: 0,
+          matchingStartedProvider: 0,
+          namespaced: 0,
+          orphaned: 0,
+        };
+        for (const job of jobs) {
+          if (job.orchestratorPlan == null) continue;
+          counts.planned++;
+          if (job.providerDrained !== false) continue;
+          counts.providerUndrained++;
+          if (
+            typeof job.providerExecutionId !== 'string' ||
+            !job.providerExecutionId ||
+            job.providerExecutionStartedId !== job.providerExecutionId
+          )
+            continue;
+          counts.matchingStartedProvider++;
+          if (typeof job.checkpointNamespace !== 'string' || !job.checkpointNamespace) continue;
+          counts.namespaced++;
+          if (this.ownedJobs.get(job.streamId) === job.createdAt) continue;
+          counts.orphaned++;
+        }
+        logger.info('[GenerationJobManager] Read-only mission recovery filter counts', counts);
+      }
       return jobs
         .filter(
           (job) =>
@@ -873,6 +904,12 @@ class GenerationJobManagerClass {
         } catch (error) {
           logger.warn('[GenerationJobManager] Native mission checkpoint preflight failed', error);
         }
+      }
+      if (process.env.BOTMODE_NATIVE_RECOVERY_READONLY_AUDIT === 'true') {
+        logger.info('[GenerationJobManager] Read-only checkpoint preflight counts', {
+          orphanCandidates: candidates.length,
+          checkpointEligible: eligible.length,
+        });
       }
       return eligible;
     } finally {
