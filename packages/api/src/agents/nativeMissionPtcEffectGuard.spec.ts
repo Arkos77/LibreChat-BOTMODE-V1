@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { NativeMissionPtcInvocation } from './nativeMissionPtcEffectGuard';
 import { createNativeMissionPtcEffectGuard } from './nativeMissionPtcEffectGuard';
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -41,11 +42,11 @@ function fixture() {
     },
     resolvePersistedIdentity: jest.fn(async () => identity),
     assertAuthorized: jest.fn(async () => undefined),
-    persistResult: jest.fn(async (_call: typeof call, result: unknown) => {
+    persistResult: jest.fn(async (_call: NativeMissionPtcInvocation, result: unknown) => {
       results.set('private-result', result);
       return { resultRef: 'private-result', resultDigest: digest(JSON.stringify(result)) };
     }),
-    loadCommittedResult: jest.fn(async (_call: typeof call, ref: string, expected: string) => {
+    loadCommittedResult: jest.fn(async (_call: NativeMissionPtcInvocation, ref: string, expected: string) => {
       const result = results.get(ref);
       if (!result || digest(JSON.stringify(result)) !== expected) throw new Error('RESULT_DIGEST_MISMATCH');
       return result;
