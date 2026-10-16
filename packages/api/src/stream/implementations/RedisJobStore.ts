@@ -126,10 +126,9 @@ function assertCreateIdempotencyArguments(
  *     ...hsetPairs
  *   ]
  */
-const JOB_CAS_LUA =
+const JOB_CAS_CORE_LUA =
   // Epoch-only transitions cannot complete, abort or pause a promoted mission.
   // A recovery-aware controller must prove its exact owner before settlement.
-  'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") then return 0 end ' +
   'if redis.call("HGET", KEYS[1], "status") ~= ARGV[1] then return 0 end ' +
   'if ARGV[2] ~= "" and redis.call("HGET", KEYS[1], "pendingActionId") ~= ARGV[2] then return 0 end ' +
   'if ARGV[3] ~= "" and redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[3] then return 0 end ' +
@@ -247,6 +246,30 @@ const JOB_CAS_LUA =
   'redis.call("EXPIRE", KEYS[6], ttl) ' +
   'end ' +
   'return 1';
+
+/** The normal terminal CAS never accepts writes from a recovery-owned job.
+ * The recovered CAS reuses the exact same tested terminal cleanup, after
+ * checking the owner token, execution identity, immutable generation namespace
+ * and BOTH unexpired Redis-server leases in the same transaction. */
+const JOB_CAS_LUA =
+  'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") then return 0 end ' +
+  JOB_CAS_CORE_LUA;
+
+const JOB_RECOVERED_CAS_LUA =
+  'if redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[4] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") ~= ARGV[1] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerExecutionId") ~= ARGV[2] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerExecutionStartedId") ~= ARGV[2] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerDrained") ~= "0" then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "checkpointNamespace") ~= ARGV[3] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "orchestratorPlan") == false then return 0 end ' +
+  'if redis.call("GET", KEYS[11]) ~= ARGV[1] or redis.call("PTTL", KEYS[11]) <= 0 then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "__missionProviderLeaseIdentity") ~= ARGV[2] then return 0 end ' +
+  'local now = redis.call("TIME") local nowMs = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000) ' +
+  'local untilMs = tonumber(redis.call("HGET", KEYS[1], "__missionProviderLeaseUntil") or "") ' +
+  'if not untilMs or untilMs <= nowMs then return 0 end ' +
+  'for i = 1, 4 do table.remove(ARGV, 1) end ' +
+  JOB_CAS_CORE_LUA;
 
 /**
  * Atomic idempotency claim. Single-key `SET NX PX`: returns nil when this caller
@@ -2812,10 +2835,46 @@ export class RedisJobStore implements IJobStoreV2 {
     return Array.isArray(result) ? result : null;
   }
 
+  /**
+   * Claim the terminal Redis state for a finished recovered mission. Must be
+   * called ONLY after SDK completion and host Oracle QA have both passed.
+   * This is a fenced storage primitive: it does not publish a message.
+   * Do not route error/abort/HITL states through this success-only method.
+   */
+  async transitionRecoveredMissionToComplete(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    providerExecutionId: string,
+    checkpointNamespace: string,
+  ): Promise<boolean> {
+    this.assertRecoveredProviderArguments(
+      expectedCreatedAt, ownerToken, providerExecutionId, checkpointNamespace, 15000,
+    );
+    const result = await this.transitionStatusInternal(
+      streamId,
+      {
+        from: 'running',
+        to: 'complete',
+        expectCreatedAt: expectedCreatedAt,
+        patch: { completedAt: Date.now() },
+      },
+      false,
+      { ownerToken, providerExecutionId, checkpointNamespace, expectedCreatedAt },
+    );
+    return result === true;
+  }
+
   private async transitionStatusInternal(
     streamId: string,
     args: JobStatusTransition,
     returnDrainedSteers: boolean,
+    recovery?: {
+      ownerToken: string;
+      providerExecutionId: string;
+      checkpointNamespace: string;
+      expectedCreatedAt: number;
+    },
   ): Promise<true | SteerQueueItem[] | null> {
     const { from, to, patch, clear, expectActionId, expectCreatedAt, notAfterMs } = args;
     const key = KEYS.job(streamId);
@@ -2882,8 +2941,8 @@ export class RedisJobStore implements IJobStoreV2 {
     //    Works identically on cluster and single-node, so two concurrent
     //    resolves can never both win (and drive the run twice).
     const result = await this.redis.eval(
-      JOB_CAS_LUA,
-      10,
+      recovery ? JOB_RECOVERED_CAS_LUA : JOB_CAS_LUA,
+      recovery ? 11 : 10,
       key,
       KEYS.sequence(streamId),
       KEYS.chunks(streamId),
@@ -2894,6 +2953,15 @@ export class RedisJobStore implements IJobStoreV2 {
       KEYS.generationEpoch(streamId),
       KEYS.steerReceipts(streamId),
       KEYS.steerReceiptOrder(streamId),
+      ...(recovery ? [`stream:{${streamId}}:mission-recovery-claim`] : []),
+      ...(recovery
+        ? [
+            recovery.ownerToken,
+            recovery.providerExecutionId,
+            recovery.checkpointNamespace,
+            String(recovery.expectedCreatedAt),
+          ]
+        : []),
       from,
       expectActionId ?? '',
       expectCreatedAt != null ? String(expectCreatedAt) : '',

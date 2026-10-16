@@ -1109,6 +1109,16 @@ export interface IJobStoreV2 extends IJobStore {
     leaseMs: number,
   ): Promise<boolean>;
 
+  /** Optional terminal Redis CAS for an Oracle-verified recovered mission.
+   * This returns an ownership verdict; it does not publish any output. */
+  transitionRecoveredMissionToComplete?(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    providerExecutionId: string,
+    checkpointNamespace: string,
+  ): Promise<boolean>;
+
   /** Release a matching inspection claim without altering the live job. */
   releaseDrainedMissionRecovery?(
     streamId: string,
