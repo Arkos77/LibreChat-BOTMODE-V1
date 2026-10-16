@@ -232,6 +232,7 @@ async function getPersistedCheckpointCounts(streamId: string, namespace: string)
   try {
     const collection = mongo.db('LibreChat-e2e').collection('agent_checkpoints');
     return {
+      totalRows: await collection.countDocuments({}),
       allThreadRows: await collection.countDocuments({ thread_id: streamId }),
       generationRows: await collection.countDocuments({
         thread_id: streamId,

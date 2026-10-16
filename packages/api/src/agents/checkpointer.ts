@@ -408,6 +408,19 @@ export class LazyMongoSaver extends MongoDBSaver {
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata,
   ): Promise<RunnableConfig> {
+    // Diagnostic-only: no IDs, configuration, checkpoint contents or secrets.
+    // Distinguish graph not yet started from private mission sync flag lost
+    // before the saver (which would trigger clean-exit checkpoint elision).
+    if (process.env.BOTMODE_NATIVE_RECOVERY_READONLY_AUDIT === 'true') {
+      logger.info(
+        '[checkpointer] Read-only saver put routing ' +
+          JSON.stringify({
+            missionSync: config.configurable?.[LIBRECHAT_MISSION_SYNC_KEY] === true,
+            namespacePresent: generationCheckpointNamespace(config) != null,
+            eventActor: isEventActorInvocation(config),
+          }),
+      );
+    }
     if (
       isEventActorInvocation(config) ||
       config.configurable?.[LIBRECHAT_MISSION_SYNC_KEY] === true
