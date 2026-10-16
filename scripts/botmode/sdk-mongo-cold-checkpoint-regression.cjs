@@ -22,7 +22,7 @@ const { qualifyNativeMissionRecoverySnapshot } = snapshotModule.exports;
 
 async function main() {
   const phase = process.argv[2];
-  assert.ok(['seed','resume','retry'].includes(phase));
+  assert.ok(['seed', 'seed-sigkill', 'resume', 'retry'].includes(phase));
   const client = new MongoClient(process.env.BOTMODE_TEST_MONGO_URI, { serverSelectionTimeoutMS: 8000 });
   await client.connect();
   try {
@@ -49,14 +49,15 @@ async function main() {
     assert.ok(run.Graph);
     run.Graph.overrideModel = new FakeChatModel({ responses: ['done'] });
     run.graphRunnable = run.Graph.createWorkflow();
-    if (phase === 'seed') await run.processStream({ messages: [new HumanMessage('test')] }, config);
+    const seeding = phase === 'seed' || phase === 'seed-sigkill';
+    if (seeding) await run.processStream({ messages: [new HumanMessage('test')] }, config);
     else await run.processStream(new Command({}), config);
     const state = await run.graphRunnable.getState(config);
-    assert.deepEqual(state.next, phase === 'seed' ? ['worker'] : []);
+    assert.deepEqual(state.next, seeding ? ['worker'] : []);
     assert.ok((await checkpointer.getTuple(config))?.checkpoint?.id);
     const durableId = (await checkpointer.getTuple(config))?.checkpoint?.id;
     const qualified = qualifyNativeMissionRecoverySnapshot(state, durableId);
-    if (phase === 'seed') {
+    if (seeding) {
       assert.deepEqual(Array.from(qualified?.pendingNodes ?? []), ['worker']);
       assert.equal(qualifyNativeMissionRecoverySnapshot(state, 'another-generation-id'), null);
     } else {
@@ -64,7 +65,14 @@ async function main() {
     }
 
     assert.equal(state.tasks?.some((task) => task.interrupts?.length > 0), false);
-    assert.equal(state.values.messages.length, phase === 'seed' ? 1 : 2);
+    assert.equal(state.values.messages.length, seeding ? 1 : 2);
+    if (phase === 'seed-sigkill') {
+      // After persisting the checkpoint, keep this process alive so the
+      // external test harness can issue a real docker kill --signal=KILL.
+      // The process intentionally never calls client.close().
+      console.log('BOTMODE_MONGO_SDK_CHECKPOINT_BEFORE_SIGKILL=PASS');
+      await new Promise(() => { setInterval(() => {}, 1000); });
+    }
     console.log('BOTMODE_MONGO_SDK_' + phase.toUpperCase() + '=PASS');
   } finally {
     await client.close();
