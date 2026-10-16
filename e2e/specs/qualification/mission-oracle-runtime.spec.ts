@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import Redis from 'ioredis';
+import { MongoClient } from 'mongodb';
 import type { Page } from '@playwright/test';
 import { cleanupAgent } from '../mock/agents.helpers';
 import { getAccessToken, MOCK_ENDPOINTS, requestJson } from '../mock/helpers';
@@ -213,6 +216,31 @@ async function getRecoveryGateFlags(redis: Redis, streamId: string) {
         ? Math.max(0, Math.round((Date.now() - Number(activeAt)) / 1000))
         : null,
   };
+}
+
+/** CI-only Mongo counts: no checkpoint data or credentials in output. */
+async function getPersistedCheckpointCounts(streamId: string, namespace: string) {
+  const envFile = process.env.E2E_RUNTIME_ENV_PATH ||
+    path.resolve(__dirname, '../.test-results/runtime-env.json');
+  const runtime = JSON.parse(readFileSync(envFile, 'utf8')) as { MONGO_URI?: string };
+  if (!runtime.MONGO_URI || !runtime.MONGO_URI.includes('127.0.0.1')) {
+    throw new Error('Isolated CI Mongo fixture unavailable');
+  }
+  if (!/^[0-9]+$/.test(namespace)) throw new Error('Unexpected namespace');
+  const mongo = new MongoClient(runtime.MONGO_URI, { serverSelectionTimeoutMS: 5000 });
+  await mongo.connect();
+  try {
+    const collection = mongo.db('LibreChat-e2e').collection('agent_checkpoints');
+    return {
+      allThreadRows: await collection.countDocuments({ thread_id: streamId }),
+      generationRows: await collection.countDocuments({
+        thread_id: streamId,
+        checkpoint_ns: namespace,
+      }),
+    };
+  } finally {
+    await mongo.close();
+  }
 }
 
 async function waitForOracle(
@@ -460,6 +488,11 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       console.log('PR28_PRE_SIGKILL_RECOVERY_GATES=' + JSON.stringify(beforeKill));
       expect(beforeKill.namespaced, 'protocol v2 must create an isolated checkpoint namespace')
         .toBe(true);
+      const jobKeys = await redis.keys('*stream:{' + streamId + '}:job');
+      const namespace = await redis.hget(jobKeys[0], 'checkpointNamespace');
+      expect(namespace).toBeTruthy();
+      console.log('PR28_PRE_SIGKILL_MONGO_CHECKPOINT_COUNTS=' +
+        JSON.stringify(await getPersistedCheckpointCounts(conversationId, namespace!)));
 
       const restart = await page.request.post(
         `http://127.0.0.1:${process.env.E2E_RESTART_CONTROL_PORT}/restart`,
@@ -498,6 +531,8 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
           'PR28_POST_SIGKILL_RECOVERY_GATES=' +
             JSON.stringify(await getRecoveryGateFlags(redis, streamId)),
         );
+        console.log('PR28_POST_SIGKILL_MONGO_CHECKPOINT_COUNTS=' +
+          JSON.stringify(await getPersistedCheckpointCounts(conversationId, namespace!)));
         throw error;
       }
 
