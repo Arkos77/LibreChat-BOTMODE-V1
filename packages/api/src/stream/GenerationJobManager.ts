@@ -85,6 +85,7 @@ import { ApprovalLifecycle, pausePersistenceActionId } from './ApprovalLifecycle
 import { projectPendingMCPOAuthPrompts } from '~/mcp/oauth/resume';
 import { sanitizeJobMetadata } from './metadata';
 import { inspectDurableNativeMissionCheckpoint } from '~/agents/checkpointer';
+import { qualifyNativeMissionRecoverySnapshot } from '~/agents/nativeMissionRecoverySnapshot';
 
 /** Terminal error surfaced to a client still attached when its approval window lapses. */
 const APPROVAL_EXPIRED_ERROR = 'Approval expired before a decision was made';
@@ -932,6 +933,89 @@ class GenerationJobManagerClass {
           ownerToken,
         ).catch((error) => {
           logger.warn('[GenerationJobManager] Failed to release orphan inspection claim', error);
+        });
+      }
+    }
+  }
+
+  /**
+   * Promote a claimed, read-only recovery candidate only after a trusted
+   * caller has rebuilt the SDK graph, inspected its exact persisted head,
+   * verified pending nodes/HITL exclusion, and rechecked current policy.
+   *
+   * This rotates the provider identity under Redis ownership but does NOT
+   * start or execute the provider, stream content, settle Oracle, or publish.
+   * It must only be called by a server-side recovery coordinator.
+   */
+  async activateCheckpointedOrphanAfterGraphQualification(
+    claim: {
+      streamId: string;
+      createdAt: number;
+      checkpointNamespace: string;
+      checkpointId: string;
+      ownerToken: string;
+    },
+    snapshot: unknown,
+    assertCurrentAuthorization: () => Promise<void>,
+  ): Promise<{ providerExecutionId: string } | null> {
+    const store = this.jobStore;
+    if (
+      !this._isRedis ||
+      this.shuttingDown ||
+      !store.activateDrainedMissionRecovery ||
+      !store.releaseDrainedMissionRecovery ||
+      !claim ||
+      typeof claim.streamId !== 'string' ||
+      !Number.isSafeInteger(claim.createdAt) ||
+      claim.createdAt <= 0 ||
+      typeof claim.checkpointNamespace !== 'string' ||
+      claim.checkpointNamespace.length === 0 ||
+      typeof claim.ownerToken !== 'string'
+    ) {
+      return null;
+    }
+
+    let activated = false;
+    try {
+      if (qualifyNativeMissionRecoverySnapshot(snapshot, claim.checkpointId) == null) return null;
+      await assertCurrentAuthorization();
+      if (this.shuttingDown || this.jobStore !== store) return null;
+      const [checkpoint, job] = await Promise.all([
+        inspectDurableNativeMissionCheckpoint(claim.streamId, claim.checkpointNamespace),
+        store.getJob(claim.streamId),
+      ]);
+      if (
+        checkpoint?.checkpointId !== claim.checkpointId ||
+        job?.createdAt !== claim.createdAt ||
+        job.status !== 'running' ||
+        job.checkpointNamespace !== claim.checkpointNamespace ||
+        job.orchestratorPlan == null ||
+        job.providerDrained !== false ||
+        !job.providerExecutionId ||
+        job.providerExecutionStartedId !== job.providerExecutionId ||
+        this.shuttingDown ||
+        this.jobStore !== store
+      ) {
+        return null;
+      }
+      const providerExecutionId = 'recovered-' + randomUUID();
+      activated = await store.activateDrainedMissionRecovery(
+        claim.streamId,
+        claim.createdAt,
+        claim.ownerToken,
+        providerExecutionId,
+      );
+      return activated ? { providerExecutionId } : null;
+    } finally {
+      // After activation, a different owner must wait for lease expiry and
+      // make a new CAS takeover. Never silently release promoted ownership.
+      if (!activated) {
+        await store.releaseDrainedMissionRecovery(
+          claim.streamId,
+          claim.createdAt,
+          claim.ownerToken,
+        ).catch((error) => {
+          logger.warn('[GenerationJobManager] Failed to release unpromoted mission claim', error);
         });
       }
     }

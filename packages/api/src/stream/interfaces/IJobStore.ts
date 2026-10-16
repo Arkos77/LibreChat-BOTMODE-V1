@@ -1089,6 +1089,14 @@ export interface IJobStoreV2 extends IJobStore {
     leaseMs: number,
   ): Promise<boolean>;
 
+  /** Optional Redis-only, owner-fenced rotation into recovered graph execution. */
+  activateDrainedMissionRecovery?(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    nextProviderExecutionId: string,
+  ): Promise<boolean>;
+
   /** Optional fenced recovered-provider startup, never invoked by inspection. */
   beginRecoveredMissionProviderExecution?(
     streamId: string,
