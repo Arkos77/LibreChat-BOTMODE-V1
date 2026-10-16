@@ -733,6 +733,53 @@ describe('LazyMongoSaver (lazy persistence — mongodb-memory-server)', () => {
     expect(secondCalls).toBe(2);
   });
 
+  it('characterizes SDK null-input recovery without executing a provider', async () => {
+    const saver = await getAgentCheckpointer(MONGO_CFG);
+    const threadId = `sdk-probe-${new mongoose.Types.ObjectId()}`;
+    const generationScope = `generation-${new mongoose.Types.ObjectId()}`;
+    const config = {
+      configurable: {
+        thread_id: threadId,
+        [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: generationScope,
+        [LIBRECHAT_MISSION_SYNC_KEY]: true,
+      },
+      durability: 'sync' as const,
+      version: 'v2' as const,
+    };
+    // A real durable checkpoint exists, but this probe only captures the input
+    // the SDK passes to LangGraph. It must not invoke a model or duplicate tools.
+    const { checkpoint, metadata } = putArgs(threadId);
+    await saver!.put(config, checkpoint, metadata);
+    const run = await Run.create({
+      runId: `sdk-probe-${new mongoose.Types.ObjectId()}`,
+      graphConfig: {
+        type: 'standard',
+        compileOptions: { checkpointer: saver as never },
+        agents: [{ agentId: 'worker', provider: Providers.OPENAI, instructions: 'Do not run.' }],
+      },
+    });
+    expect(run.graphRunnable).toBeDefined();
+    let receivedInput: unknown;
+    run.graphRunnable = new Proxy(run.graphRunnable!, {
+      get(target, property, receiver) {
+        if (property === 'streamEvents') {
+          return async function* (input: unknown) {
+            receivedInput = input;
+            throw new Error('SDK_INPUT_CAPTURED_BEFORE_PROVIDER');
+          };
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    await expect(run.processStream(null as never, config)).rejects.toThrow(
+      'SDK_INPUT_CAPTURED_BEFORE_PROVIDER',
+    );
+    // Characterization, not a claim that null-input recovery is safe: the
+    // bundled SDK currently adds an Overwrite(runStepState) to ordinary inputs.
+    expect(receivedInput).toMatchObject({ runStepState: expect.anything() });
+    expect((receivedInput as Record<string, unknown>).messages).toBeUndefined();
+  });
+
   it('persists a checkpoint anchored by a NON-interrupt write (delta-channel safety)', async () => {
     // K1/K3: a delta-channel graph can putWrites on a checkpoint that an interrupt
     // checkpoint then depends on — even without the __interrupt__ marker. A write on a
