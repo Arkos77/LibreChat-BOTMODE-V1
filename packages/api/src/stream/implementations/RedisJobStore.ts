@@ -731,6 +731,44 @@ const PROVIDER_BEGIN_LUA =
   'redis.call("HSET", KEYS[1], "__missionProviderLeaseIdentity", ARGV[2], ' +
   '"__missionProviderLeaseUntil", tostring(nowMs + tonumber(ARGV[3]))) end return 1';
 
+/** Exact recovered-owner provider start. A valid, live Redis claim is
+ * necessary but not sufficient: the caller must first validate the rebuilt
+ * graph's pending nodes, current policy, and immutable checkpoint generation.
+ * This script grants no terminal/publication right. */
+const BEGIN_RECOVERED_MISSION_PROVIDER_LUA =
+  'if redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[1] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "status") ~= "running" then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "orchestratorPlan") == false then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "checkpointNamespace") ~= ARGV[4] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") ~= ARGV[2] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerExecutionId") ~= ARGV[3] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerDrained") ~= "1" then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerExecutionStartedId") == ARGV[3] then return 0 end ' +
+  'if redis.call("GET", KEYS[2]) ~= ARGV[2] or redis.call("PTTL", KEYS[2]) <= 0 then return 0 end ' +
+  'local now = redis.call("TIME") local nowMs = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000) ' +
+  'redis.call("HSET", KEYS[1], "providerDrained", "0", "providerExecutionStartedId", ARGV[3], ' +
+  '"__missionProviderLeaseIdentity", ARGV[3], "__missionProviderLeaseUntil", tostring(nowMs + tonumber(ARGV[5]))) ' +
+  'redis.call("PEXPIRE", KEYS[2], ARGV[5]) return 1';
+
+/** Extends a recovered provider lease only if BOTH the owner token and
+ * execution identity remain current and neither lease has expired.
+ * Original-owner heartbeat continues to fail closed under recovery ownership. */
+const HEARTBEAT_RECOVERED_MISSION_PROVIDER_LUA =
+  'if redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[1] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "status") ~= "running" then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "checkpointNamespace") ~= ARGV[4] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") ~= ARGV[2] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerExecutionId") ~= ARGV[3] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerExecutionStartedId") ~= ARGV[3] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerDrained") ~= "0" then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "__missionProviderLeaseIdentity") ~= ARGV[3] then return 0 end ' +
+  'if redis.call("GET", KEYS[2]) ~= ARGV[2] or redis.call("PTTL", KEYS[2]) <= 0 then return 0 end ' +
+  'local now = redis.call("TIME") local nowMs = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000) ' +
+  'local untilMs = tonumber(redis.call("HGET", KEYS[1], "__missionProviderLeaseUntil") or "") ' +
+  'if not untilMs or untilMs <= nowMs then return 0 end ' +
+  'redis.call("PEXPIRE", KEYS[2], ARGV[5]) ' +
+  'redis.call("HSET", KEYS[1], "__missionProviderLeaseUntil", tostring(nowMs + tonumber(ARGV[5]))) return 1';
+
 /** A provider lease can be refreshed ONLY by its exact execution identity.
  * The Redis server clock avoids skew between replicas. This heartbeat itself
  * gives no authority to write Oracle evidence or publish outputs. */
@@ -3162,6 +3200,74 @@ export class RedisJobStore implements IJobStoreV2 {
       String(Date.now()),
     );
     return activated === 1;
+  }
+
+  /**
+   * Begin a recovered provider segment only after caller-side graph/authorization
+   * validation. Never call this during passive startup inspection.
+   */
+  async beginRecoveredMissionProviderExecution(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    providerExecutionId: string,
+    checkpointNamespace: string,
+    leaseMs: number,
+  ): Promise<boolean> {
+    this.assertRecoveredProviderArguments(
+      expectedCreatedAt, ownerToken, providerExecutionId, checkpointNamespace, leaseMs,
+    );
+    return (await this.redis.eval(
+      BEGIN_RECOVERED_MISSION_PROVIDER_LUA,
+      2,
+      KEYS.job(streamId),
+      `stream:{${streamId}}:mission-recovery-claim`,
+      String(expectedCreatedAt), ownerToken, providerExecutionId, checkpointNamespace, String(leaseMs),
+    )) === 1;
+  }
+
+  /** Original-owner heartbeat cannot renew a recovered provider's lease. */
+  async heartbeatRecoveredMissionProvider(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    providerExecutionId: string,
+    checkpointNamespace: string,
+    leaseMs: number,
+  ): Promise<boolean> {
+    this.assertRecoveredProviderArguments(
+      expectedCreatedAt, ownerToken, providerExecutionId, checkpointNamespace, leaseMs,
+    );
+    return (await this.redis.eval(
+      HEARTBEAT_RECOVERED_MISSION_PROVIDER_LUA,
+      2,
+      KEYS.job(streamId),
+      `stream:{${streamId}}:mission-recovery-claim`,
+      String(expectedCreatedAt), ownerToken, providerExecutionId, checkpointNamespace, String(leaseMs),
+    )) === 1;
+  }
+
+  private assertRecoveredProviderArguments(
+    expectedCreatedAt: number,
+    ownerToken: string,
+    providerExecutionId: string,
+    checkpointNamespace: string,
+    leaseMs: number,
+  ): void {
+    if (
+      !Number.isSafeInteger(expectedCreatedAt) ||
+      expectedCreatedAt <= 0 ||
+      !/^[A-Za-z0-9:_-]{16,128}$/.test(ownerToken) ||
+      !/^[A-Za-z0-9:_-]{16,128}$/.test(providerExecutionId) ||
+      typeof checkpointNamespace !== 'string' ||
+      checkpointNamespace.length === 0 ||
+      checkpointNamespace.length > 512 ||
+      !Number.isSafeInteger(leaseMs) ||
+      leaseMs < 1000 ||
+      leaseMs > 60000
+    ) {
+      throw new Error('Invalid recovered mission provider ownership');
+    }
   }
 
   /** Extend only the matching active preflight lease; never create one. */

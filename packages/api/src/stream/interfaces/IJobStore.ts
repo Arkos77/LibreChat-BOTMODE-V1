@@ -1089,6 +1089,26 @@ export interface IJobStoreV2 extends IJobStore {
     leaseMs: number,
   ): Promise<boolean>;
 
+  /** Optional fenced recovered-provider startup, never invoked by inspection. */
+  beginRecoveredMissionProviderExecution?(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    providerExecutionId: string,
+    checkpointNamespace: string,
+    leaseMs: number,
+  ): Promise<boolean>;
+
+  /** Optional recovered-provider heartbeat, guarded by owner and live lease. */
+  heartbeatRecoveredMissionProvider?(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    providerExecutionId: string,
+    checkpointNamespace: string,
+    leaseMs: number,
+  ): Promise<boolean>;
+
   /** Release a matching inspection claim without altering the live job. */
   releaseDrainedMissionRecovery?(
     streamId: string,

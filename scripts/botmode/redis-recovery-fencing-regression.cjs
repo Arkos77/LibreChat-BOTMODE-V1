@@ -31,7 +31,8 @@ async function main() {
   const scripts = Object.fromEntries(
     ['CLAIM_DRAINED_MISSION_RECOVERY_LUA', 'ACTIVATE_DRAINED_MISSION_RECOVERY_LUA',
       'RENEW_DRAINED_MISSION_RECOVERY_LUA', 'RELEASE_DRAINED_MISSION_RECOVERY_LUA',
-      'RECOVERED_MISSION_METADATA_UPDATE_LUA', 'JOB_UPDATE_LUA', 'PROVIDER_BEGIN_LUA']
+      'RECOVERED_MISSION_METADATA_UPDATE_LUA', 'JOB_UPDATE_LUA', 'PROVIDER_BEGIN_LUA',
+      'BEGIN_RECOVERED_MISSION_PROVIDER_LUA', 'HEARTBEAT_RECOVERED_MISSION_PROVIDER_LUA']
       .map((name) => [name, extractLua(name)]),
   );
   const redis = new Redis(process.env.BOTMODE_TEST_REDIS_URI, { maxRetriesPerRequest: 1 });
@@ -53,7 +54,7 @@ async function main() {
     await redis.hset(key, {
       createdAt: created, status: 'running', providerDrained: '0',
       providerExecutionId: originalProvider, providerExecutionStartedId: originalProvider,
-      orchestratorPlan: '{"tasks":[]}', lastActiveAt: created,
+      orchestratorPlan: '{"tasks":[]}', lastActiveAt: created, checkpointNamespace: 'qual-namespace',
       __missionProviderLeaseUntil: String(Date.now() + 60000),
     });
     const claim = (owner, ttl = 5000) => evalLua('CLAIM_DRAINED_MISSION_RECOVERY_LUA',
@@ -109,6 +110,26 @@ async function main() {
     assert.equal(await evidence(winner, providerA, 'missionOracleState', 'OLD-OWNER'), 0);
     assert.equal(await evidence(loser, providerB, 'missionOracleState', 'NEW-OWNER'), 1);
     assert.equal(await redis.hget(key, 'missionOracleState'), 'NEW-OWNER');
+    const began = (token, provider, namespace = 'qual-namespace') =>
+      evalLua('BEGIN_RECOVERED_MISSION_PROVIDER_LUA', [key, lease],
+        [created, token, provider, namespace, 5000]);
+    const beat = (token, provider) =>
+      evalLua('HEARTBEAT_RECOVERED_MISSION_PROVIDER_LUA', [key, lease],
+        [created, token, provider, 'qual-namespace', 5000]);
+    assert.equal(await began(winner, providerA), 0);
+    assert.equal(await began(loser, providerA), 0);
+    assert.equal(await began(loser, providerB, 'wrong-namespace'), 0);
+    assert.equal(await evalLua('BEGIN_RECOVERED_MISSION_PROVIDER_LUA',
+      [key, lease], [String(Number(created) + 1), loser, providerB, 'qual-namespace', 5000]), 0);
+    assert.equal(await began(loser, providerB), 1);
+    assert.equal(await began(loser, providerB), 0);
+    assert.equal(await beat(winner, providerA), 0);
+    assert.equal(await beat(loser, providerA), 0);
+    assert.equal(await beat(loser, providerB), 1);
+    assert.equal(await redis.hget(key, 'status'), 'running');
+    await redis.del(lease);
+    assert.equal(await beat(loser, providerB), 0);
+    console.log('BOTMODE_RECOVERED_PROVIDER_START_FENCE=PASS');
     console.log('BOTMODE_REDIS_RECOVERY_FENCING=PASS');
   } finally {
     await redis.del(key, lease, chunks, steps, steers);
