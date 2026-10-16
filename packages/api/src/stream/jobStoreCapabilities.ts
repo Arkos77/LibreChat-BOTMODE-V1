@@ -61,9 +61,15 @@ export type JobStoreV2RequiredMethod = (typeof JOB_STORE_V2_REQUIRED_METHODS)[nu
 type MethodKeys<T> = {
   [Key in keyof T]-?: NonNullable<T[Key]> extends (...args: never[]) => unknown ? Key : never;
 }[keyof T];
-/** The Redis-only heartbeat is optional: the capability assertion must not
- * require it on in-memory or external job stores. */
-type V2OnlyMethod = Exclude<MethodKeys<IJobStoreV2>, keyof IJobStore | 'heartbeatMissionProvider'>;
+/** Optional Redis-only extension methods do not participate in the v2
+ * mandatory capability assertion for in-memory and external job stores. */
+type OptionalMethodKeys<T> = {
+  [Key in keyof T]-?: undefined extends T[Key] ? Key : never;
+}[keyof T];
+type V2OnlyMethod = Exclude<
+  MethodKeys<IJobStoreV2>,
+  keyof IJobStore | OptionalMethodKeys<IJobStoreV2>
+>;
 type SameUnion<Left, Right> = [Left] extends [Right]
   ? [Right] extends [Left]
     ? true

@@ -165,8 +165,8 @@ export async function executeBrowserGrant(
   const browser =
     deps.browser ??
     (endpoint
-      ? await chromium.connect(endpoint, { timeout: 15_000 })
-      : await chromium.launch({ headless: true }));
+      ? await (await import('playwright')).chromium.connect(endpoint, { timeout: 15_000 })
+      : await launchBrowser());
   const ownsBrowser = deps.browser == null;
   const session = await new BrowserExecutionSession(browser, ownsBrowser).init();
   try {

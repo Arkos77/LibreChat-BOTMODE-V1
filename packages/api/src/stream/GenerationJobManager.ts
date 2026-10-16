@@ -832,10 +832,12 @@ class GenerationJobManagerClass {
       checkpointId: string;
     }> = [];
     for (const candidate of candidates.slice(0, 16)) {
+      if (!candidate.checkpointNamespace) continue;
+      const checkpointNamespace = candidate.checkpointNamespace;
       try {
         const checkpoint = await inspectDurableNativeMissionCheckpoint(
           candidate.streamId,
-          candidate.checkpointNamespace,
+          checkpointNamespace,
         );
         if (checkpoint == null) continue;
         const current = await this.jobStore.getJob(candidate.streamId);
@@ -847,7 +849,12 @@ class GenerationJobManagerClass {
           current.providerDrained !== false
         )
           continue;
-        eligible.push({ ...candidate, checkpointId: checkpoint.checkpointId });
+        eligible.push({
+          streamId: candidate.streamId,
+          createdAt: candidate.createdAt,
+          checkpointNamespace,
+          checkpointId: checkpoint.checkpointId,
+        });
       } catch (error) {
         logger.warn('[GenerationJobManager] Native mission checkpoint preflight failed', error);
       }
