@@ -83,3 +83,36 @@ export function qualifyNativeMissionRecoverySnapshot(
   }
   return { checkpointId, pendingNodes: pendingNodes as string[] };
 }
+
+/** Read a reconstructed graph head without running its nodes. The Mongo
+ * checkpoint preflight alone cannot infer LangGraph's pending tasks. */
+export async function inspectReconstructedNativeMissionGraph(
+  graph: { getState: (config: { configurable: Record<string, string> }) => Promise<unknown> },
+  candidate: { streamId: string; checkpointNamespace: string; checkpointId: string },
+  plannedNodeIds: readonly string[],
+): Promise<NativeMissionPendingCheckpoint | null> {
+  if (
+    !graph ||
+    typeof graph.getState !== 'function' ||
+    !candidate ||
+    typeof candidate.streamId !== 'string' ||
+    !candidate.streamId ||
+    typeof candidate.checkpointNamespace !== 'string' ||
+    !candidate.checkpointNamespace ||
+    typeof candidate.checkpointId !== 'string' ||
+    !candidate.checkpointId
+  ) {
+    return null;
+  }
+  const snapshot = await graph.getState({
+    configurable: {
+      thread_id: candidate.streamId,
+      checkpoint_ns: '',
+      __librechat_checkpoint_ns: candidate.checkpointNamespace,
+    },
+  });
+  return qualifyNativeMissionRecoverySnapshot(snapshot, candidate.checkpointId, {
+    threadId: candidate.streamId,
+    allowedPendingNodes: plannedNodeIds,
+  });
+}
