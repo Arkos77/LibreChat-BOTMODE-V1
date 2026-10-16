@@ -853,6 +853,44 @@ export async function getAgentCheckpointer(
   return saverPromise;
 }
 
+/**
+ * Read-only, fail-closed preflight of a native mission after process loss.
+ * The Redis running status does not authorize execution: a durable checkpoint
+ * must exist in this exact generation namespace. HITL interrupts are excluded.
+ * Ownership, authorization and publication must be verified separately.
+ */
+export async function inspectDurableNativeMissionCheckpoint(
+  threadId: string,
+  checkpointNamespace: string,
+  cfg?: TCheckpointerConfig,
+): Promise<{ checkpointId: string; pendingNodes: string[] } | null> {
+  if (
+    typeof threadId !== 'string' ||
+    threadId.trim() === '' ||
+    typeof checkpointNamespace !== 'string' ||
+    checkpointNamespace.trim() === ''
+  ) {
+    return null;
+  }
+  const saver = await getAgentCheckpointer(cfg);
+  if (!saver) return null;
+  const tuple = await saver.getTuple({
+    configurable: {
+      thread_id: threadId,
+      checkpoint_ns: '',
+      [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: checkpointNamespace,
+    },
+  });
+  if (!tuple?.checkpoint?.id || tuple.config?.configurable?.thread_id !== threadId) {
+    return null;
+  }
+  if ((tuple.pendingWrites ?? []).some((write) => write[1] === INTERRUPT)) return null;
+  const pendingNodes = (tuple.checkpoint.pending_sends ?? [])
+    .map((send) => send.node)
+    .filter((node): node is string => typeof node === 'string' && node.length > 0);
+  return { checkpointId: tuple.checkpoint.id, pendingNodes };
+}
+
 export interface AgentEventCheckpointReference {
   threadId: string;
   checkpointId: string;

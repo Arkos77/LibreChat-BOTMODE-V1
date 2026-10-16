@@ -10,6 +10,7 @@ import { emptyCheckpoint, ERROR, INTERRUPT } from '@langchain/langgraph-checkpoi
 import {
   getAgentCheckpointer,
   hasDurableAgentInterruptCheckpoint,
+  inspectDurableNativeMissionCheckpoint,
   hasDurableSubagentRecoveryCheckpoint,
   captureAgentCheckpointGeneration,
   deleteAgentCheckpoint,
@@ -674,6 +675,60 @@ describe('LazyMongoSaver (lazy persistence — mongodb-memory-server)', () => {
     expect(count).toBe(0);
   });
 
+  it('preflights only the exact durable mission generation checkpoint', async () => {
+    const saver = await getAgentCheckpointer(MONGO_CFG);
+    const threadId = `native-recovery-${new mongoose.Types.ObjectId()}`;
+    const scope = `generation-${new mongoose.Types.ObjectId()}`;
+    const { checkpoint, metadata } = putArgs(threadId);
+    await saver!.put(
+      {
+        configurable: {
+          thread_id: threadId,
+          checkpoint_ns: '',
+          [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: scope,
+          [LIBRECHAT_MISSION_SYNC_KEY]: true,
+        },
+      },
+      checkpoint,
+      metadata,
+    );
+    const original = await inspectDurableNativeMissionCheckpoint(threadId, scope, MONGO_CFG);
+    expect(original).toEqual({ checkpointId: checkpoint.id, pendingNodes: [] });
+    await expect(
+      inspectDurableNativeMissionCheckpoint(threadId, 'another-generation', MONGO_CFG),
+    ).resolves.toBeNull();
+    await expect(
+      inspectDurableNativeMissionCheckpoint('another-thread', scope, MONGO_CFG),
+    ).resolves.toBeNull();
+    await expect(
+      inspectDurableNativeMissionCheckpoint(threadId, '', MONGO_CFG),
+    ).resolves.toBeNull();
+  });
+
+  it('does not automatically resume a checkpoint awaiting human approval', async () => {
+    const saver = await getAgentCheckpointer(MONGO_CFG);
+    const threadId = `native-hitl-${new mongoose.Types.ObjectId()}`;
+    const scope = `generation-${new mongoose.Types.ObjectId()}`;
+    const { checkpoint, metadata } = putArgs(threadId);
+    const missionConfig = {
+      configurable: {
+        thread_id: threadId,
+        checkpoint_ns: '',
+        [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: scope,
+        [LIBRECHAT_MISSION_SYNC_KEY]: true,
+      },
+    };
+    await saver!.put(missionConfig, checkpoint, metadata);
+    await saver!.putWrites(
+      { configurable: { ...missionConfig.configurable, checkpoint_id: checkpoint.id } },
+      [[INTERRUPT, { id: 'human-approval-required', value: 'approve?' }]],
+      'task-approval',
+    );
+    await expect(
+      inspectDurableNativeMissionCheckpoint(threadId, scope, MONGO_CFG),
+    ).resolves.toBeNull();
+  });
+
   it('retains a sync mission checkpoint and its subsequent bookkeeping write', async () => {
     const saver = await getAgentCheckpointer(MONGO_CFG);
     const threadId = `mission-${new mongoose.Types.ObjectId().toString()}`;
@@ -765,6 +820,7 @@ describe('LazyMongoSaver (lazy persistence — mongodb-memory-server)', () => {
         if (property === 'streamEvents') {
           return async function* (input: unknown) {
             receivedInput = input;
+            yield* []; // Deliberately emits no events; satisfy require-yield.
             throw new Error('SDK_INPUT_CAPTURED_BEFORE_PROVIDER');
           };
         }
