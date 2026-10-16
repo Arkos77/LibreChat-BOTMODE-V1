@@ -55,8 +55,8 @@ function createNativeMissionRecoveryClaimProbe({ manager, authorizeCandidate, lo
         claim.checkpointId === candidate.checkpointId &&
         typeof claim.ownerToken === 'string' &&
         claim.ownerToken.length > 0;
-      if (exact && (await isAuthorized())) {
-        safe = true;
+      if (exact && manager.getJobStore() === store && (await isAuthorized())) {
+        safe = manager.getJobStore() === store;
       }
     } finally {
       if (typeof claim.ownerToken === 'string' && claim.ownerToken.length > 0) {

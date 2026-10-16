@@ -100,6 +100,10 @@ async function scenario({
     assert.equal(setup.calls.release, 1);
   }
 
+  setup = await scenario({ swapStore: true });
+  assert.equal(await setup.probe(candidate), false);
+  assert.equal(setup.calls.release, 1);
+
   setup = await scenario({ releaseResult: false });
   assert.equal(await setup.probe(candidate), false);
   assert.equal(setup.calls.release, 1);

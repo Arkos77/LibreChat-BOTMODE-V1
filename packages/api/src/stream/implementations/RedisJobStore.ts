@@ -633,9 +633,34 @@ const JOB_UPDATE_LUA =
   // Epoch-only metadata writes from the previous process are not authoritative
   // after a recovery owner is installed; never persist stale Oracle evidence.
   'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") then return 0 end ' +
+  // The host persists the native mission plan AFTER the provider-start CAS.
+  // PROVIDER_BEGIN_LUA cannot arm its lease until that plan exists. The first
+  // generation-fenced plan HSET must atomically initialize the provider lease
+  // while the still-active ORIGINAL segment remains the exact owner.
+  'local planBefore = redis.call("HGET", KEYS[1], "orchestratorPlan") ' +
+  'local addsPlan = false ' +
+  'for i = 6, #ARGV, 2 do if ARGV[i] == "orchestratorPlan" ' +
+  'and ARGV[i + 1] and ARGV[i + 1] ~= "" then addsPlan = true end end ' +
   'local hset = {} ' +
   'for i = 6, #ARGV do hset[#hset + 1] = ARGV[i] end ' +
   'if #hset > 0 then redis.call("HSET", KEYS[1], unpack(hset)) end ' +
+  // Never refresh a previously expired lease or resurrect a finished,
+  // replaced, HITL, unscoped v1, or recovery-owned segment.
+  'if ARGV[1] ~= "" and not planBefore and addsPlan ' +
+  'and redis.call("HGET", KEYS[1], "status") == "running" ' +
+  'and redis.call("HGET", KEYS[1], "providerDrained") == "0" ' +
+  'and redis.call("HGET", KEYS[1], "generationProtocolVersion") == "2" ' +
+  'and redis.call("HGET", KEYS[1], "checkpointNamespace") ' +
+  'and redis.call("HGET", KEYS[1], "checkpointNamespace") ~= "" ' +
+  'and not redis.call("HGET", KEYS[1], "__missionProviderLeaseUntil") ' +
+  'and not redis.call("HGET", KEYS[1], "__missionProviderLeaseIdentity") then ' +
+  'local provider = redis.call("HGET", KEYS[1], "providerExecutionId") ' +
+  'if provider and provider == redis.call("HGET", KEYS[1], "providerExecutionStartedId") then ' +
+  'local now = redis.call("TIME") local nowMs = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000) ' +
+  'redis.call("HSET", KEYS[1], "__missionProviderLeaseIdentity", provider, ' +
+  // Keep in sync with MISSION_PROVIDER_LEASE_MS (15 seconds). This is an
+  // initial, one-time lease; the live provider's heartbeat owns all renewals.
+  '"__missionProviderLeaseUntil", tostring(nowMs + 15000)) end end ' +
   'if ARGV[2] == "1" then ' +
   'local completedTtl = tonumber(ARGV[3]) ' +
   'local chunksTtl = tonumber(ARGV[4]) ' +

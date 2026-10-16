@@ -19,6 +19,8 @@ on:
       - 'scripts/botmode/native-recovery-host-probe-regression.cjs'
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveryClaimProbe.js'
       - 'scripts/botmode/native-mission-claim-probe-regression.cjs'
+      - 'scripts/botmode/redis-late-native-plan-lease-regression.cjs'
+      - 'scripts/botmode/run-redis-late-native-plan-lease-regression.sh'
       - 'api/server/index.js'
       - 'scripts/botmode/recovered-mission-redis-mongo-regression.cjs'
       - 'scripts/botmode/run-recovered-mission-integration.sh'
@@ -82,6 +84,16 @@ jobs:
             --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveryClaimProbe.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveryClaimProbe.js,readonly" \
             --mount "type=bind,src=$PWD/scripts/botmode/native-mission-claim-probe-regression.cjs,dst=/app/native-mission-claim-probe-regression.cjs,readonly" \
             --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-mission-claim-probe-regression.cjs
+      - name: Verify late native plan initializes only a fenced Redis provider lease
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          set -euo pipefail
+          before="$(docker volume ls -q --filter dangling=true | wc -l)"
+          bash scripts/botmode/run-redis-late-native-plan-lease-regression.sh
+          after="$(docker volume ls -q --filter dangling=true | wc -l)"
+          test "$before" -eq "$after"
+          echo 'BOTMODE_LATE_PLAN_PROVIDER_LEASE_CI=PASS'
       - name: Verify SIGKILL and Mongo cold SDK restart
         env:
           BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
