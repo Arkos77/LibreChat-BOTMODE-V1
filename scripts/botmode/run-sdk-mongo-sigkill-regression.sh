@@ -11,7 +11,7 @@ mongo="${name}-mongo"
 seed="${name}-seed"
 
 cleanup() {
-  docker rm -f "$seed" "$mongo" >/dev/null 2>&1 || :
+  docker rm -fv "$seed" "$mongo" >/dev/null 2>&1 || :
   docker network rm "$network" >/dev/null 2>&1 || :
 }
 trap cleanup EXIT
@@ -57,7 +57,7 @@ docker kill --signal=KILL "$seed" >/dev/null
 code="$(docker wait "$seed")"
 test "$code" = 137 || { echo "UNEXPECTED_SIGKILL_EXIT=$code"; exit 1; }
 echo "EXTERNAL_SIGKILL_EXIT=137"
-docker rm "$seed" >/dev/null
+docker rm -v "$seed" >/dev/null
 run_phase resume
 run_phase retry
 echo "MONGO_SDK_EXTERNAL_SIGKILL_RESTART=PASS"
