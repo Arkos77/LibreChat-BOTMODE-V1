@@ -941,7 +941,8 @@ class GenerationJobManagerClass {
   /**
    * Promote a claimed, read-only recovery candidate only after a trusted
    * caller has rebuilt the SDK graph, inspected its exact persisted head,
-   * verified pending nodes/HITL exclusion, and rechecked current policy.
+   * verified pending nodes/HITL exclusion, rechecked current policy, and
+   * proved replay safety of every pending node against durable task receipts.
    *
    * This rotates the provider identity under Redis ownership but does NOT
    * start or execute the provider, stream content, settle Oracle, or publish.
@@ -957,6 +958,7 @@ class GenerationJobManagerClass {
     },
     snapshot: unknown,
     assertCurrentAuthorization: () => Promise<void>,
+    assertReplaySafeForPendingNodes: (pendingNodes: readonly string[]) => Promise<void>,
   ): Promise<{ providerExecutionId: string } | null> {
     const store = this.jobStore;
     if (
@@ -970,15 +972,22 @@ class GenerationJobManagerClass {
       claim.createdAt <= 0 ||
       typeof claim.checkpointNamespace !== 'string' ||
       claim.checkpointNamespace.length === 0 ||
-      typeof claim.ownerToken !== 'string'
+      typeof claim.ownerToken !== 'string' ||
+      typeof assertCurrentAuthorization !== 'function' ||
+      typeof assertReplaySafeForPendingNodes !== 'function'
     ) {
       return null;
     }
 
     let activated = false;
     try {
-      if (qualifyNativeMissionRecoverySnapshot(snapshot, claim.checkpointId) == null) return null;
+      const qualified = qualifyNativeMissionRecoverySnapshot(snapshot, claim.checkpointId);
+      if (qualified == null) return null;
       await assertCurrentAuthorization();
+      // A pending graph node can be re-entered from its beginning after a
+      // crash. Its external side effects require durable task/receipt-level
+      // idempotency, not merely a healthy Redis recovery lease.
+      await assertReplaySafeForPendingNodes(qualified.pendingNodes);
       if (this.shuttingDown || this.jobStore !== store) return null;
       const [checkpoint, job] = await Promise.all([
         inspectDurableNativeMissionCheckpoint(claim.streamId, claim.checkpointNamespace),

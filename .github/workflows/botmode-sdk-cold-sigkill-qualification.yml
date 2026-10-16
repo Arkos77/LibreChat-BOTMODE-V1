@@ -1,0 +1,41 @@
+name: BOT MODE SDK Cold SIGKILL Qualification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-sdk-cold-sigkill-qualification.yml'
+      - 'scripts/botmode/run-sdk-mongo-sigkill-regression.sh'
+      - 'scripts/botmode/sdk-mongo-cold-checkpoint-regression.cjs'
+      - 'packages/api/src/agents/nativeMissionRecoverySnapshot.ts'
+      - 'packages/api/src/agents/checkpointer.ts'
+      - 'vendor/librechat-agents/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: botmode-sdk-cold-sigkill-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cold-checkpoint-crash-restart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull pinned qualification SDK runtime
+        run: |
+          docker pull "$BOTMODE_TEST_SDK_IMAGE"
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+      - name: Verify SIGKILL and Mongo cold SDK restart
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          set -euo pipefail
+          before="$(docker volume ls -q --filter dangling=true | wc -l)"
+          bash scripts/botmode/run-sdk-mongo-sigkill-regression.sh
+          after="$(docker volume ls -q --filter dangling=true | wc -l)"
+          test "$before" -eq "$after"
+          echo 'BOTMODE_SDK_COLD_SIGKILL_CI=PASS'

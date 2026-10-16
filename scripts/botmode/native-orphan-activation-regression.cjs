@@ -47,8 +47,9 @@ const snapshot = {
 };
 
 async function runCase({ mutateSnapshot, invalidJob, denyPolicy, activated = true,
-  swapStore = false, shutdown = false } = {}) {
-  const calls = { auth: 0, promote: 0, release: 0 };
+  swapStore = false, shutdown = false, denyReplay = false,
+  omitReplayGate = false } = {}) {
+  const calls = { auth: 0, replay: 0, promote: 0, release: 0 };
   const manager = new Harness();
   manager._isRedis = true;
   manager.shuttingDown = shutdown;
@@ -82,11 +83,17 @@ async function runCase({ mutateSnapshot, invalidJob, denyPolicy, activated = tru
     if (swapStore) manager.jobStore = { ...store };
     if (denyPolicy) throw new Error('authorization denied');
   };
+  const verifyReplay = async (pendingNodes) => {
+    calls.replay++;
+    assert.deepEqual(Array.from(pendingNodes), ['worker']);
+    if (denyReplay) throw new Error('unsafe pending tool replay');
+  };
   let result = null;
   let error = null;
   try {
     result = await manager.activateCheckpointedOrphanAfterGraphQualification(
       claim, mutateSnapshot ?? snapshot, authorize,
+      omitReplayGate ? undefined : verifyReplay,
     );
   } catch (e) { error = e; }
   return { result, calls, error };
@@ -94,7 +101,7 @@ async function runCase({ mutateSnapshot, invalidJob, denyPolicy, activated = tru
 (async () => {
   const ok = await runCase();
   assert.ok(ok.result?.providerExecutionId.startsWith('recovered-'));
-  assert.deepEqual(ok.calls, { auth: 1, promote: 1, release: 0 });
+  assert.deepEqual(ok.calls, { auth: 1, replay: 1, promote: 1, release: 0 });
 
   for (const invalidSnapshot of [
     { ...snapshot, next: [] },
@@ -103,20 +110,26 @@ async function runCase({ mutateSnapshot, invalidJob, denyPolicy, activated = tru
   ]) {
     const bad = await runCase({ mutateSnapshot: invalidSnapshot });
     assert.equal(bad.result, null);
-    assert.deepEqual(bad.calls, { auth: 0, promote: 0, release: 1 });
+    assert.deepEqual(bad.calls, { auth: 0, replay: 0, promote: 0, release: 1 });
   }
   for (const opts of [
     { invalidJob: true }, { activated: false }, { swapStore: true },
   ]) {
     const bad = await runCase(opts);
     assert.equal(bad.result, null);
-    assert.deepEqual(bad.calls, { auth: 1, promote: opts.activated === false ? 1 : 0, release: 1 });
+    assert.deepEqual(bad.calls, { auth: 1, replay: 1, promote: opts.activated === false ? 1 : 0, release: 1 });
   }
   const denied = await runCase({ denyPolicy: true });
   assert.match(denied.error?.message ?? '', /authorization denied/);
-  assert.deepEqual(denied.calls, { auth: 1, promote: 0, release: 1 });
+  assert.deepEqual(denied.calls, { auth: 1, replay: 0, promote: 0, release: 1 });
+  const deniedReplay = await runCase({ denyReplay: true });
+  assert.match(deniedReplay.error?.message ?? '', /unsafe pending tool replay/);
+  assert.deepEqual(deniedReplay.calls, { auth: 1, replay: 1, promote: 0, release: 1 });
+  const missingReplay = await runCase({ omitReplayGate: true });
+  assert.equal(missingReplay.result, null);
+  assert.deepEqual(missingReplay.calls, { auth: 0, replay: 0, promote: 0, release: 0 });
   const stopped = await runCase({ shutdown: true });
   assert.equal(stopped.result, null);
-  assert.deepEqual(stopped.calls, { auth: 0, promote: 0, release: 0 });
+  assert.deepEqual(stopped.calls, { auth: 0, replay: 0, promote: 0, release: 0 });
   console.log('BOTMODE_ORPHAN_GRAPH_ACTIVATION=PASS');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
