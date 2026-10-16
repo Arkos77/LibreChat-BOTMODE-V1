@@ -8258,8 +8258,8 @@ class GenerationJobManagerClass {
     // expiry. Reinspect on the existing cleanup cadence rather than adding
     // another scheduler. Discovery is read-only: no provider starts here.
     if (this._isRedis) {
-      await this.inspectOrphanedNativeMissions().catch((error) => {
-        logger.warn('[GenerationJobManager] Periodic mission inspection failed', error);
+      await this.inspectCheckpointedOrphanedNativeMissions().catch((error) => {
+        logger.warn('[GenerationJobManager] Periodic mission checkpoint preflight failed', error);
       });
     }
     // A crashed pause writer must never become resumable merely because its
