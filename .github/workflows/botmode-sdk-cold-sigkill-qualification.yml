@@ -13,6 +13,9 @@ on:
       - 'scripts/botmode/native-orphan-claim-regression.cjs'
       - 'scripts/botmode/native-orphan-preflight-cadence-regression.cjs'
       - 'scripts/botmode/native-orphan-activation-regression.cjs'
+      - 'scripts/botmode/recovered-mission-redis-mongo-regression.cjs'
+      - 'scripts/botmode/run-recovered-mission-integration.sh'
+      - 'packages/api/src/stream/implementations/RedisJobStore.ts'
       - 'vendor/librechat-agents/**'
 
 permissions:
@@ -55,3 +58,13 @@ jobs:
           after="$(docker volume ls -q --filter dangling=true | wc -l)"
           test "$before" -eq "$after"
           echo 'BOTMODE_SDK_COLD_SIGKILL_CI=PASS'
+      - name: Verify recovered-owner Redis and Mongo SDK SIGKILL integration
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          set -euo pipefail
+          before="$(docker volume ls -q --filter dangling=true | wc -l)"
+          bash scripts/botmode/run-recovered-mission-integration.sh
+          after="$(docker volume ls -q --filter dangling=true | wc -l)"
+          test "$before" -eq "$after"
+          echo 'BOTMODE_SDK_REDIS_MONGO_RECOVERED_INTEGRATION=PASS'
