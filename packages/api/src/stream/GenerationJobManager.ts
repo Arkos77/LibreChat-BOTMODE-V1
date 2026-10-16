@@ -85,7 +85,10 @@ import { ApprovalLifecycle, pausePersistenceActionId } from './ApprovalLifecycle
 import { projectPendingMCPOAuthPrompts } from '~/mcp/oauth/resume';
 import { sanitizeJobMetadata } from './metadata';
 import { inspectDurableNativeMissionCheckpoint } from '~/agents/checkpointer';
-import { qualifyNativeMissionRecoverySnapshot } from '~/agents/nativeMissionRecoverySnapshot';
+import {
+  inspectReconstructedNativeMissionGraph,
+  qualifyNativeMissionRecoverySnapshot,
+} from '~/agents/nativeMissionRecoverySnapshot';
 
 /** Terminal error surfaced to a client still attached when its approval window lapses. */
 const APPROVAL_EXPIRED_ERROR = 'Approval expired before a decision was made';
@@ -1060,6 +1063,74 @@ class GenerationJobManagerClass {
    * start or execute the provider, stream content, settle Oracle, or publish.
    * It must only be called by a server-side recovery coordinator.
    */
+  /**
+   * Connect the real SDK graph head to the existing Redis promotion barrier.
+   * This reads only: it never calls graph.invoke/processStream or starts tools.
+   * A missing/changed head releases the inspection claim. Promotion still
+   * requires independent current authorization and replay-safety proofs.
+   */
+  async qualifyReconstructedGraphAndActivateClaim(
+    claim: {
+      streamId: string;
+      createdAt: number;
+      checkpointNamespace: string;
+      checkpointId: string;
+      ownerToken: string;
+    },
+    graph: { getState: (config: { configurable: Record<string, string> }) => Promise<unknown> },
+    assertCurrentAuthorization: () => Promise<void>,
+    assertReplaySafeForPendingNodes: (pendingNodes: readonly string[]) => Promise<void>,
+  ): Promise<{ providerExecutionId: string } | null> {
+    const store = this.jobStore;
+    if (
+      !this._isRedis ||
+      this.shuttingDown ||
+      !claim ||
+      typeof claim.streamId !== 'string' ||
+      !claim.streamId ||
+      typeof claim.ownerToken !== 'string' ||
+      !claim.ownerToken ||
+      typeof store.releaseDrainedMissionRecovery !== 'function' ||
+      typeof assertCurrentAuthorization !== 'function' ||
+      typeof assertReplaySafeForPendingNodes !== 'function'
+    ) {
+      return null;
+    }
+    let delegated = false;
+    try {
+      const job = await store.getJob(claim.streamId);
+      const plannedNodes = job?.orchestratorPlan?.tasks?.map((task) => task.nodeId);
+      const qualified = await inspectReconstructedNativeMissionGraph(
+        graph,
+        claim,
+        Array.isArray(plannedNodes) ? plannedNodes : [],
+      );
+      if (qualified == null || this.jobStore !== store || this.shuttingDown) return null;
+      // The existing promotion method owns claim cleanup once delegated.
+      delegated = true;
+      return await this.activateCheckpointedOrphanAfterGraphQualification(
+        claim,
+        {
+          config: {
+            configurable: { thread_id: claim.streamId, checkpoint_id: qualified.checkpointId },
+          },
+          next: qualified.pendingNodes,
+          tasks: qualified.pendingNodes.map((name) => ({ name, interrupts: [] })),
+        },
+        assertCurrentAuthorization,
+        assertReplaySafeForPendingNodes,
+      );
+    } finally {
+      if (!delegated) {
+        await store.releaseDrainedMissionRecovery(
+          claim.streamId,
+          claim.createdAt,
+          claim.ownerToken,
+        );
+      }
+    }
+  }
+
   async activateCheckpointedOrphanAfterGraphQualification(
     claim: {
       streamId: string;
