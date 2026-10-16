@@ -10,7 +10,12 @@
  * Injectable dependencies allow qualification without connecting to live
  * users, data, or providers.
  */
-async function authorizeNativeMissionRecovery({ candidate, job, deps }) {
+async function authorizeNativeMissionRecovery({ candidate, job, deps, reportRejection }) {
+  // Only allow-listed gate names are emitted; no durable identity or content.
+  const deny = (gate) => {
+    if (typeof reportRejection === 'function') reportRejection(gate);
+    return null;
+  };
   if (
     !candidate ||
     typeof candidate.streamId !== 'string' ||
@@ -40,7 +45,7 @@ async function authorizeNativeMissionRecovery({ candidate, job, deps }) {
     !Array.isArray(job.orchestratorPlan.tasks) ||
     job.orchestratorPlan.tasks.length === 0
   ) {
-    return null;
+    return deny('job');
   }
   if (
     !deps ||
@@ -50,7 +55,7 @@ async function authorizeNativeMissionRecovery({ candidate, job, deps }) {
     typeof deps.canViewAgent !== 'function' ||
     typeof deps.isOwnerAdmissible !== 'function'
   ) {
-    return null;
+    return deny('dependencies');
   }
 
   const userId = job.userId;
@@ -58,9 +63,9 @@ async function authorizeNativeMissionRecovery({ candidate, job, deps }) {
     deps.getUserById(userId),
     deps.isOwnerAdmissible(userId),
   ]);
-  if (!user || !active || String(user._id ?? user.id ?? '') !== userId) return null;
+  if (!user || !active || String(user._id ?? user.id ?? '') !== userId) return deny('owner');
   const tenantId = job.tenantId ?? undefined;
-  if ((user.tenantId ?? undefined) !== tenantId) return null;
+  if ((user.tenantId ?? undefined) !== tenantId) return deny('tenant');
 
   // getConvo(userId, id) is owner-scoped; never look up this conversation as
   // another user's session or trust serialized req/res fields from the job.
@@ -72,7 +77,7 @@ async function authorizeNativeMissionRecovery({ candidate, job, deps }) {
     (convo.tenantId ?? undefined) !== tenantId ||
     convo.subagentThread != null
   ) {
-    return null;
+    return deny('conversation');
   }
 
   const agentIds = new Set([job.agent_id]);
@@ -84,17 +89,17 @@ async function authorizeNativeMissionRecovery({ candidate, job, deps }) {
       typeof task.key !== 'string' ||
       task.key.length === 0
     ) {
-      return null;
+      return deny('plan');
     }
     agentIds.add(task.agentId);
   }
   // Every planned specialist is checked anew. An old Oracle verdict or
   // cached agent descriptor is not evidence of current VIEW permission.
-  if (agentIds.size > 32) return null;
+  if (agentIds.size > 32) return deny('plan');
   for (const id of agentIds) {
     const agent = await deps.getAgent({ id });
-    if (!agent || agent.id !== id || agent._id == null) return null;
-    if (!(await deps.canViewAgent({ user, agent }))) return null;
+    if (!agent || agent.id !== id || agent._id == null) return deny('agent');
+    if (!(await deps.canViewAgent({ user, agent }))) return deny('permission');
   }
 
   // This is authority to *consider* reconstruction, not to replay a node:

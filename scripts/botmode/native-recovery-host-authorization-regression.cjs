@@ -66,9 +66,12 @@ async function trial(change, mutate = () => {}) {
   const coord = structuredClone(candidate);
   const deps = defaultDeps(calls);
   mutate({ job: copy, candidate: coord, deps });
+  let deniedAt;
   const result = await authorizeNativeMissionRecovery({
     job: copy, candidate: coord, deps,
+    reportRejection: (gate) => { deniedAt = gate; },
   });
+  assert.equal(change ? deniedAt === undefined : typeof deniedAt === 'string', true);
   assert.equal(result === null, !change, 'unexpected admission result');
   return { result, calls };
 }

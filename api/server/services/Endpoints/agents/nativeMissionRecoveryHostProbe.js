@@ -22,9 +22,13 @@ function createNativeMissionRecoveryHostProbe({
     // Read raw Redis fields: the facade's runtime-scoped `metadata` shape
     // is different, and getJob() would materialize a local abort/runtime.
     const job = await manager.getJobStore().getJob(candidate.streamId);
+    let deniedAt = null;
     const admission = await authorizeNativeMissionRecovery({
       candidate,
       job,
+      reportRejection: (gate) => {
+        deniedAt = gate;
+      },
       deps: {
         getUserById,
         isOwnerAdmissible: isSubagentOwnerAdmissible,
@@ -43,11 +47,16 @@ function createNativeMissionRecoveryHostProbe({
     const key = candidate.streamId + ':' + candidate.createdAt;
     if (!observed.has(key)) {
       observed.add(key);
-      log.info('[NativeMissionRecovery] Host read-only authority preflight', {
-        // Deliberately no user ID, token, agent identity or content in diagnostics.
-        status: admission == null ? 'DENIED' : 'AUTHORIZED_READ_ONLY',
-        checkpointPresent: !!candidate.checkpointId,
-      });
+      // Stable diagnostics survive logger formatting that drops the metadata
+      // object; only a non-sensitive, allow-listed decision code is included.
+      log.info(
+        '[NativeMissionRecovery] Host read-only authority preflight ' +
+          JSON.stringify({
+            status: admission == null ? 'DENIED' : 'AUTHORIZED_READ_ONLY',
+            gate: admission == null ? (deniedAt ?? 'unknown') : 'passed',
+            checkpointPresent: !!candidate.checkpointId,
+          }),
+      );
     }
     // No claim, no execution and no proof of side-effect replay safety.
     return admission != null;

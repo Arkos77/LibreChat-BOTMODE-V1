@@ -7,7 +7,11 @@ const root = '/work/api/server/services/Endpoints/agents/';
 const { authorizeNativeMissionRecovery } = require(root + 'nativeMissionRecoveryAuthorization.js');
 const probeModule = { exports: {} };
 const messages = [];
-const log = { info: (_event, context) => messages.push(context) };
+const log = { info: (line) => {
+  const prefix = '[NativeMissionRecovery] Host read-only authority preflight ';
+  assert.ok(line.startsWith(prefix));
+  messages.push(JSON.parse(line.slice(prefix.length)));
+} };
 let allow = true;
 let exists = true;
 let claimAttempts = 0;
@@ -76,22 +80,25 @@ const deps = {
   assert.equal(viewChecks, 4);
   assert.equal(messages.length, 1);
   assert.equal(messages[0].status, 'AUTHORIZED_READ_ONLY');
+  assert.equal(messages[0].gate, 'passed');
   assert.equal(claimAttempts, 0);
 
   allow = false;
   const denied = createNativeMissionRecoveryHostProbe(deps);
   assert.equal(await denied(candidate), false);
   assert.equal(messages[1].status, 'DENIED');
+  assert.equal(messages[1].gate, 'permission');
 
   allow = true;
   exists = false;
   const missing = createNativeMissionRecoveryHostProbe(deps);
   assert.equal(await missing(candidate), false);
   assert.equal(messages[2].status, 'DENIED');
+  assert.equal(messages[2].gate, 'job');
   assert.equal(claimAttempts, 0);
 
   for (const msg of messages) {
-    assert.deepEqual(Object.keys(msg).sort(), ['checkpointPresent', 'status']);
+    assert.deepEqual(Object.keys(msg).sort(), ['checkpointPresent', 'gate', 'status']);
   }
   console.log('BOTMODE_HOST_READONLY_AUDIT_NO_CLAIM=PASS');
 })().catch((e) => { console.error(e); process.exitCode = 1; });
