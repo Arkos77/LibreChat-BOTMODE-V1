@@ -18,21 +18,34 @@ function fixture() {
   const results = new Map<string, unknown>();
   const invoke = jest.fn(async () => ({ content: 'applied' }));
   const call = {
-    parentToolCallId: 'parent', name: 'write', sequence: 0,
-    input: { value: 'ok' }, config: {}, invoke,
+    parentToolCallId: 'parent',
+    name: 'write',
+    sequence: 0,
+    input: { value: 'ok' },
+    config: {},
+    invoke,
   };
   const deps = {
     store: {
       reserveNativeMissionEffect: jest.fn(async () => {
         const prior = receipts.get(identity.operationKey);
-        if (prior) return { accepted: false, reason: prior.state === 'committed' ? 'already_committed' : 'uncertain' };
+        if (prior)
+          return {
+            accepted: false,
+            reason: prior.state === 'committed' ? 'already_committed' : 'uncertain',
+          };
         receipts.set(identity.operationKey, { state: 'started' });
         return { accepted: true, reason: 'reserved' };
       }),
-      commitNativeMissionEffect: jest.fn(async (receipt: { resultRef: string; resultDigest: string }) => {
-        receipts.set(identity.operationKey, { state: 'committed', ...receipt });
-        return { accepted: true, reason: 'committed' };
-      }),
+      commitNativeMissionEffect: jest.fn(
+        async (receipt: { resultRef: string; resultDigest: string }) => {
+          receipts.set(identity.operationKey, {
+            state: 'committed',
+            ...receipt,
+          });
+          return { accepted: true, reason: 'committed' };
+        },
+      ),
       readNativeMissionEffect: jest.fn(async () => {
         const result = receipts.get(identity.operationKey);
         return result?.state === 'committed'
@@ -44,13 +57,19 @@ function fixture() {
     assertAuthorized: jest.fn(async () => undefined),
     persistResult: jest.fn(async (_call: NativeMissionPtcInvocation, result: unknown) => {
       results.set('private-result', result);
-      return { resultRef: 'private-result', resultDigest: digest(JSON.stringify(result)) };
+      return {
+        resultRef: 'private-result',
+        resultDigest: digest(JSON.stringify(result)),
+      };
     }),
-    loadCommittedResult: jest.fn(async (_call: NativeMissionPtcInvocation, ref: string, expected: string) => {
-      const result = results.get(ref);
-      if (!result || digest(JSON.stringify(result)) !== expected) throw new Error('RESULT_DIGEST_MISMATCH');
-      return result;
-    }),
+    loadCommittedResult: jest.fn(
+      async (_call: NativeMissionPtcInvocation, ref: string, expected: string) => {
+        const result = results.get(ref);
+        if (!result || digest(JSON.stringify(result)) !== expected)
+          throw new Error('RESULT_DIGEST_MISMATCH');
+        return result;
+      },
+    ),
   };
   return { call, deps, receipts, results, invoke };
 }
@@ -67,7 +86,10 @@ describe('native mission PTC durable effect guard', () => {
 
   it('rejects malformed persisted identity without reserving or invoking', async () => {
     const { call, deps, invoke } = fixture();
-    deps.resolvePersistedIdentity.mockResolvedValueOnce({ ...identity, operationKey: 'invalid' });
+    deps.resolvePersistedIdentity.mockResolvedValueOnce({
+      ...identity,
+      operationKey: 'invalid',
+    });
     await expect(createNativeMissionPtcEffectGuard(deps)(call)).rejects.toThrow('UNCERTAIN');
     expect(deps.store.reserveNativeMissionEffect).not.toHaveBeenCalled();
     expect(invoke).not.toHaveBeenCalled();

@@ -89,7 +89,11 @@ describe('instrumentPtcToolMap', () => {
     const { events, emit } = collect();
     const toolMap = new Map([['read_file', createTool('read_file', async () => 'file contents')]]);
 
-    const instrumented = instrumentPtcToolMap({ toolMap, toolCallId: 'call_1', emit });
+    const instrumented = instrumentPtcToolMap({
+      toolMap,
+      toolCallId: 'call_1',
+      emit,
+    });
     const result = await instrumented.get('read_file')?.invoke({ path: 'a.ts' });
 
     expect(result).toBe('file contents');
@@ -119,19 +123,30 @@ describe('instrumentPtcToolMap', () => {
       ],
     ]);
 
-    const instrumented = instrumentPtcToolMap({ toolMap, toolCallId: 'call_1', emit });
+    const instrumented = instrumentPtcToolMap({
+      toolMap,
+      toolCallId: 'call_1',
+      emit,
+    });
 
     await expect(instrumented.get('write_file')?.invoke({ path: '/etc/x' })).rejects.toThrow(
       'Permission denied',
     );
-    expect(events[1]).toMatchObject({ status: 'error', error: 'Permission denied' });
+    expect(events[1]).toMatchObject({
+      status: 'error',
+      error: 'Permission denied',
+    });
   });
 
   it('gives each inner call its own id so concurrent calls do not collide', async () => {
     const { events, emit } = collect();
     const toolMap = new Map([['search', createTool('search', async () => 'ok')]]);
 
-    const instrumented = instrumentPtcToolMap({ toolMap, toolCallId: 'call_1', emit });
+    const instrumented = instrumentPtcToolMap({
+      toolMap,
+      toolCallId: 'call_1',
+      emit,
+    });
     const search = instrumented.get('search');
     await Promise.all([search?.invoke({ q: 'a' }), search?.invoke({ q: 'b' })]);
 
@@ -152,7 +167,11 @@ describe('instrumentPtcToolMap', () => {
       ],
     ]);
 
-    const instrumented = instrumentPtcToolMap({ toolMap, toolCallId: 'call_1', emit });
+    const instrumented = instrumentPtcToolMap({
+      toolMap,
+      toolCallId: 'call_1',
+      emit,
+    });
     const config = { metadata: { run_tools_with_code: true } };
     await instrumented.get('read_file')?.invoke({ path: 'a.ts' }, config);
 
@@ -171,7 +190,11 @@ describe('instrumentPtcToolMap', () => {
       ],
     ]);
 
-    const instrumented = instrumentPtcToolMap({ toolMap, toolCallId: 'call_1', emit });
+    const instrumented = instrumentPtcToolMap({
+      toolMap,
+      toolCallId: 'call_1',
+      emit,
+    });
     const tool = instrumented.get('search_code_mcp_github') as StructuredToolInterface & {
       mcp?: boolean;
     };
@@ -251,10 +274,13 @@ describe('guardPtcToolMap', () => {
     const actual = jest.fn(async () => 'done');
     const calls: string[] = [];
     const config = { signal: new AbortController().signal };
-    const map = guardPtcToolMap(new Map([['effect', createTool('effect', actual)]]), async (call) => {
-      calls.push(`${call.name}:${call.sequence}`);
-      return call.invoke();
-    });
+    const map = guardPtcToolMap(
+      new Map([['effect', createTool('effect', actual)]]),
+      async (call) => {
+        calls.push(`${call.name}:${call.sequence}`);
+        return call.invoke();
+      },
+    );
     await expect(map.get('effect')?.invoke({ value: 1 }, config)).resolves.toBe('done');
     expect(actual).toHaveBeenCalledWith({ value: 1 }, config);
     expect(calls).toEqual(['effect:0']);
@@ -275,17 +301,22 @@ describe('guardPtcToolMap', () => {
     const actual = jest.fn(async () => 'ok');
     const guarded = guardPtcToolMap(
       new Map([['sensitive_tool', createTool('sensitive_tool', actual)]]),
-      async () => { throw new Error('GUARD_DENIED'); },
+      async () => {
+        throw new Error('GUARD_DENIED');
+      },
     );
     const events: PtcToolCallEvent[] = [];
     const instrumented = instrumentPtcToolMap({
       toolMap: guarded,
       toolCallId: 'call_1',
       traceExclusions: new Set(['sensitive_tool']),
-      emit: (event) => { events.push(event); },
+      emit: (event) => {
+        events.push(event);
+      },
     });
-    await expect(instrumented.get('sensitive_tool')?.invoke({ secret: 'private' }))
-      .rejects.toThrow('GUARD_DENIED');
+    await expect(instrumented.get('sensitive_tool')?.invoke({ secret: 'private' })).rejects.toThrow(
+      'GUARD_DENIED',
+    );
     expect(actual).not.toHaveBeenCalled();
     expect(events).toEqual([]);
   });

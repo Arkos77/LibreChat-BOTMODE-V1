@@ -240,7 +240,10 @@ export interface ToolExecuteOptions {
       claimId: string;
     }) => Promise<
       | { status: 'acquired' | 'not_found' | 'not_ready' }
-      | { status: 'claimed'; claim?: { kind: 'manual' | 'wakeup'; claimId: string } }
+      | {
+          status: 'claimed';
+          claim?: { kind: 'manual' | 'wakeup'; claimId: string };
+        }
     >;
     recoverDeadClaim?: BackgroundToolDeadClaimRecovery;
   };
@@ -360,10 +363,18 @@ export interface ToolExecuteOptions {
   }) => Promise<
     | {
         status: 'updated';
-        skill: { _id: Types.ObjectId; name: string; body: string; version: number };
+        skill: {
+          _id: Types.ObjectId;
+          name: string;
+          body: string;
+          version: number;
+        };
         warnings: ValidationIssue[];
       }
-    | { status: 'conflict'; current: { _id: Types.ObjectId; name: string; version: number } }
+    | {
+        status: 'conflict';
+        current: { _id: Types.ObjectId; name: string; version: number };
+      }
     | { status: 'not_found' }
   >;
   /** Captures an exact skill create/update before mutation for governed child proposals. */
@@ -495,7 +506,12 @@ export interface ToolExecuteOptions {
   readSandboxFile?: (params: {
     file_path: string;
     session_id?: string;
-    files?: Array<{ id: string; name: string; session_id?: string; storage_session_id?: string }>;
+    files?: Array<{
+      id: string;
+      name: string;
+      session_id?: string;
+      storage_session_id?: string;
+    }>;
     /** Per-conversation stateful runtime-session hint (thread_id); forwarded so a
      *  host file op that is the first sandbox call joins the same runtime session
      *  as bash_tool instead of the Code API's default session. */
@@ -519,7 +535,12 @@ export interface ToolExecuteOptions {
   readSandboxImage?: (params: {
     file_path: string;
     session_id?: string;
-    files?: Array<{ id: string; name: string; session_id?: string; storage_session_id?: string }>;
+    files?: Array<{
+      id: string;
+      name: string;
+      session_id?: string;
+      storage_session_id?: string;
+    }>;
     /** @see readSandboxFile.runtime_session_hint */
     runtime_session_hint?: string;
     codeApiBaseUrl?: string;
@@ -534,7 +555,12 @@ export interface ToolExecuteOptions {
     /** `size`: over `maxBytes`. `round_trips`: within the byte cap, but more
      *  windowed `/exec` reads than one call may spend on the Code API's
      *  per-user execution limiter. */
-    | { tooLarge: true; reason?: 'size' | 'round_trips'; bytes: number; inlineCeiling?: number }
+    | {
+        tooLarge: true;
+        reason?: 'size' | 'round_trips';
+        bytes: number;
+        inlineCeiling?: number;
+      }
     | null
   >;
   /**
@@ -547,7 +573,12 @@ export interface ToolExecuteOptions {
     file_path: string;
     content: string;
     session_id?: string;
-    files?: Array<{ id: string; name: string; session_id?: string; storage_session_id?: string }>;
+    files?: Array<{
+      id: string;
+      name: string;
+      session_id?: string;
+      storage_session_id?: string;
+    }>;
     /** @see readSandboxFile.runtime_session_hint */
     runtime_session_hint?: string;
     codeApiBaseUrl?: string;
@@ -557,7 +588,12 @@ export interface ToolExecuteOptions {
     stdout?: string;
     stderr?: string;
     session_id?: string;
-    files?: Array<{ id: string; name: string; storage_session_id?: string; session_id?: string }>;
+    files?: Array<{
+      id: string;
+      name: string;
+      storage_session_id?: string;
+      session_id?: string;
+    }>;
   } | null>;
 }
 
@@ -837,7 +873,12 @@ type LoadedSandboxText = LoadedSkillText;
 
 type SandboxSessionContext = {
   session_id?: string;
-  files?: Array<{ id: string; name: string; session_id?: string; storage_session_id?: string }>;
+  files?: Array<{
+    id: string;
+    name: string;
+    session_id?: string;
+    storage_session_id?: string;
+  }>;
 };
 
 const MIME_MAP: Readonly<Record<string, string>> = Object.freeze({
@@ -1010,8 +1051,14 @@ function filteredSkillResult(
     ...(selected('frontmatter') && { frontmatter: input?.frontmatter }),
     ...((selected('file_name') || selected('file_text')) && {
       files: input?.files?.map((file) => ({
-        ...(selected('file_name') && { name: file?.name, filename: file?.filename }),
-        ...(selected('file_text') && { text: file?.text, content: file?.content }),
+        ...(selected('file_name') && {
+          name: file?.name,
+          filename: file?.filename,
+        }),
+        ...(selected('file_text') && {
+          text: file?.text,
+          content: file?.content,
+        }),
       })),
     }),
   };
@@ -1027,7 +1074,10 @@ function isFilteredSkillProjection(
     return filteredSkillResult(tc, req, input) != null;
   } catch (error) {
     if (isContentTraversalLimitError(error)) {
-      return isContentTraversalProtected({ error, filters: req?.config?.filters });
+      return isContentTraversalProtected({
+        error,
+        filters: req?.config?.filters,
+      });
     }
     throw error;
   }
@@ -1460,7 +1510,12 @@ function countExactOccurrences(content: string, needle: string): number[] {
 function findExactMatch(content: string, needle: string): MatchStatus {
   const matches = countExactOccurrences(content, needle);
   if (matches.length === 1) {
-    return { status: 'matched', index: matches[0], length: needle.length, strategy: 'exact' };
+    return {
+      status: 'matched',
+      index: matches[0],
+      length: needle.length,
+      strategy: 'exact',
+    };
   }
   if (matches.length > 1) {
     return { status: 'ambiguous', strategy: 'exact', count: matches.length };
@@ -1559,10 +1614,18 @@ function findWhitespaceNormalizedMatch(content: string, needle: string): MatchSt
     }
   }
   if (matches.length === 1) {
-    return { status: 'matched', ...matches[0], strategy: 'whitespace-normalized' };
+    return {
+      status: 'matched',
+      ...matches[0],
+      strategy: 'whitespace-normalized',
+    };
   }
   if (matches.length > 1) {
-    return { status: 'ambiguous', strategy: 'whitespace-normalized', count: matches.length };
+    return {
+      status: 'ambiguous',
+      strategy: 'whitespace-normalized',
+      count: matches.length,
+    };
   }
   return { status: 'none' };
 }
@@ -1908,7 +1971,12 @@ function buildImageArtifactResult(
     status: 'success',
     content: `Image: ${displayPath} (${bytes} bytes, ${mimeType})`,
     artifact: {
-      content: [{ type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } }],
+      content: [
+        {
+          type: 'image_url',
+          image_url: { url: `data:${mimeType};base64,${base64}` },
+        },
+      ],
     },
   };
 }
@@ -2006,7 +2074,12 @@ async function handleSandboxImageRead(
   const ctx = tc.codeSessionContext as SandboxSessionContext | undefined;
   let read:
     | { base64: string; bytes: number }
-    | { tooLarge: true; reason?: 'size' | 'round_trips'; bytes: number; inlineCeiling?: number }
+    | {
+        tooLarge: true;
+        reason?: 'size' | 'round_trips';
+        bytes: number;
+        inlineCeiling?: number;
+      }
     | null;
   try {
     read = await readSandboxImage({
@@ -2446,7 +2519,9 @@ async function resolveSkillForAuthoring(
     return null;
   }
 
-  return await getSkillByName(skillName, accessibleIds, { preferModelInvocable: true });
+  return await getSkillByName(skillName, accessibleIds, {
+    preferModelInvocable: true,
+  });
 }
 
 async function resolveAuthorSkillForCurrentUser({
@@ -2472,7 +2547,9 @@ async function resolveAuthorSkillForCurrentUser({
   if (!skill) {
     return null;
   }
-  rememberAuthoredSkill([mergedConfigurable, sourceConfigurable], skill, { prime: false });
+  rememberAuthoredSkill([mergedConfigurable, sourceConfigurable], skill, {
+    prime: false,
+  });
   return skill;
 }
 
@@ -2609,8 +2686,13 @@ function mergeActiveSkillNames(
  */
 function toolRequiresEphemeralConnection(tool: StructuredToolInterface | undefined): boolean {
   return (
-    (tool as (StructuredToolInterface & { mcpRequiresEphemeralConnection?: boolean }) | undefined)
-      ?.mcpRequiresEphemeralConnection === true
+    (
+      tool as
+        | (StructuredToolInterface & {
+            mcpRequiresEphemeralConnection?: boolean;
+          })
+        | undefined
+    )?.mcpRequiresEphemeralConnection === true
   );
 }
 
@@ -2648,7 +2730,10 @@ function resolveBackgroundUserId(configurable: Record<string, unknown> | undefin
 function toolDeclaresRunInBackgroundParam(tool: StructuredToolInterface): boolean {
   const schema = (
     tool as StructuredToolInterface & {
-      schema?: { shape?: Record<string, unknown>; properties?: Record<string, unknown> };
+      schema?: {
+        shape?: Record<string, unknown>;
+        properties?: Record<string, unknown>;
+      };
     }
   ).schema;
   if (schema == null) {
@@ -2669,7 +2754,10 @@ function toolDeclaresRunInBackgroundParam(tool: StructuredToolInterface): boolea
 function toolDeclaresIntentParam(tool: StructuredToolInterface): boolean {
   const schema = (
     tool as StructuredToolInterface & {
-      schema?: { shape?: Record<string, unknown>; properties?: Record<string, unknown> };
+      schema?: {
+        shape?: Record<string, unknown>;
+        properties?: Record<string, unknown>;
+      };
     }
   ).schema;
   if (schema == null) {
@@ -2801,7 +2889,10 @@ async function loadSkillFileTextForAuthoring({
 
   const { getSkillFileByPath, getStrategyFunctions, updateSkillFileContent } = options;
   if (!getSkillFileByPath) {
-    return { status: 'error', message: 'Skill file reading is not configured.' };
+    return {
+      status: 'error',
+      message: 'Skill file reading is not configured.',
+    };
   }
 
   const file = await getSkillFileByPath(skill._id, relativePath);
@@ -2809,7 +2900,10 @@ async function loadSkillFileTextForAuthoring({
     return { status: 'missing' };
   }
   if (file.isBinary === true) {
-    return { status: 'error', message: `File "${relativePath}" is binary and cannot be edited.` };
+    return {
+      status: 'error',
+      message: `File "${relativePath}" is binary and cannot be edited.`,
+    };
   }
   if (file.content != null && file.content !== '') {
     return {
@@ -2830,7 +2924,10 @@ async function loadSkillFileTextForAuthoring({
 
   const strategy = getStrategyFunctions(file.source);
   if (!strategy.getDownloadStream) {
-    return { status: 'error', message: 'Download is not supported for this storage backend.' };
+    return {
+      status: 'error',
+      message: 'Download is not supported for this storage backend.',
+    };
   }
 
   const stream = await strategy.getDownloadStream(req, file.filepath);
@@ -2858,29 +2955,33 @@ async function loadSkillFileTextForAuthoring({
   for (let i = 0; i < checkLen; i++) {
     if (buffer[i] === 0) {
       if (updateSkillFileContent) {
-        updateSkillFileContent(skill._id, relativePath, { isBinary: true }).catch(
-          (err: unknown) => {
-            logAxiosError({
-              message: '[loadSkillFileTextForAuthoring] cache write failed',
-              error: err,
-            });
-          },
-        );
+        updateSkillFileContent(skill._id, relativePath, {
+          isBinary: true,
+        }).catch((err: unknown) => {
+          logAxiosError({
+            message: '[loadSkillFileTextForAuthoring] cache write failed',
+            error: err,
+          });
+        });
       }
-      return { status: 'error', message: `File "${relativePath}" is binary and cannot be edited.` };
+      return {
+        status: 'error',
+        message: `File "${relativePath}" is binary and cannot be edited.`,
+      };
     }
   }
 
   const text = buffer.toString('utf-8');
   if (updateSkillFileContent) {
-    updateSkillFileContent(skill._id, relativePath, { content: text, isBinary: false }).catch(
-      (err: unknown) => {
-        logAxiosError({
-          message: '[loadSkillFileTextForAuthoring] cache write failed',
-          error: err,
-        });
-      },
-    );
+    updateSkillFileContent(skill._id, relativePath, {
+      content: text,
+      isBinary: false,
+    }).catch((err: unknown) => {
+      logAxiosError({
+        message: '[loadSkillFileTextForAuthoring] cache write failed',
+        error: err,
+      });
+    });
   }
   return { status: 'loaded', content: text, bytes: buffer.length };
 }
@@ -2898,7 +2999,10 @@ async function inspectBundledSkillFileForCreate({
 }): Promise<ExistingSkillFile> {
   const { getSkillFileByPath } = options;
   if (!getSkillFileByPath) {
-    return { status: 'error', message: 'Skill file reading is not configured.' };
+    return {
+      status: 'error',
+      message: 'Skill file reading is not configured.',
+    };
   }
 
   const file = await getSkillFileByPath(skill._id, relativePath);
@@ -3148,7 +3252,11 @@ async function writeSkillMd({
         },
       );
   }
-  const result = await options.updateSkill({ id: skillId, expectedVersion: skill.version, update });
+  const result = await options.updateSkill({
+    id: skillId,
+    expectedVersion: skill.version,
+    update,
+  });
   if (result.status === 'conflict') {
     return errorResult(
       tc,
@@ -3386,7 +3494,11 @@ async function handleCreateFileCall(
   sourceConfigurable?: Record<string, unknown>,
   sandboxContext?: SandboxSessionContext,
 ): AuthoringResult {
-  const args = tc.args as { path?: unknown; content?: unknown; overwrite?: unknown };
+  const args = tc.args as {
+    path?: unknown;
+    content?: unknown;
+    overwrite?: unknown;
+  };
   if (typeof args.path !== 'string' || args.path.length === 0) {
     return errorResult(tc, 'path is required');
   }
@@ -3872,8 +3984,10 @@ async function handleReadFileCall(
      keeps the value correct for any future consumer that compares with
      `.equals()` or `===`. */
   const lookupAccessibleIds = primedIdString ? [new Types.ObjectId(primedIdString)] : accessibleIds;
-  const lookupOptions: { preferUserInvocable?: boolean; preferModelInvocable?: boolean } =
-    primedIdString ? {} : { preferModelInvocable: true };
+  const lookupOptions: {
+    preferUserInvocable?: boolean;
+    preferModelInvocable?: boolean;
+  } = primedIdString ? {} : { preferModelInvocable: true };
   let skill = await getSkillByName(skillName, lookupAccessibleIds, lookupOptions);
   if (!skill) {
     skill = await recoverAuthorSkill();
@@ -4081,14 +4195,14 @@ async function handleReadFileCall(
     if (isBinary) {
       // Cache the binary flag (first read only)
       if (file.isBinary == null && updateSkillFileContent) {
-        updateSkillFileContent(skill._id, relativePath, { isBinary: true }).catch(
-          (err: unknown) => {
-            logAxiosError({
-              message: '[handleReadFileCall] cache write failed',
-              error: err,
-            });
-          },
-        );
+        updateSkillFileContent(skill._id, relativePath, {
+          isBinary: true,
+        }).catch((err: unknown) => {
+          logAxiosError({
+            message: '[handleReadFileCall] cache write failed',
+            error: err,
+          });
+        });
       }
 
       // Return images/PDFs as artifacts
@@ -4127,14 +4241,15 @@ async function handleReadFileCall(
 
     // Cache text on first read (skill files are immutable)
     if (file.content == null && updateSkillFileContent && buffer.length <= MAX_CACHE_BYTES) {
-      updateSkillFileContent(skill._id, relativePath, { content: text, isBinary: false }).catch(
-        (err: unknown) => {
-          logAxiosError({
-            message: '[handleReadFileCall] cache write failed',
-            error: err,
-          });
-        },
-      );
+      updateSkillFileContent(skill._id, relativePath, {
+        content: text,
+        isBinary: false,
+      }).catch((err: unknown) => {
+        logAxiosError({
+          message: '[handleReadFileCall] cache write failed',
+          error: err,
+        });
+      });
     }
 
     if (buffer.length > MAX_READABLE_BYTES) {
@@ -4597,8 +4712,7 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
               (mergedConfigurable?.thread_id as string | undefined) ??
               (
                 (mergedConfigurable?.req as ServerRequest | undefined)?.body as
-                  | { conversationId?: string }
-                  | undefined
+                  { conversationId?: string } | undefined
               )?.conversationId;
             const markCodeSandboxWarm = (): void => {
               if (runtimeSessionHint) {
@@ -4622,8 +4736,7 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
              * per-tool opt-in (a tool not in the set never had the param).
              */
             const backgroundToolNames = mergedConfigurable?.backgroundToolNames as
-              | string[]
-              | undefined;
+              string[] | undefined;
             const backgroundEnabledForRun = (backgroundToolNames?.length ?? 0) > 0;
             const backgroundControlEnabled = backgroundEnabledForRun || subagentTasks != null;
             const backgroundToolSet: ReadonlySet<string> = backgroundEnabledForRun
@@ -4649,8 +4762,7 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
              * `toolCallId` so graph re-execution (resume/replay) never double-fires.
              */
             const backgroundRunId = (metadata as Record<string, unknown>)?.run_id as
-              | string
-              | undefined;
+              string | undefined;
             const dispatchBackgroundToolCall = async (
               tc: ToolCallRequest,
             ): Promise<ToolExecuteResult> => {
@@ -5076,7 +5188,10 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                     );
                   }
                 };
-                let invokePromise: Promise<{ content?: unknown; artifact?: unknown }>;
+                let invokePromise: Promise<{
+                  content?: unknown;
+                  artifact?: unknown;
+                }>;
                 const backgroundAbortController = new AbortController();
                 try {
                   let backgroundInvokeArgs = normalizedArgs;
@@ -5334,7 +5449,11 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                       backgroundUserId,
                       backgroundConversationId,
                       task.id,
-                      { content, artifact: result.artifact, harvestStarted: harvestEnabled },
+                      {
+                        content,
+                        artifact: result.artifact,
+                        harvestStarted: harvestEnabled,
+                      },
                     );
                     await persistSettledBackgroundResult({
                       /** Use the registry's canonical bounded serialization so
@@ -5780,7 +5899,11 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                             {
                               input: tc.args,
                               outputFiltered: true,
-                              output: { name: tc.name, tool_call_id: tc.id, content: '' },
+                              output: {
+                                name: tc.name,
+                                tool_call_id: tc.id,
+                                content: '',
+                              },
                             },
                             {
                               ...(metadata ?? {}),
@@ -5811,11 +5934,9 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                           },
                           {
                             run_id: (metadata as Record<string, unknown>)?.run_id as
-                              | string
-                              | undefined,
+                              string | undefined,
                             thread_id: (metadata as Record<string, unknown>)?.thread_id as
-                              | string
-                              | undefined,
+                              string | undefined,
                             ...metadata,
                             executingAgentId: agentId,
                             codeExecutionContext,
@@ -5895,11 +6016,9 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                         toolCallConfig.hookContext = data.hookContext;
                       }
                       const toolRegistry = mergedConfigurable?.toolRegistry as
-                        | LCToolRegistry
-                        | undefined;
+                        LCToolRegistry | undefined;
                       const ptcToolMap = mergedConfigurable?.ptcToolMap as
-                        | Map<string, StructuredToolInterface>
-                        | undefined;
+                        Map<string, StructuredToolInterface> | undefined;
                       if (toolRegistry) {
                         const activeCodeExecutionToolNames = callerCapabilityProjection
                           ? new Set(callerCapabilityProjection.codeExecutionToolNames)
@@ -5978,9 +6097,12 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                         // excluded or untraced tools cannot bypass the guard.
                         const guardedPtcToolMap = guardPtcEffect
                           ? guardPtcToolMap(eligiblePtcToolMap, (call) =>
-                              guardPtcEffect({ parentToolCallId: tc.id, ...call }),
+                              guardPtcEffect({
+                                parentToolCallId: tc.id,
+                                ...call,
+                              }),
                             )
-                          : effectAuthorityRequired
+                          : mergedConfigurable?.nativeMissionEffectFenceRequired === true
                             ? guardPtcToolMap(eligiblePtcToolMap, async () => {
                                 throw new Error('NATIVE_MISSION_EFFECT_GUARD_REQUIRED');
                               })
@@ -5990,8 +6112,7 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                               toolMap: guardedPtcToolMap,
                               toolCallId: tc.id,
                               runId: (metadata as Record<string, unknown>)?.run_id as
-                                | string
-                                | undefined,
+                                string | undefined,
                               includePreviews: !hasActivePiiFields(ptcArgumentPii, [
                                 'name',
                                 'arguments',
@@ -6104,7 +6225,11 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                             {
                               input: tc.args,
                               outputFiltered: true,
-                              output: { name: tc.name, tool_call_id: tc.id, content: '' },
+                              output: {
+                                name: tc.name,
+                                tool_call_id: tc.id,
+                                content: '',
+                              },
                             },
                             {
                               ...(metadata ?? {}),
@@ -6134,11 +6259,9 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                         },
                         {
                           run_id: (metadata as Record<string, unknown>)?.run_id as
-                            | string
-                            | undefined,
+                            string | undefined,
                           thread_id: (metadata as Record<string, unknown>)?.thread_id as
-                            | string
-                            | undefined,
+                            string | undefined,
                           ...metadata,
                           executingAgentId: agentId,
                           codeExecutionContext,

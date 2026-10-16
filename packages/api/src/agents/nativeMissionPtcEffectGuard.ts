@@ -24,7 +24,10 @@ export interface NativeMissionPtcGuardDependencies {
     call: NativeMissionPtcInvocation,
   ) => Promise<NativeMissionEffectIdentity | null>;
   assertAuthorized: (call: NativeMissionPtcInvocation) => Promise<void>;
-  persistResult: (call: NativeMissionPtcInvocation, result: unknown) => Promise<{
+  persistResult: (
+    call: NativeMissionPtcInvocation,
+    result: unknown,
+  ) => Promise<{
     resultRef: string;
     resultDigest: string;
   }>;
@@ -55,13 +58,19 @@ export function createNativeMissionPtcEffectGuard(deps: NativeMissionPtcGuardDep
     const identity = await deps.resolvePersistedIdentity(call);
     if (
       !identity ||
-      typeof identity.streamId !== 'string' || !identity.streamId ||
-      !Number.isSafeInteger(identity.createdAt) || identity.createdAt <= 0 ||
-      typeof identity.checkpointNamespace !== 'string' || !identity.checkpointNamespace ||
-      typeof identity.providerExecutionId !== 'string' || !identity.providerExecutionId ||
+      typeof identity.streamId !== 'string' ||
+      !identity.streamId ||
+      !Number.isSafeInteger(identity.createdAt) ||
+      identity.createdAt <= 0 ||
+      typeof identity.checkpointNamespace !== 'string' ||
+      !identity.checkpointNamespace ||
+      typeof identity.providerExecutionId !== 'string' ||
+      !identity.providerExecutionId ||
       typeof identity.recoveryOwnerToken !== 'string' ||
-      typeof identity.operationKey !== 'string' || !/^[a-f0-9]{64}$/.test(identity.operationKey) ||
-      typeof identity.argumentsDigest !== 'string' || !/^[a-f0-9]{64}$/.test(identity.argumentsDigest)
+      typeof identity.operationKey !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(identity.operationKey) ||
+      typeof identity.argumentsDigest !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(identity.argumentsDigest)
     ) {
       throw new NativeMissionEffectUncertainError();
     }
