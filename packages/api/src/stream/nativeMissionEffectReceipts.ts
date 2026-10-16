@@ -34,7 +34,7 @@ export interface NativeMissionEffectOutcome {
   reason: string;
 }
 
-export const MISSION_EFFECT_MAX_RECORDS = 256;
+export const MISSION_EFFECT_MAX_RECORDS: number = 256;
 
 /** KEYS [job, claim], ARGV [epoch, namespace, providerId, ownerToken,
  * operationDigest, argumentsDigest].
@@ -58,7 +58,7 @@ const MISSION_EFFECT_ACTIVE_OWNER_GUARD =
   'elseif ARGV[4] ~= "" then return {0,"owner"} end ';
 
 /** Reserve ONCE before entering an external side effect. No retry after crash. */
-export const MISSION_EFFECT_RESERVE_LUA =
+export const MISSION_EFFECT_RESERVE_LUA: string =
   MISSION_EFFECT_ACTIVE_OWNER_GUARD +
   'if string.len(ARGV[5]) ~= 64 or not string.match(ARGV[5],"^[0-9a-f]+$") ' +
   'or string.len(ARGV[6]) ~= 64 or not string.match(ARGV[6],"^[0-9a-f]+$") then return {0,"identity"} end ' +
@@ -82,7 +82,7 @@ export const MISSION_EFFECT_RESERVE_LUA =
  * ARGV [epoch, namespace, providerId, ownerToken, opDigest, argsDigest,
  * resultRef, resultDigest]. Never store raw tool payloads in this metadata.
  */
-export const MISSION_EFFECT_COMMIT_LUA =
+export const MISSION_EFFECT_COMMIT_LUA: string =
   MISSION_EFFECT_ACTIVE_OWNER_GUARD +
   'if string.len(ARGV[5]) ~= 64 or not string.match(ARGV[5],"^[0-9a-f]+$") ' +
   'or string.len(ARGV[6]) ~= 64 or not string.match(ARGV[6],"^[0-9a-f]+$") ' +
@@ -102,7 +102,7 @@ export const MISSION_EFFECT_COMMIT_LUA =
   'redis.call("HSET", KEYS[1], field, cjson.encode(doc)) return {1,"committed"}';
 
 /** Read only; no owner authorization. Host must authorize before exposing ref. */
-export const MISSION_EFFECT_READ_LUA =
+export const MISSION_EFFECT_READ_LUA: string =
   'if redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[1] or ' +
   'redis.call("HGET", KEYS[1], "checkpointNamespace") ~= ARGV[2] then return {0,"generation"} end ' +
   'local raw = redis.call("HGET", KEYS[1], "__nativeEffect:" .. ARGV[3]) ' +
