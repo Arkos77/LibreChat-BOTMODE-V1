@@ -885,10 +885,10 @@ export async function inspectDurableNativeMissionCheckpoint(
     return null;
   }
   if ((tuple.pendingWrites ?? []).some((write) => write[1] === INTERRUPT)) return null;
-  const pendingNodes = (tuple.checkpoint.pending_sends ?? [])
-    .map((send) => send.node)
-    .filter((node): node is string => typeof node === 'string' && node.length > 0);
-  return { checkpointId: tuple.checkpoint.id, pendingNodes };
+  // LangGraph checkpoint pending work is represented by pendingWrites/tasks,
+  // not a Checkpoint.pending_sends field in the installed checkpoint contract.
+  // Do not invent node names from a different SDK version.
+  return { checkpointId: tuple.checkpoint.id, pendingNodes: [] };
 }
 
 export interface AgentEventCheckpointReference {
