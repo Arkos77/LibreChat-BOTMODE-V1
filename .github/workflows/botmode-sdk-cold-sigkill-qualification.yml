@@ -33,6 +33,8 @@ on:
       - 'scripts/botmode/run-native-effect-receipts-redis-regression.sh'
       - 'packages/api/src/agents/nativeMissionEffectExecution.ts'
       - 'scripts/botmode/native-effect-execution-regression.cjs'
+      - 'scripts/botmode/native-effect-external-sigkill-regression.cjs'
+      - 'scripts/botmode/run-native-effect-external-sigkill-regression.sh'
       - 'vendor/librechat-agents/**'
 
 permissions:
@@ -108,6 +110,16 @@ jobs:
             --mount "type=bind,src=$PWD/packages/api/src/agents/nativeMissionEffectExecution.ts,dst=/work/packages/api/src/agents/nativeMissionEffectExecution.ts,readonly" \
             --mount "type=bind,src=$PWD/scripts/botmode/native-effect-execution-regression.cjs,dst=/app/native-effect-execution-regression.cjs,readonly" \
             --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-effect-execution-regression.cjs
+      - name: Verify external effect receipt under real SIGKILL and process cold restart
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          set -euo pipefail
+          before="$(docker volume ls -q --filter dangling=true | wc -l)"
+          bash scripts/botmode/run-native-effect-external-sigkill-regression.sh
+          after="$(docker volume ls -q --filter dangling=true | wc -l)"
+          test "$before" -eq "$after"
+          echo 'BOTMODE_EXTERNAL_EFFECT_COLD_SIGKILL_NO_DUPLICATION_CI=PASS'
       - name: Verify native side-effect journal never retries uncertain external calls
         env:
           BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
