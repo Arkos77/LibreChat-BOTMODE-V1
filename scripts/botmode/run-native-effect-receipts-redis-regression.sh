@@ -23,6 +23,7 @@ docker run --rm --network "$net" --memory 730m --cpus 1 --read-only \
   -e "BOTMODE_TEST_REDIS_URI=redis://$redis:6379" \
   --mount "type=bind,src=$root/packages/api/src/stream/nativeMissionEffectReceipts.ts,dst=/work/packages/api/src/stream/nativeMissionEffectReceipts.ts,readonly" \
   --mount "type=bind,src=$root/packages/api/src/stream/implementations/RedisJobStore.ts,dst=/work/packages/api/src/stream/implementations/RedisJobStore.ts,readonly" \
+  --mount "type=bind,src=$root/packages/api/src/agents/nativeMissionEffectExecution.ts,dst=/work/packages/api/src/agents/nativeMissionEffectExecution.ts,readonly" \
   --mount "type=bind,src=$root/scripts/botmode/native-effect-receipts-redis-regression.cjs,dst=/app/native-effect-receipts-redis-regression.cjs,readonly" \
   --entrypoint node "$image" /app/native-effect-receipts-redis-regression.cjs
 echo BOTMODE_NATIVE_EFFECT_RECEIPTS_REDIS_INTEGRATION=PASS

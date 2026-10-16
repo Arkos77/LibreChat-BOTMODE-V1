@@ -31,6 +31,8 @@ on:
       - 'packages/api/src/stream/nativeMissionEffectReceipts.ts'
       - 'scripts/botmode/native-effect-receipts-redis-regression.cjs'
       - 'scripts/botmode/run-native-effect-receipts-redis-regression.sh'
+      - 'packages/api/src/agents/nativeMissionEffectExecution.ts'
+      - 'scripts/botmode/native-effect-execution-regression.cjs'
       - 'vendor/librechat-agents/**'
 
 permissions:
@@ -98,6 +100,14 @@ jobs:
           after="$(docker volume ls -q --filter dangling=true | wc -l)"
           test "$before" -eq "$after"
           echo 'BOTMODE_LATE_PLAN_PROVIDER_LEASE_CI=PASS'
+      - name: Verify effect execution adapter fails closed on ambiguous tool results
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          docker run --rm --network none --memory 710m --cpus 1 --read-only \
+            --mount "type=bind,src=$PWD/packages/api/src/agents/nativeMissionEffectExecution.ts,dst=/work/packages/api/src/agents/nativeMissionEffectExecution.ts,readonly" \
+            --mount "type=bind,src=$PWD/scripts/botmode/native-effect-execution-regression.cjs,dst=/app/native-effect-execution-regression.cjs,readonly" \
+            --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-effect-execution-regression.cjs
       - name: Verify native side-effect journal never retries uncertain external calls
         env:
           BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d

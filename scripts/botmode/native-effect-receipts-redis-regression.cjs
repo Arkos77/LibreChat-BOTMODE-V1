@@ -28,6 +28,15 @@ const methodNames = new Set([
 const methods = storeClass.members.filter((x) => ts.isMethodDeclaration(x) &&
   methodNames.has(x.name.getText(storeAst))).map((x) => x.getText(storeAst));
 assert.equal(methods.length, methodNames.size);
+const executorSource = fs.readFileSync(
+  '/work/packages/api/src/agents/nativeMissionEffectExecution.ts', 'utf8');
+const executorJs = ts.transpileModule(executorSource, {
+  fileName:'nativeMissionEffectExecution.ts',
+  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS},
+}).outputText;
+const executorMod = {exports:{}};
+vm.runInNewContext(executorJs,{module:executorMod,exports:executorMod.exports});
+const {executeNativeMissionEffectFenced}=executorMod.exports;
 const adapterJs = ts.transpileModule(
   'class EffectStoreHarness {' + methods.join('\n') + '}\nmodule.exports=EffectStoreHarness',
   {compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}},
@@ -171,6 +180,39 @@ async function seed(recovery=false) {
       /Invalid mission side-effect result reference/,
     );
     console.log('BOTMODE_EFFECT_REDIS_JOB_STORE_ADAPTER=PASS');
+
+    // End-to-end execution seam with the ACTUAL RedisJobStore adapter methods
+    // and Redis 7 Lua, but a fake tool + fake private immutable result storage.
+    await seed();
+    const invoker = new adapterMod.exports();
+    invoker.redis = r;
+    const durable = new Map();
+    let invoked = 0;
+    const executeOptions = {
+      identity,store:invoker,assertAuthorized:async()=>{},
+      execute:async()=>{invoked++;return {call:invoked};},
+      persistResult:async(result)=>{
+        const bytes=JSON.stringify(result), resultDigest=hash(bytes);
+        const resultRef='private://effects/'+resultDigest;
+        durable.set(resultRef,bytes);
+        return {resultRef,resultDigest};
+      },
+      loadCommittedResult:async(ref,expectDigest)=>{
+        const bytes=durable.get(ref);
+        if (!bytes || hash(bytes)!==expectDigest) throw Error('PRIVATE_EVIDENCE_UNAVAILABLE');
+        return JSON.parse(bytes);
+      },
+    };
+    assert.deepEqual(JSON.parse(JSON.stringify(
+      await executeNativeMissionEffectFenced(executeOptions))),{call:1});
+    assert.deepEqual(JSON.parse(JSON.stringify(
+      await executeNativeMissionEffectFenced(executeOptions))),{call:1});
+    assert.equal(invoked,1);
+    durable.clear();
+    await assert.rejects(
+      executeNativeMissionEffectFenced(executeOptions),/PRIVATE_EVIDENCE_UNAVAILABLE/);
+    assert.equal(invoked,1);
+    console.log('BOTMODE_EXECUTION_ADAPTER_REAL_REDIS_EXACTLY_ONE_TOOL_INVOCATION=PASS');
   } finally {
     await r.del(key,claimKey);
     r.disconnect();
