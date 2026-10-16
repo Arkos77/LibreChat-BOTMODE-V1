@@ -84,6 +84,19 @@ describe('native mission PTC durable effect guard', () => {
     expect(deps.loadCommittedResult).toHaveBeenCalledTimes(1);
   });
 
+  it('does not expose a committed result if rights are revoked while loading it', async () => {
+    const { call, deps, invoke } = fixture();
+    const guard = createNativeMissionPtcEffectGuard(deps);
+    await guard(call);
+    deps.assertAuthorized.mockClear();
+    deps.loadCommittedResult.mockImplementationOnce(async () => {
+      deps.assertAuthorized.mockRejectedValueOnce(new Error('ACCESS_REVOKED_DURING_READ'));
+      return { content: 'private' };
+    });
+    await expect(guard(call)).rejects.toThrow('ACCESS_REVOKED_DURING_READ');
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects malformed persisted identity without reserving or invoking', async () => {
     const { call, deps, invoke } = fixture();
     deps.resolvePersistedIdentity.mockResolvedValueOnce({

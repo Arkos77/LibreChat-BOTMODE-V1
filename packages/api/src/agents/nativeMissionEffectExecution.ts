@@ -92,7 +92,11 @@ export async function executeNativeMissionEffectFenced<T>({
       throw new NativeMissionEffectUncertainError();
     }
     await assertAuthorized();
-    return loadCommittedResult(prior.resultRef, prior.resultDigest);
+    const result = await loadCommittedResult(prior.resultRef, prior.resultDigest);
+    // A private store read can involve async I/O. Never return its content if
+    // user, tenant, or agent permission was revoked while the read was pending.
+    await assertAuthorized();
+    return result;
   }
   if (reserved.reason !== 'reserved') {
     throw new NativeMissionEffectUncertainError();
