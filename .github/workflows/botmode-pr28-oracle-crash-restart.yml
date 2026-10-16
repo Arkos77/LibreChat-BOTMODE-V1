@@ -7,6 +7,9 @@ on:
       - 'e2e/setup/start-server-restartable.js'
       - 'e2e/playwright.config.oracle-restart.ts'
       - 'e2e/specs/qualification/mission-oracle-runtime.spec.ts'
+      - 'api/server/index.js'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveryHostProbe.js'
 
 permissions:
   contents: read
@@ -38,6 +41,9 @@ jobs:
       REDIS_URI: redis://127.0.0.1:6379
       E2E_RESTART_CONTROL_PORT: '8979'
       STREAM_KEEP_COMPLETED_JOBS: 'true'
+      # Read-only host authority diagnostics during SIGKILL. Does not claim
+      # Redis ownership or enable automatic replay; keep the release test strict.
+      BOTMODE_NATIVE_RECOVERY_READONLY_AUDIT: 'true'
       NODE_OPTIONS: '--max-old-space-size=6144'
     steps:
       - uses: actions/checkout@v5

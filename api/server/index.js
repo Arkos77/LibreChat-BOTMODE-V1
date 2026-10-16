@@ -135,6 +135,23 @@ const configureGenerationStreams = () => {
       resumeDetachedAction: resumeAgentEventDetachedAction,
     }),
   );
+  // Qualification-only, read-only host admission diagnostics. The normal
+  // runtime leaves the handler absent (fail-closed) until a receipt-fenced
+  // full graph/Oracle continuation implementation is installed.
+  if (process.env.BOTMODE_NATIVE_RECOVERY_READONLY_AUDIT === 'true') {
+    const {
+      createNativeMissionRecoveryHostProbe,
+    } = require('./services/Endpoints/agents/nativeMissionRecoveryHostProbe');
+    GenerationJobManager.setNativeMissionRecoveryHandler(
+      createNativeMissionRecoveryHostProbe({
+        manager: GenerationJobManager,
+        getUserById: agentEventMethods.getUserById,
+        isSubagentOwnerAdmissible: agentEventMethods.isSubagentOwnerAdmissible,
+        getConvo: agentEventMethods.getConvo,
+        getAgent: agentEventMethods.getAgent,
+      }),
+    );
+  }
   GenerationJobManager.initialize();
   // Stop active generations and close their SSE streams while the HTTP server drains.
   registerShutdownTask(

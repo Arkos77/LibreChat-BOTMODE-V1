@@ -13,6 +13,11 @@ on:
       - 'scripts/botmode/native-orphan-claim-regression.cjs'
       - 'scripts/botmode/native-orphan-preflight-cadence-regression.cjs'
       - 'scripts/botmode/native-orphan-activation-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js'
+      - 'scripts/botmode/native-recovery-host-authorization-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveryHostProbe.js'
+      - 'scripts/botmode/native-recovery-host-probe-regression.cjs'
+      - 'api/server/index.js'
       - 'scripts/botmode/recovered-mission-redis-mongo-regression.cjs'
       - 'scripts/botmode/run-recovered-mission-integration.sh'
       - 'packages/api/src/stream/implementations/RedisJobStore.ts'
@@ -48,6 +53,23 @@ jobs:
               --mount "type=bind,src=$PWD/scripts/botmode/$script,dst=/app/$script,readonly" \
               --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" "/app/$script"
           done
+      - name: Verify current host identity and agent permissions fail closed
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          docker run --rm --network none --memory 720m --cpus 1 --read-only \
+            --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js,readonly" \
+            --mount "type=bind,src=$PWD/scripts/botmode/native-recovery-host-authorization-regression.cjs,dst=/app/native-recovery-host-authorization-regression.cjs,readonly" \
+            --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-recovery-host-authorization-regression.cjs
+      - name: Verify host read-only audit never claims or executes
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          docker run --rm --network none --memory 720m --cpus 1 --read-only \
+            --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js,readonly" \
+            --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveryHostProbe.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveryHostProbe.js,readonly" \
+            --mount "type=bind,src=$PWD/scripts/botmode/native-recovery-host-probe-regression.cjs,dst=/app/native-recovery-host-probe-regression.cjs,readonly" \
+            --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-recovery-host-probe-regression.cjs
       - name: Verify SIGKILL and Mongo cold SDK restart
         env:
           BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
