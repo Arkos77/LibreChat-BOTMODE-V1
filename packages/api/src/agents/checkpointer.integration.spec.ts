@@ -24,6 +24,7 @@ import {
   LIBRECHAT_MISSION_SYNC_KEY,
   __resetCheckpointerForTests,
 } from './checkpointer';
+import { inspectReconstructedNativeMissionGraph } from './nativeMissionRecoverySnapshot';
 
 /**
  * Integration tests for the durable Mongo checkpointer seam, against a real
@@ -774,8 +775,13 @@ describe('LazyMongoSaver (lazy persistence — mongodb-memory-server)', () => {
     const { StateGraph, Annotation, START, END } = await import('@langchain/langgraph');
     const saver = await getAgentCheckpointer(MONGO_CFG);
     const threadId = `mission-${new mongoose.Types.ObjectId().toString()}`;
+    const generationScope = `generation-${new mongoose.Types.ObjectId().toString()}`;
     const config = {
-      configurable: { thread_id: threadId, [LIBRECHAT_MISSION_SYNC_KEY]: true },
+      configurable: {
+        thread_id: threadId,
+        [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: generationScope,
+        [LIBRECHAT_MISSION_SYNC_KEY]: true,
+      },
       durability: 'sync' as const,
     };
     const State = Annotation.Root({ value: Annotation<number> });
@@ -803,6 +809,21 @@ describe('LazyMongoSaver (lazy persistence — mongodb-memory-server)', () => {
     const restored = makeGraph();
     const snapshot = await restored.getState(config);
     expect(snapshot.next).toContain('second');
+    const checkpointId = snapshot.config.configurable?.checkpoint_id;
+    expect(typeof checkpointId).toBe('string');
+    await expect(
+      inspectReconstructedNativeMissionGraph(
+        restored,
+        {
+          streamId: threadId,
+          checkpointNamespace: generationScope,
+          checkpointId: checkpointId as string,
+        },
+        ['first', 'second'],
+      ),
+    ).resolves.toEqual({ checkpointId, pendingNodes: ['second'] });
+    expect(firstCalls).toBe(1);
+    expect(secondCalls).toBe(1);
     expect(snapshot.values.value).toBe(7);
     const result = await restored.invoke(null, config);
     expect(result.value).toBe(8);
