@@ -76,7 +76,10 @@ type RedisOnlyOptionalMethod =
   | 'heartbeatRecoveredMissionProvider'
   | 'transitionRecoveredMissionToComplete'
   | 'releaseDrainedMissionRecovery'
-  | 'heartbeatMissionProvider';
+  | 'heartbeatMissionProvider'
+  | 'reserveNativeMissionEffect'
+  | 'commitNativeMissionEffect'
+  | 'readNativeMissionEffect';
 type V2OnlyMethod = Exclude<MethodKeys<IJobStoreV2>, keyof IJobStore | RedisOnlyOptionalMethod>;
 type SameUnion<Left, Right> = [Left] extends [Right]
   ? [Right] extends [Left]
