@@ -825,7 +825,10 @@ class GenerationJobManagerClass {
           if (this.ownedJobs.get(job.streamId) === job.createdAt) continue;
           counts.orphaned++;
         }
-        logger.info('[GenerationJobManager] Read-only mission recovery filter counts', counts);
+        logger.info(
+          '[GenerationJobManager] Read-only mission recovery filter counts ' +
+            JSON.stringify(counts),
+        );
       }
       return jobs
         .filter(
@@ -906,10 +909,13 @@ class GenerationJobManagerClass {
         }
       }
       if (process.env.BOTMODE_NATIVE_RECOVERY_READONLY_AUDIT === 'true') {
-        logger.info('[GenerationJobManager] Read-only checkpoint preflight counts', {
-          orphanCandidates: candidates.length,
-          checkpointEligible: eligible.length,
-        });
+        logger.info(
+          '[GenerationJobManager] Read-only checkpoint preflight counts ' +
+            JSON.stringify({
+              orphanCandidates: candidates.length,
+              checkpointEligible: eligible.length,
+            }),
+        );
       }
       return eligible;
     } finally {

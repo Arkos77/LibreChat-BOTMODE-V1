@@ -185,6 +185,35 @@ async function loadDurableJob(redis: Redis, streamId: string): Promise<JobSnapsh
   };
 }
 
+/** CI-only, privacy-preserving recovery flags; never logs identities. */
+async function getRecoveryGateFlags(redis: Redis, streamId: string) {
+  const keys = await redis.keys(`*stream:{${streamId}}:job`);
+  if (keys.length !== 1) return { jobFound: false };
+  const fields = await redis.hmget(
+    keys[0],
+    'status',
+    'orchestratorPlan',
+    'checkpointNamespace',
+    'providerDrained',
+    'providerExecutionId',
+    'providerExecutionStartedId',
+    'lastActiveAt',
+  );
+  const [status, plan, namespace, drained, provider, started, activeAt] = fields;
+  return {
+    jobFound: true,
+    running: status === 'running',
+    planned: !!plan,
+    namespaced: !!namespace,
+    providerUndrained: drained === '0',
+    startedProviderMatches: !!provider && provider === started,
+    lastActiveAgeSeconds:
+      activeAt && Number.isFinite(Number(activeAt))
+        ? Math.max(0, Math.round((Date.now() - Number(activeAt)) / 1000))
+        : null,
+  };
+}
+
 async function waitForOracle(
   redis: Redis,
   streamId: string,
@@ -418,6 +447,11 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
           Object.keys(job.state?.results ?? {}).length === 0;
       }, { timeout: 15_000, intervals: [100, 200, 300] }).toBe(true);
 
+      console.log(
+        'PR28_PRE_SIGKILL_RECOVERY_GATES=' +
+          JSON.stringify(await getRecoveryGateFlags(redis, streamId)),
+      );
+
       const restart = await page.request.post(
         `http://127.0.0.1:${process.env.E2E_RESTART_CONTROL_PORT}/restart`,
         { headers: { 'x-e2e-restart-intent': 'oracle-runtime' }, timeout: 150_000 },
@@ -451,6 +485,10 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
         }).toBe(true);
       } catch (error) {
         console.log(`PR28_AUTO_RESUME_UNPROVEN_JOB_STATUS=${observedStatus}`);
+        console.log(
+          'PR28_POST_SIGKILL_RECOVERY_GATES=' +
+            JSON.stringify(await getRecoveryGateFlags(redis, streamId)),
+        );
         throw error;
       }
 
