@@ -808,7 +808,10 @@ class GenerationJobManagerClass {
   /**
    * Read-only MongoDB preflight for orphaned native missions. The generation
    * namespace must match exactly, and a pending HITL interrupt excludes
-   * automatic continuation. This grants NO Redis ownership or publication right.
+   * automatic continuation. Checkpoint existence alone does NOT prove pending
+   * graph nodes: the rebuilt SDK graph must verify its snapshot.next before
+   * attempting an owner-fenced continuation. This grants NO Redis ownership
+   * or publication right.
    * Fail closed per candidate: a temporary MongoDB outage cannot turn a
    * running Redis receipt into authority to replay tools.
    */
