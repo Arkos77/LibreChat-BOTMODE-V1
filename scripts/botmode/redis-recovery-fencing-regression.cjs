@@ -83,39 +83,49 @@ async function main() {
     assert.equal(await ordinaryWrite(created), 0);
     assert.equal(await evalLua('PROVIDER_BEGIN_LUA', [key], [created, providerA, 20000]), 0);
 
-    const evidence = (owner, provider, field, value) =>
-      evalLua('RECOVERED_MISSION_METADATA_UPDATE_LUA',
-        [key, lease], [created, owner, provider, field, value]);
-    assert.equal(await evidence(loser, providerA, 'missionOracleState', 'LOSER'), 0);
-    assert.equal(await evidence(winner, originalProvider, 'missionOracleState', 'OLD'), 0);
-    assert.equal(await evidence(winner, providerA, 'status', 'complete'), 0);
-    assert.equal(await evidence(winner, providerA, 'missionOracleState', 'OWNER-EVIDENCE'), 1);
-    assert.equal(await redis.hget(key, 'missionOracleState'), 'OWNER-EVIDENCE');
-    assert.equal(await redis.hget(key, 'status'), 'running');
-
-    // The predecessor cannot reclaim the active lease; the owner may renew.
-    assert.equal(await evalLua('RENEW_DRAINED_MISSION_RECOVERY_LUA',
-      [key, lease], [created, loser, 3000]), 0);
-    assert.equal(await evalLua('RENEW_DRAINED_MISSION_RECOVERY_LUA',
-      [key, lease], [created, winner, 2000]), 1);
-    assert.equal(await evalLua('RELEASE_DRAINED_MISSION_RECOVERY_LUA',
-      [key, lease], [created, loser]), 0);
-
-    // Simulated lease loss: a formerly authorized owner loses every permission.
-    await redis.del(lease);
-    assert.equal(await evidence(winner, providerA, 'missionOracleState', 'AFTER-EXPIRY'), 0);
-    assert.equal(await redis.hget(key, 'missionOracleState'), 'OWNER-EVIDENCE');
-    assert.equal(await claim(loser), 1);
-    assert.equal(await activate(loser, providerB), 1);
-    assert.equal(await evidence(winner, providerA, 'missionOracleState', 'OLD-OWNER'), 0);
-    assert.equal(await evidence(loser, providerB, 'missionOracleState', 'NEW-OWNER'), 1);
-    assert.equal(await redis.hget(key, 'missionOracleState'), 'NEW-OWNER');
     const began = (token, provider, namespace = 'qual-namespace') =>
       evalLua('BEGIN_RECOVERED_MISSION_PROVIDER_LUA', [key, lease],
         [created, token, provider, namespace, 5000]);
     const beat = (token, provider) =>
       evalLua('HEARTBEAT_RECOVERED_MISSION_PROVIDER_LUA', [key, lease],
         [created, token, provider, 'qual-namespace', 5000]);
+    const evidence = (owner, provider, field, value) =>
+      evalLua('RECOVERED_MISSION_METADATA_UPDATE_LUA',
+        [key, lease], [created, owner, provider, field, value]);
+    assert.equal(await evidence(loser, providerA, 'missionOracleState', 'LOSER'), 0);
+    assert.equal(await evidence(winner, originalProvider, 'missionOracleState', 'OLD'), 0);
+    assert.equal(await evidence(winner, providerA, 'status', 'complete'), 0);
+    assert.equal(await evidence(winner, providerA, 'missionOracleState', 'EARLY-UNSTARTED'), 0);
+    assert.equal(await began(winner, providerA), 1);
+    assert.equal(await began(winner, providerA), 0);
+    assert.equal(await evidence(winner, providerA, 'missionOracleState', 'OWNER-EVIDENCE'), 1);
+    assert.equal(await redis.hget(key, 'missionOracleState'), 'OWNER-EVIDENCE');
+    assert.equal(await redis.hget(key, 'status'), 'running');
+
+    // The preflight-only renewal is unavailable once provider execution starts.
+    // Only the recovered provider heartbeat may renew the active execution.
+    assert.equal(await evalLua('RENEW_DRAINED_MISSION_RECOVERY_LUA',
+      [key, lease], [created, loser, 3000]), 0);
+    assert.equal(await evalLua('RENEW_DRAINED_MISSION_RECOVERY_LUA',
+      [key, lease], [created, winner, 2000]), 0);
+    assert.equal(await beat(loser, providerA), 0);
+    assert.equal(await beat(winner, providerA), 1);
+    assert.equal(await evalLua('RELEASE_DRAINED_MISSION_RECOVERY_LUA',
+      [key, lease], [created, loser]), 0);
+
+    // The provider's server-time deadline fences stale Oracle evidence even
+    // if the recovery claim itself is still alive.
+    await redis.hset(key, '__missionProviderLeaseUntil', String(Date.now() - 1));
+    assert.equal(await evidence(winner, providerA, 'missionOracleState', 'PROVIDER-EXPIRED'), 0);
+    // Simulated claim loss: a formerly authorized owner loses every permission.
+    await redis.del(lease);
+    assert.equal(await evidence(winner, providerA, 'missionOracleState', 'AFTER-EXPIRY'), 0);
+    assert.equal(await redis.hget(key, 'missionOracleState'), 'OWNER-EVIDENCE');
+    assert.equal(await claim(loser), 1);
+    assert.equal(await activate(loser, providerB), 1);
+    assert.equal(await evidence(winner, providerA, 'missionOracleState', 'OLD-OWNER'), 0);
+    assert.equal(await evidence(loser, providerB, 'missionOracleState', 'NEW-OWNER-EARLY'), 0);
+    assert.equal(await redis.hget(key, 'missionOracleState'), 'OWNER-EVIDENCE');
     assert.equal(await began(winner, providerA), 0);
     assert.equal(await began(loser, providerA), 0);
     assert.equal(await began(loser, providerB, 'wrong-namespace'), 0);
@@ -123,6 +133,8 @@ async function main() {
       [key, lease], [String(Number(created) + 1), loser, providerB, 'qual-namespace', 5000]), 0);
     assert.equal(await began(loser, providerB), 1);
     assert.equal(await began(loser, providerB), 0);
+    assert.equal(await evidence(loser, providerB, 'missionOracleState', 'NEW-OWNER'), 1);
+    assert.equal(await redis.hget(key, 'missionOracleState'), 'NEW-OWNER');
     assert.equal(await beat(winner, providerA), 0);
     assert.equal(await beat(loser, providerA), 0);
     assert.equal(await beat(loser, providerB), 1);

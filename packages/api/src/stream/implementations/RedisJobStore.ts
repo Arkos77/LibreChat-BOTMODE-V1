@@ -657,6 +657,12 @@ const RECOVERED_MISSION_METADATA_UPDATE_LUA =
   'if redis.call("HGET", KEYS[1], "status") ~= "running" then return 0 end ' +
   'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") ~= ARGV[2] then return 0 end ' +
   'if redis.call("HGET", KEYS[1], "providerExecutionId") ~= ARGV[3] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerExecutionStartedId") ~= ARGV[3] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerDrained") ~= "0" then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "__missionProviderLeaseIdentity") ~= ARGV[3] then return 0 end ' +
+  'local now = redis.call("TIME") local nowMs = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000) ' +
+  'local untilMs = tonumber(redis.call("HGET", KEYS[1], "__missionProviderLeaseUntil") or "") ' +
+  'if not untilMs or untilMs <= nowMs then return 0 end ' +
   'if redis.call("GET", KEYS[2]) ~= ARGV[2] then return 0 end ' +
   'if #ARGV < 5 or (#ARGV - 3) % 2 ~= 0 then return 0 end ' +
   'local allowed = {missionOracleState = true, missionCandidateContent = true, ' +
