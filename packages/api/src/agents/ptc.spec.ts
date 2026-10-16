@@ -1,6 +1,6 @@
 import type { StructuredToolInterface } from '@librechat/agents/langchain/tools';
 import type { PtcToolCallEvent } from 'librechat-data-provider';
-import { instrumentPtcToolMap, summarizePtcArgs } from './ptc';
+import { guardPtcToolMap, instrumentPtcToolMap, summarizePtcArgs } from './ptc';
 
 /**
  * Minimal stand-in for a loaded tool: `executeTools` in `@librechat/agents`
@@ -243,5 +243,59 @@ describe('instrumentPtcToolMap', () => {
     });
 
     await expect(instrumented.get('read_file')?.invoke({ path: 'a.ts' })).resolves.toBe('ok');
+  });
+});
+
+describe('guardPtcToolMap', () => {
+  it('intercepts every inner call even with no telemetry and preserves invoke config', async () => {
+    const actual = jest.fn(async () => 'done');
+    const calls: string[] = [];
+    const config = { signal: new AbortController().signal };
+    const map = guardPtcToolMap(new Map([['effect', createTool('effect', actual)]]), async (call) => {
+      calls.push(`${call.name}:${call.sequence}`);
+      return call.invoke();
+    });
+    await expect(map.get('effect')?.invoke({ value: 1 }, config)).resolves.toBe('done');
+    expect(actual).toHaveBeenCalledWith({ value: 1 }, config);
+    expect(calls).toEqual(['effect:0']);
+  });
+
+  it('assigns unique sequence numbers to concurrent inner invocations', async () => {
+    const seen: number[] = [];
+    const tool = createTool('effect', async () => 'ok');
+    const guarded = guardPtcToolMap(new Map([['effect', tool]]), async (call) => {
+      seen.push(call.sequence);
+      return call.invoke();
+    });
+    await Promise.all([guarded.get('effect')?.invoke(1), guarded.get('effect')?.invoke(2)]);
+    expect(seen).toEqual([0, 1]);
+  });
+
+  it('keeps the guard effective when progress telemetry excludes the tool', async () => {
+    const actual = jest.fn(async () => 'ok');
+    const guarded = guardPtcToolMap(
+      new Map([['sensitive_tool', createTool('sensitive_tool', actual)]]),
+      async () => { throw new Error('GUARD_DENIED'); },
+    );
+    const events: PtcToolCallEvent[] = [];
+    const instrumented = instrumentPtcToolMap({
+      toolMap: guarded,
+      toolCallId: 'call_1',
+      traceExclusions: new Set(['sensitive_tool']),
+      emit: (event) => { events.push(event); },
+    });
+    await expect(instrumented.get('sensitive_tool')?.invoke({ secret: 'private' }))
+      .rejects.toThrow('GUARD_DENIED');
+    expect(actual).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
+  });
+
+  it('fails closed when the trusted guard refuses an effect', async () => {
+    const actual = jest.fn(async () => 'unsafe');
+    const map = guardPtcToolMap(new Map([['effect', createTool('effect', actual)]]), async () => {
+      throw new Error('NATIVE_MISSION_EFFECT_UNCERTAIN_RECONCILIATION_REQUIRED');
+    });
+    await expect(map.get('effect')?.invoke({})).rejects.toThrow('UNCERTAIN_RECONCILIATION');
+    expect(actual).not.toHaveBeenCalled();
   });
 });

@@ -9,6 +9,11 @@ import type {
   UserSubmittedMessageFieldPath,
 } from 'librechat-data-provider';
 import type { RunStep, StandardGraph } from '@librechat/agents';
+import type {
+  NativeMissionEffectIdentity,
+  NativeMissionEffectCommit,
+  NativeMissionEffectOutcome,
+} from '~/stream/nativeMissionEffectReceipts';
 import type { AgentEventDetachedTerminalEvidence } from '~/agents/triggers/types';
 import type { MissionOracleState } from '~/agents/orchestrator/missionOracle';
 import type { ActivityPhaseSnapshot } from '~/agents/activityPhases/runtime';
@@ -17,11 +22,6 @@ import type { MissionPlan } from '~/agents/orchestrator/types';
 import type { RecoveredSteerPayload } from '../SteerRecovery';
 import type { MCPRuntimeRequestBody } from '~/mcp/types';
 import type { GenerationJobMetadata } from '~/types';
-import type {
-  NativeMissionEffectIdentity,
-  NativeMissionEffectCommit,
-  NativeMissionEffectOutcome,
-} from '~/stream/nativeMissionEffectReceipts';
 
 /**
  * Detached Event Actor execution guarantee advertised by a generation store.

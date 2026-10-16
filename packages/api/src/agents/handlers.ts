@@ -87,11 +87,11 @@ import {
 } from './intent';
 import { buildSkillPrimeMessage, isSkillFilePath, SKILL_FILE_PREFIX } from './skills';
 import { resolveCallerCapabilityProjectionSnapshot } from './callerCapabilities';
+import { guardPtcToolMap, instrumentPtcToolMap } from './ptc';
 import { createSkillContentDigest } from './compatibility';
 import { parseFrontmatter } from '../skills/import';
 import { cleanCodeToolOutput } from './cleanup';
 import { primeSkillFiles } from './skillFiles';
-import { instrumentPtcToolMap } from './ptc';
 import { markSandboxReady } from './prewarm';
 
 export interface ToolEndCallbackData {
@@ -253,6 +253,20 @@ export interface ToolExecuteOptions {
    * instrumentation.
    */
   emitPtcProgress?: (event: PtcToolCallEvent) => void;
+  /** Trusted execution seam for PTC inner calls, independent of SSE tracing.
+   * Must be supplied by a host with durable operation identity, current
+   * authorization, atomic receipt fencing and private result persistence.
+   * This optional injection is NOT itself a recovery guarantee.
+   */
+  guardPtcEffect?: (call: {
+    parentToolCallId: string;
+    name: string;
+    sequence: number;
+    input: unknown;
+    config: unknown;
+    invoke: () => Promise<unknown>;
+  }) => Promise<unknown>;
+
   /**
    * Loads a skill by name with ACL constraint (returns full body for injection).
    *
@@ -4491,6 +4505,7 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
     backgroundToolCompletion,
     emitAttachment,
     emitPtcProgress,
+    guardPtcEffect,
     subagentTasks,
   } = options;
 
@@ -5959,9 +5974,20 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                          * must not put their values on the wire. */
                         const ptcReq = mergedConfigurable?.req as ServerRequest | undefined;
                         const ptcArgumentPii = ptcReq?.config?.filters?.toolArguments?.pii;
+                        // Apply the execution guard BEFORE optional telemetry so
+                        // excluded or untraced tools cannot bypass the guard.
+                        const guardedPtcToolMap = guardPtcEffect
+                          ? guardPtcToolMap(eligiblePtcToolMap, (call) =>
+                              guardPtcEffect({ parentToolCallId: tc.id, ...call }),
+                            )
+                          : effectAuthorityRequired
+                            ? guardPtcToolMap(eligiblePtcToolMap, async () => {
+                                throw new Error('NATIVE_MISSION_EFFECT_GUARD_REQUIRED');
+                              })
+                            : eligiblePtcToolMap;
                         toolCallConfig.toolMap = emitPtcProgress
                           ? instrumentPtcToolMap({
-                              toolMap: eligiblePtcToolMap,
+                              toolMap: guardedPtcToolMap,
                               toolCallId: tc.id,
                               runId: (metadata as Record<string, unknown>)?.run_id as
                                 | string
@@ -5977,7 +6003,7 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                               ),
                               emit: emitPtcProgress,
                             })
-                          : eligiblePtcToolMap;
+                          : guardedPtcToolMap;
                       }
                     }
 

@@ -106,6 +106,52 @@ export interface InstrumentPtcToolMapParams {
   emit: (event: PtcToolCallEvent) => void;
 }
 
+/** Independently enforce a trusted per-invocation effect policy for PTC calls.
+ * This is separate from optional progress telemetry and is never bypassed when
+ * the telemetry stream is disabled or a tool name is excluded from tracing.
+ * The caller must provide a durable, authorized policy; this helper alone is
+ * not proof that native mission replay is safe. The sequence counter is only
+ * an invocation-local discriminator and MUST NOT be used as the durable
+ * operation identity after a crash or graph reconstruction.
+ */
+export function guardPtcToolMap(
+  toolMap: Map<string, StructuredToolInterface>,
+  execute: (params: {
+    name: string;
+    sequence: number;
+    input: unknown;
+    config: unknown;
+    invoke: () => Promise<unknown>;
+  }) => Promise<unknown>,
+): Map<string, StructuredToolInterface> {
+  let sequence = 0;
+  return new Map(
+    [...toolMap].map(([name, tool]) => [
+      name,
+      new Proxy(tool, {
+        get(target, property) {
+          if (property !== 'invoke') return Reflect.get(target, property, target);
+          return (input: unknown, config?: unknown): Promise<unknown> => {
+            const currentSequence = sequence++;
+            return execute({
+              name,
+              sequence: currentSequence,
+              input,
+              config,
+              invoke: () =>
+                (target.invoke as (value: unknown, cfg?: unknown) => Promise<unknown>).call(
+                  target,
+                  input,
+                  config,
+                ),
+            });
+          };
+        },
+      }) as StructuredToolInterface,
+    ]),
+  );
+}
+
 /**
  * Wraps every tool the PTC sandbox can reach so each inner invocation reports
  * its lifecycle on the live stream. The runner (`executeTools` in

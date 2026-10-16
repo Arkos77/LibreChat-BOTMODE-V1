@@ -1225,6 +1225,68 @@ describe('createToolExecuteHandler', () => {
       expect(capturedConfigs[0].toolMap).toEqual(new Map());
     });
 
+    it('fails closed when a PTC effect needs authority but no durable guard is injected', async () => {
+      const capturedConfigs: Record<string, unknown>[] = [];
+      const ptcTool = createMockTool(Constants.PROGRAMMATIC_TOOL_CALLING, capturedConfigs);
+      const actual = jest.fn(async () => ({ content: 'unsafe' }));
+      const loadTools: ToolExecuteOptions['loadTools'] = jest.fn(async () => ({
+        loadedTools: [ptcTool] as never[],
+        configurable: {
+          effectAuthorityRequired: true,
+          toolRegistry: new Map([
+            ['write_tool', { name: 'write_tool', allowed_callers: ['code_execution'] }],
+          ]),
+          ptcToolMap: new Map([['write_tool', { name: 'write_tool', invoke: actual }]]),
+        },
+      }));
+      const handler = createToolExecuteHandler({ loadTools });
+      await invokeHandler(handler, [{
+        id: 'protected_parent', name: Constants.PROGRAMMATIC_TOOL_CALLING,
+        args: { code: 'write_tool "{}"' },
+      }]);
+      const injected = capturedConfigs[0].toolMap as Map<string, {
+        invoke: (input: unknown) => Promise<unknown>;
+      }>;
+      await expect(injected.get('write_tool')?.invoke({ value: 'x' }))
+        .rejects.toThrow('NATIVE_MISSION_EFFECT_GUARD_REQUIRED');
+      expect(actual).not.toHaveBeenCalled();
+    });
+
+    it('enforces the injected PTC effect guard without SSE telemetry', async () => {
+      const capturedConfigs: Record<string, unknown>[] = [];
+      const ptcTool = createMockTool(Constants.PROGRAMMATIC_TOOL_CALLING, capturedConfigs);
+      const actual = jest.fn(async () => ({ content: 'executed' }));
+      const ptcToolMap = new Map([
+        ['write_tool', { name: 'write_tool', invoke: actual }],
+      ]);
+      const loadTools: ToolExecuteOptions['loadTools'] = jest.fn(async () => ({
+        loadedTools: [ptcTool] as never[],
+        configurable: {
+          toolRegistry: new Map([
+            ['write_tool', { name: 'write_tool', allowed_callers: ['code_execution'] }],
+          ]),
+          ptcToolMap,
+        },
+      }));
+      const guardPtcEffect = jest.fn(async () => {
+        throw new Error('DURABLE_EFFECT_DENIED');
+      });
+      const handler = createToolExecuteHandler({ loadTools, guardPtcEffect });
+      await invokeHandler(handler, [{
+        id: 'parent_ptc', name: Constants.PROGRAMMATIC_TOOL_CALLING,
+        args: { code: 'write_tool "{}"' },
+      }]);
+      const injected = capturedConfigs[0].toolMap as Map<string, {
+        invoke: (input: unknown) => Promise<unknown>;
+      }>;
+      await expect(injected.get('write_tool')?.invoke({ value: 'x' }))
+        .rejects.toThrow('DURABLE_EFFECT_DENIED');
+      expect(guardPtcEffect).toHaveBeenCalledWith(expect.objectContaining({
+        parentToolCallId: 'parent_ptc', name: 'write_tool', sequence: 0,
+      }));
+      expect(actual).not.toHaveBeenCalled();
+    });
+
     it('instruments the PTC tool map so inner calls report progress', async () => {
       const capturedConfigs: Record<string, unknown>[] = [];
       const ptcTool = createMockTool(Constants.PROGRAMMATIC_TOOL_CALLING, capturedConfigs);
