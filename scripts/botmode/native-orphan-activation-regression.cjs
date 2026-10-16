@@ -41,16 +41,17 @@ const claim = {
   ownerToken: 'mission-valid-owner-1234',
 };
 const snapshot = {
-  config: { configurable: { checkpoint_id: 'head-123' } },
+  config: { configurable: { checkpoint_id: 'head-123', thread_id: claim.streamId } },
   next: ['worker'],
   tasks: [{ name: 'worker', interrupts: [] }],
 };
 
 async function runCase({ mutateSnapshot, invalidJob, denyPolicy, activated = true,
   swapStore = false, shutdown = false, denyReplay = false,
-  omitReplayGate = false } = {}) {
+  omitReplayGate = false, switchPlan = false, invalidPlan = false } = {}) {
   const calls = { auth: 0, replay: 0, promote: 0, release: 0 };
   const manager = new Harness();
+  let planReads = 0;
   manager._isRedis = true;
   manager.shuttingDown = shutdown;
   const store = {
@@ -67,15 +68,24 @@ async function runCase({ mutateSnapshot, invalidJob, denyPolicy, activated = tru
       assert.equal(owner, claim.ownerToken);
       return true;
     },
-    getJob: async () => ({
-      createdAt: claim.createdAt,
-      status: invalidJob ? 'complete' : 'running',
-      checkpointNamespace: claim.checkpointNamespace,
-      orchestratorPlan: { tasks: [] },
-      providerDrained: false,
-      providerExecutionId: 'original-provider',
-      providerExecutionStartedId: 'original-provider',
-    }),
+    getJob: async () => {
+      planReads++;
+      return {
+        createdAt: claim.createdAt,
+        status: invalidJob ? 'complete' : 'running',
+        checkpointNamespace: claim.checkpointNamespace,
+        orchestratorPlan: {
+          tasks: invalidPlan
+            ? [{ nodeId: '', agentId: 'agent-A' }]
+            : switchPlan && planReads > 1
+              ? [{ nodeId: 'specialist', agentId: 'agent-B' }]
+              : [{ nodeId: 'worker', agentId: 'agent-A' }],
+        },
+        providerDrained: false,
+        providerExecutionId: 'original-provider',
+        providerExecutionStartedId: 'original-provider',
+      };
+    },
   };
   manager.jobStore = store;
   const authorize = async () => {
@@ -107,17 +117,26 @@ async function runCase({ mutateSnapshot, invalidJob, denyPolicy, activated = tru
     { ...snapshot, next: [] },
     { ...snapshot, config: { configurable: { checkpoint_id: 'other' } } },
     { ...snapshot, tasks: [{ name: 'worker', interrupts: [{ id: 'human' }] }] },
+    { ...snapshot, config: { configurable: { checkpoint_id: 'head-123', thread_id: 'foreign-user-thread' } } },
+    { ...snapshot, next: ['unknown-agent'], tasks: [{ name: 'unknown-agent', interrupts: [] }] },
   ]) {
     const bad = await runCase({ mutateSnapshot: invalidSnapshot });
     assert.equal(bad.result, null);
     assert.deepEqual(bad.calls, { auth: 0, replay: 0, promote: 0, release: 1 });
   }
   for (const opts of [
-    { invalidJob: true }, { activated: false }, { swapStore: true },
+    { invalidJob: true }, { invalidPlan: true },
+    { activated: false }, { swapStore: true }, { switchPlan: true },
   ]) {
     const bad = await runCase(opts);
     assert.equal(bad.result, null);
-    assert.deepEqual(bad.calls, { auth: 1, replay: 1, promote: opts.activated === false ? 1 : 0, release: 1 });
+    const earlyDenied = opts.invalidJob === true || opts.invalidPlan === true;
+    assert.deepEqual(bad.calls, {
+      auth: earlyDenied ? 0 : 1,
+      replay: earlyDenied ? 0 : 1,
+      promote: opts.activated === false ? 1 : 0,
+      release: 1,
+    });
   }
   const denied = await runCase({ denyPolicy: true });
   assert.match(denied.error?.message ?? '', /authorization denied/);

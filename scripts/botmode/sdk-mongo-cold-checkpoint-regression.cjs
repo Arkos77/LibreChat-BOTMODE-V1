@@ -56,9 +56,19 @@ async function main() {
     assert.deepEqual(state.next, seeding ? ['worker'] : []);
     assert.ok((await checkpointer.getTuple(config))?.checkpoint?.id);
     const durableId = (await checkpointer.getTuple(config))?.checkpoint?.id;
-    const qualified = qualifyNativeMissionRecoverySnapshot(state, durableId);
+    const scope = {
+      threadId: config.configurable.thread_id,
+      allowedPendingNodes: ['worker'],
+    };
+    const qualified = qualifyNativeMissionRecoverySnapshot(state, durableId, scope);
     if (seeding) {
       assert.deepEqual(Array.from(qualified?.pendingNodes ?? []), ['worker']);
+      assert.equal(qualifyNativeMissionRecoverySnapshot(
+        state, durableId, { ...scope, threadId: 'foreign-user-conversation' },
+      ), null);
+      assert.equal(qualifyNativeMissionRecoverySnapshot(
+        state, durableId, { ...scope, allowedPendingNodes: ['foreign-agent'] },
+      ), null);
       assert.equal(qualifyNativeMissionRecoverySnapshot(state, 'another-generation-id'), null);
     } else {
       assert.equal(qualified, null, 'completed graph is not recoverable');

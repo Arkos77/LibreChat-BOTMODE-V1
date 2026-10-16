@@ -1093,7 +1093,33 @@ class GenerationJobManagerClass {
 
     let activated = false;
     try {
-      const qualified = qualifyNativeMissionRecoverySnapshot(snapshot, claim.checkpointId);
+      // Match the recovered SDK head to the exact durable task plan and
+      // conversation before consulting replay receipts or rotating Redis
+      // ownership. Neither a matching checkpoint ID nor a live claim is
+      // sufficient proof of the graph's identity.
+      const initialJob = await store.getJob(claim.streamId);
+      const tasks = initialJob?.orchestratorPlan?.tasks;
+      if (
+        initialJob?.createdAt !== claim.createdAt ||
+        initialJob.status !== 'running' ||
+        initialJob.checkpointNamespace !== claim.checkpointNamespace ||
+        !Array.isArray(tasks) ||
+        tasks.length === 0 ||
+        tasks.some(
+          (task) =>
+            typeof task.nodeId !== 'string' ||
+            task.nodeId.length === 0 ||
+            typeof task.agentId !== 'string' ||
+            task.agentId.length === 0,
+        )
+      ) {
+        return null;
+      }
+      const planNodes = tasks.map((task) => task.nodeId);
+      const qualified = qualifyNativeMissionRecoverySnapshot(snapshot, claim.checkpointId, {
+        threadId: claim.streamId,
+        allowedPendingNodes: planNodes,
+      });
       if (qualified == null) return null;
       await assertCurrentAuthorization();
       // A pending graph node can be re-entered from its beginning after a
@@ -1111,6 +1137,7 @@ class GenerationJobManagerClass {
         job.status !== 'running' ||
         job.checkpointNamespace !== claim.checkpointNamespace ||
         job.orchestratorPlan == null ||
+        JSON.stringify(job.orchestratorPlan.tasks) !== JSON.stringify(tasks) ||
         job.providerDrained !== false ||
         !job.providerExecutionId ||
         job.providerExecutionStartedId !== job.providerExecutionId ||

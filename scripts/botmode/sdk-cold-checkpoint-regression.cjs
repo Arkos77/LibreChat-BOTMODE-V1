@@ -52,8 +52,18 @@ async function main() {
   assert.equal(interrupted.values.messages.length, 1);
   const checkpointId = interrupted.config?.configurable?.checkpoint_id;
   assert.equal(typeof checkpointId, 'string');
-  const admission = qualifyNativeMissionRecoverySnapshot(interrupted, checkpointId);
+  const scope = {
+    threadId: config.configurable.thread_id,
+    allowedPendingNodes: ['worker'],
+  };
+  const admission = qualifyNativeMissionRecoverySnapshot(interrupted, checkpointId, scope);
   assert.deepEqual(Array.from(admission?.pendingNodes ?? []), ['worker']);
+  assert.equal(qualifyNativeMissionRecoverySnapshot(
+    interrupted, checkpointId, { ...scope, threadId: 'other-conversation' },
+  ), null);
+  assert.equal(qualifyNativeMissionRecoverySnapshot(
+    interrupted, checkpointId, { ...scope, allowedPendingNodes: ['other-agent'] },
+  ), null);
   assert.equal(qualifyNativeMissionRecoverySnapshot(interrupted, 'wrong-generation'), null);
   assert.equal(qualifyNativeMissionRecoverySnapshot(
     { ...interrupted, tasks: [{ name: 'worker', interrupts: [{ id: 'human-decision' }] }] },

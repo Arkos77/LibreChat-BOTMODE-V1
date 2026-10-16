@@ -9,9 +9,16 @@ export interface NativeMissionPendingCheckpoint {
   pendingNodes: string[];
 }
 
+export interface NativeMissionRecoverySnapshotScope {
+  threadId: string;
+  /** Node identities derived from the current, durable orchestrator plan. */
+  allowedPendingNodes: readonly string[];
+}
+
 export function qualifyNativeMissionRecoverySnapshot(
   snapshot: unknown,
   expectedCheckpointId: string,
+  scope?: NativeMissionRecoverySnapshotScope,
 ): NativeMissionPendingCheckpoint | null {
   if (
     typeof expectedCheckpointId !== 'string' ||
@@ -28,6 +35,19 @@ export function qualifyNativeMissionRecoverySnapshot(
   if (configurable == null || typeof configurable !== 'object') return null;
   const checkpointId = (configurable as Record<string, unknown>).checkpoint_id;
   if (checkpointId !== expectedCheckpointId) return null;
+  if (scope != null) {
+    if (
+      typeof scope.threadId !== 'string' ||
+      scope.threadId.length === 0 ||
+      (configurable as Record<string, unknown>).thread_id !== scope.threadId ||
+      !Array.isArray(scope.allowedPendingNodes) ||
+      scope.allowedPendingNodes.length === 0 ||
+      scope.allowedPendingNodes.some((id) => typeof id !== 'string' || id.length === 0) ||
+      new Set(scope.allowedPendingNodes).size !== scope.allowedPendingNodes.length
+    ) {
+      return null;
+    }
+  }
 
   const next = state.next;
   const tasks = state.tasks;
@@ -53,5 +73,13 @@ export function qualifyNativeMissionRecoverySnapshot(
     runnableTasks.add(item.name);
   }
   if (!(pendingNodes as string[]).every((name) => runnableTasks.has(name))) return null;
+  // A reconstructed but different graph can have the same Mongo head ID.
+  // Only original planned task identities may be retried. Refuse internal,
+  // unknown, renamed or cross-plan nodes; a separate receipt gate still
+  // determines whether any of these original nodes can replay side effects.
+  if (scope != null) {
+    const allowed = new Set(scope.allowedPendingNodes);
+    if (!(pendingNodes as string[]).every((name) => allowed.has(name))) return null;
+  }
   return { checkpointId, pendingNodes: pendingNodes as string[] };
 }
