@@ -1080,6 +1080,22 @@ export interface IJobStoreV2 extends IJobStore {
     providerExecutionId: string,
   ): Promise<boolean>;
 
+  /** Optional Redis-only recovery capability; claims are inspection-only. */
+  claimDrainedMissionRecovery?(
+    streamId: string,
+    expectedCreatedAt: number,
+    staleBeforeMs: number,
+    ownerToken: string,
+    leaseMs: number,
+  ): Promise<boolean>;
+
+  /** Release a matching inspection claim without altering the live job. */
+  releaseDrainedMissionRecovery?(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+  ): Promise<boolean>;
+
   /** Includes terminal jobs whose provider still owns user-data writes. */
   getCleanupBlockingJobIdsByUser(userId: string, tenantId?: string): Promise<string[]>;
 

@@ -853,6 +853,90 @@ class GenerationJobManagerClass {
     return eligible;
   }
 
+  /**
+   * Claim a single already-checkpointed orphan for further inspection.
+   * Redis alone decides provider liveness and serializes competing claimants.
+   * This deliberately does not activate a new provider, execute a graph, or
+   * grant publication permission. A caller must still validate graph.next,
+   * current authorization, and the live lease before any continuation.
+   */
+  async claimCheckpointedOrphanForInspection(
+    streamId: string,
+    expectedCreatedAt: number,
+  ): Promise<
+    | {
+        streamId: string;
+        createdAt: number;
+        checkpointNamespace: string;
+        checkpointId: string;
+        ownerToken: string;
+      }
+    | null
+  > {
+    const store = this.jobStore;
+    if (
+      !this._isRedis ||
+      this.shuttingDown ||
+      !Number.isSafeInteger(expectedCreatedAt) ||
+      expectedCreatedAt <= 0 ||
+      !store.claimDrainedMissionRecovery ||
+      !store.releaseDrainedMissionRecovery
+    ) {
+      return null;
+    }
+    const candidates = await this.inspectCheckpointedOrphanedNativeMissions();
+    const candidate = candidates.find(
+      (item) => item.streamId === streamId && item.createdAt === expectedCreatedAt,
+    );
+    if (candidate == null) return null;
+
+    const ownerToken = 'mission-' + randomUUID();
+    // Staleness is assessed against the job's last activity time. Redis also
+    // independently verifies the original provider's server-time lease.
+    const staleBeforeMs = Date.now() - 60_000;
+    const claimed = await store.claimDrainedMissionRecovery(
+      streamId,
+      expectedCreatedAt,
+      staleBeforeMs,
+      ownerToken,
+      15_000,
+    );
+    if (!claimed) return null;
+    let retained = false;
+    try {
+      if (this.shuttingDown) return null;
+      const [checkpoint, job] = await Promise.all([
+        inspectDurableNativeMissionCheckpoint(streamId, candidate.checkpointNamespace),
+        store.getJob(streamId),
+      ]);
+      if (
+        this.shuttingDown ||
+        this.jobStore !== store ||
+        checkpoint?.checkpointId !== candidate.checkpointId ||
+        job?.createdAt !== expectedCreatedAt ||
+        job.status !== 'running' ||
+        job.checkpointNamespace !== candidate.checkpointNamespace ||
+        job.orchestratorPlan == null ||
+        job.providerDrained !== false ||
+        job.providerExecutionStartedId !== job.providerExecutionId
+      ) {
+        return null;
+      }
+      retained = true;
+      return { ...candidate, ownerToken };
+    } finally {
+      if (!retained) {
+        await store.releaseDrainedMissionRecovery(
+          streamId,
+          expectedCreatedAt,
+          ownerToken,
+        ).catch((error) => {
+          logger.warn('[GenerationJobManager] Failed to release orphan inspection claim', error);
+        });
+      }
+    }
+  }
+
   /** A missed heartbeat only removes eligibility for automatic takeover after
    * the Redis-server deadline; it never confers publication permission. */
   private async heartbeatOwnedMissionProviders(): Promise<void> {

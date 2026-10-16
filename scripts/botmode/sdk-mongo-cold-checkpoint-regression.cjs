@@ -39,6 +39,8 @@ async function main() {
     else await run.processStream(new Command({}), config);
     const state = await run.graphRunnable.getState(config);
     assert.deepEqual(state.next, phase === 'seed' ? ['worker'] : []);
+    assert.ok((await checkpointer.getTuple(config))?.checkpoint?.id);
+    assert.equal(state.tasks?.some((task) => task.interrupts?.length > 0), false);
     assert.equal(state.values.messages.length, phase === 'seed' ? 1 : 2);
     console.log('BOTMODE_MONGO_SDK_' + phase.toUpperCase() + '=PASS');
   } finally {
