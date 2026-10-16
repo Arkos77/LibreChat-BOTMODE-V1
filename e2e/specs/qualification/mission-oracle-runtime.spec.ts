@@ -492,6 +492,20 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       const jobKeys = await redis.keys('*stream:{' + streamId + '}:job');
       const namespace = await redis.hget(jobKeys[0], 'checkpointNamespace');
       expect(namespace).toBeTruthy();
+      // Distinguish an *early* SIGKILL (before LangGraph has committed any
+      // state) from a mid-graph SIGKILL that ought to be checkpoint-resumable.
+      // The other crash test continues to cover fail-closed early abortion.
+      await expect.poll(
+        async () => (await getPersistedCheckpointCounts(conversationId, namespace!)).generationRows,
+        {
+          timeout: 30_000,
+          intervals: [250, 500, 1000],
+          message: 'first real generation-scoped graph checkpoint before mid-flight SIGKILL',
+        },
+      ).toBeGreaterThan(0);
+      const durablePreKill = await loadDurableJob(redis, streamId);
+      expect(durablePreKill.status).toBe('running');
+      expect(Object.keys(durablePreKill.state?.results ?? {})).toHaveLength(0);
       console.log('PR28_PRE_SIGKILL_MONGO_CHECKPOINT_COUNTS=' +
         JSON.stringify(await getPersistedCheckpointCounts(conversationId, namespace!)));
 
