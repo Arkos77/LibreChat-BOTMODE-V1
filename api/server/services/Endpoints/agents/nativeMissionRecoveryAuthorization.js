@@ -1,7 +1,9 @@
 /**
  * Resolve current host authority for a cold native-mission continuation.
  *
- * Read-only, fail-closed. A durable job is provenance, not a login session or
+ * Read-only, fail-closed. The input MUST be raw Redis SerializableJobData
+ * (flat durable fields), NOT GenerationJobManager.getJob()'s runtime facade.
+ * A durable job is provenance, not a login session or
  * authorization. No synthetic req.user, access token, permission grant, Redis
  * claim, tool execution, or publication is created by this admission check.
  *
@@ -28,13 +30,12 @@ async function authorizeNativeMissionRecovery({ candidate, job, deps }) {
     typeof job.providerExecutionId !== 'string' ||
     job.providerExecutionId.length === 0 ||
     job.providerExecutionStartedId !== job.providerExecutionId ||
-    job.metadata?.pendingAction != null ||
-    job.metadata?.checkpointNamespace !== candidate.checkpointNamespace ||
-    job.metadata?.endpoint !== 'agents' ||
-    typeof job.metadata?.userId !== 'string' ||
-    !job.metadata.userId ||
-    typeof job.metadata?.agent_id !== 'string' ||
-    !job.metadata.agent_id ||
+    job.pendingAction != null ||
+    job.endpoint !== 'agents' ||
+    typeof job.userId !== 'string' ||
+    !job.userId ||
+    typeof job.agent_id !== 'string' ||
+    !job.agent_id ||
     !job.orchestratorPlan ||
     !Array.isArray(job.orchestratorPlan.tasks) ||
     job.orchestratorPlan.tasks.length === 0
@@ -52,13 +53,13 @@ async function authorizeNativeMissionRecovery({ candidate, job, deps }) {
     return null;
   }
 
-  const userId = job.metadata.userId;
+  const userId = job.userId;
   const [user, active] = await Promise.all([
     deps.getUserById(userId),
     deps.isOwnerAdmissible(userId),
   ]);
   if (!user || !active || String(user._id ?? user.id ?? '') !== userId) return null;
-  const tenantId = job.metadata.tenantId ?? undefined;
+  const tenantId = job.tenantId ?? undefined;
   if ((user.tenantId ?? undefined) !== tenantId) return null;
 
   // getConvo(userId, id) is owner-scoped; never look up this conversation as
@@ -67,14 +68,14 @@ async function authorizeNativeMissionRecovery({ candidate, job, deps }) {
   if (
     !convo ||
     convo.conversationId !== candidate.streamId ||
-    convo.agent_id !== job.metadata.agent_id ||
+    convo.agent_id !== job.agent_id ||
     (convo.tenantId ?? undefined) !== tenantId ||
     convo.subagentThread != null
   ) {
     return null;
   }
 
-  const agentIds = new Set([job.metadata.agent_id]);
+  const agentIds = new Set([job.agent_id]);
   for (const task of job.orchestratorPlan.tasks) {
     if (
       !task ||
@@ -102,7 +103,7 @@ async function authorizeNativeMissionRecovery({ candidate, job, deps }) {
     userId,
     tenantId,
     conversationId: candidate.streamId,
-    agentId: job.metadata.agent_id,
+    agentId: job.agent_id,
     checkpointNamespace: candidate.checkpointNamespace,
     checkpointId: candidate.checkpointId,
     agentIds: Object.freeze([...agentIds]),

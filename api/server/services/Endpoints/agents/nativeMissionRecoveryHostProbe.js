@@ -19,7 +19,9 @@ function createNativeMissionRecoveryHostProbe({
 }) {
   const observed = new Set();
   return async (candidate) => {
-    const job = await manager.getJob(candidate.streamId);
+    // Read raw Redis fields: the facade's runtime-scoped `metadata` shape
+    // is different, and getJob() would materialize a local abort/runtime.
+    const job = await manager.getJobStore().getJob(candidate.streamId);
     const admission = await authorizeNativeMissionRecovery({
       candidate,
       job,

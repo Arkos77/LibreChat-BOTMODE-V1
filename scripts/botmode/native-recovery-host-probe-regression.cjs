@@ -23,11 +23,8 @@ const job = {
   providerDrained: false,
   providerExecutionId: 'provider',
   providerExecutionStartedId: 'provider',
-  metadata: {
-    checkpointNamespace: candidate.checkpointNamespace,
-    userId, tenantId: 'tenant-1', endpoint: 'agents',
-    agent_id: 'agent-1',
-  },
+  userId, tenantId: 'tenant-1', endpoint: 'agents',
+  agent_id: 'agent-1', checkpointNamespace: candidate.checkpointNamespace,
   orchestratorPlan: { tasks: [
     { key: 'worker', agentId: 'agent-1' },
     { key: 'specialist', agentId: 'agent-2' },
@@ -58,7 +55,8 @@ vm.runInNewContext(
 );
 const { createNativeMissionRecoveryHostProbe } = probeModule.exports;
 const manager = {
-  async getJob() { return exists ? job : null; },
+  getJobStore() { return { getJob: async () => exists ? job : null }; },
+  async getJob() { throw Error('Facade must not be materialized by a read-only audit'); },
   async claimCheckpointedOrphanForInspection() { claimAttempts++; throw Error('unsafe claim'); },
   async activateCheckpointedOrphanAfterGraphQualification() { throw Error('unsafe activation'); },
 };

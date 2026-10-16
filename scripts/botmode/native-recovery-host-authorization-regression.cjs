@@ -19,10 +19,8 @@ const job = {
   providerDrained: false,
   providerExecutionId: 'provider-original',
   providerExecutionStartedId: 'provider-original',
-  metadata: {
-    userId: id, tenantId: 'tenant-1', endpoint: 'agents',
-    agent_id: worker, checkpointNamespace: candidate.checkpointNamespace,
-  },
+  userId: id, tenantId: 'tenant-1', endpoint: 'agents',
+  agent_id: worker, checkpointNamespace: candidate.checkpointNamespace,
   orchestratorPlan: {
     tasks: [
       { key: 'worker', agentId: worker },
@@ -83,14 +81,24 @@ async function trial(change, mutate = () => {}) {
 
   for (const [name, mutation] of [
     ['replacement generation', ({ candidate }) => { candidate.createdAt++; }],
+    ['runtime facade instead of raw durable job', ({ job }) => {
+      job.metadata = {
+        userId: job.userId, tenantId: job.tenantId,
+        agent_id: job.agent_id, checkpointNamespace: job.checkpointNamespace,
+        endpoint: job.endpoint,
+      };
+      delete job.userId;
+      delete job.agent_id;
+      delete job.endpoint;
+    }],
     ['checkpoint namespace swapped', ({ candidate }) => { candidate.checkpointNamespace = 'other'; }],
     ['provider drained', ({ job }) => { job.providerDrained = true; }],
     ['provider identity swapped', ({ job }) => { job.providerExecutionStartedId = 'older'; }],
-    ['wrong endpoint', ({ job }) => { job.metadata.endpoint = 'openAI'; }],
-    ['unknown owner', ({ job }) => { delete job.metadata.userId; }],
+    ['wrong endpoint', ({ job }) => { job.endpoint = 'openAI'; }],
+    ['unknown owner', ({ job }) => { delete job.userId; }],
     ['missing mission topology', ({ job }) => { job.orchestratorPlan.tasks = []; }],
     ['malformed task', ({ job }) => { job.orchestratorPlan.tasks[1].agentId = ''; }],
-    ['HITL in progress', ({ job }) => { job.metadata.pendingAction = { actionId: 'pending' }; }],
+    ['HITL in progress', ({ job }) => { job.pendingAction = { actionId: 'pending' }; }],
     ['inactive owner', ({ deps }) => { deps.isOwnerAdmissible = async () => false; }],
     ['deleted owner', ({ deps }) => { deps.getUserById = async () => null; }],
     ['identity substitution', ({ deps }) => { deps.getUserById = async () => ({ _id: 'attacker' }); }],
@@ -108,5 +116,5 @@ async function trial(change, mutate = () => {}) {
     const trialResult = await trial(false, mutation);
     assert.equal(trialResult.result, null, name);
   }
-  console.log('BOTMODE_HOST_RECOVERY_AUTHORIZATION=PASS (1 admitted; 22 denied)');
+  console.log('BOTMODE_HOST_RECOVERY_AUTHORIZATION=PASS (1 admitted; 23 denied)');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
