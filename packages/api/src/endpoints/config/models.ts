@@ -312,7 +312,7 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps): LoadConfigMo
 
     return modelsConfig;
   };
-  const fromContext = (context: {
+  const fromContext = async (context: {
     user: ServerRequest['user'];
     appConfig?: AppConfig;
   }): Promise<TModelsConfig> => {
