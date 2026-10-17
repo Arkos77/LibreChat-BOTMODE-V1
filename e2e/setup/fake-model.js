@@ -2535,10 +2535,26 @@ module.exports = function fakeModelHook(run, context) {
       }) ??
       resolveInvocation?.(streamMessages, streamOptions, runManager) ??
       null,
-    resolveOnStream: (streamMessages, streamOptions, runManager) =>
-      approvalOutcomeResponses(streamMessages) ??
-      resolveOnStream?.(streamMessages, streamOptions, runManager) ??
-      null,
+    resolveOnStream: (streamMessages, streamOptions, runManager) => {
+      // Cold LangGraph reconstruction intentionally passes `messages: []` to
+      // createRun: the real conversation is restored from the Mongo checkpoint
+      // only when the node invokes its model. The E2E fake provider must route
+      // on those ACTUAL invocation messages, not on empty hook-time history.
+      // Keep the same deterministic JSON marker and strictly require it in
+      // a restored human turn. Do not fabricate a successful Oracle response
+      // when the checkpoint lacks the original user prompt.
+      const restoredUserText = getLatestUserText(streamMessages);
+      const coldOracleResponse =
+        text === '' && restoredUserText.includes('E2E_MISSION_ORACLE_DELAYED_JSON:')
+          ? { responses: ['{"ok":true}'] }
+          : null;
+      return (
+        approvalOutcomeResponses(streamMessages) ??
+        resolveOnStream?.(streamMessages, streamOptions, runManager) ??
+        coldOracleResponse ??
+        null
+      );
+    },
     modelCallbacks: context?.modelCallbacks,
   });
 };
