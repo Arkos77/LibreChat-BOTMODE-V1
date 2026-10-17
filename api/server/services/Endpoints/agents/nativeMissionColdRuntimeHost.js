@@ -1,3 +1,4 @@
+const { createNativeMissionColdGraphBuilder } = require('./nativeMissionColdGraphBuilder');
 const { bindNativeMissionRecoveredClient } = require('./nativeMissionRecoveredClientBinding');
 
 /** Construct the coordinator's cold runtime solely from a host-initialized client.
@@ -12,16 +13,22 @@ function createNativeMissionColdRuntimeHost({
   initializeAuthorizedClient,
   normalizeOracleState,
   reconstructGraph,
+  createRun,
   replaySafety,
   effectFences,
   oracle,
   publication,
 }) {
+  const buildGraph =
+    reconstructGraph ??
+    (typeof createRun === 'function'
+      ? createNativeMissionColdGraphBuilder({ createRun })
+      : undefined);
   if (
     [
       initializeAuthorizedClient,
       normalizeOracleState,
-      reconstructGraph,
+      buildGraph,
       replaySafety,
       effectFences,
       oracle,
@@ -60,7 +67,7 @@ function createNativeMissionColdRuntimeHost({
       normalizeOracleState,
     });
     await assertAuthorized();
-    const graph = await reconstructGraph({ client, candidate, claim, assertAuthorized });
+    const graph = await buildGraph({ client, candidate, claim, assertAuthorized });
     if (!graph || typeof graph.invoke !== 'function' || typeof graph.getState !== 'function') {
       throw new Error('NATIVE_COLD_RUNTIME_HOST_GRAPH_UNAVAILABLE');
     }

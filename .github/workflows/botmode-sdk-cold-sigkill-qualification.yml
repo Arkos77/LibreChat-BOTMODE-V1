@@ -25,6 +25,8 @@ on:
       - 'scripts/botmode/native-recovered-client-binding-regression.cjs'
       - 'api/server/services/Endpoints/agents/nativeMissionColdRuntimeHost.js'
       - 'scripts/botmode/native-cold-runtime-host-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionColdGraphBuilder.js'
+      - 'scripts/botmode/native-cold-graph-builder-regression.cjs'
       - 'scripts/botmode/native-recovery-coordinator-regression.cjs'
       - 'scripts/botmode/native-mission-claim-probe-regression.cjs'
       - 'scripts/botmode/redis-late-native-plan-lease-regression.cjs'
@@ -93,6 +95,8 @@ jobs:
         run: node scripts/botmode/native-recovered-client-binding-regression.cjs
       - name: Verify cold runtime authorized reconstruction contract
         run: node scripts/botmode/native-cold-runtime-host-regression.cjs
+      - name: Verify SDK cold graph creation requires authenticated host execution context
+        run: node scripts/botmode/native-cold-graph-builder-regression.cjs
       - name: Verify host recovery coordinator rejects unsafe handoffs
         run: node scripts/botmode/native-recovery-coordinator-regression.cjs
       - name: Verify host read-only audit never claims or executes
