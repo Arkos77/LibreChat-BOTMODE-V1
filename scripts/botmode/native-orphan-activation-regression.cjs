@@ -165,6 +165,13 @@ async function runCase({ mutateSnapshot, invalidJob, denyPolicy, activated = tru
   assert.equal(released, 3);
   assert.equal(invoked, 0);
   probe.jobStore = stableStore;
+  // Missing mandatory callbacks must never strand an already acquired claim.
+  const missingGate = await probe.qualifyReconstructedGraphAndActivateClaim(
+    claim, graph, async () => {}, undefined,
+  );
+  assert.equal(missingGate, null);
+  assert.equal(released, 4);
+  assert.equal(invoked, 0);
   console.log('BOTMODE_ORPHAN_REAL_SDK_SNAPSHOT_BRIDGE=PASS');
 
   const ok = await runCase();

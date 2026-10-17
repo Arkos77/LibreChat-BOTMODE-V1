@@ -1090,14 +1090,19 @@ class GenerationJobManagerClass {
       !claim.streamId ||
       typeof claim.ownerToken !== 'string' ||
       !claim.ownerToken ||
-      typeof store.releaseDrainedMissionRecovery !== 'function' ||
-      typeof assertCurrentAuthorization !== 'function' ||
-      typeof assertReplaySafeForPendingNodes !== 'function'
+      typeof store.releaseDrainedMissionRecovery !== 'function'
     ) {
       return null;
     }
     let delegated = false;
     try {
+      // A claim may already be held when a required replay/authority gate is
+      // missing. Refuse it while still releasing its exact owner token.
+      if (
+        typeof assertCurrentAuthorization !== 'function' ||
+        typeof assertReplaySafeForPendingNodes !== 'function'
+      )
+        return null;
       const job = await store.getJob(claim.streamId);
       const plannedNodes = job?.orchestratorPlan?.tasks?.map((task) => task.nodeId);
       const snapshot = await readQualifiedReconstructedNativeMissionSnapshot(
