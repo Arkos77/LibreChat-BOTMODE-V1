@@ -215,18 +215,20 @@ async function initializeReferencedAgent(
     return null;
   }
 
-  const validation =
-    params.req && params.res
-      ? await (deps.validateAgentModel ?? defaultValidateAgentModel)({
-          req: params.req,
-          res: params.res,
-          agent,
-          modelsConfig: params.modelsConfig,
-          logViolation: deps.logViolation,
-        })
-      : params.runtime?.user
-        ? validateAgentModelWithoutTransport({ agent, modelsConfig: params.modelsConfig })
-        : { isValid: false, error: { message: 'Missing authenticated agent runtime' } };
+  let validation;
+  if (params.req && params.res) {
+    validation = await (deps.validateAgentModel ?? defaultValidateAgentModel)({
+      req: params.req,
+      res: params.res,
+      agent,
+      modelsConfig: params.modelsConfig,
+      logViolation: deps.logViolation,
+    });
+  } else if (params.runtime?.user) {
+    validation = validateAgentModelWithoutTransport({ agent, modelsConfig: params.modelsConfig });
+  } else {
+    validation = { isValid: false, error: { message: 'Missing authenticated agent runtime' } };
+  }
   if (!validation.isValid) {
     throw new Error(validation.error?.message);
   }
