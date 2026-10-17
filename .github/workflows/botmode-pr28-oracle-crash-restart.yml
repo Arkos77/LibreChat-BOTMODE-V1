@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/workflows/botmode-pr28-oracle-crash-restart.yml'
       - 'e2e/setup/start-server-restartable.js'
+      - 'e2e/setup/fake-model.js'
+      - 'scripts/botmode/cold-oracle-mock-routing-regression.cjs'
       - 'e2e/playwright.config.oracle-restart.ts'
       - 'e2e/specs/qualification/mission-oracle-runtime.spec.ts'
       - 'api/server/index.js'
@@ -68,6 +70,8 @@ jobs:
           node-version: '24.16.0'
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - name: Verify cold mock provider uses the checkpoint-restored invocation
+        run: node scripts/botmode/cold-oracle-mock-routing-regression.cjs
       - name: Build unchanged runtime
         run: |
           npm run build:data-provider
