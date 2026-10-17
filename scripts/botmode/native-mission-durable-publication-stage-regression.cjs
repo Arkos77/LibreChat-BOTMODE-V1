@@ -14,9 +14,18 @@ const {
   const candidate = {
     content: [{ type: 'text', text: 'approved' }],
     attachments: [],
-    oracle: { status: 'accepted' },
+    oracle: {
+      evidence: {},
+      results: { task: { taskId: 'task', nodeId: 'worker', verdicts: [{ status: 'VERIFIED' }] } },
+    },
   };
-  let job;
+  let job = {
+    createdAt: identity.createdAt,
+    checkpointNamespace: identity.checkpointNamespace,
+    status: 'running',
+    providerExecutionId: identity.providerExecutionId,
+    orchestratorPlan: { tasks: [{ key: 'task', nodeId: 'worker' }] },
+  };
   const store = {
     updateRecoveredMissionEvidence: async (...args) => {
       assert.deepEqual(args.slice(0, 4), [
@@ -31,6 +40,7 @@ const {
         checkpointNamespace: identity.checkpointNamespace,
         status: 'running',
         providerExecutionId: identity.providerExecutionId,
+        orchestratorPlan: { tasks: [{ key: 'task', nodeId: 'worker' }] },
       };
       return true;
     },
@@ -51,7 +61,7 @@ const {
   );
   await assert.rejects(
     createNativeMissionDurablePublicationStage({
-      store: { ...store, getJob: async () => ({ ...job, createdAt: identity.createdAt + 1 }) },
+      store: { ...store, getJob: async () => ({ ...job, missionCandidateContent: [] }) },
       identity,
       getCandidate: async () => candidate,
     })(),
@@ -64,6 +74,22 @@ const {
       getCandidate: async () => ({ content: [] }),
     })(),
     /UNAVAILABLE/,
+  );
+  await assert.rejects(
+    createNativeMissionDurablePublicationStage({
+      store,
+      identity,
+      getCandidate: async () => ({
+        ...candidate,
+        oracle: {
+          evidence: {},
+          results: {
+            task: { taskId: 'task', nodeId: 'worker', verdicts: [{ status: 'REJECTED' }] },
+          },
+        },
+      }),
+    })(),
+    /ORACLE_UNVERIFIED/,
   );
   console.log('BOTMODE_DURABLE_PUBLICATION_STAGING_OWNER_AND_READBACK=PASS');
 })().catch((e) => {

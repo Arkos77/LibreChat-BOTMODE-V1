@@ -29,6 +29,33 @@ function createNativeMissionDurablePublicationStage({ store, identity, getCandid
     ) {
       throw new Error('NATIVE_RECOVERY_PUBLICATION_CANDIDATE_UNAVAILABLE');
     }
+    // A generic object is not an Oracle verdict. Every planned task must
+    // have durable VERIFIED verdicts before staging a publishable candidate.
+    const before = await store.getJob(identity.streamId);
+    const tasks = before?.orchestratorPlan?.tasks;
+    const results = candidate.oracle.results;
+    if (
+      before?.createdAt !== identity.createdAt ||
+      before?.status !== 'running' ||
+      before?.checkpointNamespace !== identity.checkpointNamespace ||
+      !Array.isArray(tasks) ||
+      tasks.length === 0 ||
+      !results ||
+      typeof results !== 'object' ||
+      Array.isArray(results) ||
+      tasks.some(
+        (task) =>
+          !task ||
+          typeof task.key !== 'string' ||
+          !Array.isArray(results[task.key]?.verdicts) ||
+          results[task.key].verdicts.length === 0 ||
+          results[task.key].taskId !== task.key ||
+          results[task.key].nodeId !== task.nodeId ||
+          results[task.key].verdicts.some((verdict) => verdict?.status !== 'VERIFIED'),
+      )
+    ) {
+      throw new Error('NATIVE_RECOVERY_PUBLICATION_ORACLE_UNVERIFIED');
+    }
     const updates = {
       missionCandidateContent: candidate.content,
       missionCandidateAttachments: candidate.attachments,

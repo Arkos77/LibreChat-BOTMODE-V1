@@ -23,7 +23,7 @@ const {
   } = {}) {
     const calls = [];
     let attempts = 0;
-    let persistedEvidence = {};
+    let persistedEvidence = { providerExecutionId: 'recovered-provider' };
     const store = {
       updateRecoveredMissionEvidence: async (id, createdAt, owner, provider, updates) => {
         assert.equal(id, candidate.streamId);
@@ -79,7 +79,16 @@ const {
           getPublicationCandidate: async () => ({
             content: [],
             attachments: [],
-            oracle: { verdict: 'accept' },
+            oracle: {
+              evidence: {},
+              results: {
+                'task-worker': {
+                  taskId: 'task-worker',
+                  nodeId: 'worker',
+                  verdicts: [{ status: 'VERIFIED' }],
+                },
+              },
+            },
           }),
           publishTerminal: async () => {},
         };
