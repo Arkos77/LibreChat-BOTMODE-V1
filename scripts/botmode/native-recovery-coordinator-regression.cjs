@@ -22,7 +22,12 @@ const {
     const calls = [];
     let attempts = 0;
     const store = {
-      getJob: async () => ({ status: 'running' }),
+      getJob: async () => ({
+        status: 'running',
+        createdAt: candidate.createdAt,
+        checkpointNamespace: candidate.checkpointNamespace,
+        orchestratorPlan: { tasks: [{ nodeId: 'worker', agentId: 'worker' }] },
+      }),
       releaseDrainedMissionRecovery: async (id, at, token) => {
         assert.equal(id, candidate.streamId);
         assert.equal(at, candidate.createdAt);
@@ -54,14 +59,20 @@ const {
             calls.push('fences');
             if (missingFence) throw Error('no fences');
           },
-          continueGraph: async () => {},
           verifyOracle: async () => {},
           publishTerminal: async () => {},
         };
       },
+      continueColdGraph: async (options) => {
+        assert.equal(options.expectedCheckpointId, claim.checkpointId);
+        assert.equal(options.streamId, claim.streamId);
+        assert.deepEqual(options.plannedNodeIds, ['worker']);
+        calls.push('continuation');
+      },
       execute: async (args) => {
         calls.push('execute');
         assert.equal(args.claim.ownerToken, claim.ownerToken);
+        await args.continueGraph(new AbortController().signal);
         return uncertainExecution ? undefined : !refusesExecution;
       },
       log: { warn: () => {} },
@@ -84,6 +95,7 @@ const {
     'fences',
     'auth',
     'execute',
+    'continuation',
   ]);
   for (const options of [
     { badClaim: true },

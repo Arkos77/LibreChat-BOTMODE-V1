@@ -10,6 +10,7 @@ function createNativeMissionRecoveryCoordinator({
   authorizeCandidate,
   reconstruct,
   execute,
+  continueColdGraph,
   log,
 }) {
   if (
@@ -19,6 +20,7 @@ function createNativeMissionRecoveryCoordinator({
     typeof authorizeCandidate !== 'function' ||
     typeof reconstruct !== 'function' ||
     typeof execute !== 'function' ||
+    typeof continueColdGraph !== 'function' ||
     typeof log?.warn !== 'function'
   ) {
     throw new Error('Native recovery coordinator missing secure host dependencies');
@@ -63,13 +65,23 @@ function createNativeMissionRecoveryCoordinator({
         !runtime ||
         typeof runtime.assertReplaySafe !== 'function' ||
         typeof runtime.assertEffectFencesReady !== 'function' ||
-        typeof runtime.continueGraph !== 'function' ||
         typeof runtime.verifyOracle !== 'function' ||
         typeof runtime.publishTerminal !== 'function' ||
         !runtime.graph ||
         typeof runtime.graph.getState !== 'function'
       )
         return false;
+      const persistedJob = await store.getJob(candidate.streamId);
+      const plan = persistedJob?.orchestratorPlan?.tasks;
+      if (
+        persistedJob?.createdAt !== candidate.createdAt ||
+        persistedJob?.checkpointNamespace !== candidate.checkpointNamespace ||
+        !Array.isArray(plan) ||
+        plan.length === 0 ||
+        plan.some((task) => typeof task.nodeId !== 'string' || !task.nodeId)
+      )
+        return false;
+      const plannedNodeIds = plan.map((task) => task.nodeId);
       await runtime.assertEffectFencesReady();
       await authorize();
       // Only the supplied executor may hand the claim to the owner-fenced
@@ -84,7 +96,15 @@ function createNativeMissionRecoveryCoordinator({
         assertAuthorized: authorize,
         assertReplaySafeForPendingNodes: runtime.assertReplaySafe,
         assertEffectFencesReady: runtime.assertEffectFencesReady,
-        continueGraph: runtime.continueGraph,
+        continueGraph: (signal) =>
+          continueColdGraph({
+            graph: runtime.graph,
+            streamId: candidate.streamId,
+            checkpointNamespace: candidate.checkpointNamespace,
+            expectedCheckpointId: candidate.checkpointId,
+            plannedNodeIds,
+            signal,
+          }),
         verifyOracle: runtime.verifyOracle,
         publishTerminal: runtime.publishTerminal,
       });
