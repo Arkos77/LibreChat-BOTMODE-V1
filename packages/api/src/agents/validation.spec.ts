@@ -13,6 +13,7 @@ import {
   agentUpdateSchema,
   agentSubagentsSchema,
   validateAgentModel,
+  validateAgentModelWithoutTransport,
 } from './validation';
 
 describe('agentSubagentsSchema', () => {
@@ -350,6 +351,22 @@ describe('agentUpdateSchema with subagents', () => {
     expect(result.tool_resources).toEqual({
       execute_code: { file_ids: ['kept'] },
     });
+  });
+});
+
+describe('validateAgentModelWithoutTransport', () => {
+  it('accepts an allowed provider model without request and rejects unknown model', () => {
+    const valid = validateAgentModelWithoutTransport({
+      agent: { provider: Providers.VERTEXAI, model: 'gemini-3.7-flash' } as Agent,
+      modelsConfig: { [EModelEndpoint.google]: ['gemini-3.7-flash'] },
+    });
+    expect(valid).toEqual({ isValid: true });
+    const denied = validateAgentModelWithoutTransport({
+      agent: { provider: Providers.VERTEXAI, model: 'unlisted' } as Agent,
+      modelsConfig: { [EModelEndpoint.google]: ['gemini-3.7-flash'] },
+    });
+    expect(denied.isValid).toBe(false);
+    expect(denied.error?.message).toContain('illegal_model_request');
   });
 });
 

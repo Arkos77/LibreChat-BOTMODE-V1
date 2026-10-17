@@ -11,6 +11,7 @@ const {
   createConcurrencyLimiter,
   loadSkillStates,
   initializeAgent,
+  createRequestAgentExecutionContext,
   primeInvokedSkillsForProfiles,
   validateAgentModel,
   extractManualSkills,
@@ -773,6 +774,11 @@ const initializeClient = async ({
     throw error;
   }
 
+  // Resolve AFTER the owner-scoped conversation read and project gate. A
+  // partially resolved continuation must not enter agent/tool initialization
+  // with the stale pre-authorization conversation snapshot.
+  const agentRuntime = createRequestAgentExecutionContext(req, runtimeRequestBody);
+
   delete endpointOption.agent;
 
   const agentConfigs = new Map();
@@ -854,8 +860,7 @@ const initializeClient = async ({
     : primaryAgent;
   let primaryConfig = await initializeAgent(
     {
-      req,
-      res,
+      runtime: agentRuntime,
       loadTools,
       requestFiles,
       conversationId,
@@ -926,8 +931,7 @@ const initializeClient = async ({
     initialize: (agent) =>
       initializeAgent(
         {
-          req,
-          res,
+          runtime: agentRuntime,
           loadTools,
           requestFiles,
           conversationId,
@@ -1013,6 +1017,7 @@ const initializeClient = async ({
     skippedAgentIds: discoveredSkippedIds,
   } = await discoverConnectedAgents(
     {
+      runtime: agentRuntime,
       req,
       res,
       primaryConfig,
@@ -1477,8 +1482,7 @@ const initializeClient = async ({
     const config = await waitForAbort(
       initializeAgent(
         {
-          req,
-          res,
+          runtime: agentRuntime,
           agent,
           loadTools: createToolLoader(req, res, context.signal, streamId, true, jobCreatedAt),
           requestFiles,

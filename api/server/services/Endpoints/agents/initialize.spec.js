@@ -296,6 +296,31 @@ describe('initializeClient — processAgent ACL gate', () => {
     expect(mockInitializeAgent).toHaveBeenCalled();
   });
 
+  it('uses one transport-free SDK agent context from primary initialization', async () => {
+    mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+    const req = makeReq();
+    const result = await initializeClient({
+      req,
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption: makeEndpointOption(),
+    });
+    expect(result.client).toBeDefined();
+    const initialized = mockInitializeAgent.mock.calls[0][0];
+    expect(initialized).not.toHaveProperty('req');
+    expect(initialized).not.toHaveProperty('res');
+    expect(initialized.runtime).toEqual(
+      expect.objectContaining({
+        user: req.user,
+        appConfig: req.config,
+        requestBody: req.body,
+        turnStartedAt: req.turnStartedAt,
+        resolvedConversation: null,
+      }),
+    );
+    expect(Number.isSafeInteger(req.turnStartedAt)).toBe(true);
+  });
+
   it('fails closed when a partial continuation cannot resolve its conversation', async () => {
     const req = makeReq();
     req.resolvedConversation = {
@@ -347,6 +372,9 @@ describe('initializeClient — processAgent ACL gate', () => {
     expect(getConvoSpy).toHaveBeenCalledWith(testUser._id.toString(), 'conv_1');
     expect(req.resolvedConversation).toBe(fullConversation);
     expect(mockInitializeAgent).toHaveBeenCalled();
+    expect(mockInitializeAgent.mock.calls[0][0].runtime.resolvedConversation).toBe(
+      fullConversation,
+    );
   });
 
   it('returns an isolated dormant transient evidence buffer for the request', async () => {

@@ -908,38 +908,27 @@ interface ValidateAgentModelResult {
   };
 }
 
-/**
- * Validates an agent's model against the available models configuration.
- * This is a non-middleware version of validateModel that can be used
- * in service initialization flows.
- *
- * @param params - Validation parameters
- * @returns Object indicating whether the model is valid and any error details
+/** Pure catalog admission used when a trusted background host has no HTTP
+ * request/response transport. Unknown or unavailable models remain denied;
+ * this function intentionally performs no external request or provider call.
  */
-export async function validateAgentModel(
-  params: ValidateAgentModelParams,
-): Promise<ValidateAgentModelResult> {
-  const { req, res, agent, modelsConfig, logViolation } = params;
+export function validateAgentModelWithoutTransport({
+  agent,
+  modelsConfig,
+}: Pick<ValidateAgentModelParams, 'agent' | 'modelsConfig'>): ValidateAgentModelResult {
   const { model, provider: endpoint } = agent;
-
   if (!model) {
     return {
       isValid: false,
-      error: {
-        message: `{ "type": "${ErrorTypes.MISSING_MODEL}", "info": "${endpoint}" }`,
-      },
+      error: { message: `{ "type": "${ErrorTypes.MISSING_MODEL}", "info": "${endpoint}" }` },
     };
   }
-
   if (!modelsConfig) {
     return {
       isValid: false,
-      error: {
-        message: `{ "type": "${ErrorTypes.MODELS_NOT_LOADED}" }`,
-      },
+      error: { message: `{ "type": "${ErrorTypes.MODELS_NOT_LOADED}" }` },
     };
   }
-
   const availableModels = modelsConfig[resolveModelCatalogKey(endpoint, modelsConfig)];
   if (!availableModels) {
     return {
@@ -949,27 +938,39 @@ export async function validateAgentModel(
       },
     };
   }
-
-  const validModel = !!availableModels.find((availableModel) => availableModel === model);
-
-  if (validModel) {
+  if (availableModels.some((availableModel) => availableModel === model)) {
     return { isValid: true };
   }
-
-  const { ILLEGAL_MODEL_REQ_SCORE: score = 1 } = process.env ?? {};
-  const type = ViolationTypes.ILLEGAL_MODEL_REQUEST;
-  const errorMessage = {
-    type,
-    model,
-    endpoint,
-  };
-
-  await logViolation(req, res, type, errorMessage, score);
-
   return {
     isValid: false,
     error: {
       message: `{ "type": "${ViolationTypes.ILLEGAL_MODEL_REQUEST}", "info": "${endpoint}|${model}" }`,
     },
   };
+}
+
+/** HTTP adapter: retain the existing violation audit for unauthorized models. */
+export async function validateAgentModel(
+  params: ValidateAgentModelParams,
+): Promise<ValidateAgentModelResult> {
+  const { req, res, agent, modelsConfig, logViolation } = params;
+  const result = validateAgentModelWithoutTransport({ agent, modelsConfig });
+  if (!result.isValid && agent.model && modelsConfig) {
+    const availableModels = modelsConfig[resolveModelCatalogKey(agent.provider, modelsConfig)];
+    if (availableModels && !availableModels.some((model) => model === agent.model)) {
+      const { ILLEGAL_MODEL_REQ_SCORE: score = 1 } = process.env ?? {};
+      await logViolation(
+        req,
+        res,
+        ViolationTypes.ILLEGAL_MODEL_REQUEST,
+        {
+          type: ViolationTypes.ILLEGAL_MODEL_REQUEST,
+          model: agent.model,
+          endpoint: agent.provider,
+        },
+        score,
+      );
+    }
+  }
+  return result;
 }
