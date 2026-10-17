@@ -18,6 +18,8 @@ function bindNativeMissionRecoveredClient({ client, candidate, job, normalizeOra
     job.streamId !== candidate.streamId ||
     job.createdAt !== candidate.createdAt ||
     job.checkpointNamespace !== candidate.checkpointNamespace ||
+    job.checkpointId !== candidate.checkpointId ||
+    (job.tenantId ?? undefined) !== (client.options.req.user.tenantId ?? undefined) ||
     job.status !== 'running' ||
     job.pendingAction != null ||
     typeof job.responseMessageId !== 'string' ||

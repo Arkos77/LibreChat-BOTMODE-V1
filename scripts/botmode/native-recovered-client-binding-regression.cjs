@@ -14,6 +14,7 @@ const job = {
   streamId: 'conv',
   status: 'running',
   userId: 'owner',
+  tenantId: 'tenant',
   agent_id: 'primary',
   orchestratorPlan: { tasks: [{ key: 'task', agentId: 'primary', nodeId: 'worker' }] },
   responseMessageId: 'response',
@@ -23,7 +24,7 @@ const job = {
 const makeClient = () => ({
   conversationId: 'conv',
   options: {
-    req: { user: { id: 'owner' }, body: { conversationId: 'conv' } },
+    req: { user: { id: 'owner', tenantId: 'tenant' }, body: { conversationId: 'conv' } },
     agent: { id: 'primary' },
   },
   publicationBarrier: {
@@ -43,6 +44,8 @@ assert.equal(client.responseMessageId, 'response');
 assert.equal(client.jobCreatedAt, candidate.createdAt);
 for (const override of [
   { userId: 'other' },
+  { tenantId: 'other' },
+  { checkpointId: 'other' },
   { agent_id: 'other' },
   { createdAt: 1 },
   { status: 'complete' },
