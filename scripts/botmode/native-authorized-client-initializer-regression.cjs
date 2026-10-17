@@ -56,7 +56,7 @@ const init = async ({ context }) => ({
     ).job,
     job,
   );
-  assert.equal(checks, 3);
+  assert.equal(checks, 4);
   for (const [changed, expected] of [
     [{ claim: { ...claim, checkpointId: 'wrong' } }, /CLAIM_DENIED/],
     [{ candidate: { ...candidate, createdAt: 3 } }, /CLAIM_DENIED/],
@@ -74,6 +74,16 @@ const init = async ({ context }) => ({
       }),
     })({ candidate, claim, assertAuthorized: async () => {} }),
     /CLIENT_DENIED/,
+  );
+  const altered = { ...job, status: 'stopped' };
+  let jobReads = 0;
+  const changingStore = { getJob: async () => (++jobReads === 1 ? job : altered) };
+  await assert.rejects(
+    createNativeMissionAuthorizedClientInitializer({
+      ...deps,
+      manager: { getJobStore: () => changingStore },
+    })({ candidate, claim, assertAuthorized: async () => {} }),
+    /JOB_CHANGED/,
   );
   assert.throws(
     () =>

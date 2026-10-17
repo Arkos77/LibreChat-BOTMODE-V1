@@ -60,8 +60,31 @@ function createNativeMissionAuthorizedClientInitializer({
     ) {
       throw new Error('NATIVE_MISSION_AUTHENTICATED_INITIALIZER_CLIENT_DENIED');
     }
+    // Model/tool initialization performs asynchronous host/provider IO. The
+    // generation may be replaced, stopped or reassigned while it runs; never
+    // expose that initialized client against a stale Redis job snapshot.
     await assertAuthorized();
-    return { client, job };
+    const currentJob = await store.getJob(candidate.streamId);
+    if (
+      manager.getJobStore() !== store ||
+      currentJob?.createdAt !== candidate.createdAt ||
+      currentJob?.checkpointNamespace !== candidate.checkpointNamespace ||
+      currentJob?.status !== 'running' ||
+      currentJob?.providerDrained !== false ||
+      currentJob?.providerExecutionId !== job.providerExecutionId ||
+      currentJob?.providerExecutionStartedId !== job.providerExecutionStartedId ||
+      currentJob?.pendingAction != null ||
+      currentJob?.userId !== job.userId ||
+      currentJob?.tenantId !== job.tenantId ||
+      currentJob?.agent_id !== job.agent_id ||
+      currentJob?.responseMessageId !== job.responseMessageId ||
+      currentJob?.userMessage?.messageId !== job.userMessage?.messageId ||
+      JSON.stringify(currentJob?.orchestratorPlan) !== JSON.stringify(job.orchestratorPlan)
+    ) {
+      throw new Error('NATIVE_MISSION_AUTHENTICATED_INITIALIZER_JOB_CHANGED');
+    }
+    await assertAuthorized();
+    return { client, job: currentJob };
   };
 }
 
