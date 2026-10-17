@@ -57,6 +57,7 @@ export async function executeRecoveredMissionSegment({
   assertEffectFencesReady,
   continueGraph,
   verifyOracle,
+  stageDurablePublication,
   publishTerminal,
   leaseMs = 15000,
   heartbeatMs = 4000,
@@ -67,6 +68,7 @@ export async function executeRecoveredMissionSegment({
   assertEffectFencesReady: () => Promise<void>;
   continueGraph: (signal: AbortSignal) => Promise<void>;
   verifyOracle: () => Promise<void>;
+  stageDurablePublication: () => Promise<void>;
   publishTerminal: () => Promise<void>;
   leaseMs?: number;
   heartbeatMs?: number;
@@ -89,6 +91,7 @@ export async function executeRecoveredMissionSegment({
     typeof assertEffectFencesReady !== 'function' ||
     typeof continueGraph !== 'function' ||
     typeof verifyOracle !== 'function' ||
+    typeof stageDurablePublication !== 'function' ||
     typeof publishTerminal !== 'function' ||
     typeof store.beginRecoveredMissionProviderExecution !== 'function' ||
     typeof store.heartbeatRecoveredMissionProvider !== 'function' ||
@@ -150,6 +153,11 @@ export async function executeRecoveredMissionSegment({
     await assertEffectFencesReady();
     await pulse();
     if (failed || abort.signal.aborted) throw failed ?? new RecoveredSegmentOwnershipLost();
+    // The host must persist an Oracle-approved private publication candidate
+    // and its idempotent recovery key before making the job terminal.
+    await stageDurablePublication();
+    await pulse();
+    if (failed || abort.signal.aborted) throw failed ?? new RecoveredSegmentOwnershipLost();
     // Only a still-owned, Oracle-approved generation can become terminal.
     // The caller's publication barrier must independently prevent duplicates.
     if (!(await store.transitionRecoveredMissionToComplete(...args))) {
@@ -179,6 +187,7 @@ export async function qualifyAndExecuteRecoveredMissionSegment({
   assertEffectFencesReady,
   continueGraph,
   verifyOracle,
+  stageDurablePublication,
   publishTerminal,
 }: {
   manager: {
@@ -197,6 +206,7 @@ export async function qualifyAndExecuteRecoveredMissionSegment({
   assertEffectFencesReady: () => Promise<void>;
   continueGraph: (signal: AbortSignal) => Promise<void>;
   verifyOracle: () => Promise<void>;
+  stageDurablePublication: () => Promise<void>;
   publishTerminal: () => Promise<void>;
 }): Promise<boolean> {
   if (
@@ -213,6 +223,7 @@ export async function qualifyAndExecuteRecoveredMissionSegment({
     typeof assertEffectFencesReady !== 'function' ||
     typeof continueGraph !== 'function' ||
     typeof verifyOracle !== 'function' ||
+    typeof stageDurablePublication !== 'function' ||
     typeof publishTerminal !== 'function'
   )
     return false;
@@ -260,6 +271,7 @@ export async function qualifyAndExecuteRecoveredMissionSegment({
     assertEffectFencesReady,
     continueGraph,
     verifyOracle,
+    stageDurablePublication,
     publishTerminal,
   });
   return true;

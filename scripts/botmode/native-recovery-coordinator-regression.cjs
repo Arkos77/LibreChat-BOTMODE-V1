@@ -65,6 +65,7 @@ const {
             if (missingFence) throw Error('no fences');
           },
           verifyOracle: async () => {},
+          stageDurablePublication: async () => {},
           publishTerminal: async () => {},
         };
       },

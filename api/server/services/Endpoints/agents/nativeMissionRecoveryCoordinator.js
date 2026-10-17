@@ -66,6 +66,7 @@ function createNativeMissionRecoveryCoordinator({
         typeof runtime.assertReplaySafe !== 'function' ||
         typeof runtime.assertEffectFencesReady !== 'function' ||
         typeof runtime.verifyOracle !== 'function' ||
+        typeof runtime.stageDurablePublication !== 'function' ||
         typeof runtime.publishTerminal !== 'function' ||
         !runtime.graph ||
         typeof runtime.graph.getState !== 'function'
@@ -118,6 +119,7 @@ function createNativeMissionRecoveryCoordinator({
             signal,
           }),
         verifyOracle: runtime.verifyOracle,
+        stageDurablePublication: runtime.stageDurablePublication,
         publishTerminal: runtime.publishTerminal,
       });
       // Only an explicit boolean acknowledgement can complete the handoff.
