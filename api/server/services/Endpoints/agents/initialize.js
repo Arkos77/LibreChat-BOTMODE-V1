@@ -90,6 +90,9 @@ const {
 const {
   createNativeMissionRecoveredOraclePersister,
 } = require('./nativeMissionRecoveredOraclePersister');
+const {
+  assertNativeMissionCapabilityAttestation,
+} = require('./nativeMissionCapabilityAttestation');
 const { processAddedConvo } = require('./addedConvo');
 const subagentThreadTaskStore = require('./subagentThreadStore');
 const {
@@ -2258,6 +2261,19 @@ async function initializeClientFromDocuments({ candidate, claim, job, context, a
       throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_EXTERNAL_EFFECTS_DENIED');
     },
   });
+  // This is the EXACT original admission fingerprint persisted alongside the
+  // durable plan, not a current-configuration guess. Older jobs without it are
+  // intentionally ineligible for automatic cold execution. Matching the digest
+  // still grants no tool replay permission or publication authority.
+  const originalCapabilityAttestation = assertNativeMissionCapabilityAttestation({
+    recorded: job.nativeMissionCapabilityAttestation,
+    plan: job.orchestratorPlan,
+    agents: client.getReachableMissionAgents(),
+    subagentTasks: client.options.subagentTasks,
+  });
+  if (originalCapabilityAttestation.mode !== 'model_only') {
+    throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_EFFECT_RECEIPTS_REQUIRED');
+  }
   client.user = userId;
   client.conversationId = candidate.streamId;
   // Only the recovered provider's exact Redis owner can write Oracle results.

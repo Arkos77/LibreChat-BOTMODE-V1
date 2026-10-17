@@ -106,7 +106,9 @@ let agentClientArgs;
 jest.mock('~/server/controllers/agents/client', () => {
   return jest.fn().mockImplementation((args) => {
     agentClientArgs = args;
-    return {};
+    return {
+      getReachableMissionAgents: () => [args.agent, ...(args.agentConfigs?.values?.() ?? [])],
+    };
   });
 });
 
@@ -119,6 +121,9 @@ jest.mock('~/cache', () => ({
 }));
 
 const { initializeClient, initializeClientFromDocuments } = require('./initialize');
+const {
+  createNativeMissionCapabilityAttestation,
+} = require('./nativeMissionCapabilityAttestation');
 const { observeRequiredToolApproval } = require('./approvalAuthorizationObservation');
 const { processAddedConvo } = require('./addedConvo');
 const { getSkillDbMethods, getSkillToolDeps } = require('./skillDeps');
@@ -242,13 +247,28 @@ describe('initializeClient — processAgent ACL gate', () => {
       status: 'running',
       userMessage: { messageId: 'user-message' },
       responseMessageId: 'response-message',
-      orchestratorPlan: { tasks: [{ key: 'task', nodeId: 'worker', agentId: TARGET_ID }] },
+      orchestratorPlan: {
+        planId: 'model-only-plan-1',
+        tasks: [{ key: 'task', nodeId: 'worker', agentId: TARGET_ID }],
+      },
     };
     const conversation = { conversationId: candidate.streamId, agent_id: PRIMARY_ID };
+    job.nativeMissionCapabilityAttestation = createNativeMissionCapabilityAttestation({
+      plan: job.orchestratorPlan,
+      agents: documents.map((agent) => ({
+        ...makePrimaryConfig([]),
+        id: agent.id,
+        provider: agent.provider,
+        model: agent.model,
+        tools: [],
+      })),
+    });
     mockInitializeAgent.mockImplementation(async ({ agent }) => ({
       ...makePrimaryConfig([]),
       id: agent.id,
       model_parameters: { model: 'gpt-4' },
+      provider: agent.provider,
+      model: agent.model,
       toolDefinitions: [],
       tools: [],
     }));

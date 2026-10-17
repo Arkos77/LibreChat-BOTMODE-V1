@@ -188,8 +188,32 @@ const {
   assert.equal(job.terminalPersistencePending, true);
 
   job = makeJob();
+  const alreadyFinal = {
+    messageId: 'response-1',
+    user: 'owner-user',
+    conversationId: candidate.streamId,
+    parentMessageId: 'user-1',
+    isCreatedByUser: false,
+    unfinished: false,
+    content: [{ type: 'text', text: 'previous verified answer' }],
+    attachments: [],
+  };
+  messages.set('response-1', alreadyFinal);
+  const noOverwriteWrites = writes;
+  await assert.rejects(makePublisher()(), /HISTORY_NOT_AUTHORIZED/);
+  assert.equal(writes, noOverwriteWrites, 'a completed prior answer must never be rewritten');
+  assert.deepEqual(messages.get('response-1'), alreadyFinal);
+  assert.equal(job.terminalPersistencePending, true);
+  messages.set('response-1', { ...alreadyFinal, content });
+  const eventsBeforeReplay = events.length;
+  await makePublisher()();
+  assert.equal(writes, noOverwriteWrites, 'identical completed answer is reused read-only');
+  assert.equal(events.length, eventsBeforeReplay + 1);
+  job = makeJob();
+  messages.delete('response-1');
   await assert.rejects(makePublisher({ sanitizeMessage: () => null })(), /EVENT_INVALID/);
   assert.equal(job.terminalPersistencePending, true);
+  console.log('BOTMODE_RECOVERED_TERMINAL_COMPLETED_RESPONSE_NO_OVERWRITE=PASS');
   console.log('BOTMODE_RECOVERED_TERMINAL_HARD_DENIAL_AND_READBACK=PASS');
   console.log('BOTMODE_RECOVERED_TERMINAL_AUTH_ORACLE_OWNER_DENIAL=PASS');
 })().catch((error) => {

@@ -163,6 +163,16 @@ export interface SerializableJobData {
   /** Exact host-approved BOT MODE mission plan carried across HITL resume.
    * This is durable topology/planning evidence, not authorization. */
   orchestratorPlan?: MissionPlan;
+  /** Host-observed original agent execution surface, persisted BEFORE model
+   * execution. Topology provenance only: never a replay receipt or tool grant. */
+  nativeMissionCapabilityAttestation?: {
+    version: 1;
+    planId: string;
+    agentIds: string[];
+    mode: 'model_only' | 'receipts_required';
+    digest: string;
+    hostEffectPathsPresent: boolean;
+  };
   /** Durable Mission Oracle evidence/verdict state carried across HITL resume.
    * QA state only; never authorization or task settlement authority. */
   missionOracleState?: MissionOracleState;
@@ -453,6 +463,7 @@ export type JobMetadataPatch = Partial<
     | 'responseMessageId'
     | 'mtoTraceId'
     | 'orchestratorPlan'
+    | 'nativeMissionCapabilityAttestation'
     | 'missionOracleState'
     | 'executionGrants'
     | 'missionCandidateContent'

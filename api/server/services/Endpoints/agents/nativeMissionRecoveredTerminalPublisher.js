@@ -100,28 +100,41 @@ function createNativeMissionRecoveredTerminalPublisher({
         (existingResponse.messageId !== job.responseMessageId ||
           existingResponse.conversationId !== candidate.streamId ||
           String(existingResponse.user) !== job.userId ||
-          existingResponse.isCreatedByUser !== false))
+          existingResponse.isCreatedByUser !== false ||
+          (existingResponse.parentMessageId != null &&
+            existingResponse.parentMessageId !== job.userMessage.messageId) ||
+          // Never overwrite an already-complete assistant answer from an
+          // earlier terminal owner. Only a genuinely unfinished partial may
+          // be promoted, and only under the recovered owner's final CAS.
+          (existingResponse.unfinished !== true &&
+            (JSON.stringify(existingResponse.content ?? []) !==
+              JSON.stringify(job.missionCandidateContent) ||
+              JSON.stringify(existingResponse.attachments ?? []) !==
+                JSON.stringify(job.missionCandidateAttachments)))))
     ) {
       throw new Error('NATIVE_RECOVERY_TERMINAL_HISTORY_NOT_AUTHORIZED');
     }
     await assertAuthorized();
-    const savedResponse = await saveMessage(
-      { userId: job.userId },
-      {
-        messageId: job.responseMessageId,
-        conversationId: candidate.streamId,
-        parentMessageId: job.userMessage.messageId,
-        endpoint: 'agents',
-        sender: job.sender ?? 'Agent',
-        user: job.userId,
-        isCreatedByUser: false,
-        content: job.missionCandidateContent,
-        attachments: job.missionCandidateAttachments,
-        unfinished: false,
-        contextMeta: null,
-      },
-      { context: 'native mission recovered terminal (owner-fenced)' },
-    );
+    const savedResponse =
+      existingResponse && existingResponse.unfinished !== true
+        ? existingResponse
+        : await saveMessage(
+            { userId: job.userId },
+            {
+              messageId: job.responseMessageId,
+              conversationId: candidate.streamId,
+              parentMessageId: job.userMessage.messageId,
+              endpoint: 'agents',
+              sender: job.sender ?? 'Agent',
+              user: job.userId,
+              isCreatedByUser: false,
+              content: job.missionCandidateContent,
+              attachments: job.missionCandidateAttachments,
+              unfinished: false,
+              contextMeta: null,
+            },
+            { context: 'native mission recovered terminal (owner-fenced)' },
+          );
     await assertAuthorized();
     const response = await getMessage({ user: job.userId, messageId: job.responseMessageId });
     if (

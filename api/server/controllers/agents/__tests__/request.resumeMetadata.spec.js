@@ -1091,7 +1091,12 @@ describe('ResumableAgentController resume metadata', () => {
       if (patch.orchestratorPlan) {
         mockGenerationJobManager.getJob.mockResolvedValue({
           createdAt: 1000,
-          metadata: { orchestratorPlan: structuredClone(patch.orchestratorPlan) },
+          metadata: {
+            orchestratorPlan: structuredClone(patch.orchestratorPlan),
+            nativeMissionCapabilityAttestation: structuredClone(
+              patch.nativeMissionCapabilityAttestation,
+            ),
+          },
         });
       }
     });
@@ -1205,7 +1210,12 @@ describe('ResumableAgentController resume metadata', () => {
         expect(configureMissionEvidence).not.toHaveBeenCalled();
         mockGenerationJobManager.getJob.mockResolvedValue({
           createdAt: 1000,
-          metadata: { orchestratorPlan: structuredClone(patch.orchestratorPlan) },
+          metadata: {
+            orchestratorPlan: structuredClone(patch.orchestratorPlan),
+            nativeMissionCapabilityAttestation: structuredClone(
+              patch.nativeMissionCapabilityAttestation,
+            ),
+          },
         });
       }
     });
@@ -1354,7 +1364,12 @@ describe('ResumableAgentController resume metadata', () => {
         if (patch.orchestratorPlan) {
           mockGenerationJobManager.getJob.mockResolvedValue({
             createdAt: 1000,
-            metadata: { orchestratorPlan: structuredClone(patch.orchestratorPlan) },
+            metadata: {
+              orchestratorPlan: structuredClone(patch.orchestratorPlan),
+              nativeMissionCapabilityAttestation: structuredClone(
+                patch.nativeMissionCapabilityAttestation,
+              ),
+            },
           });
         }
       });

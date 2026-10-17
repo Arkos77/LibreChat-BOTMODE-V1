@@ -5704,6 +5704,9 @@ export class RedisJobStore implements IJobStoreV2 {
       responseMessageId: data.responseMessageId || undefined,
       mtoTraceId: data.mtoTraceId || undefined,
       orchestratorPlan: data.orchestratorPlan ? JSON.parse(data.orchestratorPlan) : undefined,
+      nativeMissionCapabilityAttestation: data.nativeMissionCapabilityAttestation
+        ? JSON.parse(data.nativeMissionCapabilityAttestation)
+        : undefined,
       missionOracleState: data.missionOracleState ? JSON.parse(data.missionOracleState) : undefined,
       executionGrants: data.executionGrants ? JSON.parse(data.executionGrants) : undefined,
       missionCandidateContent: data.missionCandidateContent

@@ -3350,6 +3350,7 @@ class GenerationJobManagerClass {
         responseMessageId: jobData.responseMessageId,
         mtoTraceId: jobData.mtoTraceId,
         orchestratorPlan: jobData.orchestratorPlan,
+        nativeMissionCapabilityAttestation: jobData.nativeMissionCapabilityAttestation,
         isRegenerate: jobData.isRegenerate,
         mcpRequestBody: jobData.mcpRequestBody,
         userSubmittedPaths: jobData.userSubmittedPaths,

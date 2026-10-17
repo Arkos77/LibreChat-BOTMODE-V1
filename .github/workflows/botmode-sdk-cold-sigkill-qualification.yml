@@ -53,6 +53,14 @@ on:
       - 'scripts/botmode/native-recovered-oracle-verifier-regression.cjs'
       - 'api/server/services/Endpoints/agents/nativeMissionModelOnlyRecoveryCallbacks.js'
       - 'scripts/botmode/native-model-only-recovery-callbacks-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionCapabilityAttestation.js'
+      - 'scripts/botmode/native-mission-capability-attestation-regression.cjs'
+      - 'api/server/controllers/agents/request.js'
+      - 'api/server/controllers/agents/__tests__/request.resumeMetadata.spec.js'
+      - 'api/server/services/Endpoints/agents/initialize.js'
+      - 'api/server/services/Endpoints/agents/initialize.spec.js'
+      - 'packages/api/src/stream/jobStoreCapabilities.ts'
+      - 'packages/api/src/types/stream.ts'
       - 'scripts/botmode/native-mission-claim-probe-regression.cjs'
       - 'scripts/botmode/redis-late-native-plan-lease-regression.cjs'
       - 'scripts/botmode/run-redis-late-native-plan-lease-regression.sh'
@@ -151,6 +159,8 @@ jobs:
         run: node scripts/botmode/native-recovered-oracle-verifier-regression.cjs
       - name: Verify model-only Oracle stage and owner-fenced history publication callbacks
         run: node scripts/botmode/native-model-only-recovery-callbacks-regression.cjs
+      - name: Verify original model-only admission fingerprint and tool/delegation drift refusal
+        run: node scripts/botmode/native-mission-capability-attestation-regression.cjs
       - name: Verify recovered terminal message-write-before-CAS contract and unique event
         run: node scripts/botmode/native-recovered-terminal-publisher-regression.cjs
       - name: Verify recovered terminal CAS and publication reconciliation on real Redis
