@@ -18,7 +18,7 @@ const {
     calls++;
     assert.deepEqual(options.messages, []);
     assert.equal(options.hitlCapable, false);
-    assert.equal(options.nativeMissionReplayFencesQualified, undefined);
+    assert.equal(options.assertNativeMissionReplayFences, undefined);
     return { Graph: { createWorkflow: () => graph } };
   };
   const plan = { tasks: [{ nodeId: 'worker' }] };
@@ -36,7 +36,8 @@ const {
     persistMissionOracleResult: async () => {},
     requestBody: { conversationId: 'conversation' },
     toolExecution: {},
-    nativeMissionReplayFencesQualified: true,
+    assertNativeMissionReplayFences: async ({ candidate: c, claim: l }) =>
+      c === candidate && l === claim,
   };
   const client = {
     conversationId: 'conversation',
@@ -59,14 +60,14 @@ const {
     graph,
   );
   assert.equal(calls, 1);
-  assert.equal(auth, 3);
+  assert.equal(auth, 4);
   await assert.rejects(
     builder({
       client: {
         ...client,
         createNativeMissionColdRunOptions: async () => ({
           ...options,
-          nativeMissionReplayFencesQualified: false,
+          assertNativeMissionReplayFences: async () => false,
         }),
       },
       candidate,
@@ -74,6 +75,24 @@ const {
       assertAuthorized: async () => {},
     }),
     /REPLAY_PROOFS_MISSING/,
+  );
+  assert.equal(calls, 1);
+  await assert.rejects(
+    builder({
+      client: {
+        ...client,
+        createNativeMissionColdRunOptions: async () => ({
+          ...options,
+          assertNativeMissionReplayFences: async () => {
+            throw Error('unfenced');
+          },
+        }),
+      },
+      candidate,
+      claim,
+      assertAuthorized: async () => {},
+    }),
+    /unfenced/,
   );
   assert.equal(calls, 1);
   await assert.rejects(

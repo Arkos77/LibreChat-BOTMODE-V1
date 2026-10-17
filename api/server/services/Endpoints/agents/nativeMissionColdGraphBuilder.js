@@ -45,12 +45,19 @@ function createNativeMissionColdGraphBuilder({ createRun }) {
       typeof options.persistMissionOracleResult !== 'function' ||
       !options.requestBody ||
       !options.toolExecution ||
-      !options.nativeMissionReplayFencesQualified
+      typeof options.assertNativeMissionReplayFences !== 'function'
     ) {
       throw new Error('NATIVE_COLD_GRAPH_REPLAY_PROOFS_MISSING');
     }
     await assertAuthorized();
-    const { nativeMissionReplayFencesQualified: _proof, ...safeOptions } = options;
+    // The check must execute against the original durable claim. A truthy
+    // feature flag cannot attest tool-effect receipts or Redis ownership.
+    const proof = await options.assertNativeMissionReplayFences({ candidate, claim });
+    if (proof !== true) {
+      throw new Error('NATIVE_COLD_GRAPH_REPLAY_PROOFS_MISSING');
+    }
+    await assertAuthorized();
+    const { assertNativeMissionReplayFences: _proof, ...safeOptions } = options;
     const run = await createRun({ ...safeOptions, messages: [], hitlCapable: false });
     const graph = run?.Graph?.createWorkflow?.();
     if (!graph || typeof graph.getState !== 'function' || typeof graph.invoke !== 'function') {
