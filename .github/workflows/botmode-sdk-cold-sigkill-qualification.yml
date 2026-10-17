@@ -49,6 +49,10 @@ on:
       - 'scripts/botmode/redis-recovered-terminal-persistence-regression.py'
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveredTerminalPublisher.js'
       - 'scripts/botmode/native-recovered-terminal-publisher-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveredOracleVerifier.js'
+      - 'scripts/botmode/native-recovered-oracle-verifier-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionModelOnlyRecoveryCallbacks.js'
+      - 'scripts/botmode/native-model-only-recovery-callbacks-regression.cjs'
       - 'scripts/botmode/native-mission-claim-probe-regression.cjs'
       - 'scripts/botmode/redis-late-native-plan-lease-regression.cjs'
       - 'scripts/botmode/run-redis-late-native-plan-lease-regression.sh'
@@ -143,6 +147,10 @@ jobs:
         run: node scripts/botmode/native-recovery-coordinator-regression.cjs
       - name: Verify crashed-provider claim renewal and live-provider fencing on Redis
         run: python3 scripts/botmode/redis-native-recovery-renew-regression.py
+      - name: Verify final native Oracle results originate from completed checkpoint outputs
+        run: node scripts/botmode/native-recovered-oracle-verifier-regression.cjs
+      - name: Verify model-only Oracle stage and owner-fenced history publication callbacks
+        run: node scripts/botmode/native-model-only-recovery-callbacks-regression.cjs
       - name: Verify recovered terminal message-write-before-CAS contract and unique event
         run: node scripts/botmode/native-recovered-terminal-publisher-regression.cjs
       - name: Verify recovered terminal CAS and publication reconciliation on real Redis

@@ -80,7 +80,9 @@ function createNativeMissionColdRuntimeHost({
     if (!graph || typeof graph.invoke !== 'function' || typeof graph.getState !== 'function') {
       throw new Error('NATIVE_COLD_RUNTIME_HOST_GRAPH_UNAVAILABLE');
     }
-    const context = Object.freeze({ client, graph, candidate, claim });
+    // The callbacks are host-owned. Carry the current document authorization
+    // closure rather than letting Oracle/publication invent an HTTP principal.
+    const context = Object.freeze({ client, graph, candidate, claim, assertAuthorized });
     const fences = await effectFences(context);
     const replay = await replaySafety(context);
     const verdict = await oracle(context);
