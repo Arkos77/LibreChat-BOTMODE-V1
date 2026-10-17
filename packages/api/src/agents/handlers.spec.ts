@@ -1256,6 +1256,22 @@ describe('createToolExecuteHandler', () => {
       expect(capturedConfigs[0].toolMap).toEqual(new Map());
     });
 
+    it('rejects direct and detached tools before invocation in a recovered mission', async () => {
+      const actual = jest.fn(async () => ({ content: 'unsafe' }));
+      const loadTools: ToolExecuteOptions['loadTools'] = jest.fn(async () => ({
+        loadedTools: [{ name: 'write_tool', invoke: actual }] as never[],
+      }));
+      const handler = createToolExecuteHandler({ loadTools });
+      await expect(
+        invokeHandlerWithConfig(
+          handler,
+          [{ id: 'direct-effect', name: 'write_tool', args: { value: 'x' } }],
+          { nativeMissionEffectFenceRequired: true, backgroundToolNames: ['write_tool'] },
+        ),
+      ).rejects.toThrow('NATIVE_MISSION_DIRECT_EFFECT_GUARD_REQUIRED');
+      expect(actual).not.toHaveBeenCalled();
+    });
+
     it('fails closed when a PTC effect needs authority but no durable guard is injected', async () => {
       const capturedConfigs: Record<string, unknown>[] = [];
       const ptcTool = createMockTool(Constants.PROGRAMMATIC_TOOL_CALLING, capturedConfigs);

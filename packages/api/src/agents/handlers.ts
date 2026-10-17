@@ -4700,6 +4700,16 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
               sourceConfigurable,
               loadedConfigurable,
             );
+            // Recovery fencing currently has a durable adapter only for inner
+            // PTC calls. A recovered direct or detached tool must NEVER fall
+            // through to the ordinary invoke path without its own receipt.
+            // Check the whole batch before any tool can start.
+            if (
+              mergedConfigurable?.nativeMissionEffectFenceRequired === true &&
+              allowedToolCalls.some((tc) => tc.name !== Constants.PROGRAMMATIC_TOOL_CALLING)
+            ) {
+              throw new Error('NATIVE_MISSION_DIRECT_EFFECT_GUARD_REQUIRED');
+            }
             const effectAuthorityRequired =
               data.effectAuthorityRequired === true ||
               mergedConfigurable?.effectAuthorityRequired === true;
