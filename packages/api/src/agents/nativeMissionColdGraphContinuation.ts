@@ -16,7 +16,7 @@ export async function continueColdNativeMissionGraph({
 }: {
   graph: {
     invoke: (input: null, config: Record<string, unknown>) => Promise<unknown>;
-    getState: (config: { configurable: Record<string, string> }) => Promise<unknown>;
+    getState: (config: { configurable: Record<string, string | boolean> }) => Promise<unknown>;
   };
   streamId: string;
   checkpointNamespace: string;
