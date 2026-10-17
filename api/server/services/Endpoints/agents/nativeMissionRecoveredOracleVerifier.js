@@ -97,7 +97,31 @@ function createNativeMissionRecoveredOracleVerifier({
         verified.verdicts.length !== task.validation.length ||
         verified.verdicts.some((verdict) => verdict?.status !== 'VERIFIED')
       ) {
-        throw new Error('NATIVE_RECOVERY_ORACLE_VERDICT_DENIED');
+        // Public diagnostics must NEVER include checkpoint output, validator
+        // inputs, evidence or provider errors. Retain only allow-listed Oracle
+        // status/reason codes to identify an actual QA refusal in the strict
+        // restart qualification, instead of weakening the publication gate.
+        const allowedStatuses = new Set(['REJECTED', 'UNKNOWN', 'HUMAN_REVIEW', 'VERIFIED']);
+        const allowedReasons = new Set([
+          'INVALID_CONTRACT',
+          'VALIDATOR_NOT_INDEPENDENT',
+          'CRITERIA_MISSING',
+          'CONTRADICTORY_EVIDENCE',
+          'CANDIDATE_MISSING',
+          'INVALID_CANDIDATE',
+          'CRITERION_FAILED',
+          'INDEPENDENT_EVIDENCE_MISSING',
+          'HUMAN_REVIEW_REQUIRED',
+        ]);
+        const summary = (Array.isArray(verified?.verdicts) ? verified.verdicts : [])
+          .slice(0, 4)
+          .map((v) => ({
+            status: allowedStatuses.has(v?.status) ? v.status : 'UNRECOGNIZED',
+            reasons: (Array.isArray(v?.reasons) ? v.reasons : [])
+              .slice(0, 4)
+              .map((reason) => (allowedReasons.has(reason?.code) ? reason.code : 'UNRECOGNIZED')),
+          }));
+        throw new Error('NATIVE_RECOVERY_ORACLE_VERDICT_DENIED ' + JSON.stringify(summary));
       }
       const previous = oracle.results[task.taskId];
       if (previous && !areMissionOracleResultsEquivalent(previous, verified)) {
