@@ -276,7 +276,12 @@ const initializeClient = async ({
   if (Object.prototype.hasOwnProperty.call(req, 'resolvedConversation')) {
     requestConversationPromise = Promise.resolve(req.resolvedConversation);
   } else if (typeof conversationId === 'string' && conversationId !== '') {
-    requestConversationPromise = db.getConvo(req.user.id, conversationId);
+    requestConversationPromise = resolveAuthorizedAgentConversation({
+      userId: req.user.id,
+      conversationId,
+      getConvo: db.getConvo,
+      allowMissing: true,
+    });
   }
   const startupTelemetry = getAgentStartupTelemetry(req);
 

@@ -8,6 +8,7 @@ async function resolveAuthorizedAgentConversation({
   getConvo,
   preResolved,
   allowPreResolved = false,
+  allowMissing = false,
 }) {
   if (
     typeof userId !== 'string' ||
@@ -25,6 +26,7 @@ async function resolveAuthorizedAgentConversation({
     allowPreResolved && preResolved != null && !partial
       ? preResolved
       : await getConvo(userId, conversationId);
+  if (conversation == null && allowMissing) return null;
   if (!conversation || conversation.conversationId !== conversationId) {
     throw new Error('AGENT_CONVERSATION_OWNER_SCOPE_DENIED');
   }

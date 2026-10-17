@@ -26,6 +26,18 @@ const {
   assert.equal(reads, 2);
   await resolveAuthorizedAgentConversation({ ...input, preResolved });
   assert.equal(reads, 3);
+  assert.equal(
+    await resolveAuthorizedAgentConversation({
+      ...input,
+      getConvo: async () => null,
+      allowMissing: true,
+    }),
+    null,
+  );
+  await assert.rejects(
+    resolveAuthorizedAgentConversation({ ...input, getConvo: async () => null }),
+    /OWNER_SCOPE_DENIED/,
+  );
   for (const change of [{ userId: '' }, { conversationId: '' }, { getConvo: null }]) {
     await assert.rejects(
       resolveAuthorizedAgentConversation({ ...input, ...change }),
