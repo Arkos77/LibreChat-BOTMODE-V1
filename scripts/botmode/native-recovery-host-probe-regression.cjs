@@ -5,6 +5,7 @@ const vm = require('node:vm');
 
 const root = '/work/api/server/services/Endpoints/agents/';
 const { authorizeNativeMissionRecovery } = require(root + 'nativeMissionRecoveryAuthorization.js');
+const { createNativeMissionRecoveryHostAuthorization } = require(root + 'nativeMissionRecoveryHostAuthorization.js');
 const probeModule = { exports: {} };
 const messages = [];
 const log = { info: (line) => {
@@ -49,8 +50,8 @@ vm.runInNewContext(
             assert.equal(requiredPermission, 1);
             return allow;
           }};
-        case './nativeMissionRecoveryAuthorization':
-          return { authorizeNativeMissionRecovery };
+        case './nativeMissionRecoveryHostAuthorization':
+          return { createNativeMissionRecoveryHostAuthorization };
         default: throw Error('Unexpected dependency: ' + name);
       }
     },

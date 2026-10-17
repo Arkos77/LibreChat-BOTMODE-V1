@@ -1,7 +1,9 @@
 const { logger } = require('@librechat/data-schemas');
 const { ResourceType, PermissionBits } = require('librechat-data-provider');
 const { checkPermission } = require('~/server/services/PermissionService');
-const { authorizeNativeMissionRecovery } = require('./nativeMissionRecoveryAuthorization');
+const {
+  createNativeMissionRecoveryHostAuthorization,
+} = require('./nativeMissionRecoveryHostAuthorization');
 
 /**
  * CI diagnostic of recovered-job host identity, not a recovery executor.
@@ -23,27 +25,18 @@ function createNativeMissionRecoveryHostProbe({
     // is different, and getJob() would materialize a local abort/runtime.
     const job = await manager.getJobStore().getJob(candidate.streamId);
     let deniedAt = null;
-    const admission = await authorizeNativeMissionRecovery({
-      candidate,
-      job,
+    const authorized = await createNativeMissionRecoveryHostAuthorization({
+      getUserById,
+      isSubagentOwnerAdmissible,
+      getConvo,
+      getAgent,
+      permission,
+      resourceType: ResourceType.AGENT,
+      viewPermission: PermissionBits.VIEW,
       reportRejection: (gate) => {
         deniedAt = gate;
       },
-      deps: {
-        getUserById,
-        isOwnerAdmissible: isSubagentOwnerAdmissible,
-        getConvo,
-        getAgent,
-        canViewAgent: ({ user, agent }) =>
-          permission({
-            userId: String(user._id ?? user.id),
-            role: user.role,
-            resourceType: ResourceType.AGENT,
-            resourceId: agent._id,
-            requiredPermission: PermissionBits.VIEW,
-          }),
-      },
-    });
+    })({ candidate, job });
     const key = candidate.streamId + ':' + candidate.createdAt;
     if (!observed.has(key)) {
       observed.add(key);
@@ -52,14 +45,14 @@ function createNativeMissionRecoveryHostProbe({
       log.info(
         '[NativeMissionRecovery] Host read-only authority preflight ' +
           JSON.stringify({
-            status: admission == null ? 'DENIED' : 'AUTHORIZED_READ_ONLY',
-            gate: admission == null ? (deniedAt ?? 'unknown') : 'passed',
+            status: !authorized ? 'DENIED' : 'AUTHORIZED_READ_ONLY',
+            gate: !authorized ? (deniedAt ?? 'unknown') : 'passed',
             checkpointPresent: !!candidate.checkpointId,
           }),
       );
     }
     // No claim, no execution and no proof of side-effect replay safety.
-    return admission != null;
+    return authorized;
   };
 }
 

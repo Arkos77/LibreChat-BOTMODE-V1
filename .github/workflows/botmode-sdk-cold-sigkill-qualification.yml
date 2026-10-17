@@ -15,6 +15,7 @@ on:
       - 'scripts/botmode/native-orphan-activation-regression.cjs'
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js'
       - 'scripts/botmode/native-recovery-host-authorization-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveryHostAuthorization.js'
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveryHostProbe.js'
       - 'scripts/botmode/native-recovery-host-probe-regression.cjs'
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveryClaimProbe.js'
@@ -109,6 +110,7 @@ jobs:
         run: |
           docker run --rm --network none --memory 720m --cpus 1 --read-only \
             --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js,readonly" \
+            --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveryHostAuthorization.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveryHostAuthorization.js,readonly" \
             --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveryHostProbe.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveryHostProbe.js,readonly" \
             --mount "type=bind,src=$PWD/scripts/botmode/native-recovery-host-probe-regression.cjs,dst=/app/native-recovery-host-probe-regression.cjs,readonly" \
             --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-recovery-host-probe-regression.cjs
