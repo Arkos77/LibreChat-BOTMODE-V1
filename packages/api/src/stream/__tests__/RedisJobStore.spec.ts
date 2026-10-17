@@ -105,6 +105,34 @@ describe('RedisJobStore', () => {
     ]);
   });
 
+  test('renews a claimed crashed-provider preflight only after its prior lease expires', async () => {
+    const evalRenew = jest.fn().mockResolvedValue(1);
+    const redis = { isCluster: true, eval: evalRenew } as unknown as Cluster;
+    const store = new RedisJobStore(redis);
+    const owner = 'recovery-owner-123456789';
+
+    await expect(
+      store.renewDrainedMissionRecovery('stream-recovery-renew', 123456, owner, 15000),
+    ).resolves.toBe(true);
+
+    const [script, keys, jobKey, claimKey, epoch, suppliedOwner, ttl] = evalRenew.mock.calls[0];
+    expect(script).toContain('GET", KEYS[2]) ~= ARGV[2]');
+    expect(script).toContain('__missionRecoveryOwner');
+    expect(script).toContain('providerExecutionStartedId');
+    expect(script).toContain('providerExecutionId');
+    expect(script).toContain('__missionProviderLeaseUntil');
+    expect(script).toContain('redis.call("TIME")');
+    expect(script).toContain('if untilMs > nowMs then return 0');
+    expect([keys, jobKey, claimKey, epoch, suppliedOwner, ttl]).toEqual([
+      2,
+      'stream:{stream-recovery-renew}:job',
+      'stream:{stream-recovery-renew}:mission-recovery-claim',
+      '123456',
+      owner,
+      '15000',
+    ]);
+  });
+
   test('never releases a recovery claim after its owner is promoted', async () => {
     const evalRelease = jest.fn().mockResolvedValue(0);
     const redis = { isCluster: true, eval: evalRelease } as unknown as Cluster;

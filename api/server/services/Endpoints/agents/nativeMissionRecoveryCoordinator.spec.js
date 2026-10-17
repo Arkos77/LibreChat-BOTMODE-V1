@@ -15,6 +15,7 @@ function fixture(execute) {
   };
   const store = {
     getJob: jest.fn().mockResolvedValue(job),
+    renewDrainedMissionRecovery: jest.fn().mockResolvedValue(true),
     releaseDrainedMissionRecovery: jest.fn().mockResolvedValue(true),
   };
   const manager = {
@@ -62,6 +63,15 @@ describe('native mission recovery claim cleanup', () => {
     await expect(recover(candidate)).resolves.toBe(false);
     expect(execute).toHaveBeenCalledTimes(1);
     expect(store.releaseDrainedMissionRecovery).not.toHaveBeenCalled();
+  });
+
+  it('rejects an expired inspection lease before SDK execution', async () => {
+    const execute = jest.fn();
+    const { recover, candidate, store } = fixture(execute);
+    store.renewDrainedMissionRecovery.mockResolvedValue(false);
+    await expect(recover(candidate)).rejects.toThrow('NATIVE_RECOVERY_HOST_INSPECTION_LEASE_LOST');
+    expect(execute).not.toHaveBeenCalled();
+    expect(store.releaseDrainedMissionRecovery).toHaveBeenCalledTimes(1);
   });
 
   it('releases only an unpromoted preflight claim', async () => {

@@ -2,6 +2,9 @@ const {
   createNativeMissionDurablePublicationStage,
 } = require('./nativeMissionDurablePublicationStage');
 
+const INSPECTION_CLAIM_LEASE_MS = 15_000;
+const INSPECTION_CLAIM_HEARTBEAT_MS = 4_000;
+
 /**
  * Host-side admission boundary for recovered native missions.
  * All execution callbacks must originate from the real authenticated host
@@ -33,7 +36,8 @@ function createNativeMissionRecoveryCoordinator({
     const store = manager.getJobStore();
     if (
       typeof store?.getJob !== 'function' ||
-      typeof store.releaseDrainedMissionRecovery !== 'function'
+      typeof store.releaseDrainedMissionRecovery !== 'function' ||
+      typeof store.renewDrainedMissionRecovery !== 'function'
     ) {
       return false;
     }
@@ -56,6 +60,43 @@ function createNativeMissionRecoveryCoordinator({
     // An exception can occur after promotion; never release that lease from
     // the coordinator's preflight cleanup path.
     let executorEntered = false;
+    let renewalFailure = null;
+    let renewalInFlight = null;
+    const renewClaim = async () => {
+      if (renewalFailure) throw renewalFailure;
+      if (renewalInFlight) return renewalInFlight;
+      const attempt = (async () => {
+        try {
+          if (
+            manager.getJobStore() !== store ||
+            !(await store.renewDrainedMissionRecovery(
+              claim.streamId,
+              claim.createdAt,
+              claim.ownerToken,
+              INSPECTION_CLAIM_LEASE_MS,
+            ))
+          ) {
+            throw new Error('NATIVE_RECOVERY_HOST_INSPECTION_LEASE_LOST');
+          }
+        } catch (error) {
+          renewalFailure = error;
+          throw error;
+        }
+      })();
+      renewalInFlight = attempt;
+      void attempt
+        .finally(() => {
+          if (renewalInFlight === attempt) renewalInFlight = null;
+        })
+        .catch(() => {});
+      return attempt;
+    };
+    // The model/agent host can take longer than the original 15-second
+    // admission TTL. Keep the exact owner alive only during safe preflight.
+    // Stop this timer BEFORE the SDK takes over provider ownership.
+    const heartbeat = setInterval(() => {
+      void renewClaim().catch(() => {});
+    }, INSPECTION_CLAIM_HEARTBEAT_MS);
     try {
       if (
         claim.streamId !== candidate.streamId ||
@@ -104,6 +145,11 @@ function createNativeMissionRecoveryCoordinator({
       const plannedNodeIds = plan.map((task) => task.nodeId);
       await runtime.assertEffectFencesReady();
       await authorize();
+      // Check the lease again at the handoff boundary after ALL potentially
+      // slow client/model reconstruction and receipt IO. The SDK independently
+      // checks owner identity before activating the recovered provider.
+      await renewClaim();
+      clearInterval(heartbeat);
       // Only the supplied executor may hand the claim to the owner-fenced
       // segment; it is responsible for Redis CAS and final publication.
       // The SDK manager releases qualification refusals before promotion.
@@ -145,6 +191,10 @@ function createNativeMissionRecoveryCoordinator({
       }
       return outcome;
     } finally {
+      clearInterval(heartbeat);
+      if (renewalInFlight) {
+        await renewalInFlight.catch(() => {});
+      }
       if (!executorEntered) {
         try {
           await store.releaseDrainedMissionRecovery(

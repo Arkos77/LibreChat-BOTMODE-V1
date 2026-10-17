@@ -28,6 +28,7 @@ const job = {
     checks = 0;
   const store = {
     getJob: async () => job,
+    renewDrainedMissionRecovery: async () => true,
     releaseDrainedMissionRecovery: async () => {
       released++;
       return true;

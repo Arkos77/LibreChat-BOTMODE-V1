@@ -39,6 +39,7 @@ on:
       - 'api/server/services/Endpoints/agents/nativeMissionReplayReceiptProof.js'
       - 'scripts/botmode/native-mission-replay-receipt-proof-regression.cjs'
       - 'scripts/botmode/native-recovery-coordinator-regression.cjs'
+      - 'scripts/botmode/redis-native-recovery-renew-regression.py'
       - 'scripts/botmode/native-mission-claim-probe-regression.cjs'
       - 'scripts/botmode/redis-late-native-plan-lease-regression.cjs'
       - 'scripts/botmode/run-redis-late-native-plan-lease-regression.sh'
@@ -120,6 +121,8 @@ jobs:
         run: node scripts/botmode/native-recovery-handler-factory-regression.cjs
       - name: Verify host recovery coordinator rejects unsafe handoffs
         run: node scripts/botmode/native-recovery-coordinator-regression.cjs
+      - name: Verify crashed-provider claim renewal and live-provider fencing on Redis
+        run: python3 scripts/botmode/redis-native-recovery-renew-regression.py
       - name: Verify host read-only audit never claims or executes
         env:
           BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d

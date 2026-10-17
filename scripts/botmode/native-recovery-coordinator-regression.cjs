@@ -21,9 +21,12 @@ const {
     executionThrows = false,
     invalidPlan = false,
     exerciseStage = false,
+    slowReconstructionMs = 0,
+    failRenewal = false,
   } = {}) {
     const calls = [];
     let attempts = 0;
+    let renewals = 0;
     let persistedEvidence = { providerExecutionId: 'recovered-provider' };
     const store = {
       updateRecoveredMissionEvidence: async (id, createdAt, owner, provider, updates) => {
@@ -45,6 +48,12 @@ const {
             : [{ nodeId: 'worker', agentId: 'worker', key: 'task-worker' }],
         },
       }),
+      renewDrainedMissionRecovery: async (_stream, _created, token, leaseMs) => {
+        assert.equal(token, claim.ownerToken);
+        assert.equal(leaseMs, 15_000);
+        renewals++;
+        return !failRenewal;
+      },
       releaseDrainedMissionRecovery: async (id, at, token) => {
         assert.equal(id, candidate.streamId);
         assert.equal(at, candidate.createdAt);
@@ -69,6 +78,8 @@ const {
       reconstruct: async () => {
         calls.push('reconstruct');
         if (reconstructFails) throw Error('reconstruction failed');
+        if (slowReconstructionMs)
+          await new Promise((resolve) => setTimeout(resolve, slowReconstructionMs));
         return {
           graph: { getState: async () => ({}) },
           assertReplaySafe: async () => {},
@@ -112,7 +123,11 @@ const {
         if (executionThrows) throw new Error('provider died after activation');
         // The SDK owns release when it explicitly refuses activation.
         if (refusesExecution) {
-          await store.releaseDrainedMissionRecovery(claim.streamId, claim.createdAt, claim.ownerToken);
+          await store.releaseDrainedMissionRecovery(
+            claim.streamId,
+            claim.createdAt,
+            claim.ownerToken,
+          );
         }
         return uncertainExecution ? undefined : !refusesExecution;
       },
@@ -124,7 +139,7 @@ const {
     } catch (e) {
       error = e;
     }
-    return { calls, outcome, error };
+    return { calls, outcome, error, renewals };
   }
   const staged = await verify({ exerciseStage: true });
   assert.equal(staged.outcome, true);
@@ -166,6 +181,13 @@ const {
   const thrown = await verify({ executionThrows: true });
   assert.match(thrown.error.message, /provider died after activation/);
   assert.equal(thrown.calls.filter((x) => x === 'release').length, 0);
+  const longRebuild = await verify({ slowReconstructionMs: 4_300 });
+  assert.equal(longRebuild.outcome, true);
+  assert.ok(longRebuild.renewals >= 2, 'periodic heartbeat and handoff renewal required');
+  const lostLease = await verify({ failRenewal: true });
+  assert.match(lostLease.error.message, /INSPECTION_LEASE_LOST/);
+  assert.equal(lostLease.calls.filter((event) => event === 'release').length, 1);
+  assert.ok(!lostLease.calls.includes('execute'));
   const before = await verify({ denyAt: 1 });
   assert.deepEqual(before.calls, ['auth']);
   console.log('BOTMODE_SERVER_RECOVERY_COORDINATOR_AUTH_AND_RELEASE=PASS');

@@ -745,14 +745,24 @@ const ACTIVATE_DRAINED_MISSION_RECOVERY_LUA =
   '"__missionRecoveryOwner", ARGV[2], "lastActiveAt", ARGV[4]) ' +
   'redis.call("HDEL", KEYS[1], "__missionProviderLeaseUntil", "__missionProviderLeaseIdentity") return 1';
 
-/** A preflight owner can extend only its own still-live, same-generation claim.
- * An expired lease cannot be resurrected, and a replaced or active generation
- * invalidates its former owner. This is NOT a publication permission. */
+/** Renew only an exact, still-live preflight claim, including an abandoned
+ * in-flight provider whose PREDECESSOR lease has expired. A live predecessor,
+ * promoted owner or replacement job cannot inherit/extend inspection rights.
+ * Redis server time is the sole expiry authority. No publication permitted. */
 const RENEW_DRAINED_MISSION_RECOVERY_LUA =
   'if redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[1] then return 0 end ' +
   'if redis.call("HGET", KEYS[1], "status") ~= "running" then return 0 end ' +
-  'if redis.call("HGET", KEYS[1], "providerDrained") ~= "1" then return 0 end ' +
   'if redis.call("GET", KEYS[2]) ~= ARGV[2] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") == ARGV[2] then return 0 end ' +
+  'if not redis.call("HGET", KEYS[1], "orchestratorPlan") then return 0 end ' +
+  'local drained = redis.call("HGET", KEYS[1], "providerDrained") ' +
+  'if drained ~= "1" then ' +
+  'if drained ~= "0" or not redis.call("HGET", KEYS[1], "providerExecutionStartedId") then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerExecutionStartedId") ~= redis.call("HGET", KEYS[1], "providerExecutionId") then return 0 end ' +
+  'local untilMs = tonumber(redis.call("HGET", KEYS[1], "__missionProviderLeaseUntil") or "") ' +
+  'if not untilMs then return 0 end ' +
+  'local now = redis.call("TIME") local nowMs = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000) ' +
+  'if untilMs > nowMs then return 0 end end ' +
   'return redis.call("PEXPIRE", KEYS[2], ARGV[3])';
 
 /** A stale contender cannot release another owner's newer claim, and an
