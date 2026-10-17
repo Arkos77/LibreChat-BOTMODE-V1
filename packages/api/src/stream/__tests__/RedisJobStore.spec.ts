@@ -120,9 +120,7 @@ describe('RedisJobStore', () => {
     expect(script).toContain('GET", KEYS[2]) ~= ARGV[2]');
     // The promoted owner is persisted in the job hash by the activation CAS.
     // Its same-token release must NOT delete the still-live inspection claim.
-    expect(script).toContain(
-      'HGET", KEYS[1], "__missionRecoveryOwner") == ARGV[2] then return 0',
-    );
+    expect(script).toContain('HGET", KEYS[1], "__missionRecoveryOwner") == ARGV[2] then return 0');
     expect(script.indexOf('__missionRecoveryOwner')).toBeLessThan(
       script.indexOf('redis.call("DEL", KEYS[2])'),
     );
