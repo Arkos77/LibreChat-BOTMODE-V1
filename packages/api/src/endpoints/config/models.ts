@@ -64,14 +64,13 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps): LoadConfigMo
 
   // One owner-scoped model loader for HTTP traffic and authenticated cold jobs.
   // Do not invent an Express request or reuse a previous user's model catalog.
-  const fromContext = async ({
+  const loadInternal = async ({
     user,
     appConfig: suppliedConfig,
   }: {
     user: ServerRequest['user'];
     appConfig?: AppConfig;
   }): Promise<TModelsConfig> => {
-    if (!user?.id) throw new Error('MODEL_CATALOG_USER_REQUIRED');
     const appConfig = suppliedConfig ?? (await getAppConfig(getAppConfigOptionsFromUser(user)));
     if (!appConfig) {
       return {};
@@ -313,7 +312,14 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps): LoadConfigMo
 
     return modelsConfig;
   };
+  const fromContext = (context: {
+    user: ServerRequest['user'];
+    appConfig?: AppConfig;
+  }): Promise<TModelsConfig> => {
+    if (!context.user?.id) throw new Error('MODEL_CATALOG_USER_REQUIRED');
+    return loadInternal(context);
+  };
   const fromRequest = (req: ServerRequest): Promise<TModelsConfig> =>
-    fromContext({ user: req.user, appConfig: req.config });
+    loadInternal({ user: req.user, appConfig: req.config });
   return Object.assign(fromRequest, { fromContext });
 }

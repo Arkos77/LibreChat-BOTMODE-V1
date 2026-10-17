@@ -2127,6 +2127,8 @@ async function initializeClientFromDocuments({ candidate, claim, job, context, a
     candidate.createdAt !== job.createdAt ||
     candidate.checkpointNamespace !== job.checkpointNamespace ||
     job.status !== 'running' ||
+    !Array.isArray(job.orchestratorPlan?.tasks) ||
+    job.orchestratorPlan.tasks.length === 0 ||
     job.pendingAction != null ||
     conversation?.conversationId !== candidate.streamId ||
     conversation?.agent_id !== job.agent_id ||
@@ -2152,6 +2154,7 @@ async function initializeClientFromDocuments({ candidate, claim, job, context, a
     documents.some(
       (agent) =>
         (agent.tools?.length ?? 0) > 0 ||
+        Object.keys(agent.tool_options ?? {}).length > 0 ||
         (agent.skills?.length ?? 0) > 0 ||
         agent.skills_enabled === true ||
         (agent.attachments?.length ?? 0) > 0 ||
@@ -2160,6 +2163,13 @@ async function initializeClientFromDocuments({ candidate, claim, job, context, a
     );
   if (containsUnsupportedResources) {
     throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_TOOL_RUNTIME_UNAVAILABLE');
+  }
+  await assertAuthorized();
+  // Check the authoritative conversation files, even if the resolved document
+  // omits the projection. Rehydrating files could mutate usage during recovery.
+  const existingFileIds = await db.getConvoFiles(candidate.streamId);
+  if (existingFileIds != null && (!Array.isArray(existingFileIds) || existingFileIds.length > 0)) {
+    throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_FILES_UNAVAILABLE');
   }
   await assertAuthorized();
   const appConfig = await getAppConfig(getAppConfigOptionsFromUser(user));

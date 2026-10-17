@@ -262,7 +262,7 @@ describe('initializeClient — processAgent ACL gate', () => {
         checks++;
       },
     });
-    expect(checks).toBe(4);
+    expect(checks).toBe(5);
     expect(mockInitializeAgent).toHaveBeenCalledTimes(2);
     for (const call of mockInitializeAgent.mock.calls) {
       expect(call[0]).not.toHaveProperty('req');
@@ -278,6 +278,45 @@ describe('initializeClient — processAgent ACL gate', () => {
     client.publicationBarrier.activate();
     expect(client.publicationBarrier.hold()).toBe(true);
     expect(mockLoadModelsFromContext).toHaveBeenCalledWith(expect.objectContaining({ user }));
+  });
+
+  it('denies recovery if persisted conversation files would be rehydrated', async () => {
+    const user = testUser;
+    const candidate = {
+      streamId: 'conv-with-files',
+      createdAt: 1700000000000,
+      checkpointNamespace: 'epoch',
+      checkpointId: 'head',
+    };
+    const job = {
+      ...candidate,
+      userId: String(user._id),
+      agent_id: PRIMARY_ID,
+      status: 'running',
+      userMessage: { messageId: 'user-message' },
+      responseMessageId: 'response-message',
+      orchestratorPlan: { tasks: [{ key: 'task', nodeId: 'worker', agentId: PRIMARY_ID }] },
+    };
+    const getFiles = jest.spyOn(db, 'getConvoFiles').mockResolvedValueOnce(['file-1']);
+    try {
+      await expect(
+        initializeClientFromDocuments({
+          candidate,
+          claim: { ...candidate, ownerToken: 'owner-token' },
+          job,
+          context: {
+            user,
+            conversation: { conversationId: candidate.streamId, agent_id: PRIMARY_ID },
+            agents: [{ id: PRIMARY_ID, provider: 'openai', model: 'gpt-4', tools: [] }],
+          },
+          assertAuthorized: async () => {},
+        }),
+      ).rejects.toThrow('FILES_UNAVAILABLE');
+      expect(mockInitializeAgent).not.toHaveBeenCalled();
+      expect(mockGetAppConfig).not.toHaveBeenCalled();
+    } finally {
+      getFiles.mockRestore();
+    }
   });
 
   it('refuses to strip durable tools during request-free cold recovery', async () => {

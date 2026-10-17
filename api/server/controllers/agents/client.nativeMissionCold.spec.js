@@ -1,6 +1,10 @@
 const {
   createNativeMissionColdGraphBuilder,
 } = require('~/server/services/Endpoints/agents/nativeMissionColdGraphBuilder');
+jest.mock('@librechat/api', () => ({
+  ...jest.requireActual('@librechat/api'),
+  createCachedTokenCounter: jest.fn(async () => () => 0),
+}));
 const AgentClient = require('./client');
 
 describe('AgentClient authenticated cold mission run reconstruction', () => {
