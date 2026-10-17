@@ -5161,6 +5161,7 @@ class AgentClient extends BaseClient {
       typeof signal.addEventListener !== 'function' ||
       signal.aborted === true ||
       typeof receiptProof !== 'function' ||
+      typeof this.options.nativeMissionRecoveredOraclePersister !== 'function' ||
       this.publicationBarrier?.hold?.() !== true ||
       typeof this.options.executionGrantResolver !== 'function' ||
       this.options.executionGrantJobId !== candidate.streamId
@@ -5206,11 +5207,15 @@ class AgentClient extends BaseClient {
           parentMessageId: this.parentMessageId,
         }),
       resolveMissionOracleEvidence: async (taskId) => {
-        await this.persistTransientMissionOracleEvidence(candidate.streamId);
+        // The model-only cold initializer rejects all tools. A hidden tool
+        // observation must not fall back to an epoch-only Redis write.
+        if ((this.transientEvidenceBuffer?.snapshot?.().length ?? 0) > 0) {
+          throw new Error('NATIVE_MISSION_COLD_TOOL_EVIDENCE_DENIED');
+        }
         return this.missionOracleState?.evidence?.[taskId] ?? [];
       },
       persistMissionOracleResult: async (result) => {
-        await this.persistMissionOracleResult(result, candidate.streamId);
+        this.missionOracleState = await this.options.nativeMissionRecoveredOraclePersister(result);
       },
       assertNativeMissionReplayFences: ({ candidate: checked, claim: owner }) => {
         if (checked !== candidate || owner !== claim || signal.aborted === true) {

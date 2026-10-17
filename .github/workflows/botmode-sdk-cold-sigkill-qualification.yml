@@ -29,6 +29,10 @@ on:
       - 'scripts/botmode/native-authenticated-recovery-context-regression.cjs'
       - 'scripts/botmode/native-recovery-handler-factory-regression.cjs'
       - 'api/server/services/Endpoints/agents/nativeMissionDurablePublicationStage.js'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveredOraclePersister.js'
+      - 'scripts/botmode/native-recovered-oracle-persister-regression.cjs'
+      - 'api/server/controllers/agents/client.js'
+      - 'api/server/services/Endpoints/agents/initialize.js'
       - 'scripts/botmode/native-mission-durable-publication-stage-regression.cjs'
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveredClientBinding.js'
       - 'scripts/botmode/native-recovered-client-binding-regression.cjs'
@@ -103,6 +107,8 @@ jobs:
             --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-recovery-host-authorization-regression.cjs
       - name: Verify durable publication staging ownership and readback
         run: node scripts/botmode/native-mission-durable-publication-stage-regression.cjs
+      - name: Verify recovered Worker and specialist Oracle results use owner-fenced CAS
+        run: node scripts/botmode/native-recovered-oracle-persister-regression.cjs
       - name: Verify shared owner-scoped conversation resolution
         run: node scripts/botmode/authorized-agent-conversation-regression.cjs
       - name: Verify authenticated cold client and publication barrier binding

@@ -83,6 +83,10 @@ const { getAppConfig } = require('~/server/services/Config');
 const { getAppConfigOptionsFromUser } = require('@librechat/api');
 const { checkPermission, findAccessibleResources } = require('~/server/services/PermissionService');
 const AgentClient = require('~/server/controllers/agents/client');
+const { normalizeMissionOracleState } = require('@librechat/api');
+const {
+  createNativeMissionRecoveredOraclePersister,
+} = require('./nativeMissionRecoveredOraclePersister');
 const { processAddedConvo } = require('./addedConvo');
 const subagentThreadTaskStore = require('./subagentThreadStore');
 const {
@@ -2244,6 +2248,19 @@ async function initializeClientFromDocuments({ candidate, claim, job, context, a
   });
   client.user = userId;
   client.conversationId = candidate.streamId;
+  // Only the recovered provider's exact Redis owner can write Oracle results.
+  // The publisher still needs separate replay and terminal barriers.
+  const recoveryStore = GenerationJobManager.getJobStore();
+  if (typeof recoveryStore?.updateRecoveredMissionEvidence === 'function') {
+    client.options.nativeMissionRecoveredOraclePersister =
+      createNativeMissionRecoveredOraclePersister({
+        store: recoveryStore,
+        candidate,
+        claim,
+        assertAuthorized,
+        normalizeOracleState: normalizeMissionOracleState,
+      });
+  }
   client.publicationBarrier = {
     activate: () => {
       barrierActive = true;

@@ -31,6 +31,10 @@ describe('AgentClient authenticated cold mission run reconstruction', () => {
       executionGrantJobId: 'conv',
       nativeMissionRecoverySignal: new AbortController().signal,
       nativeMissionReplayReceiptProof: async () => true,
+      nativeMissionRecoveredOraclePersister: jest.fn(async (result) => ({
+        evidence: {},
+        results: { [result.taskId]: result },
+      })),
     };
     client.getEncoding = () => 'cl100k_base';
     client.getReachableMissionAgents = () => [agent];
@@ -107,12 +111,28 @@ describe('AgentClient authenticated cold mission run reconstruction', () => {
     expect(options.tenantId).toBe('tenant');
     expect(options.messages).toEqual([]);
     expect(options.requestBody.conversationId).toBe('conv');
+    const result = { taskId: 'mission/task', nodeId: 'worker', verdicts: [{ status: 'VERIFIED' }] };
+    await options.persistMissionOracleResult(result);
+    expect(client.options.nativeMissionRecoveredOraclePersister).toHaveBeenCalledWith(result);
+    expect(client.missionOracleState.results[result.taskId]).toEqual(result);
+  });
+
+  it('denies transient tool evidence during model-only cold reconstruction', async () => {
+    const client = buildClient();
+    client.transientEvidenceBuffer = { snapshot: () => [{ type: 'tool' }] };
+    const options = await client.createNativeMissionColdRunOptions({ candidate, claim });
+    await expect(options.resolveMissionOracleEvidence('mission/task')).rejects.toThrow(
+      'NATIVE_MISSION_COLD_TOOL_EVIDENCE_DENIED',
+    );
   });
 
   it('rejects missing owner fencing, publication barrier, or replay proof', async () => {
     for (const mutate of [
       (c) => {
         c.options.nativeMissionReplayReceiptProof = undefined;
+      },
+      (c) => {
+        c.options.nativeMissionRecoveredOraclePersister = undefined;
       },
       (c) => {
         c.options.nativeMissionRecoverySignal = AbortSignal.abort();
