@@ -21,6 +21,11 @@ export interface RecoveredSegmentStore {
     namespace: string,
     leaseMs: number,
   ): Promise<boolean>;
+  releaseDrainedMissionRecovery?(
+    streamId: string,
+    createdAt: number,
+    owner: string,
+  ): Promise<boolean>;
   transitionRecoveredMissionToComplete(
     streamId: string,
     createdAt: number,
@@ -221,10 +226,24 @@ export async function qualifyAndExecuteRecoveredMissionSegment({
     typeof store.transitionRecoveredMissionToComplete !== 'function'
   )
     return false;
-  // Do not rotate the Redis owner until the external-effect fence can be
-  // constructed. A missing tool fence after promotion strands the old claim.
-  // The segment repeats this check after acquiring its provider lease.
-  await assertEffectFencesReady();
+  // This preflight runs under an inspection claim: on refusal, release only
+  // this exact generation and owner. Do not strand the claim until TTL expiry.
+  try {
+    await assertEffectFencesReady();
+  } catch (error) {
+    if (typeof store.releaseDrainedMissionRecovery === 'function') {
+      try {
+        await store.releaseDrainedMissionRecovery(
+          claim.streamId,
+          claim.createdAt,
+          claim.ownerToken,
+        );
+      } catch {
+        // Preserve the original denial; Redis TTL remains the final fallback.
+      }
+    }
+    throw error;
+  }
   // The manager owns claim release on failed head/authority/receipt checks.
   const activated = await manager.qualifyReconstructedGraphAndActivateClaim(
     claim,

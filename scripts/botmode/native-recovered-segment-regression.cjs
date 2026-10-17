@@ -94,6 +94,7 @@ async function run(opts = {}) {
   const bridgeStore = {
     beginRecoveredMissionProviderExecution: async () => { steps.push('begin'); return true; },
     heartbeatRecoveredMissionProvider: async () => true,
+    releaseDrainedMissionRecovery: async (stream, created, token) => { assert.equal(stream, claim.streamId); assert.equal(created, claim.createdAt); assert.equal(token, claim.ownerToken); steps.push('release'); return true; },
     transitionRecoveredMissionToComplete: async () => { steps.push('terminal'); return true; },
   };
   const manager = {
@@ -116,7 +117,8 @@ async function run(opts = {}) {
   await assert.rejects(qualifyAndExecuteRecoveredMissionSegment({
     ...deps, assertEffectFencesReady: async () => { throw Error('FENCE_UNAVAILABLE'); },
   }), /FENCE_UNAVAILABLE/);
-  assert.deepEqual(steps, [], 'refused fence must not rotate Redis ownership');
+  assert.deepEqual(steps, ['release'], 'refused fence must release exact claim without promotion');
+  steps.length = 0;
   // A backend replacement between Redis activation and run start must not
   // execute using a different connection/owner authority.
   const replaced = { ...manager, getJobStore: (() => {
