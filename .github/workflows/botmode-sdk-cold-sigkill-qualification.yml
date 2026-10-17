@@ -58,6 +58,10 @@ on:
       - 'scripts/botmode/native-model-only-recovery-callbacks-regression.cjs'
       - 'api/server/services/Endpoints/agents/nativeMissionCapabilityAttestation.js'
       - 'scripts/botmode/native-mission-capability-attestation-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionOriginalModelOnlyReplay.js'
+      - 'scripts/botmode/native-original-model-only-replay-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionModelOnlyRecoveryHandler.js'
+      - 'scripts/botmode/native-model-only-handler-assembly-regression.cjs'
       - 'api/server/controllers/agents/request.js'
       - 'api/server/controllers/agents/__tests__/request.resumeMetadata.spec.js'
       - 'api/server/services/Endpoints/agents/initialize.js'
@@ -170,6 +174,10 @@ jobs:
         run: node scripts/botmode/native-model-only-recovery-callbacks-regression.cjs
       - name: Verify original model-only admission fingerprint and tool/delegation drift refusal
         run: node scripts/botmode/native-mission-capability-attestation-regression.cjs
+      - name: Verify complete original model-only effect inventory and permission drift denial
+        run: node scripts/botmode/native-original-model-only-replay-regression.cjs
+      - name: Verify assembled production handler cannot claim a job without host authority
+        run: node scripts/botmode/native-model-only-handler-assembly-regression.cjs
       - name: Verify recovered terminal message-write-before-CAS contract and unique event
         run: node scripts/botmode/native-recovered-terminal-publisher-regression.cjs
       - name: Verify recovered terminal CAS and publication reconciliation on real Redis
