@@ -39,6 +39,12 @@ function createNativeMissionColdGraphBuilder({ createRun }) {
       !options.signal ||
       !options.appConfig ||
       !options.user ||
+      String(options.user.id ?? options.user._id ?? '') !==
+        String(client.options?.req?.user?.id ?? client.options?.req?.user?._id ?? '') ||
+      !client.options?.req?.user ||
+      (options.tenantId ?? undefined) !== (client.options.req.user.tenantId ?? undefined) ||
+      options.requestBody?.conversationId !== candidate.streamId ||
+      options.signal.aborted === true ||
       !Array.isArray(options.modelCallbacks) ||
       !options.modelCallbacks.length ||
       typeof options.resolveMissionOracleEvidence !== 'function' ||

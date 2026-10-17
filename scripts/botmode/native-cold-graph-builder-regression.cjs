@@ -31,6 +31,7 @@ const {
     signal: new AbortController().signal,
     appConfig: {},
     user: { id: 'user' },
+    tenantId: 'tenant',
     modelCallbacks: [() => {}],
     resolveMissionOracleEvidence: async () => [],
     persistMissionOracleResult: async () => {},
@@ -44,7 +45,7 @@ const {
     jobCreatedAt: candidate.createdAt,
     checkpointNamespace: 'namespace',
     orchestratorPlan: plan,
-    options: { agent: { id: 'primary' } },
+    options: { agent: { id: 'primary' }, req: { user: { id: 'user', tenantId: 'tenant' } } },
     responseMessageId: 'response',
     createNativeMissionColdRunOptions: async () => options,
   };
@@ -77,6 +78,26 @@ const {
     }),
     /REPLAY_PROOFS_MISSING/,
   );
+  assert.equal(calls, 1);
+  for (const changed of [
+    { user: { id: 'other' } },
+    { tenantId: 'other' },
+    { requestBody: { conversationId: 'other' } },
+    { signal: AbortSignal.abort() },
+  ]) {
+    await assert.rejects(
+      builder({
+        client: {
+          ...client,
+          createNativeMissionColdRunOptions: async () => ({ ...options, ...changed }),
+        },
+        candidate,
+        claim,
+        assertAuthorized: async () => {},
+      }),
+      /REPLAY_PROOFS_MISSING/,
+    );
+  }
   assert.equal(calls, 1);
   await assert.rejects(
     builder({
