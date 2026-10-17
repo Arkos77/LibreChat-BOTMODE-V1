@@ -35,6 +35,8 @@ on:
       - 'scripts/botmode/run-native-effect-receipts-redis-regression.sh'
       - 'packages/api/src/agents/nativeMissionEffectExecution.ts'
       - 'packages/api/src/agents/nativeMissionRecoveredSegment.ts'
+      - 'packages/api/src/agents/nativeMissionColdGraphContinuation.ts'
+      - 'scripts/botmode/native-cold-graph-continuation-regression.cjs'
       - 'scripts/botmode/native-recovered-segment-regression.cjs'
       - 'scripts/botmode/native-effect-execution-regression.cjs'
       - 'scripts/botmode/native-effect-external-sigkill-regression.cjs'
@@ -108,6 +110,14 @@ jobs:
           after="$(docker volume ls -q --filter dangling=true | wc -l)"
           test "$before" -eq "$after"
           echo 'BOTMODE_LATE_PLAN_PROVIDER_LEASE_CI=PASS'
+      - name: Verify non-HITL cold graph continuation is fenced and terminal
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          docker run --rm --network none --memory 710m --cpus 1 --read-only \
+            --mount "type=bind,src=$PWD/packages/api/src/agents/nativeMissionColdGraphContinuation.ts,dst=/work/packages/api/src/agents/nativeMissionColdGraphContinuation.ts,readonly" \
+            --mount "type=bind,src=$PWD/scripts/botmode/native-cold-graph-continuation-regression.cjs,dst=/app/native-cold-graph-continuation-regression.cjs,readonly" \
+            --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-cold-graph-continuation-regression.cjs
       - name: Verify recovered provider lifecycle refuses unsafe publication
         env:
           BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
