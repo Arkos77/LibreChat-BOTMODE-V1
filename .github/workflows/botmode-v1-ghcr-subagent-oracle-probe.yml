@@ -1,38 +1,61 @@
-name: BOTMODE V1 GHCR Subagent Oracle Probe
+name: BOTMODE V1 Current Image Subagent Oracle Probe
 on:
   pull_request:
-    paths: ['.github/workflows/botmode-v1-ghcr-subagent-oracle-probe.yml', 'scripts/botmode/ci-oracle-delegated-mission-gate.py']
   push:
     branches: [main]
-    paths: ['.github/workflows/botmode-v1-ghcr-subagent-oracle-probe.yml', 'scripts/botmode/ci-oracle-delegated-mission-gate.py']
   workflow_dispatch:
 permissions:
   contents: read
+
+# The old probe repeatedly tested PR14 SHA 54b30a3 and an immutable, unrelated
+# GHCR image. It could not validate ANY fix on PR29. Keep its previous run
+# evidence in GitHub history, but make the release gate test its own exact SHA.
+# No image is published and no real inference credentials are consumed.
+env:
+  BOTMODE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
-  exact-candidate-runtime:
+  current-candidate-runtime:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 90
     steps:
-      - name: Checkout immutable PR14 candidate
-        uses: actions/checkout@v4
+      - name: Checkout exact current candidate
+        uses: actions/checkout@v5
         with:
-          ref: 54b30a342bf8f3480d7385b30cfa669b73c92878
+          ref: ${{ env.BOTMODE_CANDIDATE_SHA }}
           persist-credentials: false
       - name: Prove checked-out revision
-        run: test "$(git rev-parse HEAD)" = '54b30a342bf8f3480d7385b30cfa669b73c92878'
-      - name: Pull exact publicly published candidate image
+        run: test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+      - uses: docker/setup-buildx-action@v4
+      - name: Build exact candidate locally without registry publication
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          target: node
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: botmode-subagent-ci:${{ env.BOTMODE_CANDIDATE_SHA }}
+          cache-from: type=gha,scope=botmode-amd64
+          cache-to: type=gha,mode=max,scope=botmode-amd64
+          build-args: |
+            BUILD_COMMIT=${{ env.BOTMODE_CANDIDATE_SHA }}
+            BUILD_BRANCH=${{ github.head_ref || github.ref_name }}
+      - name: Prove exact locally built runtime exists
         run: |
           set -euo pipefail
-          docker logout ghcr.io >/dev/null 2>&1 || true
-          docker pull ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95
-      - name: Boot isolated candidate with disposable MongoDB
+          docker image inspect "botmode-subagent-ci:$BOTMODE_CANDIDATE_SHA" >/dev/null
+          echo "CI_SUBAGENT_CANDIDATE_SHA=$BOTMODE_CANDIDATE_SHA"
+          echo 'CI_SUBAGENT_IMAGE_BUILD=PASS'
+      - name: Boot current candidate with disposable MongoDB
         env:
           OPENROUTER_API_KEY: ci-local-fixture-no-real-key
         run: |
           set -euo pipefail
           cp .env.example .env
           # CI-only disposable Redis: durable Mission Oracle result readback.
-          # Modify the ephemeral checkout, never the pinned candidate.
+          # Modify the ephemeral checkout, never the checked-out candidate.
           sed -i '/      - SCHEDULES_SINGLE_PROCESS=true/a\      - USE_REDIS=true\n      - USE_REDIS_STREAMS=true\n      - REDIS_URI=redis://redis:6379\n      - STREAM_KEEP_COMPLETED_JOBS=true' docker-compose.botmode-lite.yml
           # Append a true service under the existing services: map.
           # Avoid a second 'services.depends_on' key, which Compose rejects.
@@ -41,9 +64,9 @@ jobs:
               image: redis:7-alpine
               command: ["redis-server", "--save", "", "--appendonly", "no"]
           YAML
-          # Fixture is pinned to this commit, copied into the ephemeral checkout;
-          # the source candidate and its lockfile remain immutable.
-          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/9bea457641245e04f1cb5cf2dc0e49662d05994f/scripts/botmode/ci-openai-subagent-fixture.py -o /tmp/botmode-ci-model-fixture.py
+          # Fixture comes from the exact same Git checkout as the runtime image.
+          # No network-fetched harness can silently test a different revision.
+          cp scripts/botmode/ci-openai-subagent-fixture.py /tmp/botmode-ci-model-fixture.py
           python3 /tmp/botmode-ci-model-fixture.py >/tmp/botmode-ci-fixture.log 2>&1 &
           fixture_pid=$!
           echo "$fixture_pid" > /tmp/botmode-ci-fixture.pid
@@ -75,7 +98,7 @@ jobs:
             echo 'POSTGRES_PASSWORD=ci-isolated-only'
           } >> .env
           # Deterministic integration: only the already live-tested OpenRouter free route.
-          # Patch the ephemeral checkout, never the pinned PR14 source.
+          # Patch the ephemeral checkout, never the checked-out source.
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -97,7 +120,7 @@ jobs:
           sudo chmod 640 .env
           export BOTMODE_MONGO_PASSWORD=ci-isolated-only
           export POSTGRES_PASSWORD=ci-isolated-only
-          export BOTMODE_IMAGE=ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95
+          export BOTMODE_IMAGE=botmode-subagent-ci:${BOTMODE_CANDIDATE_SHA}
           export BOTMODE_HOST_PORT=3090
           docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml up -d
           ready=0
@@ -109,7 +132,7 @@ jobs:
           done
           if [ "$ready" -ne 1 ]; then
             docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps
-            echo "::error::Exact PR14 API was not ready"
+            echo "::error::Current candidate API was not ready"
             exit 1
           fi
           # Use a recognized browser UA for API requests; LibreChat blocks and scores curl clients.
@@ -131,7 +154,7 @@ jobs:
             echo "::error::Unauthenticated BOTMODE setup expected HTTP 401, got $unauth_status"
             exit 1
           fi
-          echo 'BOTMODE_PR14_UNAUTHENTICATED_SETUP=401_PASS'
+          echo 'BOTMODE_CURRENT_UNAUTHENTICATED_SETUP=401_PASS'
           # Create an isolated database-backed test principal and sign a real JWT
           # with the exact API runtime's secret. No production account or secret used.
           export CI_JWT_SECRET="$(sed -n 's/^JWT_SECRET=//p' .env)"
@@ -185,7 +208,7 @@ jobs:
             echo "::error::Authenticated BOT MODE setup-status expected HTTP 200; received $auth_status"
             exit 1
           fi
-          echo 'BOTMODE_PR14_AUTHENTICATED_STATUS=200_PASS'
+          echo 'BOTMODE_CURRENT_AUTHENTICATED_STATUS=200_PASS'
           # Real native provisioning; verification of persisted inventory and routing.
           setup_status=$(curl -sS -o /tmp/botmode-setup-result.json -w '%{http_code}' \
             -X POST -H 'Content-Type: application/json' -H "User-Agent: $browser_ua" \
@@ -231,7 +254,7 @@ jobs:
               if data.get(name) is not True:
                   raise SystemExit('Incomplete native agent setup: '+name)
           PY
-          echo 'BOTMODE_PR14_SIX_AGENT_PROVISIONING=PASS'
+          echo 'BOTMODE_CURRENT_SIX_AGENT_PROVISIONING=PASS'
           # HTTP/SSE mission admission is a separate gate from successful setup.
           # This is a real Worker turn, never a fabricated oracle/publication PASS.
           docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE' > /tmp/botmode-ci-worker-id
@@ -539,20 +562,18 @@ jobs:
           })().catch(e=>{console.error('CI_CHILD_DIAGNOSTIC_CLASS='+e.name);process.exitCode=1});
           NODE_LINEAGE
 
-          # The pinned candidate does not contain this main-branch CI harness.
-          # Pull the exact harness bytes from a reviewed main commit, not a
-          # mutable branch reference during the running job.
-          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/c9ef9c3161c3b14038e65e52baedbdc332f9c93f/scripts/botmode/ci-oracle-delegated-mission-gate.py -o /tmp/botmode-ci-oracle-publication-gate.py
+          # Use the harness checked out from the identical candidate SHA.
+          cp scripts/botmode/ci-oracle-delegated-mission-gate.py /tmp/botmode-ci-oracle-publication-gate.py
           python3 /tmp/botmode-ci-oracle-publication-gate.py
-          echo 'BOTMODE_GHCR_SUBAGENT_ORACLE_PROBE=PASS'
+          echo 'BOTMODE_CURRENT_IMAGE_SUBAGENT_ORACLE_PROBE=PASS'
           echo '### Release-fix branch Oracle/QA E2E (local synthetic provider)' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Test image built without source-code CI hotpatches; local fixture is not hosted inference.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Exact PR head image built locally without publication; fixture is not hosted inference.' >> "$GITHUB_STEP_SUMMARY"
       - name: Classify child execution exception from API logs
         if: failure()
         env:
           BOTMODE_MONGO_PASSWORD: ci-isolated-only
           POSTGRES_PASSWORD: ci-isolated-only
-          BOTMODE_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95
+          BOTMODE_IMAGE: botmode-subagent-ci:${{ env.BOTMODE_CANDIDATE_SHA }}
         shell: bash
         run: |
           docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs --no-color api > /tmp/botmode-api-failure.log 2>/dev/null || true
@@ -602,5 +623,5 @@ jobs:
         env:
           BOTMODE_MONGO_PASSWORD: ci-isolated-only
           POSTGRES_PASSWORD: ci-isolated-only
-          BOTMODE_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95
+          BOTMODE_IMAGE: botmode-subagent-ci:${{ env.BOTMODE_CANDIDATE_SHA }}
         run: sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
