@@ -49,6 +49,24 @@ function createNativeMissionColdGraphBuilder({ createRun }) {
     ) {
       throw new Error('NATIVE_COLD_GRAPH_REPLAY_PROOFS_MISSING');
     }
+    // The authenticated host must rebuild every originally planned specialist
+    // and the primary agent. Missing configs would silently route checkpointed
+    // nodes through a different model/tool authority after a cold restart.
+    const expectedAgentIds = new Set([
+      client.options?.agent?.id,
+      ...(client.orchestratorPlan.tasks ?? []).map((task) => task?.agentId),
+    ]);
+    const actualAgentIds = options.agents.map((agent) => agent?.id);
+    if (
+      expectedAgentIds.has(undefined) ||
+      [...expectedAgentIds].some((id) => typeof id !== 'string' || !id) ||
+      actualAgentIds.some((id) => typeof id !== 'string' || !id) ||
+      new Set(actualAgentIds).size !== actualAgentIds.length ||
+      expectedAgentIds.size !== actualAgentIds.length ||
+      actualAgentIds.some((id) => !expectedAgentIds.has(id))
+    ) {
+      throw new Error('NATIVE_COLD_GRAPH_AGENT_SET_MISMATCH');
+    }
     await assertAuthorized();
     // The check must execute against the original durable claim. A truthy
     // feature flag cannot attest tool-effect receipts or Redis ownership.

@@ -21,9 +21,9 @@ const {
     assert.equal(options.assertNativeMissionReplayFences, undefined);
     return { Graph: { createWorkflow: () => graph } };
   };
-  const plan = { tasks: [{ nodeId: 'worker' }] };
+  const plan = { tasks: [{ nodeId: 'worker', agentId: 'specialist' }] };
   const options = {
-    agents: [{ id: 'primary' }],
+    agents: [{ id: 'primary' }, { id: 'specialist' }],
     orchestratorPlan: plan,
     conversationId: 'conversation',
     runId: 'response',
@@ -44,6 +44,7 @@ const {
     jobCreatedAt: candidate.createdAt,
     checkpointNamespace: 'namespace',
     orchestratorPlan: plan,
+    options: { agent: { id: 'primary' } },
     responseMessageId: 'response',
     createNativeMissionColdRunOptions: async () => options,
   };
@@ -75,6 +76,22 @@ const {
       assertAuthorized: async () => {},
     }),
     /REPLAY_PROOFS_MISSING/,
+  );
+  assert.equal(calls, 1);
+  await assert.rejects(
+    builder({
+      client: {
+        ...client,
+        createNativeMissionColdRunOptions: async () => ({
+          ...options,
+          agents: [{ id: 'primary' }],
+        }),
+      },
+      candidate,
+      claim,
+      assertAuthorized: async () => {},
+    }),
+    /AGENT_SET_MISMATCH/,
   );
   assert.equal(calls, 1);
   await assert.rejects(
