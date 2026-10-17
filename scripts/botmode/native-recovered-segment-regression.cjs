@@ -38,5 +38,35 @@ async function run(opts = {}) {
     assert.ok(!result.calls.includes(block), name + ' must block ' + block);
     assert.ok(!result.calls.includes('publish'), name + ' must prevent publication');
   }
+  // A timer heartbeat still in flight must be joined before the terminal CAS.
+  let completeHeartbeat;
+  const held = new Promise((resolve) => { completeHeartbeat = resolve; });
+  let count = 0;
+  const sequence = [];
+  const overlapStore = {
+    beginRecoveredMissionProviderExecution: async () => true,
+    heartbeatRecoveredMissionProvider: async () => {
+      count++;
+      if (count === 1) { await held; return false; }
+      return true;
+    },
+    transitionRecoveredMissionToComplete: async () => { sequence.push('terminal'); return true; },
+  };
+  // Trigger the interval pulse during the slow graph, then let the graph end.
+  let finishGraph;
+  const graphDone = new Promise((resolve) => { finishGraph = resolve; });
+  const pending = executeRecoveredMissionSegment({
+    store: overlapStore, identity, leaseMs: 3000, heartbeatMs: 1,
+    assertAuthorized: async () => {}, assertEffectFencesReady: async () => {},
+    continueGraph: async () => { await graphDone; },
+    verifyOracle: async () => {}, publishTerminal: async () => { sequence.push('publish'); },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 12));
+  finishGraph();
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.deepEqual(sequence, [], 'no terminal transition while heartbeat is in flight');
+  completeHeartbeat();
+  await assert.rejects(pending, /OWNERSHIP_LOST/);
+  assert.deepEqual(sequence, [], 'failed in-flight heartbeat must block publication');
   console.log('BOTMODE_RECOVERED_SEGMENT_FENCED_LIFECYCLE=PASS');
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -105,23 +105,33 @@ export async function executeRecoveredMissionSegment({
   }
   const abort = new AbortController();
   let failed: unknown;
-  let busy = false;
-  const pulse = async () => {
-    if (busy || failed) return;
-    busy = true;
-    try {
-      if (!(await store.heartbeatRecoveredMissionProvider(...args, leaseMs))) {
-        throw new RecoveredSegmentOwnershipLost();
+  let inFlight: Promise<void> | null = null;
+  const pulse = (): Promise<void> => {
+    if (failed) return Promise.reject(failed);
+    // A concurrent timer heartbeat must be joined before terminal CAS:
+    // returning early while it is still checking ownership is not safe.
+    if (inFlight) return inFlight;
+    const attempt = (async () => {
+      try {
+        if (!(await store.heartbeatRecoveredMissionProvider(...args, leaseMs))) {
+          throw new RecoveredSegmentOwnershipLost();
+        }
+      } catch (error) {
+        failed = error;
+        abort.abort();
+        throw error;
       }
-    } catch (error) {
-      failed = error;
-      abort.abort();
-    } finally {
-      busy = false;
-    }
+    })();
+    inFlight = attempt;
+    void attempt
+      .finally(() => {
+        if (inFlight === attempt) inFlight = null;
+      })
+      .catch(() => {});
+    return attempt;
   };
   const interval = setInterval(() => {
-    void pulse();
+    void pulse().catch(() => {});
   }, heartbeatMs);
   try {
     await continueGraph(abort.signal);
