@@ -144,6 +144,27 @@ async function runCase({ mutateSnapshot, invalidJob, denyPolicy, activated = tru
   );
   assert.equal(blocked, null);
   assert.equal(released, 1);
+  // A crashed Mongo read must not strand a claimed Redis owner token.
+  await assert.rejects(
+    probe.qualifyReconstructedGraphAndActivateClaim(
+      claim, { getState: async () => { throw new Error('Mongo unavailable'); } },
+      async () => {}, async () => {},
+    ),
+    /Mongo unavailable/,
+  );
+  assert.equal(released, 2);
+  assert.equal(invoked, 0);
+  // If a promotion dependency changes during inspection, reject and release.
+  const stableStore = probe.jobStore;
+  const changed = await probe.qualifyReconstructedGraphAndActivateClaim(
+    claim,
+    { getState: async () => { probe.jobStore = { ...stableStore }; return snapshot; } },
+    async () => {}, async () => {},
+  );
+  assert.equal(changed, null);
+  assert.equal(released, 3);
+  assert.equal(invoked, 0);
+  probe.jobStore = stableStore;
   console.log('BOTMODE_ORPHAN_REAL_SDK_SNAPSHOT_BRIDGE=PASS');
 
   const ok = await runCase();
