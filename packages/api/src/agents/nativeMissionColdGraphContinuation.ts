@@ -1,3 +1,5 @@
+import { LIBRECHAT_MISSION_SYNC_KEY } from './checkpointer';
+
 /**
  * Continue a reconstructed, already-authorized non-HITL LangGraph from its
  * durable head. Never supply a new user message or Command.resume: those
@@ -44,6 +46,9 @@ export async function continueColdNativeMissionGraph({
     thread_id: streamId,
     checkpoint_ns: '',
     __librechat_checkpoint_ns: checkpointNamespace,
+    // The saver bypasses its clean-exit checkpoint elision ONLY when this
+    // marker is present. durability:'sync' alone does not preserve siblings.
+    [LIBRECHAT_MISSION_SYNC_KEY]: true,
     nativeMissionEffectFenceRequired: true,
   };
   // Validate the exact graph head *again* immediately before execution. A
