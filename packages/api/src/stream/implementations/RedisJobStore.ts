@@ -871,6 +871,33 @@ const TERMINAL_PERSISTENCE_FINALIZE_LUA =
   'redis.call("HSET", KEYS[1], "terminalPersistencePending", "0", "finalEvent", ARGV[2]) ' +
   'return 1';
 
+/** Recovered terminal publisher: after Mongo readback, only the still-live
+ * exact recovered owner may commit the FINAL payload. In contrast, the normal
+ * epoch-only terminal finalizer is reserved for the conservative stale-owner
+ * reconciliation path. Neither method grants authority to write Mongo rows.
+ * KEYS [job, owner claim], ARGV [epoch, owner, provider, namespace,
+ * responseMessageId, finalEvent]. */
+const RECOVERED_MISSION_TERMINAL_FINALIZE_LUA =
+  'if redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[1] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "status") ~= "complete" then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "terminalPersistencePending") ~= "1" then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") ~= ARGV[2] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerExecutionId") ~= ARGV[3] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerExecutionStartedId") ~= ARGV[3] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "checkpointNamespace") ~= ARGV[4] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "responseMessageId") ~= ARGV[5] then return 0 end ' +
+  'if not redis.call("HGET", KEYS[1], "missionOracleState") ' +
+  'or not redis.call("HGET", KEYS[1], "missionCandidateContent") ' +
+  'or not redis.call("HGET", KEYS[1], "missionCandidateAttachments") then return 0 end ' +
+  'if redis.call("GET", KEYS[2]) ~= ARGV[2] or redis.call("PTTL", KEYS[2]) <= 0 then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "__missionProviderLeaseIdentity") ~= ARGV[3] then return 0 end ' +
+  'local tm = redis.call("TIME") ' +
+  'local now = tonumber(tm[1]) * 1000 + math.floor(tonumber(tm[2])/1000) ' +
+  'local deadline = tonumber(redis.call("HGET", KEYS[1], "__missionProviderLeaseUntil") or "") ' +
+  'if not deadline or deadline <= now then return 0 end ' +
+  'redis.call("HSET", KEYS[1], "terminalPersistencePending", "0", "finalEvent", ARGV[6]) ' +
+  'return 1';
+
 /**
  * Epoch-guarded hard deletion. `expectMissing` makes an unguarded cleanup of
  * already-absent state safe against a replacement appearing after the read.
@@ -2612,6 +2639,81 @@ export class RedisJobStore implements IJobStoreV2 {
         providerExecutionId,
         String(MISSION_PROVIDER_LEASE_MS),
       )) === 1
+    );
+  }
+
+  /** Publish only AFTER an authoritative Mongo response was saved and read
+   * back by the recovered host. This atomic step never creates a message. */
+  async finalizeRecoveredMissionTerminal(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    providerExecutionId: string,
+    checkpointNamespace: string,
+    responseMessageId: string,
+    finalEvent: string,
+  ): Promise<boolean> {
+    this.assertRecoveredProviderArguments(
+      expectedCreatedAt,
+      ownerToken,
+      providerExecutionId,
+      checkpointNamespace,
+      15000,
+    );
+    if (
+      typeof responseMessageId !== 'string' ||
+      responseMessageId.length === 0 ||
+      responseMessageId.length > 256 ||
+      typeof finalEvent !== 'string' ||
+      finalEvent.length === 0 ||
+      Buffer.byteLength(finalEvent, 'utf8') > 5 * 1024 * 1024
+    ) {
+      throw new Error('Invalid recovered terminal publication payload');
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(finalEvent);
+    } catch {
+      throw new Error('Invalid recovered terminal publication payload');
+    }
+    const event = parsed as {
+      final?: unknown;
+      conversation?: { conversationId?: unknown };
+      requestMessage?: { conversationId?: unknown; isCreatedByUser?: unknown };
+      responseMessage?: {
+        messageId?: unknown;
+        conversationId?: unknown;
+        isCreatedByUser?: unknown;
+      };
+    } | null;
+    if (
+      !event ||
+      typeof event !== 'object' ||
+      event.final !== true ||
+      event.conversation?.conversationId !== streamId ||
+      event.requestMessage?.conversationId !== streamId ||
+      event.requestMessage?.isCreatedByUser !== true ||
+      event.responseMessage?.messageId !== responseMessageId ||
+      event.responseMessage?.conversationId !== streamId ||
+      event.responseMessage?.isCreatedByUser !== false
+    ) {
+      throw new Error('Invalid recovered terminal publication payload');
+    }
+    return (
+      Number(
+        await this.redis.eval(
+          RECOVERED_MISSION_TERMINAL_FINALIZE_LUA,
+          2,
+          KEYS.job(streamId),
+          `stream:{${streamId}}:mission-recovery-claim`,
+          String(expectedCreatedAt),
+          ownerToken,
+          providerExecutionId,
+          checkpointNamespace,
+          responseMessageId,
+          finalEvent,
+        ),
+      ) === 1
     );
   }
 

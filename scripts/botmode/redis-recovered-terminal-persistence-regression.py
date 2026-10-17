@@ -16,6 +16,7 @@ def extract(name):
 
 cas = extract('JOB_RECOVERED_CAS_LUA') + extract('JOB_CAS_CORE_LUA')
 finalize = extract('TERMINAL_PERSISTENCE_FINALIZE_LUA')
+owner_finalize = extract('RECOVERED_MISSION_TERMINAL_FINALIZE_LUA')
 assert '__missionProviderLeaseUntil' in cas
 assert 'terminalPersistencePending' in source.split('async transitionRecoveredMissionToComplete(', 1)[1].split('return result === true;', 1)[0]
 name = 'botmode-terminal-cas-' + str(os.getpid())
@@ -46,6 +47,8 @@ try:
             'providerExecutionId': provider, 'providerExecutionStartedId': provider,
             '__missionRecoveryOwner': owner, '__missionProviderLeaseIdentity': provider,
             '__missionProviderLeaseUntil': str(now + 60000),
+            'responseMessageId': 'response-message',
+            'missionCandidateAttachments': '[]',
             'missionCandidateContent': '[{"type":"text","text":"approved"}]',
             'missionOracleState': '{"evidence":{},"results":{"mission/worker":{"verdicts":[{"status":"VERIFIED"}]}}}',
         }
@@ -81,6 +84,40 @@ try:
     assert json.loads(redis('HGET', keys[0], 'finalEvent'))['final'] is True
     assert redis('EVAL', finalize, 1, keys[0], epoch, event) == '0'
     print('RECOVERED_TERMINAL_FINAL_EVENT_EXACT_EPOCH_IDEMPOTENCY=PASS')
+
+    reset()
+    assert complete() == '1'
+    assert redis('EVAL', owner_finalize, 2, keys[0], keys[10], epoch, owner, provider, namespace, 'response-message', event) == '1'
+    assert redis('HGET', keys[0], 'terminalPersistencePending') == '0'
+    assert redis('EVAL', owner_finalize, 2, keys[0], keys[10], epoch, owner, provider, namespace, 'response-message', event) == '0'
+    print('RECOVERED_TERMINAL_EXACT_OWNER_FINAL_EVENT_ONCE=PASS')
+
+    # Every failed publisher attempt preserves the pending marker for the
+    # existing stale-terminal fallback; only the exact live owner can settle.
+    for label, updates, published_owner, published_provider, message_id, published_claim in (
+        ('PUBLISH_WRONG_OWNER', {}, 'other-owner-123456789', provider, 'response-message', owner),
+        ('PUBLISH_WRONG_PROVIDER', {}, owner, 'other-provider-123456789', 'response-message', owner),
+        ('PUBLISH_WRONG_MESSAGE', {}, owner, provider, 'foreign-message', owner),
+        ('PUBLISH_LOST_CLAIM', {}, owner, provider, 'response-message', 'other-owner-123456789'),
+        ('PUBLISH_EXPIRED_PROVIDER', {'__missionProviderLeaseUntil': str(now - 10000)}, owner, provider, 'response-message', owner),
+        ('PUBLISH_MISSING_ORACLE', {'missionOracleState': ''}, owner, provider, 'response-message', owner),
+    ):
+        reset(**updates)
+        # A non-eligible state can still have been committed earlier; vary only
+        # the finalizer's ownership and post-stage evidence after the CAS.
+        if label == 'PUBLISH_EXPIRED_PROVIDER':
+            redis('HSET', keys[0], '__missionProviderLeaseUntil', str(now + 60000))
+        if label == 'PUBLISH_MISSING_ORACLE':
+            redis('HSET', keys[0], 'missionOracleState', '{"results":{}}')
+        assert complete() == '1', label
+        if label == 'PUBLISH_EXPIRED_PROVIDER':
+            redis('HSET', keys[0], '__missionProviderLeaseUntil', str(now - 10000))
+        if label == 'PUBLISH_MISSING_ORACLE':
+            redis('HDEL', keys[0], 'missionOracleState')
+        redis('SET', keys[10], published_claim, 'PX', 60000)
+        assert redis('EVAL', owner_finalize, 2, keys[0], keys[10], epoch, published_owner, published_provider, namespace, message_id, event) == '0', label
+        assert redis('HGET', keys[0], 'terminalPersistencePending') == '1', label
+        print('RECOVERED_TERMINAL_' + label + '_DENIED=PASS')
 
     for label, fields, claim in (
         ('WRONG_OWNER', {'__missionRecoveryOwner': 'other-owner-123456789'}, owner),

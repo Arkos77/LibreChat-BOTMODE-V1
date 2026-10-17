@@ -1147,6 +1147,18 @@ export interface IJobStoreV2 extends IJobStore {
     checkpointNamespace: string,
   ): Promise<boolean>;
 
+  /** Optional owner-scoped FINAL event CAS after durable Mongo readback.
+   * The stale-owner reconciler has its separate epoch-only fallback. */
+  finalizeRecoveredMissionTerminal?(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    providerExecutionId: string,
+    checkpointNamespace: string,
+    responseMessageId: string,
+    finalEvent: string,
+  ): Promise<boolean>;
+
   /** Release a matching inspection claim without altering the live job. */
   releaseDrainedMissionRecovery?(
     streamId: string,

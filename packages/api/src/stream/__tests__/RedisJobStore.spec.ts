@@ -333,6 +333,68 @@ describe('RedisJobStore', () => {
     expect(args).toContain('300');
   });
 
+  test('finalizes a recovered terminal payload only through the owner-aware CAS', async () => {
+    const evalFinalize = jest.fn().mockResolvedValue(1);
+    const redis = { isCluster: true, eval: evalFinalize } as unknown as Cluster;
+    const store = new RedisJobStore(redis);
+    const frame = JSON.stringify({
+      final: true,
+      conversation: { conversationId: 'recovered-stream' },
+      requestMessage: { conversationId: 'recovered-stream', isCreatedByUser: true },
+      responseMessage: {
+        messageId: 'message-1',
+        conversationId: 'recovered-stream',
+        isCreatedByUser: false,
+      },
+    });
+    await expect(
+      store.finalizeRecoveredMissionTerminal(
+        'recovered-stream',
+        123456,
+        'recovery-owner-123456789',
+        'recovered-provider-123456789',
+        'namespace-123456',
+        'message-1',
+        frame,
+      ),
+    ).resolves.toBe(true);
+    expect(evalFinalize).toHaveBeenCalledWith(
+      expect.stringContaining('terminalPersistencePending'),
+      2,
+      'stream:{recovered-stream}:job',
+      'stream:{recovered-stream}:mission-recovery-claim',
+      '123456',
+      'recovery-owner-123456789',
+      'recovered-provider-123456789',
+      'namespace-123456',
+      'message-1',
+      frame,
+    );
+    await expect(
+      store.finalizeRecoveredMissionTerminal(
+        'recovered-stream',
+        123456,
+        'recovery-owner-123456789',
+        'recovered-provider-123456789',
+        'namespace-123456',
+        'message-1',
+        '',
+      ),
+    ).rejects.toThrow('Invalid recovered terminal publication payload');
+    await expect(
+      store.finalizeRecoveredMissionTerminal(
+        'recovered-stream',
+        123456,
+        'recovery-owner-123456789',
+        'recovered-provider-123456789',
+        'namespace-123456',
+        'message-1',
+        JSON.stringify({ ...JSON.parse(frame), responseMessage: { messageId: 'foreign-message' } }),
+      ),
+    ).rejects.toThrow('Invalid recovered terminal publication payload');
+    expect(evalFinalize).toHaveBeenCalledTimes(1);
+  });
+
   test('retains the generation epoch beyond the paused job TTL', async () => {
     const evalTransition = jest.fn().mockResolvedValue(0);
     const redis = {
