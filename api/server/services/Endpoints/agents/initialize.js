@@ -2039,6 +2039,7 @@ const initializeClient = async ({
     contentParts,
     stepMap,
     agentConfigs,
+    agentRuntime,
     eventHandlers,
     collectedUsage,
     collectedThoughtSignatures,

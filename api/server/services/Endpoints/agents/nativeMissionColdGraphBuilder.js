@@ -27,6 +27,8 @@ function createNativeMissionColdGraphBuilder({ createRun }) {
     // A host callback is mandatory: redis data alone is insufficient to
     // reconstruct provider credentials, model budget guards and tool contexts.
     const options = await client.createNativeMissionColdRunOptions({ candidate, claim });
+    const principal = client.options?.agentRuntime?.user ?? client.options?.req?.user;
+    const requestPrincipal = client.options?.req?.user;
     if (
       !options ||
       !Array.isArray(options.agents) ||
@@ -39,10 +41,14 @@ function createNativeMissionColdGraphBuilder({ createRun }) {
       !options.signal ||
       !options.appConfig ||
       !options.user ||
+      !principal ||
       String(options.user.id ?? options.user._id ?? '') !==
-        String(client.options?.req?.user?.id ?? client.options?.req?.user?._id ?? '') ||
-      !client.options?.req?.user ||
-      (options.tenantId ?? undefined) !== (client.options.req.user.tenantId ?? undefined) ||
+        String(principal.id ?? principal._id ?? '') ||
+      (requestPrincipal != null &&
+        (String(requestPrincipal.id ?? requestPrincipal._id ?? '') !==
+          String(principal.id ?? principal._id ?? '') ||
+          (requestPrincipal.tenantId ?? undefined) !== (principal.tenantId ?? undefined))) ||
+      (options.tenantId ?? undefined) !== (principal.tenantId ?? undefined) ||
       options.requestBody?.conversationId !== candidate.streamId ||
       options.signal.aborted === true ||
       !Array.isArray(options.modelCallbacks) ||

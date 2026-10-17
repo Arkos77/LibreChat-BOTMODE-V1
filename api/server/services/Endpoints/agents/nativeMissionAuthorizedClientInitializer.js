@@ -48,14 +48,21 @@ function createNativeMissionAuthorizedClientInitializer({
       context,
       assertAuthorized,
     });
+    const clientRuntime = client?.options?.agentRuntime;
+    const request = client?.options?.req;
     if (
       manager.getJobStore() !== store ||
       !client ||
       client.conversationId !== candidate.streamId ||
       client.options?.agent?.id !== job.agent_id ||
-      client.options?.req?.user !== context.user ||
-      client.options?.req?.body?.conversationId !== candidate.streamId ||
-      client.options?.req?.config == null ||
+      (clientRuntime?.user ?? request?.user) !== context.user ||
+      (clientRuntime?.requestBody ?? request?.body)?.conversationId !== candidate.streamId ||
+      (clientRuntime?.appConfig ?? request?.config) == null ||
+      (request != null &&
+        (request.user !== context.user ||
+          request.body?.conversationId !== candidate.streamId ||
+          request.config == null ||
+          (clientRuntime != null && request.config !== clientRuntime.appConfig))) ||
       typeof client.createNativeMissionColdRunOptions !== 'function'
     ) {
       throw new Error('NATIVE_MISSION_AUTHENTICATED_INITIALIZER_CLIENT_DENIED');

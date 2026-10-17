@@ -89,6 +89,22 @@ describe('AgentClient authenticated cold mission run reconstruction', () => {
     ).resolves.toBe(graph);
   });
 
+  it('prepares cold run options from an authenticated runtime without an HTTP request', async () => {
+    const client = buildClient();
+    client.options.agentRuntime = {
+      user: client.options.req.user,
+      appConfig: client.options.req.config,
+      requestBody: client.options.req.body,
+      turnStartedAt: candidate.createdAt,
+    };
+    delete client.options.req;
+    const options = await client.createNativeMissionColdRunOptions({ candidate, claim });
+    expect(options.user.id).toBe('owner');
+    expect(options.tenantId).toBe('tenant');
+    expect(options.messages).toEqual([]);
+    expect(options.requestBody.conversationId).toBe('conv');
+  });
+
   it('rejects missing owner fencing, publication barrier, or replay proof', async () => {
     for (const mutate of [
       (c) => {

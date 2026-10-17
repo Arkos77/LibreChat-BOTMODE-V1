@@ -57,6 +57,22 @@ const init = async ({ context }) => ({
     job,
   );
   assert.equal(checks, 4);
+  const noHttp = createNativeMissionAuthorizedClientInitializer({
+    ...deps,
+    initializeClientFromDocuments: async ({ context }) => ({
+      conversationId: 'conv',
+      options: {
+        agent: { id: 'primary' },
+        agentRuntime: {
+          user: context.user,
+          requestBody: { conversationId: 'conv' },
+          appConfig: {},
+        },
+      },
+      createNativeMissionColdRunOptions: async () => ({}),
+    }),
+  });
+  assert.equal((await noHttp({ candidate, claim, assertAuthorized: async () => {} })).job, job);
   for (const [changed, expected] of [
     [{ claim: { ...claim, checkpointId: 'wrong' } }, /CLAIM_DENIED/],
     [{ candidate: { ...candidate, createdAt: 3 } }, /CLAIM_DENIED/],

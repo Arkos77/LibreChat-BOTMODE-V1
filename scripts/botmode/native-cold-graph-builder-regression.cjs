@@ -64,6 +64,37 @@ const {
   );
   assert.equal(calls, 1);
   assert.equal(auth, 4);
+  const transportFree = {
+    ...client,
+    options: {
+      agent: client.options.agent,
+      agentRuntime: {
+        user: { id: 'user', tenantId: 'tenant' },
+        requestBody: { conversationId: 'conversation' },
+        appConfig: {},
+      },
+    },
+  };
+  assert.equal(
+    await builder({ client: transportFree, candidate, claim, assertAuthorized: async () => {} }),
+    graph,
+  );
+  assert.equal(calls, 2);
+  const conflict = {
+    ...client,
+    options: {
+      ...client.options,
+      agentRuntime: {
+        user: { id: 'other', tenantId: 'tenant' },
+        requestBody: { conversationId: 'conversation' },
+        appConfig: {},
+      },
+    },
+  };
+  await assert.rejects(
+    builder({ client: conflict, candidate, claim, assertAuthorized: async () => {} }),
+    /REPLAY_PROOFS_MISSING/,
+  );
   await assert.rejects(
     builder({
       client: {
@@ -79,7 +110,7 @@ const {
     }),
     /REPLAY_PROOFS_MISSING/,
   );
-  assert.equal(calls, 1);
+  assert.equal(calls, 2);
   await assert.rejects(
     builder({
       client: {
@@ -92,7 +123,7 @@ const {
     }),
     /AGENT_RUNTIME_MISMATCH/,
   );
-  assert.equal(calls, 1);
+  assert.equal(calls, 2);
   for (const changed of [
     { user: { id: 'other' } },
     { tenantId: 'other' },
@@ -112,7 +143,7 @@ const {
       /REPLAY_PROOFS_MISSING/,
     );
   }
-  assert.equal(calls, 1);
+  assert.equal(calls, 2);
   await assert.rejects(
     builder({
       client: {
@@ -128,7 +159,7 @@ const {
     }),
     /AGENT_SET_MISMATCH/,
   );
-  assert.equal(calls, 1);
+  assert.equal(calls, 2);
   await assert.rejects(
     builder({
       client: {
@@ -146,7 +177,7 @@ const {
     }),
     /unfenced/,
   );
-  assert.equal(calls, 1);
+  assert.equal(calls, 2);
   await assert.rejects(
     builder({
       client: { ...client, createNativeMissionColdRunOptions: undefined },

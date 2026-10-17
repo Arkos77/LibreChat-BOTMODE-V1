@@ -44,6 +44,40 @@ assert.equal(client.publicationBarrier.active, true);
 assert.equal(job.checkpointId, undefined);
 assert.equal(client.responseMessageId, 'response');
 assert.equal(client.jobCreatedAt, candidate.createdAt);
+const requestFree = makeClient();
+requestFree.options.agentRuntime = {
+  user: requestFree.options.req.user,
+  requestBody: requestFree.options.req.body,
+  appConfig: {},
+};
+delete requestFree.options.req;
+assert.equal(
+  bindNativeMissionRecoveredClient({
+    client: requestFree,
+    candidate,
+    job,
+    normalizeOracleState: normalizer,
+  }),
+  requestFree,
+);
+assert.equal(requestFree.publicationBarrier.active, true);
+const mixed = makeClient();
+mixed.options.agentRuntime = {
+  user: { id: 'owner', tenantId: 'other' },
+  requestBody: { conversationId: 'conv' },
+  appConfig: {},
+};
+assert.throws(
+  () =>
+    bindNativeMissionRecoveredClient({
+      client: mixed,
+      candidate,
+      job,
+      normalizeOracleState: normalizer,
+    }),
+  /DENIED/,
+);
+
 for (const override of [
   { userId: 'other' },
   { tenantId: 'other' },

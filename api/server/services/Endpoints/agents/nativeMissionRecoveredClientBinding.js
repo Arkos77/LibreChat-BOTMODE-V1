@@ -4,9 +4,16 @@
  * independently fence every effect before cold continuation is enabled.
  */
 function bindNativeMissionRecoveredClient({ client, candidate, job, normalizeOracleState }) {
+  const principal = client?.options?.agentRuntime?.user ?? client?.options?.req?.user;
+  const body = client?.options?.agentRuntime?.requestBody ?? client?.options?.req?.body;
+  const requestUser = client?.options?.req?.user;
   if (
     !client ||
-    !client.options?.req?.user ||
+    !principal ||
+    (requestUser != null &&
+      (String(requestUser.id ?? requestUser._id ?? '') !==
+        String(principal.id ?? principal._id ?? '') ||
+        (requestUser.tenantId ?? undefined) !== (principal.tenantId ?? undefined))) ||
     !candidate ||
     !job ||
     typeof normalizeOracleState !== 'function' ||
@@ -19,7 +26,7 @@ function bindNativeMissionRecoveredClient({ client, candidate, job, normalizeOra
     job.createdAt !== candidate.createdAt ||
     job.checkpointNamespace !== candidate.checkpointNamespace ||
     (job.checkpointId != null && job.checkpointId !== candidate.checkpointId) ||
-    (job.tenantId ?? undefined) !== (client.options.req.user.tenantId ?? undefined) ||
+    (job.tenantId ?? undefined) !== (principal.tenantId ?? undefined) ||
     job.status !== 'running' ||
     job.pendingAction != null ||
     typeof job.responseMessageId !== 'string' ||
@@ -31,8 +38,8 @@ function bindNativeMissionRecoveredClient({ client, candidate, job, normalizeOra
     !job.orchestratorPlan ||
     !Array.isArray(job.orchestratorPlan.tasks) ||
     !job.orchestratorPlan.tasks.length ||
-    String(client.options.req.user.id ?? client.options.req.user._id) !== job.userId ||
-    client.options.req.body?.conversationId !== candidate.streamId ||
+    String(principal.id ?? principal._id) !== job.userId ||
+    body?.conversationId !== candidate.streamId ||
     client.conversationId !== candidate.streamId ||
     client.options.agent?.id !== job.agent_id ||
     (client.responseMessageId != null && client.responseMessageId !== job.responseMessageId) ||

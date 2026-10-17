@@ -1826,8 +1826,9 @@ class AgentClient extends BaseClient {
     const persistence = BaseClient.prototype.getModelBoundUserMessagePersistence.call(this);
     return createModelBoundContentCallback(
       {
-        filters: this.options.req?.config?.filters,
-        legacyPii: this.options.req?.config?.messageFilter?.pii,
+        filters: (this.options.agentRuntime?.appConfig ?? this.options.req?.config)?.filters,
+        legacyPii: (this.options.agentRuntime?.appConfig ?? this.options.req?.config)?.messageFilter
+          ?.pii,
         storedMessages: this.modelBoundStoredMessages,
         fileIdsBySourceMessageId: fileProjection.fileIdsBySourceMessageId,
         resolvedFiles: fileProjection.resolvedFiles,
@@ -5125,8 +5126,11 @@ class AgentClient extends BaseClient {
    */
   async createNativeMissionColdRunOptions({ candidate, claim }) {
     const req = this.options?.req;
-    const appConfig = req?.config;
-    const user = req?.user;
+    const runtime = this.options?.agentRuntime;
+    const appConfig = runtime?.appConfig ?? req?.config;
+    const user = runtime?.user ?? req?.user;
+    const body = runtime?.requestBody ?? req?.body;
+    const balanceConfig = appConfig ? getBalanceConfig(appConfig) : undefined;
     const signal = this.options?.nativeMissionRecoverySignal;
     const receiptProof = this.options?.nativeMissionReplayReceiptProof;
     if (
@@ -5138,7 +5142,13 @@ class AgentClient extends BaseClient {
       claim.checkpointId !== candidate.checkpointId ||
       typeof claim.ownerToken !== 'string' ||
       !claim.ownerToken ||
-      this.options.req?.body?.conversationId !== candidate.streamId ||
+      body?.conversationId !== candidate.streamId ||
+      (req != null &&
+        (String(req.user?.id ?? req.user?._id ?? '') !== String(user?.id ?? user?._id ?? '') ||
+          (req.user?.tenantId ?? undefined) !== (user?.tenantId ?? undefined) ||
+          req.config !== appConfig ||
+          req.body?.conversationId !== candidate.streamId)) ||
+      (balanceConfig?.enabled === true && req == null) ||
       this.conversationId !== candidate.streamId ||
       this.jobCreatedAt !== candidate.createdAt ||
       this.checkpointNamespace !== candidate.checkpointNamespace ||
@@ -5174,15 +5184,12 @@ class AgentClient extends BaseClient {
       sessionStartSource: 'resume',
       signal,
       user: createSafeUser(user),
-      tenantId: resolveRequestTenantId(req),
+      tenantId: runtime ? (user.tenantId ?? undefined) : resolveRequestTenantId(req),
       appConfig,
       summarizationConfig: appConfig.summarization,
       tokenCounter,
       modelCallbacks: [modelBoundCallback],
-      modelCallbackFactory: createModelBoundBudgetAdmissionFactory(
-        this,
-        getBalanceConfig(appConfig),
-      ),
+      modelCallbackFactory: createModelBoundBudgetAdmissionFactory(this, balanceConfig),
       toolInputValidationErrors: this.toolInputValidationErrors,
       toolExecution: {
         executionGrantResolver: this.options.executionGrantResolver,
