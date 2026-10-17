@@ -11,6 +11,8 @@ const {
   createConcurrencyLimiter,
   loadSkillStates,
   initializeAgent,
+  createAgentExecutionContext,
+  validateAgentModelWithoutTransport,
   createRequestAgentExecutionContext,
   primeInvokedSkillsForProfiles,
   validateAgentModel,
@@ -76,7 +78,9 @@ const {
   createObservedSkillEditCheck,
   createObservedSkillCreateCheck,
 } = require('./skillAuthorizationObservation');
-const { getModelsConfig } = require('~/server/controllers/ModelController');
+const { getModelsConfig, loadModelsFromContext } = require('~/server/controllers/ModelController');
+const { getAppConfig } = require('~/server/services/Config');
+const { getAppConfigOptionsFromUser } = require('@librechat/api');
 const { checkPermission, findAccessibleResources } = require('~/server/services/PermissionService');
 const AgentClient = require('~/server/controllers/agents/client');
 const { processAddedConvo } = require('./addedConvo');
@@ -2091,4 +2095,154 @@ const initializeClient = async ({
   return { client, userMCPAuthMap, transientEvidenceBuffer, missionEvidenceContext };
 };
 
-module.exports = { initializeClient };
+/** Authenticated cold initialization for model-only missions. Uses the same
+ * SDK initializeAgent() as live requests, with current user-scoped model
+ * catalog and secrets. Any tool, skill, file or paid-balance pathway which
+ * has no request-independent authorization adapter is denied BEFORE SDK IO.
+ * No graph is started and no publication/receipt capability is inferred.
+ */
+async function initializeClientFromDocuments({ candidate, claim, job, context, assertAuthorized }) {
+  const user = context?.user;
+  const conversation = context?.conversation;
+  const documents = context?.agents;
+  const userId = String(user?.id ?? user?._id ?? '');
+  const expectedAgentIds = new Set([
+    job?.agent_id,
+    ...(job?.orchestratorPlan?.tasks ?? []).map((task) => task?.agentId),
+  ]);
+  if (
+    typeof assertAuthorized !== 'function' ||
+    !candidate ||
+    !claim ||
+    !job ||
+    !user?.id ||
+    !userId ||
+    job.userId !== userId ||
+    candidate.streamId !== claim.streamId ||
+    candidate.createdAt !== claim.createdAt ||
+    candidate.checkpointId !== claim.checkpointId ||
+    candidate.checkpointNamespace !== claim.checkpointNamespace ||
+    candidate.streamId !== job.streamId ||
+    (job.tenantId ?? undefined) !== (user.tenantId ?? undefined) ||
+    candidate.createdAt !== job.createdAt ||
+    candidate.checkpointNamespace !== job.checkpointNamespace ||
+    job.status !== 'running' ||
+    job.pendingAction != null ||
+    conversation?.conversationId !== candidate.streamId ||
+    conversation?.agent_id !== job.agent_id ||
+    (conversation.tenantId ?? undefined) !== (user.tenantId ?? undefined) ||
+    !Array.isArray(documents) ||
+    expectedAgentIds.has(undefined) ||
+    expectedAgentIds.size !== documents.length ||
+    documents[0]?.id !== job.agent_id ||
+    documents.some((agent) => !agent?.id || !expectedAgentIds.has(agent.id)) ||
+    new Set(documents.map((agent) => agent.id)).size !== documents.length ||
+    typeof job.userMessage?.messageId !== 'string' ||
+    typeof job.responseMessageId !== 'string' ||
+    !job.userMessage.messageId ||
+    !job.responseMessageId
+  )
+    throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_AUTHORITY_DENIED');
+
+  // For an incomplete host integration these paths must not silently lose
+  // tools, skill permissions or uploaded files during graph reconstruction.
+  const containsUnsupportedResources =
+    (conversation.files?.length ?? 0) > 0 ||
+    (conversation.attachments?.length ?? 0) > 0 ||
+    documents.some(
+      (agent) =>
+        (agent.tools?.length ?? 0) > 0 ||
+        (agent.skills?.length ?? 0) > 0 ||
+        agent.skills_enabled === true ||
+        (agent.attachments?.length ?? 0) > 0 ||
+        (agent.files?.length ?? 0) > 0 ||
+        Object.keys(agent.tool_resources ?? {}).length > 0,
+    );
+  if (containsUnsupportedResources) {
+    throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_TOOL_RUNTIME_UNAVAILABLE');
+  }
+  await assertAuthorized();
+  const appConfig = await getAppConfig(getAppConfigOptionsFromUser(user));
+  if (!appConfig || appConfig.balance?.enabled === true) {
+    throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_CONFIG_UNAVAILABLE');
+  }
+  const catalog = await loadModelsFromContext({ user, appConfig });
+  const requestBody = {
+    conversationId: candidate.streamId,
+    messageId: job.userMessage.messageId,
+    parentMessageId: job.userMessage.messageId,
+  };
+  const runtime = createAgentExecutionContext({
+    user,
+    appConfig,
+    requestBody,
+    turnStartedAt: candidate.createdAt,
+    resolvedConversation: conversation,
+    hasResolvedConversation: true,
+  });
+  const allowedProviders = new Set(appConfig.endpoints?.agents?.allowedProviders ?? []);
+  const configs = new Map();
+  for (const definition of documents) {
+    await assertAuthorized();
+    const validation = validateAgentModelWithoutTransport({
+      agent: definition,
+      modelsConfig: catalog,
+    });
+    if (validation.isValid !== true) {
+      throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_MODEL_NOT_ALLOWED');
+    }
+    const config = await initializeAgent(
+      {
+        runtime,
+        agent: { ...definition },
+        conversationId: candidate.streamId,
+        parentMessageId: job.userMessage.messageId,
+        requestBody,
+        allowedProviders,
+        endpointOption: { endpoint: EModelEndpoint.agents },
+        isInitialAgent: definition.id === job.agent_id,
+        loadTools: async ({ tools }) => {
+          if (tools.length) throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_TOOLS_DENIED');
+          return { toolDefinitions: [], tools: [] };
+        },
+      },
+      { ...db, filterFilesByAgentAccess },
+    );
+    if (
+      config?.id !== definition.id ||
+      (config.toolDefinitions?.length ?? 0) > 0 ||
+      (config.tools?.length ?? 0) > 0 ||
+      (config.toolRegistry?.size ?? 0) > 0
+    ) {
+      throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_RUNTIME_MISMATCH');
+    }
+    configs.set(definition.id, config);
+  }
+  await assertAuthorized();
+  let barrierActive = false;
+  const client = new AgentClient({
+    agent: configs.get(job.agent_id),
+    agentConfigs: new Map([...configs].filter(([id]) => id !== job.agent_id)),
+    agentRuntime: runtime,
+    jobCreatedAt: candidate.createdAt,
+    checkpointNamespace: candidate.checkpointNamespace,
+    orchestratorPlan: job.orchestratorPlan,
+    executionGrantJobId: candidate.streamId,
+    executionGrantResolver: async () => {
+      throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_EXTERNAL_EFFECTS_DENIED');
+    },
+  });
+  client.user = userId;
+  client.conversationId = candidate.streamId;
+  client.publicationBarrier = {
+    activate: () => {
+      barrierActive = true;
+    },
+    hold: () => barrierActive,
+  };
+  // The caller still MUST install a real owner-cancellable signal and a
+  // complete checkpoint receipt proof; neither is synthesized here.
+  return client;
+}
+
+module.exports = { initializeClient, initializeClientFromDocuments };

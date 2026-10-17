@@ -13,6 +13,8 @@ const {
 const { MongoMemoryServer } = require('mongodb-memory-server');
 
 const mockInitializeAgent = jest.fn();
+const mockGetAppConfig = jest.fn();
+const mockLoadModelsFromContext = jest.fn();
 const mockValidateAgentModel = jest.fn();
 const mockGetGenerationJob = jest.fn();
 const mockHasDurableSubagentRecoveryCheckpoint = jest.fn();
@@ -93,6 +95,11 @@ jest.mock('~/server/services/ToolService', () => ({
 
 jest.mock('~/server/controllers/ModelController', () => ({
   getModelsConfig: jest.fn().mockResolvedValue({}),
+  loadModelsFromContext: (...args) => mockLoadModelsFromContext(...args),
+}));
+jest.mock('~/server/services/Config', () => ({
+  ...jest.requireActual('~/server/services/Config'),
+  getAppConfig: (...args) => mockGetAppConfig(...args),
 }));
 
 let agentClientArgs;
@@ -111,7 +118,7 @@ jest.mock('~/cache', () => ({
   logViolation: jest.fn(),
 }));
 
-const { initializeClient } = require('./initialize');
+const { initializeClient, initializeClientFromDocuments } = require('./initialize');
 const { observeRequiredToolApproval } = require('./approvalAuthorizationObservation');
 const { processAddedConvo } = require('./addedConvo');
 const { getSkillDbMethods, getSkillToolDeps } = require('./skillDeps');
@@ -156,6 +163,8 @@ describe('initializeClient — processAgent ACL gate', () => {
     });
 
     mockValidateAgentModel.mockResolvedValue({ isValid: true });
+    mockGetAppConfig.mockResolvedValue({ endpoints: { agents: { allowedProviders: ['openai'] } } });
+    mockLoadModelsFromContext.mockResolvedValue({ openai: ['gpt-4'] });
   });
 
   const makeReq = () => ({
@@ -211,6 +220,98 @@ describe('initializeClient — processAgent ACL gate', () => {
       executionProfile: 'default',
       statefulSessions: false,
     },
+  });
+
+  it('reconstructs an authenticated model-only mission without Express req/res', async () => {
+    const user = testUser;
+    const owner = String(user._id);
+    const documents = [
+      { id: PRIMARY_ID, _id: 'mongo-primary', provider: 'openai', model: 'gpt-4', tools: [] },
+      { id: TARGET_ID, _id: 'mongo-target', provider: 'openai', model: 'gpt-4', tools: [] },
+    ];
+    const candidate = {
+      streamId: 'conv-model-only',
+      createdAt: 1700000000000,
+      checkpointNamespace: 'epoch',
+      checkpointId: 'head',
+    };
+    const job = {
+      ...candidate,
+      userId: owner,
+      agent_id: PRIMARY_ID,
+      status: 'running',
+      userMessage: { messageId: 'user-message' },
+      responseMessageId: 'response-message',
+      orchestratorPlan: { tasks: [{ key: 'task', nodeId: 'worker', agentId: TARGET_ID }] },
+    };
+    const conversation = { conversationId: candidate.streamId, agent_id: PRIMARY_ID };
+    mockInitializeAgent.mockImplementation(async ({ agent }) => ({
+      ...makePrimaryConfig([]),
+      id: agent.id,
+      model_parameters: { model: 'gpt-4' },
+      toolDefinitions: [],
+      tools: [],
+    }));
+    let checks = 0;
+    const client = await initializeClientFromDocuments({
+      candidate,
+      claim: { ...candidate, ownerToken: 'owner-token' },
+      job,
+      context: { user, conversation, agents: documents },
+      assertAuthorized: async () => {
+        checks++;
+      },
+    });
+    expect(checks).toBe(4);
+    expect(mockInitializeAgent).toHaveBeenCalledTimes(2);
+    for (const call of mockInitializeAgent.mock.calls) {
+      expect(call[0]).not.toHaveProperty('req');
+      expect(call[0]).not.toHaveProperty('res');
+      expect(call[0].runtime.user).toBe(user);
+      expect(call[0].runtime.resolvedConversation).toBe(conversation);
+    }
+    expect(agentClientArgs).not.toHaveProperty('req');
+    expect(agentClientArgs.agentRuntime.user).toBe(user);
+    expect(agentClientArgs.agentConfigs.has(TARGET_ID)).toBe(true);
+    expect(client.conversationId).toBe(candidate.streamId);
+    expect(client.publicationBarrier.hold()).toBe(false);
+    client.publicationBarrier.activate();
+    expect(client.publicationBarrier.hold()).toBe(true);
+    expect(mockLoadModelsFromContext).toHaveBeenCalledWith(expect.objectContaining({ user }));
+  });
+
+  it('refuses to strip durable tools during request-free cold recovery', async () => {
+    const user = testUser;
+    const candidate = {
+      streamId: 'conv-model-only',
+      createdAt: 1700000000000,
+      checkpointNamespace: 'epoch',
+      checkpointId: 'head',
+    };
+    const job = {
+      ...candidate,
+      userId: String(user._id),
+      agent_id: PRIMARY_ID,
+      status: 'running',
+      userMessage: { messageId: 'user-message' },
+      responseMessageId: 'response-message',
+      orchestratorPlan: { tasks: [{ key: 'task', nodeId: 'worker', agentId: PRIMARY_ID }] },
+    };
+    await expect(
+      initializeClientFromDocuments({
+        candidate,
+        claim: { ...candidate, ownerToken: 'owner-token' },
+        job,
+        context: {
+          user,
+          conversation: { conversationId: candidate.streamId, agent_id: PRIMARY_ID },
+          agents: [{ id: PRIMARY_ID, provider: 'openai', model: 'gpt-4', tools: ['web_search'] }],
+        },
+        assertAuthorized: async () => {},
+      }),
+    ).rejects.toThrow('TOOL_RUNTIME_UNAVAILABLE');
+    expect(mockInitializeAgent).not.toHaveBeenCalled();
+    expect(mockGetAppConfig).not.toHaveBeenCalled();
   });
 
   it('blocks cross-project source reuse for an existing conversation', async () => {

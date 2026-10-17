@@ -54,8 +54,17 @@ export interface LoadConfigModelsDeps {
 export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
   const { getAppConfig, getUserKeyValues, fetchModels = defaultFetchModels } = deps;
 
-  return async function loadConfigModels(req: ServerRequest): Promise<TModelsConfig> {
-    const appConfig = req.config ?? (await getAppConfig(getAppConfigOptionsFromUser(req.user)));
+  // One owner-scoped model loader for HTTP traffic and authenticated cold jobs.
+  // Do not invent an Express request or reuse a previous user's model catalog.
+  const fromContext = async ({
+    user,
+    appConfig: suppliedConfig,
+  }: {
+    user: ServerRequest['user'];
+    appConfig?: AppConfig;
+  }): Promise<TModelsConfig> => {
+    if (!user?.id) throw new Error('MODEL_CATALOG_USER_REQUIRED');
+    const appConfig = suppliedConfig ?? (await getAppConfig(getAppConfigOptionsFromUser(user)));
     if (!appConfig) {
       return {};
     }
@@ -96,7 +105,7 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
      *  sharing the fetch can be backfilled with the same config afterward */
     const uniqueKeyToTokenKey: Record<string, string> = {};
     const endpointsMap: Record<string, TEndpoint> = {};
-    const tenantId = req.user?.tenantId;
+    const tenantId = user?.tenantId;
 
     const resolved: ResolvedEndpoint[] = [];
     const userKeyEndpoints: ResolvedEndpoint[] = [];
@@ -123,15 +132,15 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
       if (
         endpoint.models?.fetch &&
         (entry.apiKeyIsUserProvided || entry.baseURLIsUserProvided) &&
-        req.user?.id
+        user?.id
       ) {
         userKeyEndpoints.push(entry);
       }
     }
 
     const userKeyMap = new Map<string, UserKeyValues | null>();
-    if (userKeyEndpoints.length > 0 && req.user?.id) {
-      const userId = req.user.id;
+    if (userKeyEndpoints.length > 0 && user?.id) {
+      const userId = user.id;
       const results = await Promise.allSettled(
         userKeyEndpoints.map((e) => getUserKeyValues({ userId, name: e.name })),
       );
@@ -177,7 +186,7 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
         if (!fetchPromisesMap[uniqueKey]) {
           /** User-scoped when configured headers resolve per user — the
            *  derived token config must not be cached under the shared name */
-          const tokenKey = getTokenConfigKey(endpoint, name, req.user?.id ?? '', tenantId);
+          const tokenKey = getTokenConfigKey(endpoint, name, user?.id ?? '', tenantId);
           uniqueKeyToTokenKey[uniqueKey] = tokenKey;
           fetchPromisesMap[uniqueKey] = fetchModels({
             name,
@@ -185,8 +194,8 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
             baseURL: BASE_URL,
             baseURLIsUserProvided: false,
             allowedAddresses: appConfig.endpoints?.allowedAddresses,
-            user: req.user?.id,
-            userObject: req.user,
+            user: user?.id,
+            userObject: user,
             headers: endpointHeaders,
             direct: endpoint.directEndpoint,
             userIdQuery: models.userIdQuery,
@@ -205,7 +214,7 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
         const resolvedBaseURL = baseURLIsUserProvided ? userKeyValues?.baseURL : BASE_URL;
 
         if (resolvedApiKey && resolvedBaseURL) {
-          const userFetchKey = `user:${req.user?.id}:${name}`;
+          const userFetchKey = `user:${user?.id}:${name}`;
           fetchPromisesMap[userFetchKey] =
             fetchPromisesMap[userFetchKey] ||
             (async () => {
@@ -222,8 +231,8 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
                 baseURL: resolvedBaseURL,
                 baseURLIsUserProvided,
                 allowedAddresses: appConfig.endpoints?.allowedAddresses,
-                user: req.user?.id,
-                userObject: req.user,
+                user: user?.id,
+                userObject: user,
                 // Do not forward header overrides when the base URL is
                 // user-supplied: configured templates such as
                 // {{LIBRECHAT_OPENID_ID_TOKEN}} would otherwise resolve and be
@@ -235,7 +244,7 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
                 userIdQuery: models.userIdQuery,
                 skipCache: true,
                 /** Fetched with the user's key/URL — always user-scoped */
-                tokenKey: getTokenConfigKey(endpoint, name, req.user?.id ?? '', tenantId),
+                tokenKey: getTokenConfigKey(endpoint, name, user?.id ?? '', tenantId),
               });
             })();
           uniqueKeyToEndpointsMap[userFetchKey] = uniqueKeyToEndpointsMap[userFetchKey] || [];
@@ -283,7 +292,7 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
             const siblingKey = getTokenConfigKey(
               endpointsMap[name],
               name,
-              req.user?.id ?? '',
+              user?.id ?? '',
               tenantId,
             );
             if (siblingKey !== winnerTokenKey) {
@@ -296,4 +305,7 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
 
     return modelsConfig;
   };
+  const fromRequest = (req: ServerRequest): Promise<TModelsConfig> =>
+    fromContext({ user: req.user, appConfig: req.config });
+  return Object.assign(fromRequest, { fromContext });
 }

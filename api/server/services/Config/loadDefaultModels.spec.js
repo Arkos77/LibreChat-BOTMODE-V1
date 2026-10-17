@@ -49,6 +49,24 @@ describe('loadDefaultModels', () => {
     expect(getGoogleModels).toHaveBeenCalledTimes(1);
   });
 
+  it('loads authenticated user models without an HTTP request', async () => {
+    const user = { id: 'owner-model', tenantId: 'tenant-model' };
+    const models = await loadDefaultModels.fromContext({ user, appConfig: {} });
+    expect(models[EModelEndpoint.openAI]).toEqual(['gpt-5']);
+    expect(getOpenAIModels).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user: 'owner-model',
+        userObject: user,
+      }),
+    );
+  });
+
+  it('rejects missing owner identity for the request-free catalog', async () => {
+    await expect(loadDefaultModels.fromContext({ user: {}, appConfig: {} })).rejects.toThrow(
+      'MODEL_CATALOG_USER_REQUIRED',
+    );
+  });
+
   it('keeps the configured Google catalog empty when its model source fails', async () => {
     const error = new Error('Google models unavailable');
     getGoogleModels.mockReturnValue(Promise.reject(error));
