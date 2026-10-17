@@ -24,7 +24,16 @@ function createNativeMissionAuthenticatedRecoveryContext(deps) {
       deps: {
         ...deps,
         getUserById: async (id) => {
-          user = await deps.getUserById(id);
+          const stored = await deps.getUserById(id);
+          if (!stored) return null;
+          // getUserById() uses Mongo `.lean()` and exposes `_id`, while the
+          // provider/config SDK expects `user.id`. Derive only the same owner
+          // identity from the authenticated Mongo document, never Redis.
+          const canonicalId = String(stored._id ?? stored.id ?? '');
+          if (canonicalId !== id || (stored.id != null && String(stored.id) !== canonicalId)) {
+            return null;
+          }
+          user = stored.id != null ? stored : { ...stored, id: canonicalId };
           return user;
         },
         getConvo: async (owner, id) => {

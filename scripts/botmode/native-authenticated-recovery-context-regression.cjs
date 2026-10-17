@@ -42,6 +42,11 @@ const job = {
   const resolve = createNativeMissionAuthenticatedRecoveryContext(deps);
   const context = await resolve({ candidate, job });
   assert.equal(context.user._id, 'owner');
+  assert.equal(
+    context.user.id,
+    'owner',
+    'normalize the lean Mongo owner for provider model admission',
+  );
   assert.equal(context.conversation.conversationId, 'conversation');
   assert.deepEqual(
     context.agents.map((agent) => agent.id),
@@ -54,6 +59,13 @@ const job = {
     [{ pendingAction: { actionId: 'pause' } }, deps],
     [{}, { ...deps, canViewAgent: async ({ agent }) => agent.id !== 'specialist' }],
     [{}, { ...deps, getConvo: async () => null }],
+    [
+      {},
+      {
+        ...deps,
+        getUserById: async () => ({ _id: 'owner', id: 'impersonator', tenantId: 'tenant' }),
+      },
+    ],
   ]) {
     await assert.rejects(
       createNativeMissionAuthenticatedRecoveryContext(alternate)({
