@@ -2162,6 +2162,15 @@ async function initializeClientFromDocuments({ candidate, claim, job, context, a
       (agent) =>
         (agent.tools?.length ?? 0) > 0 ||
         Object.keys(agent.tool_options ?? {}).length > 0 ||
+        // Delegation is an implicit SDK tool, even when `tools` is empty.
+        // The request-free cold initializer has no durable child-run binding
+        // or original grant receipt; silently reconstituting an agent without
+        // those capabilities would change the checkpoint's execution graph.
+        agent.subagents?.enabled === true ||
+        (agent.subagents?.agent_ids?.length ?? 0) > 0 ||
+        (agent.subagentAgentConfigs?.length ?? 0) > 0 ||
+        (agent.lazySubagentConfigs?.length ?? 0) > 0 ||
+        (agent.subagentGraphConfigs?.length ?? 0) > 0 ||
         (agent.skills?.length ?? 0) > 0 ||
         agent.skills_enabled === true ||
         (agent.attachments?.length ?? 0) > 0 ||

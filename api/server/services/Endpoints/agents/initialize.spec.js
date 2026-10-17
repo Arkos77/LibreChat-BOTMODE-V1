@@ -353,6 +353,50 @@ describe('initializeClient — processAgent ACL gate', () => {
     expect(mockGetAppConfig).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { subagents: { enabled: true, agent_ids: [TARGET_ID] } },
+    { subagentAgentConfigs: [{ id: TARGET_ID }] },
+    { lazySubagentConfigs: [{ id: TARGET_ID }] },
+    { subagentGraphConfigs: [{ id: TARGET_ID }] },
+  ])(
+    'refuses implicit delegated SDK tools without a durable child binding: %j',
+    async (capability) => {
+      const user = testUser;
+      const candidate = {
+        streamId: 'conv-with-delegation',
+        createdAt: 1700000000000,
+        checkpointNamespace: 'epoch',
+        checkpointId: 'head',
+      };
+      const job = {
+        ...candidate,
+        userId: String(user._id),
+        agent_id: PRIMARY_ID,
+        status: 'running',
+        userMessage: { messageId: 'user-message' },
+        responseMessageId: 'response-message',
+        orchestratorPlan: { tasks: [{ key: 'task', nodeId: 'worker', agentId: PRIMARY_ID }] },
+      };
+      await expect(
+        initializeClientFromDocuments({
+          candidate,
+          claim: { ...candidate, ownerToken: 'owner-token' },
+          job,
+          context: {
+            user,
+            conversation: { conversationId: candidate.streamId, agent_id: PRIMARY_ID },
+            agents: [
+              { id: PRIMARY_ID, provider: 'openai', model: 'gpt-4', tools: [], ...capability },
+            ],
+          },
+          assertAuthorized: async () => {},
+        }),
+      ).rejects.toThrow('TOOL_RUNTIME_UNAVAILABLE');
+      expect(mockInitializeAgent).not.toHaveBeenCalled();
+      expect(mockGetAppConfig).not.toHaveBeenCalled();
+    },
+  );
+
   it('blocks cross-project source reuse for an existing conversation', async () => {
     const req = makeReq();
     req.resolvedConversation = {
