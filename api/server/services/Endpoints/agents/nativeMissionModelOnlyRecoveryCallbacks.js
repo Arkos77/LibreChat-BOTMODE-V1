@@ -4,6 +4,7 @@ const {
 const {
   createNativeMissionRecoveredTerminalPublisher,
 } = require('./nativeMissionRecoveredTerminalPublisher');
+const { readNativeMissionRecoveredGraphOutputs } = require('./nativeMissionRecoveredGraphOutput');
 
 /** Bind real durable Oracle QA and terminal publication for already authorized,
  * model-only cold clients. Replay receipts/effect fencing and the full run
@@ -92,15 +93,15 @@ function createNativeMissionModelOnlyRecoveryCallbacks({
         },
       };
       const snapshot = await graph.getState(config);
-      const text = snapshot?.values?.agentOutputs?.[terminal[0].nodeId]?.content;
-      if (
-        !Array.isArray(snapshot?.next) ||
-        snapshot.next.length !== 0 ||
-        !Array.isArray(snapshot?.tasks) ||
-        snapshot.tasks.length !== 0 ||
-        typeof text !== 'string' ||
-        !text.trim()
-      ) {
+      const taskOutputs = readNativeMissionRecoveredGraphOutputs({
+        state: snapshot,
+        plan,
+        originalModelOnly:
+          job.nativeMissionCapabilityAttestation?.mode === 'model_only' &&
+          typeof client.options.nativeMissionReplayReceiptProof === 'function',
+      });
+      const text = taskOutputs[terminal[0].nodeId]?.content;
+      if (typeof text !== 'string' || !text.trim()) {
         throw new Error('NATIVE_RECOVERY_PUBLICATION_GRAPH_NOT_FINAL');
       }
       const verified = normalizeOracleState(job.missionOracleState);
@@ -113,7 +114,7 @@ function createNativeMissionModelOnlyRecoveryCallbacks({
             verified.results[task.taskId].verdicts.some(
               (verdict) =>
                 verdict?.status !== 'VERIFIED' ||
-                verdict?.input?.candidate !== snapshot.values.agentOutputs[task.nodeId]?.content,
+                verdict?.input?.candidate !== taskOutputs[task.nodeId]?.content,
             ),
         )
       ) {

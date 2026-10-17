@@ -53,6 +53,8 @@ on:
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveredTerminalPublisher.js'
       - 'scripts/botmode/native-recovered-terminal-publisher-regression.cjs'
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveredOracleVerifier.js'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveredGraphOutput.js'
+      - 'scripts/botmode/native-recovered-standard-graph-output-regression.cjs'
       - 'scripts/botmode/native-recovered-oracle-verifier-regression.cjs'
       - 'api/server/services/Endpoints/agents/nativeMissionModelOnlyRecoveryCallbacks.js'
       - 'scripts/botmode/native-model-only-recovery-callbacks-regression.cjs'
@@ -168,6 +170,8 @@ jobs:
         run: python3 scripts/botmode/redis-native-recovery-owner-phase-regression.py
       - name: Verify crashed-provider claim renewal and live-provider fencing on Redis
         run: python3 scripts/botmode/redis-native-recovery-renew-regression.py
+      - name: Verify completed standard-graph AI checkpoint outputs without tool or cross-agent substitution
+        run: node scripts/botmode/native-recovered-standard-graph-output-regression.cjs
       - name: Verify final native Oracle results originate from completed checkpoint outputs
         run: node scripts/botmode/native-recovered-oracle-verifier-regression.cjs
       - name: Verify model-only Oracle stage and owner-fenced history publication callbacks

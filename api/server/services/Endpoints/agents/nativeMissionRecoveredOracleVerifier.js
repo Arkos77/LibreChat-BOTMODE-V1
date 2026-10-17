@@ -1,3 +1,5 @@
+const { readNativeMissionRecoveredGraphOutputs } = require('./nativeMissionRecoveredGraphOutput');
+
 /** Revalidate the completed cold graph against the ORIGINAL deterministic
  * mission plan and persist each task's Oracle verdict under the recovered
  * provider's live Redis owner. Nothing here produces model responses, grants
@@ -65,22 +67,18 @@ function createNativeMissionRecoveredOracleVerifier({
       },
     };
     const state = await graph.getState(config);
-    if (
-      !state ||
-      !Array.isArray(state.next) ||
-      state.next.length !== 0 ||
-      !Array.isArray(state.tasks) ||
-      state.tasks.length !== 0 ||
-      !state.values ||
-      !state.values.agentOutputs ||
-      typeof state.values.agentOutputs !== 'object'
-    ) {
-      throw new Error('NATIVE_RECOVERY_ORACLE_GRAPH_NOT_TERMINAL');
-    }
+    const originalModelOnly =
+      job.nativeMissionCapabilityAttestation?.mode === 'model_only' &&
+      typeof client.options.nativeMissionReplayReceiptProof === 'function';
+    const taskOutputs = readNativeMissionRecoveredGraphOutputs({
+      state,
+      plan,
+      originalModelOnly,
+    });
     let oracle = normalizeOracleState(job.missionOracleState ?? { evidence: {}, results: {} });
     for (const task of plan.tasks) {
       await assertAuthorized();
-      const output = state.values.agentOutputs[task.nodeId];
+      const output = taskOutputs[task.nodeId];
       if (typeof output?.content !== 'string' || !output.content.trim()) {
         throw new Error('NATIVE_RECOVERY_ORACLE_OUTPUT_MISSING');
       }
