@@ -75,10 +75,22 @@ function createNativeMissionRecoveryCoordinator({
       const plan = persistedJob?.orchestratorPlan?.tasks;
       if (
         persistedJob?.createdAt !== candidate.createdAt ||
+        persistedJob?.status !== 'running' ||
+        persistedJob?.pendingAction != null ||
         persistedJob?.checkpointNamespace !== candidate.checkpointNamespace ||
         !Array.isArray(plan) ||
         plan.length === 0 ||
-        plan.some((task) => typeof task.nodeId !== 'string' || !task.nodeId)
+        plan.some(
+          (task) =>
+            !task ||
+            typeof task.nodeId !== 'string' ||
+            !task.nodeId ||
+            typeof task.agentId !== 'string' ||
+            !task.agentId ||
+            typeof task.key !== 'string' ||
+            !task.key,
+        ) ||
+        new Set(plan.map((task) => task.nodeId)).size !== plan.length
       )
         return false;
       const plannedNodeIds = plan.map((task) => task.nodeId);

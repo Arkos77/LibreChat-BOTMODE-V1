@@ -18,6 +18,7 @@ const {
     reconstructFails = false,
     refusesExecution = false,
     uncertainExecution = false,
+    invalidPlan = false,
   } = {}) {
     const calls = [];
     let attempts = 0;
@@ -26,7 +27,11 @@ const {
         status: 'running',
         createdAt: candidate.createdAt,
         checkpointNamespace: candidate.checkpointNamespace,
-        orchestratorPlan: { tasks: [{ nodeId: 'worker', agentId: 'worker' }] },
+        orchestratorPlan: {
+          tasks: invalidPlan
+            ? [{ nodeId: 'worker', agentId: '' }]
+            : [{ nodeId: 'worker', agentId: 'worker', key: 'task-worker' }],
+        },
       }),
       releaseDrainedMissionRecovery: async (id, at, token) => {
         assert.equal(id, candidate.streamId);
@@ -108,6 +113,10 @@ const {
     assert.ok(!out.calls.includes('execute'));
     assert.equal(out.calls.filter((x) => x === 'release').length, 1);
   }
+  const invalid = await verify({ invalidPlan: true });
+  assert.equal(invalid.outcome, false);
+  assert.equal(invalid.calls.filter((x) => x === 'release').length, 1);
+  assert.ok(!invalid.calls.includes('execute'));
   const refused = await verify({ refusesExecution: true });
   assert.equal(refused.outcome, false);
   assert.equal(refused.calls.filter((x) => x === 'release').length, 1);
