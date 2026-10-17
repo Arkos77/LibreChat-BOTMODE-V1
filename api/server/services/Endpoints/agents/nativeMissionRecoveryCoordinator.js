@@ -88,7 +88,12 @@ function createNativeMissionRecoveryCoordinator({
         verifyOracle: runtime.verifyOracle,
         publishTerminal: runtime.publishTerminal,
       });
-      handedOff = outcome !== false;
+      // Only an explicit boolean acknowledgement can complete the handoff.
+      // An undefined return may mean the executor never activated its lease.
+      if (outcome !== true && outcome !== false) {
+        throw new Error('NATIVE_RECOVERY_HANDOFF_INDETERMINATE');
+      }
+      handedOff = outcome === true;
       return outcome;
     } finally {
       if (!handedOff) {
