@@ -91,12 +91,13 @@ async function run(opts = {}) {
     ownerToken: identity.ownerToken, checkpointNamespace: identity.checkpointNamespace,
     checkpointId: 'durable-head' };
   const steps = [];
+  const bridgeStore = {
+    beginRecoveredMissionProviderExecution: async () => { steps.push('begin'); return true; },
+    heartbeatRecoveredMissionProvider: async () => true,
+    transitionRecoveredMissionToComplete: async () => { steps.push('terminal'); return true; },
+  };
   const manager = {
-    getJobStore: () => ({
-      beginRecoveredMissionProviderExecution: async () => { steps.push('begin'); return true; },
-      heartbeatRecoveredMissionProvider: async () => true,
-      transitionRecoveredMissionToComplete: async () => { steps.push('terminal'); return true; },
-    }),
+    getJobStore: () => bridgeStore,
     qualifyReconstructedGraphAndActivateClaim: async (_, graph, auth, receipts) => {
       steps.push('head'); await graph.getState(); await auth(); await receipts(['worker']);
       return { providerExecutionId: 'recovered-provider-123456' };
@@ -116,6 +117,17 @@ async function run(opts = {}) {
     ...deps, assertEffectFencesReady: async () => { throw Error('FENCE_UNAVAILABLE'); },
   }), /FENCE_UNAVAILABLE/);
   assert.deepEqual(steps, [], 'refused fence must not rotate Redis ownership');
+  // A backend replacement between Redis activation and run start must not
+  // execute using a different connection/owner authority.
+  const replaced = { ...manager, getJobStore: (() => {
+    let index = 0;
+    const originalStore = manager.getJobStore();
+    return () => index++ === 0 ? originalStore : { ...originalStore };
+  })() };
+  await assert.rejects(qualifyAndExecuteRecoveredMissionSegment({ ...deps, manager: replaced }),
+    /OWNERSHIP_LOST/);
+  assert.ok(!steps.includes('graph'));
+  steps.length = 0;
   assert.equal(await qualifyAndExecuteRecoveredMissionSegment(deps), true);
   assert.ok(steps.indexOf('receipts') < steps.indexOf('begin'));
   assert.ok(steps.indexOf('begin') < steps.indexOf('graph'));

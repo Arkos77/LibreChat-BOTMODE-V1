@@ -211,6 +211,16 @@ export async function qualifyAndExecuteRecoveredMissionSegment({
     typeof publishTerminal !== 'function'
   )
     return false;
+  // Pin the same Redis store across promotion and execution. A connection
+  // replacement during this window cannot inherit the previous lease.
+  const store = manager.getJobStore();
+  if (
+    !store ||
+    typeof store.beginRecoveredMissionProviderExecution !== 'function' ||
+    typeof store.heartbeatRecoveredMissionProvider !== 'function' ||
+    typeof store.transitionRecoveredMissionToComplete !== 'function'
+  )
+    return false;
   // Do not rotate the Redis owner until the external-effect fence can be
   // constructed. A missing tool fence after promotion strands the old claim.
   // The segment repeats this check after acquiring its provider lease.
@@ -223,8 +233,9 @@ export async function qualifyAndExecuteRecoveredMissionSegment({
     assertReplaySafeForPendingNodes,
   );
   if (!activated?.providerExecutionId) return false;
+  if (manager.getJobStore() !== store) throw new RecoveredSegmentOwnershipLost();
   await executeRecoveredMissionSegment({
-    store: manager.getJobStore(),
+    store,
     identity: { ...claim, providerExecutionId: activated.providerExecutionId },
     assertAuthorized,
     assertEffectFencesReady,
