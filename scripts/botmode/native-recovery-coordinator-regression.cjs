@@ -18,6 +18,7 @@ const {
     reconstructFails = false,
     refusesExecution = false,
     uncertainExecution = false,
+    executionThrows = false,
     invalidPlan = false,
     exerciseStage = false,
   } = {}) {
@@ -108,6 +109,11 @@ const {
             ...claim,
             providerExecutionId: 'recovered-provider',
           });
+        if (executionThrows) throw new Error('provider died after activation');
+        // The SDK owns release when it explicitly refuses activation.
+        if (refusesExecution) {
+          await store.releaseDrainedMissionRecovery(claim.streamId, claim.createdAt, claim.ownerToken);
+        }
         return uncertainExecution ? undefined : !refusesExecution;
       },
       log: { warn: () => {} },
@@ -156,7 +162,10 @@ const {
   assert.equal(refused.calls.filter((x) => x === 'release').length, 1);
   const uncertain = await verify({ uncertainExecution: true });
   assert.match(uncertain.error.message, /INDETERMINATE/);
-  assert.equal(uncertain.calls.filter((x) => x === 'release').length, 1);
+  assert.equal(uncertain.calls.filter((x) => x === 'release').length, 0);
+  const thrown = await verify({ executionThrows: true });
+  assert.match(thrown.error.message, /provider died after activation/);
+  assert.equal(thrown.calls.filter((x) => x === 'release').length, 0);
   const before = await verify({ denyAt: 1 });
   assert.deepEqual(before.calls, ['auth']);
   console.log('BOTMODE_SERVER_RECOVERY_COORDINATOR_AUTH_AND_RELEASE=PASS');

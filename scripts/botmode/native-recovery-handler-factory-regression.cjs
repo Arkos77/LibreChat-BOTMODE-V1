@@ -81,6 +81,9 @@ const job = {
       assert.equal(args.claim.ownerToken, claim.ownerToken);
       assert.equal(args.graph, graph);
       assert.equal(typeof args.continueGraph, 'function');
+      // The real SDK qualifier releases a refused, unpromoted claim itself.
+      // The coordinator must never perform a second release after entering it.
+      await store.releaseDrainedMissionRecovery(claim.streamId, claim.createdAt, claim.ownerToken);
       return false;
     },
     continueColdNativeMissionGraph: async () => {},
