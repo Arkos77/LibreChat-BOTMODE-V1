@@ -64,6 +64,7 @@ describe('reconstructed native mission read-only qualification', () => {
     ).resolves.toBeNull();
     graph.getState.mockResolvedValueOnce({
       ...state,
+      tasks: [{ name: 'worker', interrupts: ['approval'] }],
       config: { configurable: { thread_id: 'mission-1', checkpoint_id: 'other-head' } },
     });
     await expect(
