@@ -107,6 +107,7 @@ jest.mock('~/server/controllers/agents/client', () => {
   return jest.fn().mockImplementation((args) => {
     agentClientArgs = args;
     return {
+      options: {},
       getReachableMissionAgents: () => [args.agent, ...(args.agentConfigs?.values?.() ?? [])],
     };
   });

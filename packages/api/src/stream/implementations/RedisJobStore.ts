@@ -825,6 +825,33 @@ const BEGIN_RECOVERED_MISSION_PROVIDER_LUA =
   '"__missionProviderLeaseIdentity", ARGV[3], "__missionProviderLeaseUntil", tostring(nowMs + tonumber(ARGV[5]))) ' +
   'redis.call("PEXPIRE", KEYS[2], ARGV[5]) return 1';
 
+/** Read-only owner-phase authorization preflight. A promoted owner can
+ * legitimately be in its not-yet-started, active, or terminal-persistence
+ * phase; the original-provider authorization shape does not represent these.
+ * Match the live Redis claim, exact epoch, namespace and rotated execution id.
+ * No lease is renewed and no state mutated. Execution/publication still have
+ * their independent owner-aware atomic CAS gates. */
+const INSPECT_LIVE_RECOVERED_OWNER_LUA =
+  'if redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[1] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "checkpointNamespace") ~= ARGV[4] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") ~= ARGV[2] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "providerExecutionId") ~= ARGV[3] then return 0 end ' +
+  'if redis.call("GET", KEYS[2]) ~= ARGV[2] or redis.call("PTTL", KEYS[2]) <= 0 then return 0 end ' +
+  'local status = redis.call("HGET", KEYS[1], "status") ' +
+  'if status ~= "running" and not (status == "complete" ' +
+  'and redis.call("HGET", KEYS[1], "terminalPersistencePending") == "1") then return 0 end ' +
+  'local drained = redis.call("HGET", KEYS[1], "providerDrained") ' +
+  'if drained == "1" and status == "running" then ' +
+  'if redis.call("HGET", KEYS[1], "providerExecutionStartedId") == ARGV[3] then return 0 end ' +
+  'return 1 end ' +
+  'if drained ~= "0" or redis.call("HGET", KEYS[1], "providerExecutionStartedId") ~= ARGV[3] ' +
+  'or redis.call("HGET", KEYS[1], "__missionProviderLeaseIdentity") ~= ARGV[3] then return 0 end ' +
+  'local now = redis.call("TIME") ' +
+  'local nowMs = tonumber(now[1])*1000+math.floor(tonumber(now[2])/1000) ' +
+  'local untilMs = tonumber(redis.call("HGET", KEYS[1], "__missionProviderLeaseUntil") or "") ' +
+  'if not untilMs or untilMs <= nowMs then return 0 end ' +
+  'return 1';
+
 /** Extends a recovered provider lease only if BOTH the owner token and
  * execution identity remain current and neither lease has expired.
  * Original-owner heartbeat continues to fail closed under recovery ownership. */
@@ -3406,6 +3433,36 @@ export class RedisJobStore implements IJobStoreV2 {
       String(leaseMs),
     );
     return claimed === 1;
+  }
+
+  /** Redis-server-time live-owner proof for CURRENT host permissions.
+   * This is a read-only check, not authority to invoke a model or publish. */
+  async inspectLiveRecoveredMissionOwner(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    providerExecutionId: string,
+    checkpointNamespace: string,
+  ): Promise<boolean> {
+    this.assertRecoveredProviderArguments(
+      expectedCreatedAt,
+      ownerToken,
+      providerExecutionId,
+      checkpointNamespace,
+      15000,
+    );
+    return (
+      (await this.redis.eval(
+        INSPECT_LIVE_RECOVERED_OWNER_LUA,
+        2,
+        KEYS.job(streamId),
+        `stream:{${streamId}}:mission-recovery-claim`,
+        String(expectedCreatedAt),
+        ownerToken,
+        providerExecutionId,
+        checkpointNamespace,
+      )) === 1
+    );
   }
 
   /** Rotate provider identity only for a live claim, preserving the job epoch.

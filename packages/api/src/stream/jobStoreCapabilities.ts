@@ -74,6 +74,7 @@ type RedisOnlyOptionalMethod =
   | 'activateDrainedMissionRecovery'
   | 'beginRecoveredMissionProviderExecution'
   | 'heartbeatRecoveredMissionProvider'
+  | 'inspectLiveRecoveredMissionOwner'
   | 'transitionRecoveredMissionToComplete'
   | 'finalizeRecoveredMissionTerminal'
   | 'releaseDrainedMissionRecovery'

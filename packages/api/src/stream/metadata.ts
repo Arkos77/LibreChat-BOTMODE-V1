@@ -12,6 +12,14 @@ export function sanitizeJobMetadata(metadata: Partial<GenerationJobMetadata>): J
   if (metadata.orchestratorPlan) {
     patch.orchestratorPlan = structuredClone(metadata.orchestratorPlan);
   }
+  // Same immutable-epoch write as the P6 topology: rejecting an omitted or
+  // corrupt original capability fingerprint is safer than rebuilding a
+  // different runtime after SIGKILL.
+  if (metadata.nativeMissionCapabilityAttestation) {
+    patch.nativeMissionCapabilityAttestation = structuredClone(
+      metadata.nativeMissionCapabilityAttestation,
+    );
+  }
   if (metadata.missionOracleState) {
     patch.missionOracleState = structuredClone(metadata.missionOracleState);
   }

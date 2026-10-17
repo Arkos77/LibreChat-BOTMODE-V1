@@ -41,17 +41,59 @@ function createNativeMissionRecoveryCoordinator({
     ) {
       return false;
     }
+    let claim;
+    let originalProviderExecutionId;
+    let promotionSeen = false;
     const authorize = async () => {
+      if (manager.getJobStore() !== store) {
+        throw new Error('NATIVE_RECOVERY_HOST_AUTHORITY_DENIED');
+      }
+      const job = await store.getJob(candidate.streamId);
+      if (!claim && typeof job?.providerExecutionId === 'string') {
+        originalProviderExecutionId = job.providerExecutionId;
+      }
+      let promotedOwnerProof;
+      if (
+        claim &&
+        job?.createdAt === candidate.createdAt &&
+        typeof job?.providerExecutionId === 'string' &&
+        typeof store.inspectLiveRecoveredMissionOwner === 'function' &&
+        (await store.inspectLiveRecoveredMissionOwner(
+          candidate.streamId,
+          candidate.createdAt,
+          claim.ownerToken,
+          job.providerExecutionId,
+          candidate.checkpointNamespace,
+        )) === true
+      ) {
+        promotedOwnerProof = Object.freeze({
+          streamId: candidate.streamId,
+          createdAt: candidate.createdAt,
+          checkpointNamespace: candidate.checkpointNamespace,
+          ownerToken: claim.ownerToken,
+          providerExecutionId: job.providerExecutionId,
+        });
+      }
+      if (promotedOwnerProof) promotionSeen = true;
+      // Never misclassify a recovered provider with an expired owner lease as
+      // an ordinary provider simply because its started-id still matches.
+      // The initial owner identity was recorded before the inspection claim.
+      if (
+        claim &&
+        (promotionSeen || job?.providerExecutionId !== originalProviderExecutionId) &&
+        !promotedOwnerProof
+      ) {
+        throw new Error('NATIVE_RECOVERY_HOST_PROMOTED_LEASE_LOST');
+      }
       if (
         manager.getJobStore() !== store ||
-        (await authorizeCandidate({ candidate, job: await store.getJob(candidate.streamId) })) !==
-          true
+        (await authorizeCandidate({ candidate, job, promotedOwnerProof })) !== true
       ) {
         throw new Error('NATIVE_RECOVERY_HOST_AUTHORITY_DENIED');
       }
     };
     await authorize();
-    const claim = await manager.claimCheckpointedOrphanForInspection(
+    claim = await manager.claimCheckpointedOrphanForInspection(
       candidate.streamId,
       candidate.createdAt,
     );

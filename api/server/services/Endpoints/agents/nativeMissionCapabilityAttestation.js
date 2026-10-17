@@ -30,16 +30,18 @@ function createNativeMissionCapabilityAttestation({
   }
   const names = (values) => {
     if (values == null) return [];
-    const list =
-      values instanceof Map
-        ? [...values.keys()]
-        : values instanceof Set
-          ? [...values]
-          : Array.isArray(values)
-            ? values
-            : typeof values === 'object'
-              ? Object.keys(values)
-              : [values];
+    let list;
+    if (values instanceof Map) {
+      list = [...values.keys()];
+    } else if (values instanceof Set) {
+      list = [...values];
+    } else if (Array.isArray(values)) {
+      list = values;
+    } else if (typeof values === 'object') {
+      list = Object.keys(values);
+    } else {
+      list = [values];
+    }
     return list
       .map((entry) => {
         if (typeof entry === 'string') return entry;
@@ -123,14 +125,19 @@ function createNativeMissionCapabilityAttestation({
         modelOnly,
       };
     })
-    .sort((a, b) => a.id.localeCompare(b.id));
-  const ids = fingerprints.map((item) => item.id);
+    .sort((a, b) => a.id.localeCompare(b.id) || JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  // Multiple graph paths can hold byte-equivalent initialized snapshots of a
+  // saved agent. Deduplicate ONLY identical observed execution surfaces.
+  // Conflicting snapshots under the same ID remain separate and make replay
+  // receipts mandatory; no more powerful variant may be silently discarded.
+  const canonical = fingerprints.filter(
+    (entry, index) =>
+      index === 0 || JSON.stringify(entry) !== JSON.stringify(fingerprints[index - 1]),
+  );
+  const ids = [...new Set(canonical.map((item) => item.id))].sort();
+  const duplicateBindings = canonical.length !== ids.length;
   const expected = new Set(plan.tasks.map((task) => task?.agentId));
-  if (
-    new Set(ids).size !== ids.length ||
-    expected.has(undefined) ||
-    [...expected].some((id) => !ids.includes(id))
-  ) {
+  if (expected.has(undefined) || [...expected].some((id) => !ids.includes(id))) {
     throw new Error('NATIVE_MISSION_CAPABILITY_AGENT_SET_MISMATCH');
   }
   const hasBackgroundTasks = subagentTasks != null;
@@ -138,7 +145,7 @@ function createNativeMissionCapabilityAttestation({
     .update(
       JSON.stringify({
         planId: plan.planId,
-        agents: fingerprints,
+        agents: canonical,
         hasBackgroundTasks,
         hostEffectPathsPresent: hostEffectPathsPresent === true,
       }),
@@ -150,8 +157,9 @@ function createNativeMissionCapabilityAttestation({
     agentIds: ids,
     mode:
       !hasBackgroundTasks &&
+      !duplicateBindings &&
       hostEffectPathsPresent !== true &&
-      fingerprints.every((item) => item.modelOnly)
+      canonical.every((item) => item.modelOnly)
         ? 'model_only'
         : 'receipts_required',
     digest,

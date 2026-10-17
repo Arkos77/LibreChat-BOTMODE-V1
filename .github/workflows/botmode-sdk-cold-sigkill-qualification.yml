@@ -45,6 +45,9 @@ on:
       - 'api/server/services/Endpoints/agents/nativeMissionReplayReceiptProof.js'
       - 'scripts/botmode/native-mission-replay-receipt-proof-regression.cjs'
       - 'scripts/botmode/native-recovery-coordinator-regression.cjs'
+      - 'scripts/botmode/native-recovery-coordinator-promoted-proof-regression.cjs'
+      - 'scripts/botmode/native-recovery-promoted-authorization-regression.cjs'
+      - 'scripts/botmode/redis-native-recovery-owner-phase-regression.py'
       - 'scripts/botmode/redis-native-recovery-renew-regression.py'
       - 'scripts/botmode/redis-recovered-terminal-persistence-regression.py'
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveredTerminalPublisher.js'
@@ -153,6 +156,12 @@ jobs:
         run: node scripts/botmode/native-recovery-handler-factory-regression.cjs
       - name: Verify host recovery coordinator rejects unsafe handoffs
         run: node scripts/botmode/native-recovery-coordinator-regression.cjs
+      - name: Verify recovered-owner authorization retains user and agent ACLs after promotion
+        run: node scripts/botmode/native-recovery-promoted-authorization-regression.cjs
+      - name: Verify coordinator reauthorizes promoted, active and terminal owner phases
+        run: node scripts/botmode/native-recovery-coordinator-promoted-proof-regression.cjs
+      - name: Verify exact promoted-owner claim and lease by read-only Redis proof
+        run: python3 scripts/botmode/redis-native-recovery-owner-phase-regression.py
       - name: Verify crashed-provider claim renewal and live-provider fencing on Redis
         run: python3 scripts/botmode/redis-native-recovery-renew-regression.py
       - name: Verify final native Oracle results originate from completed checkpoint outputs

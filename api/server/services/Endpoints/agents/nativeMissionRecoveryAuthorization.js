@@ -10,12 +10,41 @@
  * Injectable dependencies allow qualification without connecting to live
  * users, data, or providers.
  */
-async function authorizeNativeMissionRecovery({ candidate, job, deps, reportRejection }) {
+async function authorizeNativeMissionRecovery({
+  candidate,
+  job,
+  deps,
+  reportRejection,
+  promotedOwnerProof,
+}) {
   // Only allow-listed gate names are emitted; no durable identity or content.
   const deny = (gate) => {
     if (typeof reportRejection === 'function') reportRejection(gate);
     return null;
   };
+  // The promoted-owner phase is NOT equivalent to the original provider's
+  // preflight state. Accept it only with a Redis-server-time live-claim proof
+  // validated by the host coordinator immediately before this read.
+  // A caller-supplied boolean or job field is NEVER a proof of ownership.
+  const promoted =
+    promotedOwnerProof != null &&
+    typeof promotedOwnerProof.ownerToken === 'string' &&
+    promotedOwnerProof.ownerToken.length >= 16 &&
+    promotedOwnerProof.streamId === candidate?.streamId &&
+    promotedOwnerProof.createdAt === candidate?.createdAt &&
+    promotedOwnerProof.checkpointNamespace === candidate?.checkpointNamespace &&
+    promotedOwnerProof.providerExecutionId === job?.providerExecutionId &&
+    typeof job?.providerExecutionId === 'string' &&
+    job.providerExecutionId.length >= 16 &&
+    (job.providerDrained === true ||
+      (job.providerDrained === false &&
+        job.providerExecutionStartedId === job.providerExecutionId));
+  const phaseAllowed = promoted
+    ? job?.status === 'running' ||
+      (job?.status === 'complete' && job.terminalPersistencePending === true)
+    : job?.status === 'running' &&
+      job.providerDrained === false &&
+      job.providerExecutionStartedId === job.providerExecutionId;
   if (
     !candidate ||
     typeof candidate.streamId !== 'string' ||
@@ -29,12 +58,10 @@ async function authorizeNativeMissionRecovery({ candidate, job, deps, reportReje
     !job ||
     job.streamId !== candidate.streamId ||
     job.createdAt !== candidate.createdAt ||
-    job.status !== 'running' ||
+    !phaseAllowed ||
     job.checkpointNamespace !== candidate.checkpointNamespace ||
-    job.providerDrained !== false ||
     typeof job.providerExecutionId !== 'string' ||
     job.providerExecutionId.length === 0 ||
-    job.providerExecutionStartedId !== job.providerExecutionId ||
     job.pendingAction != null ||
     job.endpoint !== 'agents' ||
     typeof job.userId !== 'string' ||
@@ -111,6 +138,7 @@ async function authorizeNativeMissionRecovery({ candidate, job, deps, reportReje
     agentId: job.agent_id,
     checkpointNamespace: candidate.checkpointNamespace,
     checkpointId: candidate.checkpointId,
+    ...(promoted && { promotedOwnerToken: promotedOwnerProof.ownerToken }),
     agentIds: Object.freeze([...agentIds]),
   });
 }

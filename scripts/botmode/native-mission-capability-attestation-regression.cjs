@@ -73,9 +73,26 @@ assert.throws(
   () => createNativeMissionCapabilityAttestation({ plan, agents: [worker] }),
   /AGENT_SET_MISMATCH/,
 );
-assert.throws(
-  () => createNativeMissionCapabilityAttestation({ plan, agents: [worker, worker, specialist] }),
-  /AGENT_SET_MISMATCH/,
+const repeated = createNativeMissionCapabilityAttestation({
+  plan,
+  agents: [worker, worker, specialist],
+});
+assert.equal(repeated.mode, 'model_only');
+assert.equal(repeated.digest, recorded.digest);
+assert.deepEqual(repeated.agentIds, ['specialist', 'worker']);
+const conflicting = createNativeMissionCapabilityAttestation({
+  plan,
+  agents: [worker, { ...worker, tools: ['external'] }, specialist],
+});
+assert.equal(conflicting.mode, 'receipts_required');
+assert.notEqual(conflicting.digest, recorded.digest);
+assert.equal(
+  createNativeMissionCapabilityAttestation({
+    plan,
+    agents: [specialist, worker, worker],
+  }).digest,
+  repeated.digest,
+  'duplicate initialized snapshots must be stably fingerprinted, never discarded',
 );
 const withOriginalEffects = createNativeMissionCapabilityAttestation({
   ...args,

@@ -23,10 +23,11 @@ function createNativeMissionRecoveryHostAuthorization({
   ) {
     throw new Error('NATIVE_RECOVERY_HOST_AUTH_DEPENDENCIES_MISSING');
   }
-  return async ({ candidate, job }) => {
+  return async ({ candidate, job, promotedOwnerProof }) => {
     const admission = await authorizeNativeMissionRecovery({
       candidate,
       job,
+      promotedOwnerProof,
       reportRejection,
       deps: {
         getUserById,

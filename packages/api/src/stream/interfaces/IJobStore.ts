@@ -1138,6 +1138,16 @@ export interface IJobStoreV2 extends IJobStore {
     leaseMs: number,
   ): Promise<boolean>;
 
+  /** Optional read-only proof that the recovered owner currently holds the
+   * live Redis claim and valid provider phase, including terminal settlement. */
+  inspectLiveRecoveredMissionOwner?(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    providerExecutionId: string,
+    checkpointNamespace: string,
+  ): Promise<boolean>;
+
   /** Optional recovered-provider heartbeat, guarded by owner and live lease. */
   heartbeatRecoveredMissionProvider?(
     streamId: string,
