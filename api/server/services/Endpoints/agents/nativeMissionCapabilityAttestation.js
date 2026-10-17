@@ -88,7 +88,9 @@ function createNativeMissionCapabilityAttestation({
           nonempty(agent.mcpToolAliases) ||
           nonempty(agent.requestScopedConnections) ||
           nonempty(agent.backgroundToolNames) ||
-          nonempty(agent.extensionCapabilityRegistry) ||
+          // extensionCapabilityRegistry is a GLOBAL descriptive catalog. It
+          // never grants execution; counting its advertised tools as a live
+          // capability would mark every genuinely model-only agent unsafe.
           nonempty(agent.fileAuthoringToolNames) ||
           nonempty(agent.activeSkillNames) ||
           nonempty(agent.accessibleSkillIds) ||

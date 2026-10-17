@@ -220,7 +220,8 @@ async function getRecoveryGateFlags(redis: Redis, streamId: string) {
 
 /** CI-only Mongo counts: no checkpoint data or credentials in output. */
 async function getPersistedCheckpointCounts(streamId: string, namespace: string) {
-  const envFile = process.env.E2E_RUNTIME_ENV_PATH ||
+  const envFile =
+    process.env.E2E_RUNTIME_ENV_PATH ||
     path.resolve(__dirname, '../.test-results/runtime-env.json');
   const runtime = JSON.parse(readFileSync(envFile, 'utf8')) as { MONGO_URI?: string };
   if (!runtime.MONGO_URI || !runtime.MONGO_URI.includes('127.0.0.1')) {
@@ -251,16 +252,18 @@ async function waitForOracle(
   expectedStatus: 'VERIFIED' | 'HUMAN_REVIEW',
 ): Promise<JobSnapshot> {
   let latest: JobSnapshot | null = null;
-  await expect.poll(
-    async () => {
-      latest = await loadDurableJob(redis, streamId);
-      return expectedTaskIds.every((taskId) => {
-        const verdicts = latest?.state?.results?.[taskId]?.verdicts;
-        return verdicts?.length === 1 && verdicts[0].status === expectedStatus;
-      });
-    },
-    { timeout: 45_000, intervals: [300, 500, 1000, 2000] },
-  ).toBe(true);
+  await expect
+    .poll(
+      async () => {
+        latest = await loadDurableJob(redis, streamId);
+        return expectedTaskIds.every((taskId) => {
+          const verdicts = latest?.state?.results?.[taskId]?.verdicts;
+          return verdicts?.length === 1 && verdicts[0].status === expectedStatus;
+        });
+      },
+      { timeout: 45_000, intervals: [300, 500, 1000, 2000] },
+    )
+    .toBe(true);
   return latest!;
 }
 
@@ -292,7 +295,9 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
         ['specialist', specialist.id, ['worker']],
       ]);
       const finals = run.events.filter((event) => event.final === true);
-      const errors = run.events.filter((event) => event.event === 'error' || event.type === 'error');
+      const errors = run.events.filter(
+        (event) => event.event === 'error' || event.type === 'error',
+      );
       expect(errors, 'accepted mission must have no SSE error').toHaveLength(0);
       expect(finals.length, 'accepted mission must reach publication').toBeGreaterThan(0);
       expect(
@@ -301,26 +306,43 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       ).toBe(true);
 
       // Mongo readback through the authenticated public API, not merely SSE.
-      await expect.poll(async () => {
-        const messages = await requestJson<Array<{ isCreatedByUser?: boolean; text?: string; content?: unknown }>>(page, {
-          path: `/api/messages/${encodeURIComponent(run.conversationId)}`,
-          token,
-        });
-        return messages.some(
-          (message) => message.isCreatedByUser === false && responseText(message).includes('{"ok":true}'),
-        );
-      }, { timeout: 30_000 }).toBe(true);
+      await expect
+        .poll(
+          async () => {
+            const messages = await requestJson<
+              Array<{ isCreatedByUser?: boolean; text?: string; content?: unknown }>
+            >(page, {
+              path: `/api/messages/${encodeURIComponent(run.conversationId)}`,
+              token,
+            });
+            return messages.some(
+              (message) =>
+                message.isCreatedByUser === false && responseText(message).includes('{"ok":true}'),
+            );
+          },
+          { timeout: 30_000 },
+        )
+        .toBe(true);
       await page.reload();
-      const saved = await requestJson<Array<{ isCreatedByUser?: boolean; text?: string; content?: unknown }>>(page, {
+      const saved = await requestJson<
+        Array<{ isCreatedByUser?: boolean; text?: string; content?: unknown }>
+      >(page, {
         path: `/api/messages/${encodeURIComponent(run.conversationId)}`,
         token,
       });
-      expect(saved.some((message) => message.isCreatedByUser === false && responseText(message).includes('{"ok":true}'))).toBe(true);
+      expect(
+        saved.some(
+          (message) =>
+            message.isCreatedByUser === false && responseText(message).includes('{"ok":true}'),
+        ),
+      ).toBe(true);
 
       // The restart lane uses an external CI-only controller that SIGKILLs just
       // the API process. Mongo and Redis are separate surviving processes.
       if (process.env.E2E_RESTART_CONTROL_PORT) {
-        const beforeMessages = await requestJson<Array<{ messageId?: string; isCreatedByUser?: boolean; text?: string; content?: unknown }>>(page, {
+        const beforeMessages = await requestJson<
+          Array<{ messageId?: string; isCreatedByUser?: boolean; text?: string; content?: unknown }>
+        >(page, {
           path: `/api/messages/${encodeURIComponent(run.conversationId)}`,
           token,
         });
@@ -330,7 +352,11 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
           { headers: { 'x-e2e-restart-intent': 'oracle-runtime' }, timeout: 150_000 },
         );
         expect(restart.status(), 'CI-only SIGKILL + API restart must succeed').toBe(200);
-        const ids = (await restart.json()) as { oldPid: number; newPid: number; recovered: boolean };
+        const ids = (await restart.json()) as {
+          oldPid: number;
+          newPid: number;
+          recovered: boolean;
+        };
         expect(ids.recovered).toBe(true);
         expect(ids.oldPid).not.toBe(ids.newPid);
 
@@ -342,13 +368,20 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
         });
         const after = await loadDurableJob(redis, run.streamId);
         const normalize = (messages: typeof beforeMessages) =>
-          messages.map((message) => ({ id: message.messageId, author: message.isCreatedByUser, response: responseText(message) }));
+          messages.map((message) => ({
+            id: message.messageId,
+            author: message.isCreatedByUser,
+            response: responseText(message),
+          }));
         expect(normalize(afterMessages)).toEqual(normalize(beforeMessages));
         expect(after.state).toEqual(before.state);
         expect(after.plan).toEqual(before.plan);
-        expect(afterMessages.filter((message) =>
-          message.isCreatedByUser === false && responseText(message).includes('{"ok":true}'),
-        )).toHaveLength(1);
+        expect(
+          afterMessages.filter(
+            (message) =>
+              message.isCreatedByUser === false && responseText(message).includes('{"ok":true}'),
+          ),
+        ).toHaveLength(1);
         console.log('PR28_ORACLE_RUNTIME_CRASH_RESTART_DURABLE_NO_DUPLICATES=PASS');
       }
       console.log('PR28_ORACLE_RUNTIME_ACCEPT_PERSISTED_PUBLISHED=PASS');
@@ -361,8 +394,9 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
     }
   });
 
-
-  test('in-flight SIGKILL retains plan and never publishes an unverified candidate', async ({ page }) => {
+  test('in-flight SIGKILL retains plan and never publishes an unverified candidate', async ({
+    page,
+  }) => {
     test.setTimeout(220_000);
     if (!process.env.E2E_RESTART_CONTROL_PORT) {
       test.skip(true, 'Requires the isolated process-restart harness');
@@ -403,13 +437,23 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       expect(started.status).toBe('started');
       const streamId = started.streamId;
       expect(streamId).toBeTruthy();
-      await expect.poll(async () => {
-        const snapshot = await loadDurableJob(redis, streamId!);
-        return snapshot.status === 'running' && snapshot.plan?.mission?.missionId === mission.missionId;
-      }, { timeout: 15_000, intervals: [100, 250, 500] }).toBe(true);
+      await expect
+        .poll(
+          async () => {
+            const snapshot = await loadDurableJob(redis, streamId!);
+            return (
+              snapshot.status === 'running' &&
+              snapshot.plan?.mission?.missionId === mission.missionId
+            );
+          },
+          { timeout: 15_000, intervals: [100, 250, 500] },
+        )
+        .toBe(true);
 
       const before = await loadDurableJob(redis, streamId!);
-      expect(before.state?.results == null || Object.keys(before.state.results).length === 0).toBe(true);
+      expect(before.state?.results == null || Object.keys(before.state.results).length === 0).toBe(
+        true,
+      );
       const restart = await page.request.post(
         `http://127.0.0.1:${process.env.E2E_RESTART_CONTROL_PORT}/restart`,
         { headers: { 'x-e2e-restart-intent': 'oracle-runtime' }, timeout: 150_000 },
@@ -417,17 +461,156 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       expect(restart.status()).toBe(200);
       const after = await loadDurableJob(redis, streamId!);
       expect(after.plan).toEqual(before.plan);
-      const messages = await requestJson<Array<{ messageId?: string; isCreatedByUser?: boolean; text?: string; content?: unknown }>>(page, {
+      const messages = await requestJson<
+        Array<{ messageId?: string; isCreatedByUser?: boolean; text?: string; content?: unknown }>
+      >(page, {
         path: `/api/messages/${encodeURIComponent(conversationId)}`,
         token,
       });
-      expect(messages.filter((m) => m.isCreatedByUser === false && responseText(m).includes('{"ok":true}'))).toHaveLength(0);
+      expect(
+        messages.filter(
+          (m) => m.isCreatedByUser === false && responseText(m).includes('{"ok":true}'),
+        ),
+      ).toHaveLength(0);
       expect(new Set(messages.map((m) => m.messageId)).size).toBe(messages.length);
       console.log('PR28_ORACLE_INFLIGHT_CRASH_UNVERIFIED_NOT_PUBLISHED=PASS');
       console.log('PR28_ORACLE_INFLIGHT_RECOVERY_AUTO_RESUME=NOT_PROVEN');
     } finally {
       if (workerId) await cleanupAgent(page, workerId);
       if (specialistId) await cleanupAgent(page, specialistId);
+      await redis.quit();
+    }
+  });
+
+  test('model-only in-flight crash resumes and publishes exactly once without tools', async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    if (!process.env.E2E_RESTART_CONTROL_PORT) {
+      test.skip(true, 'Requires real API SIGKILL/restart preserving Redis and Mongo');
+    }
+    await page.goto('/c/new');
+    const token = await getAccessToken(page);
+    const redis = new Redis(process.env.REDIS_URI || 'redis://127.0.0.1:6379', {
+      maxRetriesPerRequest: 1,
+    });
+    let workerId: string | undefined;
+    try {
+      // Deliberately NO subagent tool, file, skill, or extra executable
+      // capability. A dedicated proof checks the safe, original model-only
+      // subset without lowering the strict Worker-specialist release gate.
+      const worker = await createSavedAgent(page, token, 'Worker');
+      workerId = worker.id;
+      const mission = makeMission(worker.id, undefined, false);
+      const conversationId = randomUUID();
+      const admitted = await page.request.post('/api/agents/chat/agents', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'x-librechat-generation-protocol': '2',
+        },
+        data: {
+          generationProtocolVersion: 2,
+          endpoint: 'agents',
+          agent_id: worker.id,
+          conversationId,
+          messageId: randomUUID(),
+          parentMessageId: '00000000-0000-0000-0000-000000000000',
+          isNewConvo: true,
+          text: `E2E_MISSION_ORACLE_DELAYED_JSON:${mission.missionId}`,
+          orchestratorMission: { mission: mission.mission, plannerContext: mission.plannerContext },
+        },
+        timeout: 60_000,
+      });
+      expect(admitted.status()).toBe(200);
+      const started = (await admitted.json()) as MissionRun;
+      expect(started.status).toBe('started');
+      expect(started.generationProtocolVersion).toBe(2);
+      const streamId = started.streamId!;
+      expect(streamId).toBeTruthy();
+      const keys = await redis.keys(`*stream:{${streamId}}:job`);
+      expect(keys).toHaveLength(1);
+      const namespace = await redis.hget(keys[0], 'checkpointNamespace');
+      expect(namespace).toBeTruthy();
+      await expect
+        .poll(
+          async () =>
+            (await getPersistedCheckpointCounts(conversationId, namespace!)).generationRows,
+          { timeout: 30_000, intervals: [250, 500, 1000] },
+        )
+        .toBeGreaterThan(0);
+      const preKill = await loadDurableJob(redis, streamId);
+      expect(preKill.status).toBe('running');
+      expect(Object.keys(preKill.state?.results ?? {})).toHaveLength(0);
+      const attestationText = await redis.hget(keys[0], 'nativeMissionCapabilityAttestation');
+      const attestation = attestationText
+        ? (JSON.parse(attestationText) as { mode?: string })
+        : null;
+      expect(
+        attestation?.mode,
+        'original model-only capability must be durable before SIGKILL',
+      ).toBe('model_only');
+
+      const restart = await page.request.post(
+        `http://127.0.0.1:${process.env.E2E_RESTART_CONTROL_PORT}/restart`,
+        { headers: { 'x-e2e-restart-intent': 'oracle-runtime' }, timeout: 150_000 },
+      );
+      expect(restart.status()).toBe(200);
+      const restarted = (await restart.json()) as {
+        oldPid: number;
+        newPid: number;
+        recovered: boolean;
+      };
+      expect(restarted.recovered).toBe(true);
+      expect(restarted.newPid).not.toBe(restarted.oldPid);
+      const expectedTask = `${mission.taskId}/main`;
+      let observedStatus = 'missing';
+      try {
+        await expect
+          .poll(
+            async () => {
+              const job = await loadDurableJob(redis, streamId);
+              observedStatus = job.status ?? 'missing';
+              return (
+                job.state?.results?.[expectedTask]?.verdicts?.some(
+                  (verdict) => verdict.status === 'VERIFIED',
+                ) === true
+              );
+            },
+            {
+              timeout: 60_000,
+              intervals: [300, 500, 1000, 2500],
+              message: 'automatic, originally model-only cold Oracle recovery',
+            },
+          )
+          .toBe(true);
+      } catch (error) {
+        console.log('PR28_MODEL_ONLY_AUTO_RESUME_STATUS=' + observedStatus);
+        console.log(
+          'PR28_MODEL_ONLY_POST_SIGKILL_GATES=' +
+            JSON.stringify(await getRecoveryGateFlags(redis, streamId)),
+        );
+        throw error;
+      }
+      const messages = await requestJson<
+        Array<{
+          messageId?: string;
+          isCreatedByUser?: boolean;
+          text?: string;
+          content?: unknown;
+        }>
+      >(page, {
+        path: `/api/messages/${encodeURIComponent(conversationId)}`,
+        token,
+      });
+      expect(
+        messages.filter(
+          (m) => m.isCreatedByUser === false && responseText(m).includes('{"ok":true}'),
+        ),
+      ).toHaveLength(1);
+      expect(new Set(messages.map((m) => m.messageId)).size).toBe(messages.length);
+      console.log('PR28_MODEL_ONLY_POST_SIGKILL_ORACLE_PUBLISHED_ONCE=PASS');
+    } finally {
+      if (workerId) await cleanupAgent(page, workerId);
       await redis.quit();
     }
   });
@@ -478,36 +661,50 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       expect(start.generationProtocolVersion, 'native mission must negotiate protocol v2').toBe(2);
       expect(start.streamId).toBeTruthy();
       const streamId = start.streamId!;
-      await expect.poll(async () => {
-        const job = await loadDurableJob(redis, streamId);
-        return job.status === 'running' &&
-          job.plan?.mission?.missionId === mission.missionId &&
-          Object.keys(job.state?.results ?? {}).length === 0;
-      }, { timeout: 15_000, intervals: [100, 200, 300] }).toBe(true);
+      await expect
+        .poll(
+          async () => {
+            const job = await loadDurableJob(redis, streamId);
+            return (
+              job.status === 'running' &&
+              job.plan?.mission?.missionId === mission.missionId &&
+              Object.keys(job.state?.results ?? {}).length === 0
+            );
+          },
+          { timeout: 15_000, intervals: [100, 200, 300] },
+        )
+        .toBe(true);
 
       const beforeKill = await getRecoveryGateFlags(redis, streamId);
       console.log('PR28_PRE_SIGKILL_RECOVERY_GATES=' + JSON.stringify(beforeKill));
-      expect(beforeKill.namespaced, 'protocol v2 must create an isolated checkpoint namespace')
-        .toBe(true);
+      expect(
+        beforeKill.namespaced,
+        'protocol v2 must create an isolated checkpoint namespace',
+      ).toBe(true);
       const jobKeys = await redis.keys('*stream:{' + streamId + '}:job');
       const namespace = await redis.hget(jobKeys[0], 'checkpointNamespace');
       expect(namespace).toBeTruthy();
       // Distinguish an *early* SIGKILL (before LangGraph has committed any
       // state) from a mid-graph SIGKILL that ought to be checkpoint-resumable.
       // The other crash test continues to cover fail-closed early abortion.
-      await expect.poll(
-        async () => (await getPersistedCheckpointCounts(conversationId, namespace!)).generationRows,
-        {
-          timeout: 30_000,
-          intervals: [250, 500, 1000],
-          message: 'first real generation-scoped graph checkpoint before mid-flight SIGKILL',
-        },
-      ).toBeGreaterThan(0);
+      await expect
+        .poll(
+          async () =>
+            (await getPersistedCheckpointCounts(conversationId, namespace!)).generationRows,
+          {
+            timeout: 30_000,
+            intervals: [250, 500, 1000],
+            message: 'first real generation-scoped graph checkpoint before mid-flight SIGKILL',
+          },
+        )
+        .toBeGreaterThan(0);
       const durablePreKill = await loadDurableJob(redis, streamId);
       expect(durablePreKill.status).toBe('running');
       expect(Object.keys(durablePreKill.state?.results ?? {})).toHaveLength(0);
-      console.log('PR28_PRE_SIGKILL_MONGO_CHECKPOINT_COUNTS=' +
-        JSON.stringify(await getPersistedCheckpointCounts(conversationId, namespace!)));
+      console.log(
+        'PR28_PRE_SIGKILL_MONGO_CHECKPOINT_COUNTS=' +
+          JSON.stringify(await getPersistedCheckpointCounts(conversationId, namespace!)),
+      );
 
       const restart = await page.request.post(
         `http://127.0.0.1:${process.env.E2E_RESTART_CONTROL_PORT}/restart`,
@@ -528,41 +725,54 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       const expectedTasks = [`${mission.taskId}/worker`, `${mission.taskId}/specialist`];
       let observedStatus = 'unknown';
       try {
-        await expect.poll(async () => {
-          const job = await loadDurableJob(redis, streamId);
-          observedStatus = job.status ?? 'missing';
-          return expectedTasks.every((taskId) =>
-            job.state?.results?.[taskId]?.verdicts?.every((verdict) => verdict.status === 'VERIFIED') === true &&
-            (job.state.results[taskId].verdicts?.length ?? 0) > 0,
-          );
-        }, {
-          timeout: 55_000,
-          intervals: [500, 1000, 2500],
-          message: 'post-SIGKILL automatic Oracle mission continuation',
-        }).toBe(true);
+        await expect
+          .poll(
+            async () => {
+              const job = await loadDurableJob(redis, streamId);
+              observedStatus = job.status ?? 'missing';
+              return expectedTasks.every(
+                (taskId) =>
+                  job.state?.results?.[taskId]?.verdicts?.every(
+                    (verdict) => verdict.status === 'VERIFIED',
+                  ) === true && (job.state.results[taskId].verdicts?.length ?? 0) > 0,
+              );
+            },
+            {
+              timeout: 55_000,
+              intervals: [500, 1000, 2500],
+              message: 'post-SIGKILL automatic Oracle mission continuation',
+            },
+          )
+          .toBe(true);
       } catch (error) {
         console.log(`PR28_AUTO_RESUME_UNPROVEN_JOB_STATUS=${observedStatus}`);
         console.log(
           'PR28_POST_SIGKILL_RECOVERY_GATES=' +
             JSON.stringify(await getRecoveryGateFlags(redis, streamId)),
         );
-        console.log('PR28_POST_SIGKILL_MONGO_CHECKPOINT_COUNTS=' +
-          JSON.stringify(await getPersistedCheckpointCounts(conversationId, namespace!)));
+        console.log(
+          'PR28_POST_SIGKILL_MONGO_CHECKPOINT_COUNTS=' +
+            JSON.stringify(await getPersistedCheckpointCounts(conversationId, namespace!)),
+        );
         throw error;
       }
 
-      const messages = await requestJson<Array<{
-        messageId?: string;
-        isCreatedByUser?: boolean;
-        text?: string;
-        content?: unknown;
-      }>>(page, {
+      const messages = await requestJson<
+        Array<{
+          messageId?: string;
+          isCreatedByUser?: boolean;
+          text?: string;
+          content?: unknown;
+        }>
+      >(page, {
         path: `/api/messages/${encodeURIComponent(conversationId)}`,
         token,
       });
-      expect(messages.filter((m) =>
-        m.isCreatedByUser === false && responseText(m).includes('{"ok":true}'),
-      )).toHaveLength(1);
+      expect(
+        messages.filter(
+          (m) => m.isCreatedByUser === false && responseText(m).includes('{"ok":true}'),
+        ),
+      ).toHaveLength(1);
       expect(new Set(messages.map((m) => m.messageId)).size).toBe(messages.length);
       console.log('PR28_ORACLE_INFLIGHT_AUTO_RESUME_EXACTLY_ONCE=PASS');
     } finally {

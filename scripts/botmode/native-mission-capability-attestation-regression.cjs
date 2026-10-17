@@ -40,7 +40,6 @@ for (const changed of [
   { ...worker, dynamicToolContextMap: { secret: {} } },
   { ...worker, subagentGraphMemberMetadata: [{ id: 'extra' }] },
   { ...worker, skillCount: 1 },
-  { ...worker, extensionCapabilityRegistry: new Map([['remote-effect', {}]]) },
   { ...worker, edges: [{ to: 'specialist' }] },
   { ...worker, model: 'gpt-4.1' },
   { ...worker, provider: 'custom' },
@@ -117,5 +116,19 @@ assert.throws(
   () => assertNativeMissionCapabilityAttestation({ recorded: originallyDelegated, ...args }),
   /BASELINE_CHANGED/,
 );
+const descriptiveCatalog = createNativeMissionCapabilityAttestation({
+  ...args,
+  agents: [
+    {
+      ...worker,
+      extensionCapabilityRegistry: {
+        resources: new Map([['advertised-only-web-tool', {}]]),
+      },
+    },
+    specialist,
+  ],
+});
+assert.equal(descriptiveCatalog.mode, 'model_only');
+assert.equal(descriptiveCatalog.digest, recorded.digest);
 assert.equal(JSON.stringify(recorded).includes('secret'), false);
 console.log('BOTMODE_ORIGINAL_TOOL_DELEGATION_MODEL_DRIFT_DENIAL=PASS');
