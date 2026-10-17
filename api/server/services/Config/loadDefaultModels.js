@@ -16,9 +16,10 @@ const { getAppConfig } = require('./app');
  * @function
  * @param {ServerRequest} req - The Express request object.
  */
-async function loadDefaultModels(req) {
+async function loadDefaultModelsFromContext({ user, appConfig: suppliedConfig }) {
   try {
-    const appConfig = req.config ?? (await getAppConfig(getAppConfigOptionsFromUser(req.user)));
+    if (!user?.id) throw new Error('MODEL_CATALOG_USER_REQUIRED');
+    const appConfig = suppliedConfig ?? (await getAppConfig(getAppConfigOptionsFromUser(user)));
     const vertexConfig = appConfig?.endpoints?.[EModelEndpoint.anthropic]?.vertexConfig;
 
     /** Forward configured custom headers (endpoint over global `all`) so model
@@ -35,22 +36,22 @@ async function loadDefaultModels(req) {
 
     const [openAI, anthropic, azureOpenAI, assistants, azureAssistants, google, bedrock] =
       await Promise.all([
-        getOpenAIModels({ user: req.user.id, headers: openAIHeaders, userObject: req.user }).catch(
+        getOpenAIModels({ user: user.id, headers: openAIHeaders, userObject: user }).catch(
           (error) => {
             logger.error('Error fetching OpenAI models:', error);
             return [];
           },
         ),
         getAnthropicModels({
-          user: req.user.id,
+          user: user.id,
           vertexModels: vertexConfig?.modelNames,
           headers: anthropicHeaders,
-          userObject: req.user,
+          userObject: user,
         }).catch((error) => {
           logger.error('Error fetching Anthropic models:', error);
           return [];
         }),
-        getOpenAIModels({ user: req.user.id, azure: true }).catch((error) => {
+        getOpenAIModels({ user: user.id, azure: true }).catch((error) => {
           logger.error('Error fetching Azure OpenAI models:', error);
           return [];
         }),
@@ -86,5 +87,10 @@ async function loadDefaultModels(req) {
     throw new Error(`Failed to load default models: ${error.message}`);
   }
 }
+
+async function loadDefaultModels(req) {
+  return loadDefaultModelsFromContext({ user: req.user, appConfig: req.config });
+}
+loadDefaultModels.fromContext = loadDefaultModelsFromContext;
 
 module.exports = loadDefaultModels;

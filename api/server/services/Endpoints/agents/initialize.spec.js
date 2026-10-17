@@ -13,6 +13,8 @@ const {
 const { MongoMemoryServer } = require('mongodb-memory-server');
 
 const mockInitializeAgent = jest.fn();
+const mockGetAppConfig = jest.fn();
+const mockLoadModelsFromContext = jest.fn();
 const mockValidateAgentModel = jest.fn();
 const mockGetGenerationJob = jest.fn();
 const mockHasDurableSubagentRecoveryCheckpoint = jest.fn();
@@ -93,6 +95,11 @@ jest.mock('~/server/services/ToolService', () => ({
 
 jest.mock('~/server/controllers/ModelController', () => ({
   getModelsConfig: jest.fn().mockResolvedValue({}),
+  loadModelsFromContext: (...args) => mockLoadModelsFromContext(...args),
+}));
+jest.mock('~/server/services/Config', () => ({
+  ...jest.requireActual('~/server/services/Config'),
+  getAppConfig: (...args) => mockGetAppConfig(...args),
 }));
 
 let agentClientArgs;
@@ -111,7 +118,7 @@ jest.mock('~/cache', () => ({
   logViolation: jest.fn(),
 }));
 
-const { initializeClient } = require('./initialize');
+const { initializeClient, initializeClientFromDocuments } = require('./initialize');
 const { observeRequiredToolApproval } = require('./approvalAuthorizationObservation');
 const { processAddedConvo } = require('./addedConvo');
 const { getSkillDbMethods, getSkillToolDeps } = require('./skillDeps');
@@ -156,6 +163,8 @@ describe('initializeClient — processAgent ACL gate', () => {
     });
 
     mockValidateAgentModel.mockResolvedValue({ isValid: true });
+    mockGetAppConfig.mockResolvedValue({ endpoints: { agents: { allowedProviders: ['openai'] } } });
+    mockLoadModelsFromContext.mockResolvedValue({ openai: ['gpt-4'] });
   });
 
   const makeReq = () => ({
@@ -167,8 +176,15 @@ describe('initializeClient — processAgent ACL gate', () => {
         custom: [
           {
             name: 'OpenRouter',
-            baseURL: 'https://openrouter.example.test/api/v1',
-            apiKey: 'fixture-secret',
+            baseURL: 'https://openrouter.ai/api/v1',
+            apiKey: 'fixture-key',
+            models: { default: ['a:free', 'b:free'] },
+          },
+          {
+            name: 'openai',
+            baseURL: 'https://example.invalid/v1',
+            apiKey: 'fixture-key',
+            models: { default: ['gpt-4', 'b:free'] },
           },
         ],
       },
@@ -205,6 +221,181 @@ describe('initializeClient — processAgent ACL gate', () => {
       statefulSessions: false,
     },
   });
+
+  it('reconstructs an authenticated model-only mission without Express req/res', async () => {
+    const user = testUser;
+    const owner = String(user._id);
+    const documents = [
+      { id: PRIMARY_ID, _id: 'mongo-primary', provider: 'openai', model: 'gpt-4', tools: [] },
+      { id: TARGET_ID, _id: 'mongo-target', provider: 'openai', model: 'gpt-4', tools: [] },
+    ];
+    const candidate = {
+      streamId: 'conv-model-only',
+      createdAt: 1700000000000,
+      checkpointNamespace: 'epoch',
+      checkpointId: 'head',
+    };
+    const job = {
+      ...candidate,
+      userId: owner,
+      agent_id: PRIMARY_ID,
+      status: 'running',
+      userMessage: { messageId: 'user-message' },
+      responseMessageId: 'response-message',
+      orchestratorPlan: { tasks: [{ key: 'task', nodeId: 'worker', agentId: TARGET_ID }] },
+    };
+    const conversation = { conversationId: candidate.streamId, agent_id: PRIMARY_ID };
+    mockInitializeAgent.mockImplementation(async ({ agent }) => ({
+      ...makePrimaryConfig([]),
+      id: agent.id,
+      model_parameters: { model: 'gpt-4' },
+      toolDefinitions: [],
+      tools: [],
+    }));
+    let checks = 0;
+    const client = await initializeClientFromDocuments({
+      candidate,
+      claim: { ...candidate, ownerToken: 'owner-token' },
+      job,
+      context: { user, conversation, agents: documents },
+      assertAuthorized: async () => {
+        checks++;
+      },
+    });
+    expect(checks).toBe(5);
+    expect(mockInitializeAgent).toHaveBeenCalledTimes(2);
+    for (const call of mockInitializeAgent.mock.calls) {
+      expect(call[0]).not.toHaveProperty('req');
+      expect(call[0]).not.toHaveProperty('res');
+      expect(call[0].runtime.user).toBe(user);
+      expect(call[0].runtime.resolvedConversation).toBe(conversation);
+    }
+    expect(agentClientArgs).not.toHaveProperty('req');
+    expect(agentClientArgs.agentRuntime.user).toBe(user);
+    expect(agentClientArgs.agentConfigs.has(TARGET_ID)).toBe(true);
+    expect(client.conversationId).toBe(candidate.streamId);
+    expect(client.publicationBarrier.hold()).toBe(false);
+    client.publicationBarrier.activate();
+    expect(client.publicationBarrier.hold()).toBe(true);
+    expect(mockLoadModelsFromContext).toHaveBeenCalledWith(expect.objectContaining({ user }));
+  });
+
+  it('denies recovery if persisted conversation files would be rehydrated', async () => {
+    const user = testUser;
+    const candidate = {
+      streamId: 'conv-with-files',
+      createdAt: 1700000000000,
+      checkpointNamespace: 'epoch',
+      checkpointId: 'head',
+    };
+    const job = {
+      ...candidate,
+      userId: String(user._id),
+      agent_id: PRIMARY_ID,
+      status: 'running',
+      userMessage: { messageId: 'user-message' },
+      responseMessageId: 'response-message',
+      orchestratorPlan: { tasks: [{ key: 'task', nodeId: 'worker', agentId: PRIMARY_ID }] },
+    };
+    const getFiles = jest.spyOn(db, 'getConvoFiles').mockResolvedValueOnce(['file-1']);
+    try {
+      await expect(
+        initializeClientFromDocuments({
+          candidate,
+          claim: { ...candidate, ownerToken: 'owner-token' },
+          job,
+          context: {
+            user,
+            conversation: { conversationId: candidate.streamId, agent_id: PRIMARY_ID },
+            agents: [{ id: PRIMARY_ID, provider: 'openai', model: 'gpt-4', tools: [] }],
+          },
+          assertAuthorized: async () => {},
+        }),
+      ).rejects.toThrow('FILES_UNAVAILABLE');
+      expect(mockInitializeAgent).not.toHaveBeenCalled();
+      expect(mockGetAppConfig).not.toHaveBeenCalled();
+    } finally {
+      getFiles.mockRestore();
+    }
+  });
+
+  it('refuses to strip durable tools during request-free cold recovery', async () => {
+    const user = testUser;
+    const candidate = {
+      streamId: 'conv-model-only',
+      createdAt: 1700000000000,
+      checkpointNamespace: 'epoch',
+      checkpointId: 'head',
+    };
+    const job = {
+      ...candidate,
+      userId: String(user._id),
+      agent_id: PRIMARY_ID,
+      status: 'running',
+      userMessage: { messageId: 'user-message' },
+      responseMessageId: 'response-message',
+      orchestratorPlan: { tasks: [{ key: 'task', nodeId: 'worker', agentId: PRIMARY_ID }] },
+    };
+    await expect(
+      initializeClientFromDocuments({
+        candidate,
+        claim: { ...candidate, ownerToken: 'owner-token' },
+        job,
+        context: {
+          user,
+          conversation: { conversationId: candidate.streamId, agent_id: PRIMARY_ID },
+          agents: [{ id: PRIMARY_ID, provider: 'openai', model: 'gpt-4', tools: ['web_search'] }],
+        },
+        assertAuthorized: async () => {},
+      }),
+    ).rejects.toThrow('TOOL_RUNTIME_UNAVAILABLE');
+    expect(mockInitializeAgent).not.toHaveBeenCalled();
+    expect(mockGetAppConfig).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { subagents: { enabled: true, agent_ids: [TARGET_ID] } },
+    { subagentAgentConfigs: [{ id: TARGET_ID }] },
+    { lazySubagentConfigs: [{ id: TARGET_ID }] },
+    { subagentGraphConfigs: [{ id: TARGET_ID }] },
+  ])(
+    'refuses implicit delegated SDK tools without a durable child binding: %j',
+    async (capability) => {
+      const user = testUser;
+      const candidate = {
+        streamId: 'conv-with-delegation',
+        createdAt: 1700000000000,
+        checkpointNamespace: 'epoch',
+        checkpointId: 'head',
+      };
+      const job = {
+        ...candidate,
+        userId: String(user._id),
+        agent_id: PRIMARY_ID,
+        status: 'running',
+        userMessage: { messageId: 'user-message' },
+        responseMessageId: 'response-message',
+        orchestratorPlan: { tasks: [{ key: 'task', nodeId: 'worker', agentId: PRIMARY_ID }] },
+      };
+      await expect(
+        initializeClientFromDocuments({
+          candidate,
+          claim: { ...candidate, ownerToken: 'owner-token' },
+          job,
+          context: {
+            user,
+            conversation: { conversationId: candidate.streamId, agent_id: PRIMARY_ID },
+            agents: [
+              { id: PRIMARY_ID, provider: 'openai', model: 'gpt-4', tools: [], ...capability },
+            ],
+          },
+          assertAuthorized: async () => {},
+        }),
+      ).rejects.toThrow('TOOL_RUNTIME_UNAVAILABLE');
+      expect(mockInitializeAgent).not.toHaveBeenCalled();
+      expect(mockGetAppConfig).not.toHaveBeenCalled();
+    },
+  );
 
   it('blocks cross-project source reuse for an existing conversation', async () => {
     const req = makeReq();
@@ -289,6 +480,49 @@ describe('initializeClient — processAgent ACL gate', () => {
     expect(mockInitializeAgent).toHaveBeenCalled();
   });
 
+  it('uses one transport-free SDK agent context from primary initialization', async () => {
+    mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+    const req = makeReq();
+    const result = await initializeClient({
+      req,
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption: makeEndpointOption(),
+    });
+    expect(result.client).toBeDefined();
+    const initialized = mockInitializeAgent.mock.calls[0][0];
+    expect(initialized).not.toHaveProperty('req');
+    expect(initialized).not.toHaveProperty('res');
+    expect(initialized.runtime).toEqual(
+      expect.objectContaining({
+        user: req.user,
+        appConfig: req.config,
+        requestBody: req.body,
+        turnStartedAt: req.turnStartedAt,
+        resolvedConversation: null,
+      }),
+    );
+    expect(Number.isSafeInteger(req.turnStartedAt)).toBe(true);
+  });
+
+  it('keeps the HTTP turn context separate from normalized MCP metadata', async () => {
+    mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+    const req = makeReq();
+    req.body.timezone = 'Europe/Paris';
+    const mcpRequestBody = { conversationId: 'conv_1', messageId: 'mcp-msg' };
+    await initializeClient({
+      req,
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption: makeEndpointOption(),
+      requestBody: mcpRequestBody,
+    });
+    const initialized = mockInitializeAgent.mock.calls[0][0];
+    expect(initialized.runtime.requestBody).toBe(req.body);
+    expect(initialized.runtime.requestBody.timezone).toBe('Europe/Paris');
+    expect(initialized.requestBody).toBe(mcpRequestBody);
+  });
+
   it('fails closed when a partial continuation cannot resolve its conversation', async () => {
     const req = makeReq();
     req.resolvedConversation = {
@@ -340,6 +574,9 @@ describe('initializeClient — processAgent ACL gate', () => {
     expect(getConvoSpy).toHaveBeenCalledWith(testUser._id.toString(), 'conv_1');
     expect(req.resolvedConversation).toBe(fullConversation);
     expect(mockInitializeAgent).toHaveBeenCalled();
+    expect(mockInitializeAgent.mock.calls[0][0].runtime.resolvedConversation).toBe(
+      fullConversation,
+    );
   });
 
   it('returns an isolated dormant transient evidence buffer for the request', async () => {

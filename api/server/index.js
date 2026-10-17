@@ -135,6 +135,38 @@ const configureGenerationStreams = () => {
       resumeDetachedAction: resumeAgentEventDetachedAction,
     }),
   );
+  // Explicit CI-only diagnostics. Both modes remain fail-closed: the normal
+  // runtime installs NO automatic recovery handler until durable replay
+  // receipts and the fenced full graph/Oracle continuation have been proven.
+  const auditHost = process.env.BOTMODE_NATIVE_RECOVERY_READONLY_AUDIT === 'true';
+  const auditClaim = process.env.BOTMODE_NATIVE_RECOVERY_CLAIM_AUDIT === 'true';
+  if (auditHost || auditClaim) {
+    const {
+      createNativeMissionRecoveryHostProbe,
+    } = require('./services/Endpoints/agents/nativeMissionRecoveryHostProbe');
+    const hostProbe = createNativeMissionRecoveryHostProbe({
+      manager: GenerationJobManager,
+      getUserById: agentEventMethods.getUserById,
+      isSubagentOwnerAdmissible: agentEventMethods.isSubagentOwnerAdmissible,
+      getConvo: agentEventMethods.getConvo,
+      getAgent: agentEventMethods.getAgent,
+    });
+    if (auditClaim) {
+      const { logger } = require('@librechat/data-schemas');
+      const {
+        createNativeMissionRecoveryClaimProbe,
+      } = require('./services/Endpoints/agents/nativeMissionRecoveryClaimProbe');
+      GenerationJobManager.setNativeMissionRecoveryHandler(
+        createNativeMissionRecoveryClaimProbe({
+          manager: GenerationJobManager,
+          authorizeCandidate: ({ candidate }) => hostProbe(candidate),
+          log: logger,
+        }),
+      );
+    } else {
+      GenerationJobManager.setNativeMissionRecoveryHandler(hostProbe);
+    }
+  }
   GenerationJobManager.initialize();
   // Stop active generations and close their SSE streams while the HTTP server drains.
   registerShutdownTask(

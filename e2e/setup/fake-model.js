@@ -56,6 +56,7 @@ const TOOL_APPROVAL_REWRITE_MARKER = 'E2E_TOOL_APPROVAL_REWRITE:';
 const DEFERRED_HITL_MARKER = 'E2E_DEFERRED_HITL:';
 const HANDOFF_MARKER = 'E2E_HANDOFF:';
 const SUBAGENT_RESULT_MARKER = 'E2E_SUBAGENT_RESULT:';
+const MISSION_ORACLE_JSON_MARKER = 'E2E_MISSION_ORACLE_JSON:';
 const SUBAGENT_CHILD_MARKER = 'E2E_SUBAGENT_CHILD:';
 const SUBAGENT_ACTIVITY_MARKER = 'E2E_SUBAGENT_ACTIVITY:';
 const SUBAGENT_ACTIVITY_CHILD_MARKER = 'E2E_SUBAGENT_ACTIVITY_CHILD:';
@@ -485,6 +486,18 @@ function replyResponses(text) {
       responses: [`E2E forced error prelude ${errorName}`],
       thrownError: `E2E forced stream error ${errorName}`,
     };
+  }
+
+  // Intentionally delayed *valid* JSON: an in-flight crash/recovery probe must
+  // be able to distinguish a resumed model from a replay that rejects invalid text.
+  if (text.includes('E2E_MISSION_ORACLE_DELAYED_JSON:')) {
+    return { responses: ['{"ok":true}'], sleep: 10_000 };
+  }
+
+  // Deterministic, strict JSON for a real mission graph's Oracle validators.
+  // The model is a CI fixture; it cannot grant authorization or fake persisted verdicts.
+  if (getMarkerValue(text, MISSION_ORACLE_JSON_MARKER)) {
+    return { responses: ['{"ok":true}'] };
   }
 
   const replyName = getMarkerValue(text, REPLY_MARKER);

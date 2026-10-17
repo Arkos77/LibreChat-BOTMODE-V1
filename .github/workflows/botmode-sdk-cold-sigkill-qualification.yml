@@ -1,0 +1,259 @@
+name: BOT MODE SDK Cold SIGKILL Qualification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-sdk-cold-sigkill-qualification.yml'
+      - 'scripts/botmode/run-sdk-mongo-sigkill-regression.sh'
+      - 'scripts/botmode/sdk-mongo-cold-checkpoint-regression.cjs'
+      - 'packages/api/src/agents/nativeMissionRecoverySnapshot.ts'
+      - 'packages/api/src/agents/checkpointer.ts'
+      - 'packages/api/src/stream/GenerationJobManager.ts'
+      - 'scripts/botmode/native-orphan-claim-regression.cjs'
+      - 'scripts/botmode/native-orphan-preflight-cadence-regression.cjs'
+      - 'scripts/botmode/native-orphan-activation-regression.cjs'
+      - 'api/server/services/Endpoints/agents/resolveAuthorizedAgentConversation.js'
+      - 'scripts/botmode/authorized-agent-conversation-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js'
+      - 'scripts/botmode/native-recovery-host-authorization-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveryHostAuthorization.js'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveryHostProbe.js'
+      - 'scripts/botmode/native-recovery-host-probe-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveryClaimProbe.js'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveryCoordinator.js'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveryHandlerFactory.js'
+      - 'api/server/services/Endpoints/agents/nativeMissionAuthenticatedRecoveryContext.js'
+      - 'api/server/services/Endpoints/agents/nativeMissionAuthorizedClientInitializer.js'
+      - 'scripts/botmode/native-authorized-client-initializer-regression.cjs'
+      - 'scripts/botmode/native-authenticated-recovery-context-regression.cjs'
+      - 'scripts/botmode/native-recovery-handler-factory-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionDurablePublicationStage.js'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveredOraclePersister.js'
+      - 'scripts/botmode/native-recovered-oracle-persister-regression.cjs'
+      - 'scripts/botmode/native-recovered-oracle-real-contract-regression.cjs'
+      - 'packages/api/src/agents/orchestrator/missionOracle.ts'
+      - 'api/server/controllers/agents/client.js'
+      - 'api/server/services/Endpoints/agents/initialize.js'
+      - 'scripts/botmode/native-mission-durable-publication-stage-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveredClientBinding.js'
+      - 'scripts/botmode/native-recovered-client-binding-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionColdRuntimeHost.js'
+      - 'scripts/botmode/native-cold-runtime-host-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionColdGraphBuilder.js'
+      - 'scripts/botmode/native-cold-graph-builder-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionReplayReceiptProof.js'
+      - 'scripts/botmode/native-mission-replay-receipt-proof-regression.cjs'
+      - 'scripts/botmode/native-recovery-coordinator-regression.cjs'
+      - 'scripts/botmode/redis-native-recovery-renew-regression.py'
+      - 'scripts/botmode/redis-recovered-terminal-persistence-regression.py'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveredTerminalPublisher.js'
+      - 'scripts/botmode/native-recovered-terminal-publisher-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveredOracleVerifier.js'
+      - 'scripts/botmode/native-recovered-oracle-verifier-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionModelOnlyRecoveryCallbacks.js'
+      - 'scripts/botmode/native-model-only-recovery-callbacks-regression.cjs'
+      - 'scripts/botmode/native-mission-claim-probe-regression.cjs'
+      - 'scripts/botmode/redis-late-native-plan-lease-regression.cjs'
+      - 'scripts/botmode/run-redis-late-native-plan-lease-regression.sh'
+      - 'api/server/index.js'
+      - 'scripts/botmode/recovered-mission-redis-mongo-regression.cjs'
+      - 'scripts/botmode/run-recovered-mission-integration.sh'
+      - 'scripts/botmode/langgraph-cold-midstep-continuation-regression.cjs'
+      - 'scripts/botmode/run-langgraph-cold-midstep-regression.sh'
+      - 'packages/api/src/stream/implementations/RedisJobStore.ts'
+      - 'packages/api/src/stream/interfaces/IJobStore.ts'
+      - 'packages/api/src/stream/nativeMissionEffectReceipts.ts'
+      - 'scripts/botmode/native-effect-receipts-redis-regression.cjs'
+      - 'scripts/botmode/run-native-effect-receipts-redis-regression.sh'
+      - 'packages/api/src/agents/nativeMissionEffectExecution.ts'
+      - 'packages/api/src/agents/nativeMissionRecoveredSegment.ts'
+      - 'packages/api/src/agents/nativeMissionColdGraphContinuation.ts'
+      - 'scripts/botmode/native-cold-graph-continuation-regression.cjs'
+      - 'scripts/botmode/native-recovered-segment-regression.cjs'
+      - 'scripts/botmode/native-effect-execution-regression.cjs'
+      - 'scripts/botmode/native-effect-external-sigkill-regression.cjs'
+      - 'scripts/botmode/run-native-effect-external-sigkill-regression.sh'
+      - 'vendor/librechat-agents/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: botmode-sdk-cold-sigkill-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cold-checkpoint-crash-restart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull pinned qualification SDK runtime
+        run: |
+          docker pull "$BOTMODE_TEST_SDK_IMAGE"
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+      - name: Verify bounded read-only orphan preflight and recovery admission
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          set -euo pipefail
+          for script in native-orphan-claim-regression.cjs native-orphan-preflight-cadence-regression.cjs native-orphan-activation-regression.cjs; do
+            docker run --rm --network none --memory 760m --cpus 1 --read-only \
+              --mount "type=bind,src=$PWD/packages/api/src/stream/GenerationJobManager.ts,dst=/work/packages/api/src/stream/GenerationJobManager.ts,readonly" \
+              --mount "type=bind,src=$PWD/packages/api/src/agents/nativeMissionRecoverySnapshot.ts,dst=/work/packages/api/src/agents/nativeMissionRecoverySnapshot.ts,readonly" \
+              --mount "type=bind,src=$PWD/scripts/botmode/$script,dst=/app/$script,readonly" \
+              --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" "/app/$script"
+          done
+      - name: Verify current host identity and agent permissions fail closed
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          docker run --rm --network none --memory 720m --cpus 1 --read-only \
+            --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js,readonly" \
+            --mount "type=bind,src=$PWD/scripts/botmode/native-recovery-host-authorization-regression.cjs,dst=/app/native-recovery-host-authorization-regression.cjs,readonly" \
+            --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-recovery-host-authorization-regression.cjs
+      - name: Verify durable publication staging ownership and readback
+        run: node scripts/botmode/native-mission-durable-publication-stage-regression.cjs
+      - name: Verify recovered Worker and specialist Oracle results use owner-fenced CAS
+        run: node scripts/botmode/native-recovered-oracle-persister-regression.cjs
+      - name: Verify recovered Oracle CAS against actual SDK validator schema and semantic retry
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          docker run --rm --network none --memory 720m --cpus 1 --read-only \
+            --mount "type=bind,src=$PWD/packages/api/src/agents/orchestrator/missionOracle.ts,dst=/work/packages/api/src/agents/orchestrator/missionOracle.ts,readonly" \
+            --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveredOraclePersister.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveredOraclePersister.js,readonly" \
+            --mount "type=bind,src=$PWD/scripts/botmode/native-recovered-oracle-real-contract-regression.cjs,dst=/app/native-recovered-oracle-real-contract-regression.cjs,readonly" \
+            --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-recovered-oracle-real-contract-regression.cjs
+      - name: Verify shared owner-scoped conversation resolution
+        run: node scripts/botmode/authorized-agent-conversation-regression.cjs
+      - name: Verify authenticated cold client and publication barrier binding
+        run: node scripts/botmode/native-recovered-client-binding-regression.cjs
+      - name: Verify cold runtime authorized reconstruction contract
+        run: node scripts/botmode/native-cold-runtime-host-regression.cjs
+      - name: Verify SDK cold graph creation requires authenticated host execution context
+        run: node scripts/botmode/native-cold-graph-builder-regression.cjs
+      - name: Verify committed native mission replay receipts and private results
+        run: node scripts/botmode/native-mission-replay-receipt-proof-regression.cjs
+      - name: Verify request-independent recovered client initialization contract
+        run: node scripts/botmode/native-authorized-client-initializer-regression.cjs
+      - name: Verify real authenticated owner conversation and specialist documents for cold recovery
+        run: node scripts/botmode/native-authenticated-recovery-context-regression.cjs
+      - name: Verify SDK recovery executor is assembled only with complete host dependencies
+        run: node scripts/botmode/native-recovery-handler-factory-regression.cjs
+      - name: Verify host recovery coordinator rejects unsafe handoffs
+        run: node scripts/botmode/native-recovery-coordinator-regression.cjs
+      - name: Verify crashed-provider claim renewal and live-provider fencing on Redis
+        run: python3 scripts/botmode/redis-native-recovery-renew-regression.py
+      - name: Verify final native Oracle results originate from completed checkpoint outputs
+        run: node scripts/botmode/native-recovered-oracle-verifier-regression.cjs
+      - name: Verify model-only Oracle stage and owner-fenced history publication callbacks
+        run: node scripts/botmode/native-model-only-recovery-callbacks-regression.cjs
+      - name: Verify recovered terminal message-write-before-CAS contract and unique event
+        run: node scripts/botmode/native-recovered-terminal-publisher-regression.cjs
+      - name: Verify recovered terminal CAS and publication reconciliation on real Redis
+        run: python3 scripts/botmode/redis-recovered-terminal-persistence-regression.py
+      - name: Verify host read-only audit never claims or executes
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          docker run --rm --network none --memory 720m --cpus 1 --read-only \
+            --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js,readonly" \
+            --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveryHostAuthorization.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveryHostAuthorization.js,readonly" \
+            --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveryHostProbe.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveryHostProbe.js,readonly" \
+            --mount "type=bind,src=$PWD/scripts/botmode/native-recovery-host-probe-regression.cjs,dst=/app/native-recovery-host-probe-regression.cjs,readonly" \
+            --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-recovery-host-probe-regression.cjs
+      - name: Verify host claim admission and exact-generation release are fail-closed
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          docker run --rm --network none --memory 720m --cpus 1 --read-only \
+            --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveryClaimProbe.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveryClaimProbe.js,readonly" \
+            --mount "type=bind,src=$PWD/scripts/botmode/native-mission-claim-probe-regression.cjs,dst=/app/native-mission-claim-probe-regression.cjs,readonly" \
+            --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-mission-claim-probe-regression.cjs
+      - name: Verify late native plan initializes only a fenced Redis provider lease
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          set -euo pipefail
+          before="$(docker volume ls -q --filter dangling=true | wc -l)"
+          bash scripts/botmode/run-redis-late-native-plan-lease-regression.sh
+          after="$(docker volume ls -q --filter dangling=true | wc -l)"
+          test "$before" -eq "$after"
+          echo 'BOTMODE_LATE_PLAN_PROVIDER_LEASE_CI=PASS'
+      - name: Verify non-HITL cold graph continuation is fenced and terminal
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          docker run --rm --network none --memory 710m --cpus 1 --read-only \
+            --mount "type=bind,src=$PWD/packages/api/src/agents/nativeMissionColdGraphContinuation.ts,dst=/work/packages/api/src/agents/nativeMissionColdGraphContinuation.ts,readonly" \
+            --mount "type=bind,src=$PWD/scripts/botmode/native-cold-graph-continuation-regression.cjs,dst=/app/native-cold-graph-continuation-regression.cjs,readonly" \
+            --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-cold-graph-continuation-regression.cjs
+      - name: Verify recovered provider lifecycle refuses unsafe publication
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          docker run --rm --network none --memory 710m --cpus 1 --read-only \
+            --mount "type=bind,src=$PWD/packages/api/src/agents/nativeMissionRecoveredSegment.ts,dst=/work/packages/api/src/agents/nativeMissionRecoveredSegment.ts,readonly" \
+            --mount "type=bind,src=$PWD/scripts/botmode/native-recovered-segment-regression.cjs,dst=/app/native-recovered-segment-regression.cjs,readonly" \
+            --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-recovered-segment-regression.cjs
+      - name: Verify effect execution adapter fails closed on ambiguous tool results
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          docker run --rm --network none --memory 710m --cpus 1 --read-only \
+            --mount "type=bind,src=$PWD/packages/api/src/agents/nativeMissionEffectExecution.ts,dst=/work/packages/api/src/agents/nativeMissionEffectExecution.ts,readonly" \
+            --mount "type=bind,src=$PWD/scripts/botmode/native-effect-execution-regression.cjs,dst=/app/native-effect-execution-regression.cjs,readonly" \
+            --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-effect-execution-regression.cjs
+      - name: Verify external effect receipt under real SIGKILL and process cold restart
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          set -euo pipefail
+          before="$(docker volume ls -q --filter dangling=true | wc -l)"
+          bash scripts/botmode/run-native-effect-external-sigkill-regression.sh
+          after="$(docker volume ls -q --filter dangling=true | wc -l)"
+          test "$before" -eq "$after"
+          echo 'BOTMODE_EXTERNAL_EFFECT_COLD_SIGKILL_NO_DUPLICATION_CI=PASS'
+      - name: Verify native side-effect journal never retries uncertain external calls
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          set -euo pipefail
+          before="$(docker volume ls -q --filter dangling=true | wc -l)"
+          bash scripts/botmode/run-native-effect-receipts-redis-regression.sh
+          after="$(docker volume ls -q --filter dangling=true | wc -l)"
+          test "$before" -eq "$after"
+          echo 'BOTMODE_EFFECT_JOURNAL_REAL_REDIS_CI=PASS'
+      - name: Verify SIGKILL and Mongo cold SDK restart
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          set -euo pipefail
+          before="$(docker volume ls -q --filter dangling=true | wc -l)"
+          bash scripts/botmode/run-sdk-mongo-sigkill-regression.sh
+          after="$(docker volume ls -q --filter dangling=true | wc -l)"
+          test "$before" -eq "$after"
+          echo 'BOTMODE_SDK_COLD_SIGKILL_CI=PASS'
+      - name: Verify ordinary LangGraph mid-step cold checkpoint continuation
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          set -euo pipefail
+          before="$(docker volume ls -q --filter dangling=true | wc -l)"
+          bash scripts/botmode/run-langgraph-cold-midstep-regression.sh
+          after="$(docker volume ls -q --filter dangling=true | wc -l)"
+          test "$before" -eq "$after"
+          echo 'BOTMODE_LANGGRAPH_MIDSTEP_COLD_REPLAY_SAFETY=PASS'
+      - name: Verify recovered-owner Redis and Mongo SDK SIGKILL integration
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          set -euo pipefail
+          before="$(docker volume ls -q --filter dangling=true | wc -l)"
+          bash scripts/botmode/run-recovered-mission-integration.sh
+          after="$(docker volume ls -q --filter dangling=true | wc -l)"
+          test "$before" -eq "$after"
+          echo 'BOTMODE_SDK_REDIS_MONGO_RECOVERED_INTEGRATION=PASS'

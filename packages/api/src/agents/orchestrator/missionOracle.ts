@@ -63,7 +63,7 @@ function requireDurableState(condition: unknown, detail: string): asserts condit
 
 function isOracleScalar(value: unknown): value is string | number | boolean | null {
   return (
-    value == null ||
+    value === null ||
     typeof value === 'string' ||
     (typeof value === 'number' && Number.isFinite(value)) ||
     typeof value === 'boolean'
@@ -182,9 +182,9 @@ export function promoteTransientMissionOracleEvidence(
   const criterionId = requiredText(observation.criterionId ?? '', 'criterionId');
   if (
     !Object.prototype.hasOwnProperty.call(observation, 'value') ||
-    observation.value === undefined
+    !isOracleScalar(observation.value)
   ) {
-    throw new Error('Mission Oracle evidence requires explicit value');
+    throw new Error('Mission Oracle evidence requires an explicit scalar value');
   }
 
   const declaredCriteria = missionTaskCriterionIds(plan, taskId);

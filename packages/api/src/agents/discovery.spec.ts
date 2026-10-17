@@ -21,6 +21,7 @@ jest.mock('./initialize', () => ({
 
 const mockValidateAgentModel = jest.fn();
 jest.mock('./validation', () => ({
+  ...jest.requireActual('./validation'),
   validateAgentModel: (...args: unknown[]) => mockValidateAgentModel(...args),
 }));
 
@@ -235,6 +236,89 @@ describe('discoverConnectedAgents', () => {
     expect(mockInitializeAgent).toHaveBeenCalled();
     const initArgs = mockInitializeAgent.mock.calls[0][0];
     expect(initArgs.endpointOption.endpoint).toBe(EModelEndpoint.agents);
+  });
+
+  it('shares the same transport-free runtime across authorized connected agents', async () => {
+    const primaryConfig = makeConfig('A', [{ from: 'A', to: 'B', edgeType: 'handoff' }]);
+    const req = makeReq();
+    const runtime = {
+      user: req.user,
+      appConfig: { endpoints: {} },
+      requestBody: { conversationId: 'conv' },
+      turnStartedAt: 1700000000000,
+    } as NonNullable<Parameters<typeof discoverConnectedAgents>[0]['runtime']>;
+    await discoverConnectedAgents(
+      {
+        req,
+        res: makeRes(),
+        runtime,
+        primaryConfig,
+        allowedProviders: new Set(),
+        modelsConfig: { openai: ['gpt-4o'] },
+        loadTools: jest.fn(),
+      },
+      {
+        getAgent: jest.fn(async () => makeAgent('B')),
+        checkPermission: jest.fn().mockResolvedValue(true),
+        logViolation: jest.fn(),
+        db: {} as never,
+      },
+    );
+    const forwarded = mockInitializeAgent.mock.calls[0][0];
+    expect(forwarded.runtime).toBe(runtime);
+    expect(forwarded).not.toHaveProperty('req');
+    expect(forwarded).not.toHaveProperty('res');
+  });
+
+  it('validates and initializes connected agents without an HTTP request', async () => {
+    const runtime = {
+      user: { id: 'u1', role: 'USER' },
+      appConfig: { endpoints: {} },
+      requestBody: { conversationId: 'conv' },
+      turnStartedAt: 1700000000000,
+    } as NonNullable<Parameters<typeof discoverConnectedAgents>[0]['runtime']>;
+    const base = {
+      runtime,
+      primaryConfig: makeConfig('A', [{ from: 'A', to: 'B', edgeType: 'handoff' }]),
+      allowedProviders: new Set<string>(),
+      loadTools: jest.fn(),
+    };
+    const deps = {
+      getAgent: jest.fn(async () => makeAgent('B')),
+      checkPermission: jest.fn().mockResolvedValue(true),
+      logViolation: jest.fn(),
+      db: {} as never,
+    };
+    const accepted = await discoverConnectedAgents(
+      { ...base, modelsConfig: { openai: ['gpt-4o'] } },
+      deps,
+    );
+    expect(accepted.agentConfigs.has('B')).toBe(true);
+    expect(mockInitializeAgent.mock.calls[0][0].runtime).toBe(runtime);
+    expect(mockInitializeAgent.mock.calls[0][0]).not.toHaveProperty('req');
+    expect(deps.checkPermission).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'u1', role: 'USER' }),
+    );
+    mockInitializeAgent.mockClear();
+    const denied = await discoverConnectedAgents(
+      { ...base, modelsConfig: { openai: ['other'] } },
+      deps,
+    );
+    expect(denied.agentConfigs.has('B')).toBe(false);
+    expect(denied.skippedAgentIds.has('B')).toBe(true);
+    expect(mockInitializeAgent).not.toHaveBeenCalled();
+    expect(deps.logViolation).not.toHaveBeenCalled();
+    await expect(
+      discoverConnectedAgents(
+        {
+          ...base,
+          req: makeReq('another-user'),
+          res: makeRes(),
+          modelsConfig: { openai: ['gpt-4o'] },
+        },
+        deps,
+      ),
+    ).rejects.toThrow('AGENT_DISCOVERY_PRINCIPAL_MISMATCH');
   });
 
   it('forwards codeEnvAvailable to every handoff initializeAgent call', async () => {

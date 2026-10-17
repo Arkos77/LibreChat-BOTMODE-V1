@@ -10,6 +10,7 @@ import { emptyCheckpoint, ERROR, INTERRUPT } from '@langchain/langgraph-checkpoi
 import {
   getAgentCheckpointer,
   hasDurableAgentInterruptCheckpoint,
+  inspectDurableNativeMissionCheckpoint,
   hasDurableSubagentRecoveryCheckpoint,
   captureAgentCheckpointGeneration,
   deleteAgentCheckpoint,
@@ -20,8 +21,10 @@ import {
   CheckpointTooLargeError,
   LIBRECHAT_CHECKPOINT_NAMESPACE_KEY,
   LIBRECHAT_EVENT_ACTOR_INVOCATION_KEY,
+  LIBRECHAT_MISSION_SYNC_KEY,
   __resetCheckpointerForTests,
 } from './checkpointer';
+import { inspectReconstructedNativeMissionGraph } from './nativeMissionRecoverySnapshot';
 
 /**
  * Integration tests for the durable Mongo checkpointer seam, against a real
@@ -693,6 +696,187 @@ describe('LazyMongoSaver (lazy persistence — mongodb-memory-server)', () => {
       .db!.collection('agent_checkpoints')
       .countDocuments({ thread_id: threadId });
     expect(count).toBe(0);
+  });
+
+  it('preflights only the exact durable mission generation checkpoint', async () => {
+    const saver = await getAgentCheckpointer(MONGO_CFG);
+    const threadId = `native-recovery-${new mongoose.Types.ObjectId()}`;
+    const scope = `generation-${new mongoose.Types.ObjectId()}`;
+    const { checkpoint, metadata } = putArgs(threadId);
+    await saver!.put(
+      {
+        configurable: {
+          thread_id: threadId,
+          checkpoint_ns: '',
+          [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: scope,
+          [LIBRECHAT_MISSION_SYNC_KEY]: true,
+        },
+      },
+      checkpoint,
+      metadata,
+    );
+    const original = await inspectDurableNativeMissionCheckpoint(threadId, scope, MONGO_CFG);
+    expect(original).toEqual({ checkpointId: checkpoint.id, pendingNodes: [] });
+    await expect(
+      inspectDurableNativeMissionCheckpoint(threadId, 'another-generation', MONGO_CFG),
+    ).resolves.toBeNull();
+    await expect(
+      inspectDurableNativeMissionCheckpoint('another-thread', scope, MONGO_CFG),
+    ).resolves.toBeNull();
+    await expect(
+      inspectDurableNativeMissionCheckpoint(threadId, '', MONGO_CFG),
+    ).resolves.toBeNull();
+  });
+
+  it('does not automatically resume a checkpoint awaiting human approval', async () => {
+    const saver = await getAgentCheckpointer(MONGO_CFG);
+    const threadId = `native-hitl-${new mongoose.Types.ObjectId()}`;
+    const scope = `generation-${new mongoose.Types.ObjectId()}`;
+    const { checkpoint, metadata } = putArgs(threadId);
+    const missionConfig = {
+      configurable: {
+        thread_id: threadId,
+        checkpoint_ns: '',
+        [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: scope,
+        [LIBRECHAT_MISSION_SYNC_KEY]: true,
+      },
+    };
+    await saver!.put(missionConfig, checkpoint, metadata);
+    await saver!.putWrites(
+      { configurable: { ...missionConfig.configurable, checkpoint_id: checkpoint.id } },
+      [[INTERRUPT, { id: 'human-approval-required', value: 'approve?' }]],
+      'task-approval',
+    );
+    await expect(
+      inspectDurableNativeMissionCheckpoint(threadId, scope, MONGO_CFG),
+    ).resolves.toBeNull();
+  });
+
+  it('retains a sync mission checkpoint and its subsequent bookkeeping write', async () => {
+    const saver = await getAgentCheckpointer(MONGO_CFG);
+    const threadId = `mission-${new mongoose.Types.ObjectId().toString()}`;
+    const { config, checkpoint, metadata } = putArgs(threadId);
+    const missionConfig = {
+      configurable: { ...config.configurable, [LIBRECHAT_MISSION_SYNC_KEY]: true },
+    };
+    // sync persists checkpoints before downstream pending writes.
+    await saver!.put(missionConfig, checkpoint, metadata);
+    await saver!.putWrites(
+      { configurable: { ...missionConfig.configurable, checkpoint_id: checkpoint.id } },
+      [['__no_writes__', null]],
+      'completed-sibling',
+    );
+    const tuple = await saver!.getTuple(readConfig(threadId));
+    expect(tuple?.checkpoint.id).toBe(checkpoint.id);
+    expect(tuple?.pendingWrites?.some((write) => write[1] === '__no_writes__')).toBe(true);
+  });
+
+  it('continues from a saved sync mission step without rerunning preceding steps', async () => {
+    const { StateGraph, Annotation, START, END } = await import('@langchain/langgraph');
+    const saver = await getAgentCheckpointer(MONGO_CFG);
+    const threadId = `mission-${new mongoose.Types.ObjectId().toString()}`;
+    const generationScope = `generation-${new mongoose.Types.ObjectId().toString()}`;
+    const config = {
+      configurable: {
+        thread_id: threadId,
+        [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: generationScope,
+        [LIBRECHAT_MISSION_SYNC_KEY]: true,
+      },
+      durability: 'sync' as const,
+    };
+    const State = Annotation.Root({ value: Annotation<number> });
+    let firstCalls = 0;
+    let secondCalls = 0;
+    const makeGraph = () =>
+      new StateGraph(State)
+        .addNode('first', () => {
+          firstCalls++;
+          return { value: 7 };
+        })
+        .addNode('second', (state) => {
+          secondCalls++;
+          if (secondCalls === 1) throw new Error('simulated provider crash');
+          return { value: state.value + 1 };
+        })
+        .addEdge(START, 'first')
+        .addEdge('first', 'second')
+        .addEdge('second', END)
+        .compile({ checkpointer: saver as never });
+
+    await expect(makeGraph().invoke({ value: 0 }, config)).rejects.toThrow(
+      'simulated provider crash',
+    );
+    const restored = makeGraph();
+    const snapshot = await restored.getState(config);
+    expect(snapshot.next).toContain('second');
+    const checkpointId = snapshot.config.configurable?.checkpoint_id;
+    expect(typeof checkpointId).toBe('string');
+    await expect(
+      inspectReconstructedNativeMissionGraph(
+        restored,
+        {
+          streamId: threadId,
+          checkpointNamespace: generationScope,
+          checkpointId: checkpointId as string,
+        },
+        ['first', 'second'],
+      ),
+    ).resolves.toEqual({ checkpointId, pendingNodes: ['second'] });
+    expect(firstCalls).toBe(1);
+    expect(secondCalls).toBe(1);
+    expect(snapshot.values.value).toBe(7);
+    const result = await restored.invoke(null, config);
+    expect(result.value).toBe(8);
+    expect(firstCalls).toBe(1);
+    expect(secondCalls).toBe(2);
+  });
+
+  it('characterizes SDK null-input recovery without executing a provider', async () => {
+    const saver = await getAgentCheckpointer(MONGO_CFG);
+    const threadId = `sdk-probe-${new mongoose.Types.ObjectId()}`;
+    const generationScope = `generation-${new mongoose.Types.ObjectId()}`;
+    const config = {
+      configurable: {
+        thread_id: threadId,
+        [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: generationScope,
+        [LIBRECHAT_MISSION_SYNC_KEY]: true,
+      },
+      durability: 'sync' as const,
+      version: 'v2' as const,
+    };
+    // A real durable checkpoint exists, but this probe only captures the input
+    // the SDK passes to LangGraph. It must not invoke a model or duplicate tools.
+    const { checkpoint, metadata } = putArgs(threadId);
+    await saver!.put(config, checkpoint, metadata);
+    const run = await Run.create({
+      runId: `sdk-probe-${new mongoose.Types.ObjectId()}`,
+      graphConfig: {
+        type: 'standard',
+        compileOptions: { checkpointer: saver as never },
+        agents: [{ agentId: 'worker', provider: Providers.OPENAI, instructions: 'Do not run.' }],
+      },
+    });
+    expect(run.graphRunnable).toBeDefined();
+    let receivedInput: unknown;
+    run.graphRunnable = new Proxy(run.graphRunnable!, {
+      get(target, property, receiver) {
+        if (property === 'streamEvents') {
+          return async function* (input: unknown) {
+            receivedInput = input;
+            yield* []; // Deliberately emits no events; satisfy require-yield.
+            throw new Error('SDK_INPUT_CAPTURED_BEFORE_PROVIDER');
+          };
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    await expect(run.processStream(null as never, config)).rejects.toThrow(
+      'SDK_INPUT_CAPTURED_BEFORE_PROVIDER',
+    );
+    // Characterization, not a claim that null-input recovery is safe: the
+    // bundled SDK currently adds an Overwrite(runStepState) to ordinary inputs.
+    expect(receivedInput).toMatchObject({ runStepState: expect.anything() });
+    expect((receivedInput as Record<string, unknown>).messages).toBeUndefined();
   });
 
   it('persists a checkpoint anchored by a NON-interrupt write (delta-channel safety)', async () => {

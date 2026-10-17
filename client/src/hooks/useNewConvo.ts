@@ -26,6 +26,7 @@ import type {
 import type { AssistantListItem } from '~/common';
 import {
   updateLastSelectedModel,
+  mergeChatSelectionParams,
   getLocalStorageItems,
   getDefaultModelSpec,
   getDefaultEndpoint,
@@ -260,27 +261,9 @@ const useNewConvo = (index = 0) => {
         }
 
         const getParams = (nextConversation: TConversation) => {
-          const nextParams = new URLSearchParams(searchParams);
-          // A manual agent choice supersedes stale endpoint/model parameters
-          // from a previous New Chat link. Keeping them would re-select the
-          // old model on navigation or reload, even with an authorized agent.
-          if (
-            nextConversation.conversationId === Constants.NEW_CONVO &&
-            isAgentsEndpoint(nextConversation.endpoint) &&
-            nextConversation.agent_id &&
-            !nextConversation.spec
-          ) {
-            for (const key of [
-              'endpoint',
-              'endpointType',
-              'model',
-              'agent_id',
-              'assistant_id',
-              'spec',
-            ]) {
-              nextParams.delete(key);
-            }
-          }
+          // Never navigate with the previous model/agent identity still in the URL.
+          // A cold reload interprets query settings as authoritative selection.
+          const nextParams = mergeChatSelectionParams(searchParams, nextConversation);
           nextParams.delete('projectId');
           if (
             nextConversation.conversationId === Constants.NEW_CONVO &&

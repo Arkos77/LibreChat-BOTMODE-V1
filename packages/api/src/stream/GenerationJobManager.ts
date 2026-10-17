@@ -84,6 +84,11 @@ import { toClientPendingAction } from '~/agents/hitl/policy';
 import { ApprovalLifecycle, pausePersistenceActionId } from './ApprovalLifecycle';
 import { projectPendingMCPOAuthPrompts } from '~/mcp/oauth/resume';
 import { sanitizeJobMetadata } from './metadata';
+import { inspectDurableNativeMissionCheckpoint } from '~/agents/checkpointer';
+import {
+  readQualifiedReconstructedNativeMissionSnapshot,
+  qualifyNativeMissionRecoverySnapshot,
+} from '~/agents/nativeMissionRecoverySnapshot';
 
 /** Terminal error surfaced to a client still attached when its approval window lapses. */
 const APPROVAL_EXPIRED_ERROR = 'Approval expired before a decision was made';
@@ -768,6 +773,519 @@ class GenerationJobManagerClass {
   private terminalErrorPublicationSuppressions = new WeakSet<TerminalJobClaim>();
 
   private cleanupInterval: NodeJS.Timeout | null = null;
+  private missionProviderHeartbeatInterval: NodeJS.Timeout | null = null;
+  private missionProviderHeartbeatBusy = false;
+  private missionRecoveryInspectionBusy = false;
+  private missionCheckpointPreflightBusy = false;
+  private lastMissionCheckpointPreflightAt = 0;
+  /** The host, never Redis discovery, decides whether a run may continue. */
+  private nativeMissionRecoveryHandler:
+    | ((candidate: {
+        streamId: string;
+        createdAt: number;
+        checkpointNamespace: string;
+        checkpointId: string;
+      }) => Promise<void>)
+    | null = null;
+
+  private nativeMissionRecoveryInFlight = new Set<string>();
+
+  /** Startup/periodic orphan discovery is observational. A job's running status
+   * is not sufficient proof that its former process is dead, so neither this
+   * method nor initialize() may start providers or rotate execution identities. */
+  async inspectOrphanedNativeMissions(): Promise<
+    Array<Pick<SerializableJobData, 'streamId' | 'createdAt' | 'checkpointNamespace'>>
+  > {
+    if (!this._isRedis || this.shuttingDown || this.missionRecoveryInspectionBusy) return [];
+    this.missionRecoveryInspectionBusy = true;
+    try {
+      const jobs = await this.jobStore.getRunningJobs();
+      if (process.env.BOTMODE_NATIVE_RECOVERY_READONLY_AUDIT === 'true') {
+        // Diagnostics are aggregate counts only: no user IDs, job IDs,
+        // content or execution identity is recorded in CI logs.
+        const counts = {
+          running: jobs.length,
+          planned: 0,
+          providerUndrained: 0,
+          matchingStartedProvider: 0,
+          namespaced: 0,
+          orphaned: 0,
+        };
+        for (const job of jobs) {
+          if (job.orchestratorPlan == null) continue;
+          counts.planned++;
+          if (job.providerDrained !== false) continue;
+          counts.providerUndrained++;
+          if (
+            typeof job.providerExecutionId !== 'string' ||
+            !job.providerExecutionId ||
+            job.providerExecutionStartedId !== job.providerExecutionId
+          )
+            continue;
+          counts.matchingStartedProvider++;
+          if (typeof job.checkpointNamespace !== 'string' || !job.checkpointNamespace) continue;
+          counts.namespaced++;
+          if (this.ownedJobs.get(job.streamId) === job.createdAt) continue;
+          counts.orphaned++;
+        }
+        logger.info(
+          '[GenerationJobManager] Read-only mission recovery filter counts ' +
+            JSON.stringify(counts),
+        );
+      }
+      return jobs
+        .filter(
+          (job) =>
+            job.orchestratorPlan != null &&
+            job.providerDrained === false &&
+            typeof job.providerExecutionId === 'string' &&
+            job.providerExecutionId.length > 0 &&
+            job.providerExecutionStartedId === job.providerExecutionId &&
+            typeof job.checkpointNamespace === 'string' &&
+            job.checkpointNamespace !== '' &&
+            this.ownedJobs.get(job.streamId) !== job.createdAt,
+        )
+        .map(({ streamId, createdAt, checkpointNamespace }) => ({
+          streamId,
+          createdAt,
+          checkpointNamespace,
+        }));
+    } finally {
+      this.missionRecoveryInspectionBusy = false;
+    }
+  }
+
+  /**
+   * Read-only MongoDB preflight for orphaned native missions. The generation
+   * namespace must match exactly, and a pending HITL interrupt excludes
+   * automatic continuation. Checkpoint existence alone does NOT prove pending
+   * graph nodes: the rebuilt SDK graph must verify its snapshot.next before
+   * attempting an owner-fenced continuation. This grants NO Redis ownership
+   * or publication right.
+   * Fail closed per candidate: a temporary MongoDB outage cannot turn a
+   * running Redis receipt into authority to replay tools.
+   */
+  async inspectCheckpointedOrphanedNativeMissions(): Promise<
+    Array<{
+      streamId: string;
+      createdAt: number;
+      checkpointNamespace: string;
+      checkpointId: string;
+    }>
+  > {
+    if (this.shuttingDown || this.missionCheckpointPreflightBusy) return [];
+    this.missionCheckpointPreflightBusy = true;
+    try {
+      const candidates = await this.inspectOrphanedNativeMissions();
+      const eligible: Array<{
+        streamId: string;
+        createdAt: number;
+        checkpointNamespace: string;
+        checkpointId: string;
+      }> = [];
+      for (const candidate of candidates.slice(0, 16)) {
+        if (!candidate.checkpointNamespace) continue;
+        const checkpointNamespace = candidate.checkpointNamespace;
+        try {
+          const checkpoint = await inspectDurableNativeMissionCheckpoint(
+            candidate.streamId,
+            checkpointNamespace,
+          );
+          if (checkpoint == null) continue;
+          const current = await this.jobStore.getJob(candidate.streamId);
+          if (
+            current?.createdAt !== candidate.createdAt ||
+            current.status !== 'running' ||
+            current.checkpointNamespace !== candidate.checkpointNamespace ||
+            current.orchestratorPlan == null ||
+            current.providerDrained !== false
+          )
+            continue;
+          eligible.push({
+            streamId: candidate.streamId,
+            createdAt: candidate.createdAt,
+            checkpointNamespace,
+            checkpointId: checkpoint.checkpointId,
+          });
+        } catch (error) {
+          logger.warn('[GenerationJobManager] Native mission checkpoint preflight failed', error);
+        }
+      }
+      if (process.env.BOTMODE_NATIVE_RECOVERY_READONLY_AUDIT === 'true') {
+        logger.info(
+          '[GenerationJobManager] Read-only checkpoint preflight counts ' +
+            JSON.stringify({
+              orphanCandidates: candidates.length,
+              checkpointEligible: eligible.length,
+            }),
+        );
+      }
+      return eligible;
+    } finally {
+      this.missionCheckpointPreflightBusy = false;
+    }
+  }
+
+  /**
+   * Optional host-owned dispatch. The manager discovers immutable checkpoint
+   * coordinates, but NEVER constructs an authenticated user, runs a model,
+   * or elevates a Redis observation into tool/publication authority.
+   *
+   * The host must re-fetch the job, claim its lease, rebuild a graph and
+   * revalidate the current user/agent permissions, replay receipts and Oracle.
+   */
+  setNativeMissionRecoveryHandler(
+    handler:
+      | ((candidate: {
+          streamId: string;
+          createdAt: number;
+          checkpointNamespace: string;
+          checkpointId: string;
+        }) => Promise<void>)
+      | null,
+  ): void {
+    this.nativeMissionRecoveryHandler = handler;
+  }
+
+  /** Single-flight per stream+generation, across startup and heartbeat scans. */
+  private async dispatchCheckpointedOrphanedNativeMissions(): Promise<void> {
+    const handler = this.nativeMissionRecoveryHandler;
+    if (handler == null || !this._isRedis || this.shuttingDown) return;
+    const candidates = await this.inspectCheckpointedOrphanedNativeMissions();
+    await Promise.all(
+      candidates.map(async (candidate) => {
+        if (this.shuttingDown || handler !== this.nativeMissionRecoveryHandler) return;
+        const key = candidate.streamId + '\u0000' + candidate.createdAt;
+        if (this.nativeMissionRecoveryInFlight.has(key)) return;
+        this.nativeMissionRecoveryInFlight.add(key);
+        try {
+          // A discovered checkpoint alone NEVER grants replay authority.
+          await handler(Object.freeze({ ...candidate }));
+        } catch (error) {
+          logger.warn('[GenerationJobManager] Host native mission recovery attempt failed', error);
+        } finally {
+          this.nativeMissionRecoveryInFlight.delete(key);
+        }
+      }),
+    );
+  }
+
+  /**
+   * Claim a single already-checkpointed orphan for further inspection.
+   * Redis alone decides provider liveness and serializes competing claimants.
+   * This deliberately does not activate a new provider, execute a graph, or
+   * grant publication permission. A caller must still validate graph.next,
+   * current authorization, and the live lease before any continuation.
+   */
+  async claimCheckpointedOrphanForInspection(
+    streamId: string,
+    expectedCreatedAt: number,
+  ): Promise<{
+    streamId: string;
+    createdAt: number;
+    checkpointNamespace: string;
+    checkpointId: string;
+    ownerToken: string;
+  } | null> {
+    const store = this.jobStore;
+    if (
+      !this._isRedis ||
+      this.shuttingDown ||
+      !Number.isSafeInteger(expectedCreatedAt) ||
+      expectedCreatedAt <= 0 ||
+      !store.claimDrainedMissionRecovery ||
+      !store.releaseDrainedMissionRecovery
+    ) {
+      return null;
+    }
+    const candidates = await this.inspectCheckpointedOrphanedNativeMissions();
+    const candidate = candidates.find(
+      (item) => item.streamId === streamId && item.createdAt === expectedCreatedAt,
+    );
+    if (candidate == null) return null;
+
+    const ownerToken = 'mission-' + randomUUID();
+    // The original provider heartbeat renews its Redis-server-time lease
+    // every five seconds (15-second TTL). A second 60-second stale threshold
+    // made the 55-second host crash/restart qualification unreachable even
+    // with a correct coordinator. Keep an additional 20-second activity
+    // quarantine; Lua independently and atomically rejects ANY live lease.
+    // This still grants inspection only, never graph/tool execution.
+    const staleBeforeMs = Date.now() - 20_000;
+    const claimed = await store.claimDrainedMissionRecovery(
+      streamId,
+      expectedCreatedAt,
+      staleBeforeMs,
+      ownerToken,
+      15_000,
+    );
+    if (!claimed) return null;
+    let retained = false;
+    try {
+      if (this.shuttingDown) return null;
+      const [checkpoint, job] = await Promise.all([
+        inspectDurableNativeMissionCheckpoint(streamId, candidate.checkpointNamespace),
+        store.getJob(streamId),
+      ]);
+      if (
+        this.shuttingDown ||
+        this.jobStore !== store ||
+        checkpoint?.checkpointId !== candidate.checkpointId ||
+        job?.createdAt !== expectedCreatedAt ||
+        job.status !== 'running' ||
+        job.checkpointNamespace !== candidate.checkpointNamespace ||
+        job.orchestratorPlan == null ||
+        job.providerDrained !== false ||
+        job.providerExecutionStartedId !== job.providerExecutionId
+      ) {
+        return null;
+      }
+      retained = true;
+      return { ...candidate, ownerToken };
+    } finally {
+      if (!retained) {
+        await store
+          .releaseDrainedMissionRecovery(streamId, expectedCreatedAt, ownerToken)
+          .catch((error) => {
+            logger.warn('[GenerationJobManager] Failed to release orphan inspection claim', error);
+          });
+      }
+    }
+  }
+
+  /**
+   * Promote a claimed, read-only recovery candidate only after a trusted
+   * caller has rebuilt the SDK graph, inspected its exact persisted head,
+   * verified pending nodes/HITL exclusion, rechecked current policy, and
+   * proved replay safety of every pending node against durable task receipts.
+   *
+   * This rotates the provider identity under Redis ownership but does NOT
+   * start or execute the provider, stream content, settle Oracle, or publish.
+   * It must only be called by a server-side recovery coordinator.
+   */
+  /**
+   * Connect the real SDK graph head to the existing Redis promotion barrier.
+   * This reads only: it never calls graph.invoke/processStream or starts tools.
+   * A missing/changed head releases the inspection claim. Promotion still
+   * requires independent current authorization and replay-safety proofs.
+   */
+  async qualifyReconstructedGraphAndActivateClaim(
+    claim: {
+      streamId: string;
+      createdAt: number;
+      checkpointNamespace: string;
+      checkpointId: string;
+      ownerToken: string;
+    },
+    graph: { getState: (config: { configurable: Record<string, string> }) => Promise<unknown> },
+    assertCurrentAuthorization: () => Promise<void>,
+    assertReplaySafeForPendingNodes: (pendingNodes: readonly string[]) => Promise<void>,
+  ): Promise<{ providerExecutionId: string } | null> {
+    const store = this.jobStore;
+    if (
+      !this._isRedis ||
+      this.shuttingDown ||
+      !claim ||
+      typeof claim.streamId !== 'string' ||
+      !claim.streamId ||
+      typeof claim.ownerToken !== 'string' ||
+      !claim.ownerToken ||
+      typeof store.releaseDrainedMissionRecovery !== 'function'
+    ) {
+      return null;
+    }
+    let delegated = false;
+    try {
+      // A claim may already be held when a required replay/authority gate is
+      // missing. Refuse it while still releasing its exact owner token.
+      if (
+        typeof assertCurrentAuthorization !== 'function' ||
+        typeof assertReplaySafeForPendingNodes !== 'function'
+      )
+        return null;
+      const job = await store.getJob(claim.streamId);
+      const plannedNodes = job?.orchestratorPlan?.tasks?.map((task) => task.nodeId);
+      const snapshot = await readQualifiedReconstructedNativeMissionSnapshot(
+        graph,
+        claim,
+        Array.isArray(plannedNodes) ? plannedNodes : [],
+      );
+      if (snapshot == null || this.jobStore !== store || this.shuttingDown) return null;
+      // The existing promotion method owns claim cleanup once delegated.
+      delegated = true;
+      return await this.activateCheckpointedOrphanAfterGraphQualification(
+        claim,
+        snapshot,
+        assertCurrentAuthorization,
+        assertReplaySafeForPendingNodes,
+      );
+    } finally {
+      if (!delegated) {
+        await store.releaseDrainedMissionRecovery(
+          claim.streamId,
+          claim.createdAt,
+          claim.ownerToken,
+        );
+      }
+    }
+  }
+
+  async activateCheckpointedOrphanAfterGraphQualification(
+    claim: {
+      streamId: string;
+      createdAt: number;
+      checkpointNamespace: string;
+      checkpointId: string;
+      ownerToken: string;
+    },
+    snapshot: unknown,
+    assertCurrentAuthorization: () => Promise<void>,
+    assertReplaySafeForPendingNodes: (pendingNodes: readonly string[]) => Promise<void>,
+  ): Promise<{ providerExecutionId: string } | null> {
+    const store = this.jobStore;
+    if (
+      !this._isRedis ||
+      this.shuttingDown ||
+      !store.activateDrainedMissionRecovery ||
+      !store.releaseDrainedMissionRecovery ||
+      !claim ||
+      typeof claim.streamId !== 'string' ||
+      !Number.isSafeInteger(claim.createdAt) ||
+      claim.createdAt <= 0 ||
+      typeof claim.checkpointNamespace !== 'string' ||
+      claim.checkpointNamespace.length === 0 ||
+      typeof claim.ownerToken !== 'string' ||
+      typeof assertCurrentAuthorization !== 'function' ||
+      typeof assertReplaySafeForPendingNodes !== 'function'
+    ) {
+      return null;
+    }
+
+    let activated = false;
+    try {
+      // Match the recovered SDK head to the exact durable task plan and
+      // conversation before consulting replay receipts or rotating Redis
+      // ownership. Neither a matching checkpoint ID nor a live claim is
+      // sufficient proof of the graph's identity.
+      const initialJob = await store.getJob(claim.streamId);
+      const tasks = initialJob?.orchestratorPlan?.tasks;
+      if (
+        initialJob?.createdAt !== claim.createdAt ||
+        initialJob.status !== 'running' ||
+        initialJob.checkpointNamespace !== claim.checkpointNamespace ||
+        !Array.isArray(tasks) ||
+        tasks.length === 0 ||
+        tasks.some(
+          (task) =>
+            typeof task.nodeId !== 'string' ||
+            task.nodeId.length === 0 ||
+            typeof task.agentId !== 'string' ||
+            task.agentId.length === 0,
+        )
+      ) {
+        return null;
+      }
+      const planNodes = tasks.map((task) => task.nodeId);
+      const qualified = qualifyNativeMissionRecoverySnapshot(snapshot, claim.checkpointId, {
+        threadId: claim.streamId,
+        allowedPendingNodes: planNodes,
+      });
+      if (qualified == null) return null;
+      await assertCurrentAuthorization();
+      // A pending graph node can be re-entered from its beginning after a
+      // crash. Its external side effects require durable task/receipt-level
+      // idempotency, not merely a healthy Redis recovery lease.
+      await assertReplaySafeForPendingNodes(qualified.pendingNodes);
+      if (this.shuttingDown || this.jobStore !== store) return null;
+      const [checkpoint, job] = await Promise.all([
+        inspectDurableNativeMissionCheckpoint(claim.streamId, claim.checkpointNamespace),
+        store.getJob(claim.streamId),
+      ]);
+      if (
+        checkpoint?.checkpointId !== claim.checkpointId ||
+        job?.createdAt !== claim.createdAt ||
+        job.status !== 'running' ||
+        job.checkpointNamespace !== claim.checkpointNamespace ||
+        job.orchestratorPlan == null ||
+        JSON.stringify(job.orchestratorPlan.tasks) !== JSON.stringify(tasks) ||
+        job.providerDrained !== false ||
+        !job.providerExecutionId ||
+        job.providerExecutionStartedId !== job.providerExecutionId ||
+        this.shuttingDown ||
+        this.jobStore !== store
+      ) {
+        return null;
+      }
+      const providerExecutionId = 'recovered-' + randomUUID();
+      activated = await store.activateDrainedMissionRecovery(
+        claim.streamId,
+        claim.createdAt,
+        claim.ownerToken,
+        providerExecutionId,
+      );
+      return activated ? { providerExecutionId } : null;
+    } finally {
+      // After activation, a different owner must wait for lease expiry and
+      // make a new CAS takeover. Never silently release promoted ownership.
+      if (!activated) {
+        await store
+          .releaseDrainedMissionRecovery(claim.streamId, claim.createdAt, claim.ownerToken)
+          .catch((error) => {
+            logger.warn('[GenerationJobManager] Failed to release unpromoted mission claim', error);
+          });
+      }
+    }
+  }
+
+  /** A missed heartbeat only removes eligibility for automatic takeover after
+   * the Redis-server deadline; it never confers publication permission. */
+  private async heartbeatOwnedMissionProviders(): Promise<void> {
+    if (
+      this.missionProviderHeartbeatBusy ||
+      this.shuttingDown ||
+      !this.jobStore.heartbeatMissionProvider
+    )
+      return;
+    this.missionProviderHeartbeatBusy = true;
+    try {
+      for (const [streamId, createdAt] of this.ownedJobs) {
+        // Durable ownership by itself does not prove the local provider still
+        // runs. A stopped/aborted runtime must cease renewing its liveness.
+        const runtime = this.runtimeState.get(streamId);
+        if (runtime?.createdAt !== createdAt || runtime.abortController.signal.aborted) continue;
+        try {
+          const job = await this.jobStore.getJob(streamId);
+          if (
+            job?.createdAt !== createdAt ||
+            job.status !== 'running' ||
+            job.orchestratorPlan == null ||
+            job.providerDrained !== false ||
+            !job.providerExecutionId ||
+            job.providerExecutionStartedId !== job.providerExecutionId
+          )
+            continue;
+          const current = this.runtimeState.get(streamId);
+          if (
+            current !== runtime ||
+            runtime.abortController.signal.aborted ||
+            this.ownedJobs.get(streamId) !== createdAt
+          )
+            continue;
+          await this.jobStore.heartbeatMissionProvider(
+            streamId,
+            createdAt,
+            job.providerExecutionId,
+          );
+        } catch (error) {
+          logger.warn(`[GenerationJobManager] Mission heartbeat failed for ${streamId}`, error);
+        }
+      }
+    } catch (error) {
+      logger.warn('[GenerationJobManager] Mission provider heartbeat failed', error);
+    } finally {
+      this.missionProviderHeartbeatBusy = false;
+    }
+  }
 
   /** Generation-scoped retirement callbacks must not outlive the configured
    * store/transport pair that created them. */
@@ -817,7 +1335,37 @@ class GenerationJobManagerClass {
       return;
     }
 
-    this.jobStore.initialize();
+    const storeReady = this.jobStore.initialize();
+
+    // Enumerate after Redis initializes, without treating apparent orphanhood
+    // as authorization. A later host-managed recovery must recheck provider
+    // lease + tenant/agent policies and an exact Mongo checkpoint before claim.
+    if (this._isRedis) {
+      this.lastMissionCheckpointPreflightAt = Date.now();
+      void storeReady
+        .then(() => this.dispatchCheckpointedOrphanedNativeMissions())
+        .catch((error) => {
+          logger.warn('[GenerationJobManager] Startup mission inspection failed', error);
+        });
+    }
+
+    this.missionProviderHeartbeatInterval = setInterval(() => {
+      void this.heartbeatOwnedMissionProviders();
+      // Reuse the existing heartbeat timer, not a second scheduler. A process
+      // may restart before the old lease expires; its first read-only scan
+      // cannot promote ownership and later scans must not wait 60 seconds.
+      if (
+        this._isRedis &&
+        !this.shuttingDown &&
+        Date.now() - this.lastMissionCheckpointPreflightAt >= 15_000
+      ) {
+        this.lastMissionCheckpointPreflightAt = Date.now();
+        void this.dispatchCheckpointedOrphanedNativeMissions().catch((error) => {
+          logger.warn('[GenerationJobManager] Periodic mission checkpoint preflight failed', error);
+        });
+      }
+    }, 5_000);
+    this.missionProviderHeartbeatInterval.unref?.();
 
     this.cleanupInterval = setInterval(() => {
       this.cleanup();
@@ -859,6 +1407,10 @@ class GenerationJobManagerClass {
       );
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
+      if (this.missionProviderHeartbeatInterval) {
+        clearInterval(this.missionProviderHeartbeatInterval);
+        this.missionProviderHeartbeatInterval = null;
+      }
 
       const replacedJobStore = this.jobStore;
       const replacedEventTransport = this.eventTransport;
@@ -8103,6 +8655,8 @@ class GenerationJobManagerClass {
   }
 
   private async cleanup(): Promise<void> {
+    // Read-only mission inspection runs on the existing provider heartbeat
+    // cadence; cleanup remains independent of recovery preflight.
     // A crashed pause writer must never become resumable merely because its
     // lease elapsed. Give a locally-observed runtime the first chance to fail
     // closed so its attached subscriber receives the terminal error.
@@ -8423,11 +8977,16 @@ class GenerationJobManagerClass {
    */
   async destroy(): Promise<void> {
     this.shuttingDown = true;
+    this.nativeMissionRecoveryHandler = null;
     this.cancelFencedRuntimeRetirements();
 
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
+    }
+    if (this.missionProviderHeartbeatInterval) {
+      clearInterval(this.missionProviderHeartbeatInterval);
+      this.missionProviderHeartbeatInterval = null;
     }
 
     for (const runtime of this.runtimeState.values()) {
