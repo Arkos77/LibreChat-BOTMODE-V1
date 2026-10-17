@@ -156,3 +156,77 @@ export async function executeRecoveredMissionSegment({
     abort.abort();
   }
 }
+
+/**
+ * Bridge between the durable Mongo head/Redis claim gate and the fenced
+ * recovered-provider segment. Requires a reconstructed authentic graph and
+ * live authorization/replay receipts supplied by the server. It deliberately
+ * does not synthesize users, agent contexts, tools or Oracle verdicts.
+ * Until every tool path and terminal publication callback is wired, the host
+ * MUST NOT register this as its production recovery handler.
+ */
+export async function qualifyAndExecuteRecoveredMissionSegment({
+  manager,
+  claim,
+  graph,
+  assertAuthorized,
+  assertReplaySafeForPendingNodes,
+  assertEffectFencesReady,
+  continueGraph,
+  verifyOracle,
+  publishTerminal,
+}: {
+  manager: {
+    getJobStore: () => RecoveredSegmentStore;
+    qualifyReconstructedGraphAndActivateClaim: (
+      claim: Omit<RecoveredSegmentIdentity, 'providerExecutionId'> & { checkpointId: string },
+      graph: { getState: (config: { configurable: Record<string, string> }) => Promise<unknown> },
+      assertAuthorized: () => Promise<void>,
+      assertReplaySafeForPendingNodes: (nodes: readonly string[]) => Promise<void>,
+    ) => Promise<{ providerExecutionId: string } | null>;
+  };
+  claim: Omit<RecoveredSegmentIdentity, 'providerExecutionId'> & { checkpointId: string };
+  graph: { getState: (config: { configurable: Record<string, string> }) => Promise<unknown> };
+  assertAuthorized: () => Promise<void>;
+  assertReplaySafeForPendingNodes: (nodes: readonly string[]) => Promise<void>;
+  assertEffectFencesReady: () => Promise<void>;
+  continueGraph: (signal: AbortSignal) => Promise<void>;
+  verifyOracle: () => Promise<void>;
+  publishTerminal: () => Promise<void>;
+}): Promise<boolean> {
+  if (
+    !manager ||
+    typeof manager.getJobStore !== 'function' ||
+    typeof manager.qualifyReconstructedGraphAndActivateClaim !== 'function' ||
+    !graph ||
+    typeof graph.getState !== 'function' ||
+    !claim ||
+    typeof claim.checkpointId !== 'string' ||
+    !claim.checkpointId ||
+    typeof assertAuthorized !== 'function' ||
+    typeof assertReplaySafeForPendingNodes !== 'function' ||
+    typeof assertEffectFencesReady !== 'function' ||
+    typeof continueGraph !== 'function' ||
+    typeof verifyOracle !== 'function' ||
+    typeof publishTerminal !== 'function'
+  )
+    return false;
+  // The manager owns claim release on failed head/authority/receipt checks.
+  const activated = await manager.qualifyReconstructedGraphAndActivateClaim(
+    claim,
+    graph,
+    assertAuthorized,
+    assertReplaySafeForPendingNodes,
+  );
+  if (!activated?.providerExecutionId) return false;
+  await executeRecoveredMissionSegment({
+    store: manager.getJobStore(),
+    identity: { ...claim, providerExecutionId: activated.providerExecutionId },
+    assertAuthorized,
+    assertEffectFencesReady,
+    continueGraph,
+    verifyOracle,
+    publishTerminal,
+  });
+  return true;
+}

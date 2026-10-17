@@ -7,7 +7,7 @@ const source = fs.readFileSync('/work/packages/api/src/agents/nativeMissionRecov
 const output = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS }}).outputText;
 const mod = { exports: {} };
 vm.runInNewContext(output, { module: mod, exports: mod.exports, AbortController, setInterval, clearInterval });
-const { executeRecoveredMissionSegment } = mod.exports;
+const { executeRecoveredMissionSegment, qualifyAndExecuteRecoveredMissionSegment } = mod.exports;
 const identity = { streamId: 'c', createdAt: 1700000000000, ownerToken: 'owner', providerExecutionId: 'provider', checkpointNamespace: 'ns' };
 async function run(opts = {}) {
   const calls = [];
@@ -86,5 +86,36 @@ async function run(opts = {}) {
   completeHeartbeat();
   await assert.rejects(pending, /OWNERSHIP_LOST/);
   assert.deepEqual(sequence, [], 'failed in-flight heartbeat must block publication');
+  // Bridge refuses activation without mandatory callbacks or an eligible head.
+  const claim = { streamId: identity.streamId, createdAt: identity.createdAt,
+    ownerToken: identity.ownerToken, checkpointNamespace: identity.checkpointNamespace,
+    checkpointId: 'durable-head' };
+  const steps = [];
+  const manager = {
+    getJobStore: () => ({
+      beginRecoveredMissionProviderExecution: async () => { steps.push('begin'); return true; },
+      heartbeatRecoveredMissionProvider: async () => true,
+      transitionRecoveredMissionToComplete: async () => { steps.push('terminal'); return true; },
+    }),
+    qualifyReconstructedGraphAndActivateClaim: async (_, graph, auth, receipts) => {
+      steps.push('head'); await graph.getState(); await auth(); await receipts(['worker']);
+      return { providerExecutionId: 'recovered-provider-123456' };
+    },
+  };
+  const deps = { manager, claim, graph: { getState: async () => { steps.push('mongo'); } },
+    assertAuthorized: async () => { steps.push('auth'); },
+    assertReplaySafeForPendingNodes: async (nodes) => { assert.deepEqual(Array.from(nodes), ['worker']); steps.push('receipts'); },
+    assertEffectFencesReady: async () => { steps.push('fences'); },
+    continueGraph: async () => { steps.push('graph'); }, verifyOracle: async () => { steps.push('oracle'); },
+    publishTerminal: async () => { steps.push('publish'); },
+  };
+  assert.equal(await qualifyAndExecuteRecoveredMissionSegment({ ...deps, verifyOracle: null }), false);
+  assert.deepEqual(steps, []);
+  assert.equal(await qualifyAndExecuteRecoveredMissionSegment(deps), true);
+  assert.ok(steps.indexOf('receipts') < steps.indexOf('begin'));
+  assert.ok(steps.indexOf('begin') < steps.indexOf('graph'));
+  assert.ok(steps.indexOf('oracle') < steps.indexOf('terminal'));
+  assert.ok(steps.indexOf('terminal') < steps.indexOf('publish'));
+  console.log('BOTMODE_RECOVERY_BRIDGE_QUALIFICATION_BEFORE_EXECUTION=PASS');
   console.log('BOTMODE_RECOVERED_SEGMENT_FENCED_LIFECYCLE=PASS');
 })().catch(e => { console.error(e); process.exitCode = 1; });
