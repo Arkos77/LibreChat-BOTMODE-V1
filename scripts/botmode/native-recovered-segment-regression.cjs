@@ -29,7 +29,7 @@ async function run(opts = {}) {
 }
 (async () => {
   const ok = await run();
-  assert.deepEqual(ok.calls, ['auth', 'fences', 'begin', 'graph', 'auth', 'fences', 'oracle', 'heartbeat', 'terminal', 'publish']);
+  assert.deepEqual(ok.calls, ['auth', 'fences', 'begin', 'graph', 'auth', 'fences', 'oracle', 'auth', 'fences', 'heartbeat', 'terminal', 'publish']);
   assert.equal(ok.error, undefined);
   for (const [name, block] of [ ['denyAuth','begin'], ['denyFence','begin'], ['denyBegin','graph'],
     ['denyOracle','terminal'], ['denyHeartbeat','terminal'], ['denyTerminal','publish'] ]) {
@@ -37,6 +37,24 @@ async function run(opts = {}) {
     assert.ok(result.error, name);
     assert.ok(!result.calls.includes(block), name + ' must block ' + block);
     assert.ok(!result.calls.includes('publish'), name + ' must prevent publication');
+  }
+  // Permissions or replay safety can change while Oracle runs.
+  for (const gate of ['auth', 'fences']) {
+    let checks = 0;
+    const calls = [];
+    const store = {
+      beginRecoveredMissionProviderExecution: async () => true,
+      heartbeatRecoveredMissionProvider: async () => true,
+      transitionRecoveredMissionToComplete: async () => { calls.push('terminal'); return true; },
+    };
+    await assert.rejects(executeRecoveredMissionSegment({
+      store, identity, leaseMs: 3000, heartbeatMs: 1000,
+      assertAuthorized: async () => { if (gate === 'auth' && ++checks === 3) throw Error('REVOKED'); },
+      assertEffectFencesReady: async () => { if (gate === 'fences' && ++checks === 3) throw Error('UNSAFE'); },
+      continueGraph: async () => {}, verifyOracle: async () => {},
+      publishTerminal: async () => { calls.push('publish'); },
+    }), /REVOKED|UNSAFE/);
+    assert.deepEqual(calls, [], 'post-Oracle revocation must prevent completion');
   }
   // A timer heartbeat still in flight must be joined before the terminal CAS.
   let completeHeartbeat;

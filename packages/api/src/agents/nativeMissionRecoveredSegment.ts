@@ -139,6 +139,10 @@ export async function executeRecoveredMissionSegment({
     await assertAuthorized();
     await assertEffectFencesReady();
     await verifyOracle();
+    // Oracle can perform asynchronous work. Its verdict does not preserve
+    // permissions or tool replay safety across that time window.
+    await assertAuthorized();
+    await assertEffectFencesReady();
     await pulse();
     if (failed || abort.signal.aborted) throw failed ?? new RecoveredSegmentOwnershipLost();
     // Only a still-owned, Oracle-approved generation can become terminal.
