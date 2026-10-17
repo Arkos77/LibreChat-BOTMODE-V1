@@ -51,7 +51,15 @@ export interface LoadConfigModelsDeps {
   fetchModels?: (params: FetchModelsParams) => Promise<string[]>;
 }
 
-export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
+export interface LoadConfigModelsWithContext {
+  (req: ServerRequest): Promise<TModelsConfig>;
+  fromContext: (context: {
+    user: ServerRequest['user'];
+    appConfig?: AppConfig;
+  }) => Promise<TModelsConfig>;
+}
+
+export function createLoadConfigModels(deps: LoadConfigModelsDeps): LoadConfigModelsWithContext {
   const { getAppConfig, getUserKeyValues, fetchModels = defaultFetchModels } = deps;
 
   // One owner-scoped model loader for HTTP traffic and authenticated cold jobs.
