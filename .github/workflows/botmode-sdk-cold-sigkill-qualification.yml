@@ -23,6 +23,8 @@ on:
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveryClaimProbe.js'
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveryCoordinator.js'
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveryHandlerFactory.js'
+      - 'api/server/services/Endpoints/agents/nativeMissionAuthenticatedRecoveryContext.js'
+      - 'scripts/botmode/native-authenticated-recovery-context-regression.cjs'
       - 'scripts/botmode/native-recovery-handler-factory-regression.cjs'
       - 'api/server/services/Endpoints/agents/nativeMissionDurablePublicationStage.js'
       - 'scripts/botmode/native-mission-durable-publication-stage-regression.cjs'
@@ -108,6 +110,8 @@ jobs:
         run: node scripts/botmode/native-cold-graph-builder-regression.cjs
       - name: Verify committed native mission replay receipts and private results
         run: node scripts/botmode/native-mission-replay-receipt-proof-regression.cjs
+      - name: Verify real authenticated owner conversation and specialist documents for cold recovery
+        run: node scripts/botmode/native-authenticated-recovery-context-regression.cjs
       - name: Verify SDK recovery executor is assembled only with complete host dependencies
         run: node scripts/botmode/native-recovery-handler-factory-regression.cjs
       - name: Verify host recovery coordinator rejects unsafe handoffs
