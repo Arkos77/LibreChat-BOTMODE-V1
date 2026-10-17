@@ -16,6 +16,7 @@ const {
     denyAt = 0,
     missingFence = false,
     reconstructFails = false,
+    refusesExecution = false,
   } = {}) {
     const calls = [];
     let attempts = 0;
@@ -60,7 +61,7 @@ const {
       execute: async (args) => {
         calls.push('execute');
         assert.equal(args.claim.ownerToken, claim.ownerToken);
-        return true;
+        return !refusesExecution;
       },
       log: { warn: () => {} },
     });
@@ -94,6 +95,9 @@ const {
     assert.ok(!out.calls.includes('execute'));
     assert.equal(out.calls.filter((x) => x === 'release').length, 1);
   }
+  const refused = await verify({ refusesExecution: true });
+  assert.equal(refused.outcome, false);
+  assert.equal(refused.calls.filter((x) => x === 'release').length, 1);
   const before = await verify({ denyAt: 1 });
   assert.deepEqual(before.calls, ['auth']);
   console.log('BOTMODE_SERVER_RECOVERY_COORDINATOR_AUTH_AND_RELEASE=PASS');

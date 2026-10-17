@@ -74,8 +74,10 @@ function createNativeMissionRecoveryCoordinator({
       await authorize();
       // Only the supplied executor may hand the claim to the owner-fenced
       // segment; it is responsible for Redis CAS and final publication.
-      handedOff = true;
-      return await execute({
+      // A rejected qualification must not strand this exact Redis claim.
+      // A thrown execution error may have already promoted the provider,
+      // so only release on an explicit `false` (unpromoted) result.
+      const outcome = await execute({
         manager,
         claim,
         graph: runtime.graph,
@@ -86,6 +88,8 @@ function createNativeMissionRecoveryCoordinator({
         verifyOracle: runtime.verifyOracle,
         publishTerminal: runtime.publishTerminal,
       });
+      handedOff = outcome !== false;
+      return outcome;
     } finally {
       if (!handedOff) {
         try {
