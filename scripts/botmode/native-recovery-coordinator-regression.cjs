@@ -45,7 +45,14 @@ const {
         orchestratorPlan: {
           tasks: invalidPlan
             ? [{ nodeId: 'worker', agentId: '' }]
-            : [{ nodeId: 'worker', agentId: 'worker', key: 'task-worker' }],
+            : [
+                {
+                  nodeId: 'worker',
+                  agentId: 'worker',
+                  key: 'task-worker',
+                  taskId: 'mission/task-worker',
+                },
+              ],
         },
       }),
       renewDrainedMissionRecovery: async (_stream, _created, token, leaseMs) => {
@@ -94,8 +101,8 @@ const {
             oracle: {
               evidence: {},
               results: {
-                'task-worker': {
-                  taskId: 'task-worker',
+                'mission/task-worker': {
+                  taskId: 'mission/task-worker',
                   nodeId: 'worker',
                   verdicts: [{ status: 'VERIFIED' }],
                 },

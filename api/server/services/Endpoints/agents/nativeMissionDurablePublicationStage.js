@@ -43,15 +43,24 @@ function createNativeMissionDurablePublicationStage({ store, identity, getCandid
       !results ||
       typeof results !== 'object' ||
       Array.isArray(results) ||
+      // PlannedTask.taskId is the durable Oracle identity, NOT the short
+      // objective key. The planner derives e.g. mission/worker and
+      // mission/specialist; Oracle stores results under those full IDs.
+      new Set(tasks.map((task) => task?.taskId)).size !== tasks.length ||
+      Object.keys(results).length !== tasks.length ||
       tasks.some(
         (task) =>
           !task ||
-          typeof task.key !== 'string' ||
-          !Array.isArray(results[task.key]?.verdicts) ||
-          results[task.key].verdicts.length === 0 ||
-          results[task.key].taskId !== task.key ||
-          results[task.key].nodeId !== task.nodeId ||
-          results[task.key].verdicts.some((verdict) => verdict?.status !== 'VERIFIED'),
+          typeof task.taskId !== 'string' ||
+          !task.taskId ||
+          typeof task.nodeId !== 'string' ||
+          !task.nodeId ||
+          !Object.hasOwn(results, task.taskId) ||
+          !Array.isArray(results[task.taskId]?.verdicts) ||
+          results[task.taskId].verdicts.length === 0 ||
+          results[task.taskId].taskId !== task.taskId ||
+          results[task.taskId].nodeId !== task.nodeId ||
+          results[task.taskId].verdicts.some((verdict) => verdict?.status !== 'VERIFIED'),
       )
     ) {
       throw new Error('NATIVE_RECOVERY_PUBLICATION_ORACLE_UNVERIFIED');
