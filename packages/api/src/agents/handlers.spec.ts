@@ -1272,6 +1272,21 @@ describe('createToolExecuteHandler', () => {
       expect(actual).not.toHaveBeenCalled();
     });
 
+    it('does not allow the tool loader to disable a recovery effect fence', async () => {
+      const actual = jest.fn(async () => ({ content: 'unsafe' }));
+      const loadTools: ToolExecuteOptions['loadTools'] = jest.fn(async () => ({
+        loadedTools: [{ name: 'write_tool', invoke: actual }] as never[],
+        configurable: { nativeMissionEffectFenceRequired: false },
+      }));
+      const handler = createToolExecuteHandler({ loadTools });
+      await expect(
+        invokeHandlerWithConfig(handler, [{ id: 'downgrade', name: 'write_tool', args: {} }], {
+          nativeMissionEffectFenceRequired: true,
+        }),
+      ).rejects.toThrow('NATIVE_MISSION_DIRECT_EFFECT_GUARD_REQUIRED');
+      expect(actual).not.toHaveBeenCalled();
+    });
+
     it('fails closed when a PTC effect needs authority but no durable guard is injected', async () => {
       const capturedConfigs: Record<string, unknown>[] = [];
       const ptcTool = createMockTool(Constants.PROGRAMMATIC_TOOL_CALLING, capturedConfigs);

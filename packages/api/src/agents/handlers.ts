@@ -2784,6 +2784,14 @@ function mergeToolConfigurables(
   loaded: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
   const merged = { ...base, ...loaded };
+  // This is a monotonic safety requirement: a deferred tool loader must not
+  // downgrade a recovery fence provided by the running graph (or vice versa).
+  if (
+    base?.nativeMissionEffectFenceRequired === true ||
+    loaded?.nativeMissionEffectFenceRequired === true
+  ) {
+    merged.nativeMissionEffectFenceRequired = true;
+  }
   const accessibleSkillIds = mergeAccessibleSkillIds(base, loaded);
   if (accessibleSkillIds) {
     merged.accessibleSkillIds = accessibleSkillIds;
