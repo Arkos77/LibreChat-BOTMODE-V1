@@ -34,7 +34,7 @@ const {
         };
       },
     },
-    resolveExpectedEffects: async () => [{ identity }],
+    resolveExpectedEffects: async () => ({ ...candidate, complete: true, effects: [{ identity }] }),
     verifyPrivateResult: async () => true,
     assertAuthorized: async () => {
       checks++;
@@ -66,7 +66,11 @@ const {
   await assert.rejects(
     createNativeMissionReplayReceiptProof({
       ...deps,
-      resolveExpectedEffects: async () => [{ identity }, { identity }],
+      resolveExpectedEffects: async () => ({
+        ...candidate,
+        complete: true,
+        effects: [{ identity }, { identity }],
+      }),
     })({ candidate, claim }),
     /IDENTITY_DENIED/,
   );
@@ -74,6 +78,19 @@ const {
     verify({ candidate, claim: { ...claim, checkpointId: 'other' } }),
     /IDENTITY_DENIED/,
   );
+  for (const inventory of [
+    [],
+    { ...candidate, complete: false, effects: [] },
+    { ...candidate, checkpointId: 'wrong', complete: true, effects: [] },
+  ]) {
+    await assert.rejects(
+      createNativeMissionReplayReceiptProof({
+        ...deps,
+        resolveExpectedEffects: async () => inventory,
+      })({ candidate, claim }),
+      /INVENTORY_INCOMPLETE/,
+    );
+  }
   console.log('BOTMODE_NATIVE_MISSION_REPLAY_RECEIPTS_READBACK=PASS');
 })().catch((e) => {
   console.error(e);

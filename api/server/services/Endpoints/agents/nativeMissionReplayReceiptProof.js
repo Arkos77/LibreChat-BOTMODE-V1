@@ -32,7 +32,21 @@ function createNativeMissionReplayReceiptProof({
       throw new Error('NATIVE_MISSION_REPLAY_PROOF_IDENTITY_DENIED');
     }
     await assertAuthorized();
-    const effects = await resolveExpectedEffects({ candidate, claim });
+    const inventory = await resolveExpectedEffects({ candidate, claim });
+    // An empty array, or a partial list, must never imply all effects have
+    // been enumerated. The authenticated checkpoint reader must attest
+    // completeness for this exact generation AND Mongo checkpoint head.
+    if (
+      !inventory ||
+      inventory.complete !== true ||
+      inventory.streamId !== candidate.streamId ||
+      inventory.createdAt !== candidate.createdAt ||
+      inventory.checkpointNamespace !== candidate.checkpointNamespace ||
+      inventory.checkpointId !== candidate.checkpointId
+    ) {
+      throw new Error('NATIVE_MISSION_REPLAY_PROOF_INVENTORY_INCOMPLETE');
+    }
+    const effects = inventory.effects;
     if (!Array.isArray(effects) || effects.length > 256) {
       throw new Error('NATIVE_MISSION_REPLAY_PROOF_EFFECT_SET_UNAVAILABLE');
     }
