@@ -321,6 +321,24 @@ describe('initializeClient — processAgent ACL gate', () => {
     expect(Number.isSafeInteger(req.turnStartedAt)).toBe(true);
   });
 
+  it('keeps the HTTP turn context separate from normalized MCP metadata', async () => {
+    mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+    const req = makeReq();
+    req.body.timezone = 'Europe/Paris';
+    const mcpRequestBody = { conversationId: 'conv_1', messageId: 'mcp-msg' };
+    await initializeClient({
+      req,
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption: makeEndpointOption(),
+      requestBody: mcpRequestBody,
+    });
+    const initialized = mockInitializeAgent.mock.calls[0][0];
+    expect(initialized.runtime.requestBody).toBe(req.body);
+    expect(initialized.runtime.requestBody.timezone).toBe('Europe/Paris');
+    expect(initialized.requestBody).toBe(mcpRequestBody);
+  });
+
   it('fails closed when a partial continuation cannot resolve its conversation', async () => {
     const req = makeReq();
     req.resolvedConversation = {

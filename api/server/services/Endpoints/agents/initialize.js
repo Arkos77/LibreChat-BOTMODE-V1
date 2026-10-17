@@ -777,7 +777,9 @@ const initializeClient = async ({
   // Resolve AFTER the owner-scoped conversation read and project gate. A
   // partially resolved continuation must not enter agent/tool initialization
   // with the stale pre-authorization conversation snapshot.
-  const agentRuntime = createRequestAgentExecutionContext(req, runtimeRequestBody);
+  // Keep the original body (timezone, turn policy and file context) in the
+  // SDK runtime; the normalized MCP requestBody is passed separately below.
+  const agentRuntime = createRequestAgentExecutionContext(req);
 
   delete endpointOption.agent;
 
