@@ -31,6 +31,8 @@ on:
       - 'api/server/services/Endpoints/agents/nativeMissionDurablePublicationStage.js'
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveredOraclePersister.js'
       - 'scripts/botmode/native-recovered-oracle-persister-regression.cjs'
+      - 'scripts/botmode/native-recovered-oracle-real-contract-regression.cjs'
+      - 'packages/api/src/agents/orchestrator/missionOracle.ts'
       - 'api/server/controllers/agents/client.js'
       - 'api/server/services/Endpoints/agents/initialize.js'
       - 'scripts/botmode/native-mission-durable-publication-stage-regression.cjs'
@@ -109,6 +111,15 @@ jobs:
         run: node scripts/botmode/native-mission-durable-publication-stage-regression.cjs
       - name: Verify recovered Worker and specialist Oracle results use owner-fenced CAS
         run: node scripts/botmode/native-recovered-oracle-persister-regression.cjs
+      - name: Verify recovered Oracle CAS against actual SDK validator schema and semantic retry
+        env:
+          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
+        run: |
+          docker run --rm --network none --memory 720m --cpus 1 --read-only \
+            --mount "type=bind,src=$PWD/packages/api/src/agents/orchestrator/missionOracle.ts,dst=/work/packages/api/src/agents/orchestrator/missionOracle.ts,readonly" \
+            --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveredOraclePersister.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveredOraclePersister.js,readonly" \
+            --mount "type=bind,src=$PWD/scripts/botmode/native-recovered-oracle-real-contract-regression.cjs,dst=/app/native-recovered-oracle-real-contract-regression.cjs,readonly" \
+            --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-recovered-oracle-real-contract-regression.cjs
       - name: Verify shared owner-scoped conversation resolution
         run: node scripts/botmode/authorized-agent-conversation-regression.cjs
       - name: Verify authenticated cold client and publication barrier binding

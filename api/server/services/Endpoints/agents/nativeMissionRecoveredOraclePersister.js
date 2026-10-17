@@ -9,12 +9,14 @@ function createNativeMissionRecoveredOraclePersister({
   claim,
   assertAuthorized,
   normalizeOracleState,
+  areMissionOracleResultsEquivalent,
 }) {
   if (
     typeof store?.getJob !== 'function' ||
     typeof store?.updateRecoveredMissionEvidence !== 'function' ||
     typeof assertAuthorized !== 'function' ||
     typeof normalizeOracleState !== 'function' ||
+    typeof areMissionOracleResultsEquivalent !== 'function' ||
     !candidate ||
     !claim ||
     claim.streamId !== candidate.streamId ||
@@ -55,7 +57,10 @@ function createNativeMissionRecoveredOraclePersister({
       before.missionOracleState ?? { evidence: {}, results: {} },
     );
     const existing = current.results[result.taskId];
-    if (existing != null && JSON.stringify(existing) !== JSON.stringify(result)) {
+    // Deterministic Oracle may revalidate a checkpointed result with a new
+    // timestamp. Reuse the same semantic replay contract as the warm client;
+    // reject any changed verdict, evidence, or validator, not clock changes.
+    if (existing != null && !areMissionOracleResultsEquivalent(existing, result)) {
       throw new Error('NATIVE_RECOVERY_ORACLE_REPLAY_CONFLICT');
     }
     const nextState = normalizeOracleState({

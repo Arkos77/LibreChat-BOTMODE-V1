@@ -48,6 +48,13 @@ const {
       assertAuthorized: async () => {
         if (!authorized) throw new Error('OWNER_PERMISSION_REVOKED');
       },
+      areMissionOracleResultsEquivalent: (left, right) => {
+        const comparable = (value) => ({
+          ...value,
+          verdicts: value.verdicts.map(({ timestamp: _timestamp, ...rest }) => rest),
+        });
+        return JSON.stringify(comparable(left)) === JSON.stringify(comparable(right));
+      },
       normalizeOracleState: (state) => {
         assert.equal(typeof state.evidence, 'object');
         assert.equal(typeof state.results, 'object');
@@ -79,6 +86,19 @@ const {
   assert.equal(writes, 2);
   await persist(worker);
   assert.equal(writes, 3, 'idempotent readback must still prove current owner with Redis CAS');
+  // Replaying a deterministic result re-evaluates its clock, but not the
+  // accepted evidence. The first durable timestamp remains authoritative.
+  const stamped = {
+    ...worker,
+    verdicts: [{ status: 'VERIFIED', timestamp: '2026-10-17T22:00:00Z' }],
+  };
+  job.missionOracleState.results[worker.taskId] = structuredClone(stamped);
+  await persist({
+    ...stamped,
+    verdicts: [{ ...stamped.verdicts[0], timestamp: '2026-10-17T22:30:00Z' }],
+  });
+  assert.equal(writes, 4);
+  assert.deepEqual(job.missionOracleState.results[worker.taskId], stamped);
   console.log('BOTMODE_RECOVERED_ORACLE_WORKER_SPECIALIST_OWNER_CAS=PASS');
 
   const before = writes;

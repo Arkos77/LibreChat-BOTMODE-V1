@@ -83,7 +83,10 @@ const { getAppConfig } = require('~/server/services/Config');
 const { getAppConfigOptionsFromUser } = require('@librechat/api');
 const { checkPermission, findAccessibleResources } = require('~/server/services/PermissionService');
 const AgentClient = require('~/server/controllers/agents/client');
-const { normalizeMissionOracleState } = require('@librechat/api');
+const {
+  normalizeMissionOracleState,
+  areMissionOracleResultsEquivalent,
+} = require('@librechat/api');
 const {
   createNativeMissionRecoveredOraclePersister,
 } = require('./nativeMissionRecoveredOraclePersister');
@@ -2259,6 +2262,7 @@ async function initializeClientFromDocuments({ candidate, claim, job, context, a
         claim,
         assertAuthorized,
         normalizeOracleState: normalizeMissionOracleState,
+        areMissionOracleResultsEquivalent,
       });
   }
   client.publicationBarrier = {
