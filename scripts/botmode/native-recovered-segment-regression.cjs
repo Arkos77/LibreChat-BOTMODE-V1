@@ -111,6 +111,11 @@ async function run(opts = {}) {
   };
   assert.equal(await qualifyAndExecuteRecoveredMissionSegment({ ...deps, verifyOracle: null }), false);
   assert.deepEqual(steps, []);
+  // Fail before taking ownership if the tool fence is not available.
+  await assert.rejects(qualifyAndExecuteRecoveredMissionSegment({
+    ...deps, assertEffectFencesReady: async () => { throw Error('FENCE_UNAVAILABLE'); },
+  }), /FENCE_UNAVAILABLE/);
+  assert.deepEqual(steps, [], 'refused fence must not rotate Redis ownership');
   assert.equal(await qualifyAndExecuteRecoveredMissionSegment(deps), true);
   assert.ok(steps.indexOf('receipts') < steps.indexOf('begin'));
   assert.ok(steps.indexOf('begin') < steps.indexOf('graph'));

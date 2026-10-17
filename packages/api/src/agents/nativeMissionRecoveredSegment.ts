@@ -211,6 +211,10 @@ export async function qualifyAndExecuteRecoveredMissionSegment({
     typeof publishTerminal !== 'function'
   )
     return false;
+  // Do not rotate the Redis owner until the external-effect fence can be
+  // constructed. A missing tool fence after promotion strands the old claim.
+  // The segment repeats this check after acquiring its provider lease.
+  await assertEffectFencesReady();
   // The manager owns claim release on failed head/authority/receipt checks.
   const activated = await manager.qualifyReconstructedGraphAndActivateClaim(
     claim,
