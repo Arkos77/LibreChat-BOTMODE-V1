@@ -5117,6 +5117,103 @@ class AgentClient extends BaseClient {
     ]);
   }
 
+  /** Rebuild createRun options from the *actual initialized host client* for
+   * an existing non-HITL cold mission. No message, tool, graph invocation,
+   * new response or synthetic HTTP principal is produced here. Before this
+   * method can be used the recovery host must install the exact-owner abort
+   * signal and a checkpoint-backed receipt proof on the authorized client.
+   */
+  async createNativeMissionColdRunOptions({ candidate, claim }) {
+    const req = this.options?.req;
+    const appConfig = req?.config;
+    const user = req?.user;
+    const signal = this.options?.nativeMissionRecoverySignal;
+    const receiptProof = this.options?.nativeMissionReplayReceiptProof;
+    if (
+      !candidate ||
+      !claim ||
+      claim.streamId !== candidate.streamId ||
+      claim.createdAt !== candidate.createdAt ||
+      claim.checkpointNamespace !== candidate.checkpointNamespace ||
+      claim.checkpointId !== candidate.checkpointId ||
+      typeof claim.ownerToken !== 'string' ||
+      !claim.ownerToken ||
+      this.options.req?.body?.conversationId !== candidate.streamId ||
+      this.conversationId !== candidate.streamId ||
+      this.jobCreatedAt !== candidate.createdAt ||
+      this.checkpointNamespace !== candidate.checkpointNamespace ||
+      !this.orchestratorPlan?.tasks?.length ||
+      !this.responseMessageId ||
+      !this.parentMessageId ||
+      !user?.id ||
+      !appConfig ||
+      !signal ||
+      typeof signal.addEventListener !== 'function' ||
+      signal.aborted === true ||
+      typeof receiptProof !== 'function' ||
+      this.publicationBarrier?.hold?.() !== true ||
+      typeof this.options.executionGrantResolver !== 'function' ||
+      this.options.executionGrantJobId !== candidate.streamId
+    ) {
+      throw new Error('NATIVE_MISSION_COLD_RUN_UNAUTHORIZED');
+    }
+    const agents = this.getReachableMissionAgents();
+    if (!agents?.length || !Array.isArray(agents)) {
+      throw new Error('NATIVE_MISSION_COLD_RUN_AGENTS_UNAVAILABLE');
+    }
+    const modelBoundCallback = AgentClient.prototype.createModelBoundChatModelCallback.call(this);
+    const tokenCounter = await createCachedTokenCounter(this.getEncoding());
+    if (signal.aborted === true) throw new Error('NATIVE_MISSION_COLD_RUN_ABORTED');
+    return {
+      agents,
+      orchestratorPlan: this.orchestratorPlan,
+      conversationId: this.conversationId,
+      runId: this.responseMessageId,
+      messages: [],
+      hitlCapable: false,
+      sessionStartSource: 'resume',
+      signal,
+      user: createSafeUser(user),
+      tenantId: resolveRequestTenantId(req),
+      appConfig,
+      summarizationConfig: appConfig.summarization,
+      tokenCounter,
+      modelCallbacks: [modelBoundCallback],
+      modelCallbackFactory: createModelBoundBudgetAdmissionFactory(
+        this,
+        getBalanceConfig(appConfig),
+      ),
+      toolInputValidationErrors: this.toolInputValidationErrors,
+      toolExecution: {
+        executionGrantResolver: this.options.executionGrantResolver,
+        executionGrantJobId: this.options.executionGrantJobId,
+        engine: 'docker',
+        docker: this.options.dockerExecutionProfile,
+      },
+      initialSessions: buildInitialToolSessions({ agents }),
+      requestBody:
+        this.options.mcpRequestBody ??
+        createMCPRuntimeRequestBody({
+          messageId: this.responseMessageId,
+          conversationId: this.conversationId,
+          parentMessageId: this.parentMessageId,
+        }),
+      resolveMissionOracleEvidence: async (taskId) => {
+        await this.persistTransientMissionOracleEvidence(candidate.streamId);
+        return this.missionOracleState?.evidence?.[taskId] ?? [];
+      },
+      persistMissionOracleResult: async (result) => {
+        await this.persistMissionOracleResult(result, candidate.streamId);
+      },
+      assertNativeMissionReplayFences: ({ candidate: checked, claim: owner }) => {
+        if (checked !== candidate || owner !== claim || signal.aborted === true) {
+          throw new Error('NATIVE_MISSION_COLD_RUN_PROOF_IDENTITY_MISMATCH');
+        }
+        return receiptProof({ candidate, claim });
+      },
+    };
+  }
+
   async resumeCompletion({
     resumeValue,
     seedContent = [],
@@ -5195,7 +5292,7 @@ class AgentClient extends BaseClient {
       const tokenCounter = await createCachedTokenCounter(this.getEncoding());
       this.compactionSemanticIndexSnapshot =
         restoreCompactionSemanticIndexSnapshot(compactionSemanticIndex);
-      const agents = this.getReachableMissionAgents();
+      const agents = AgentClient.prototype.getReachableMissionAgents.call(this);
       const dynamicToolContexts = getDynamicToolContexts(agents);
       const liveFiles = Array.isArray(this.options.attachments)
         ? [...this.options.attachments]
