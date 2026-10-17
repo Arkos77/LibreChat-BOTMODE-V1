@@ -73,6 +73,17 @@ function createNativeMissionColdGraphBuilder({ createRun }) {
     ) {
       throw new Error('NATIVE_COLD_GRAPH_AGENT_SET_MISMATCH');
     }
+    // Production AgentClient supplies the same resolved topology used by the
+    // normal resume path. A cold options callback cannot introduce a different
+    // set of executable agent objects after checkpoint admission.
+    const reachable = client.getReachableMissionAgents?.();
+    if (
+      !Array.isArray(reachable) ||
+      reachable.length !== options.agents.length ||
+      reachable.some((agent, index) => agent !== options.agents[index])
+    ) {
+      throw new Error('NATIVE_COLD_GRAPH_AGENT_RUNTIME_MISMATCH');
+    }
     await assertAuthorized();
     // The check must execute against the original durable claim. A truthy
     // feature flag cannot attest tool-effect receipts or Redis ownership.

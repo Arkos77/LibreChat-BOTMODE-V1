@@ -5106,6 +5106,17 @@ class AgentClient extends BaseClient {
    * @param {AbortController} [params.abortController]
    * @param {Pick<import('@langchain/langgraph').Command, 'update' | 'goto'>} [params.commandOptions]
    */
+  /** Agent topology shared by warm resume and cold mission reconstruction.
+   * The reachable graph is derived from the authenticated client configs,
+   * never from checkpoint metadata or a Redis-provided agent list.
+   */
+  getReachableMissionAgents() {
+    return collectReachableAgents([
+      this.options.agent,
+      ...(this.agentConfigs?.size > 0 ? this.agentConfigs.values() : []),
+    ]);
+  }
+
   async resumeCompletion({
     resumeValue,
     seedContent = [],
@@ -5184,10 +5195,7 @@ class AgentClient extends BaseClient {
       const tokenCounter = await createCachedTokenCounter(this.getEncoding());
       this.compactionSemanticIndexSnapshot =
         restoreCompactionSemanticIndexSnapshot(compactionSemanticIndex);
-      const agents = collectReachableAgents([
-        this.options.agent,
-        ...(this.agentConfigs?.size > 0 ? this.agentConfigs.values() : []),
-      ]);
+      const agents = this.getReachableMissionAgents();
       const dynamicToolContexts = getDynamicToolContexts(agents);
       const liveFiles = Array.isArray(this.options.attachments)
         ? [...this.options.attachments]

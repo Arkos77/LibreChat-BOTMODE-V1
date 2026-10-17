@@ -41,8 +41,9 @@ const job = {
       agent: { id: 'primary' },
     },
     publicationBarrier: { activate: () => {} },
+    getReachableMissionAgents: () => [client.options.agent],
     createNativeMissionColdRunOptions: async () => ({
-      agents: [{ id: 'primary' }],
+      agents: [client.options.agent],
       orchestratorPlan: job.orchestratorPlan,
       conversationId: 'conv',
       runId: 'response',

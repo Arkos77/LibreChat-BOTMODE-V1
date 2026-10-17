@@ -47,6 +47,7 @@ const {
     orchestratorPlan: plan,
     options: { agent: { id: 'primary' }, req: { user: { id: 'user', tenantId: 'tenant' } } },
     responseMessageId: 'response',
+    getReachableMissionAgents: () => options.agents,
     createNativeMissionColdRunOptions: async () => options,
   };
   const builder = createNativeMissionColdGraphBuilder({ createRun });
@@ -77,6 +78,19 @@ const {
       assertAuthorized: async () => {},
     }),
     /REPLAY_PROOFS_MISSING/,
+  );
+  assert.equal(calls, 1);
+  await assert.rejects(
+    builder({
+      client: {
+        ...client,
+        getReachableMissionAgents: () => [{ id: 'primary' }, { id: 'specialist' }],
+      },
+      candidate,
+      claim,
+      assertAuthorized: async () => {},
+    }),
+    /AGENT_RUNTIME_MISMATCH/,
   );
   assert.equal(calls, 1);
   for (const changed of [
