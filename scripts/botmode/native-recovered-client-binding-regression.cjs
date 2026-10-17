@@ -11,6 +11,7 @@ const candidate = {
 };
 const job = {
   ...candidate,
+  checkpointId: undefined,
   streamId: 'conv',
   status: 'running',
   userId: 'owner',
@@ -40,12 +41,14 @@ assert.equal(
   client,
 );
 assert.equal(client.publicationBarrier.active, true);
+assert.equal(job.checkpointId, undefined);
 assert.equal(client.responseMessageId, 'response');
 assert.equal(client.jobCreatedAt, candidate.createdAt);
 for (const override of [
   { userId: 'other' },
   { tenantId: 'other' },
   { checkpointId: 'other' },
+  { checkpointId: '' },
   { agent_id: 'other' },
   { createdAt: 1 },
   { status: 'complete' },
