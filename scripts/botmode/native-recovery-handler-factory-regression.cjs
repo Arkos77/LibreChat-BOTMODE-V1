@@ -70,6 +70,8 @@ const job = {
     initializeAuthorizedClient: async () => ({ client, job }),
     normalizeOracleState: (x) => x,
     createRun: async () => {
+      assert.equal(typeof client.options.nativeMissionRecoverySignal?.addEventListener, 'function');
+      assert.equal(client.options.nativeMissionRecoverySignal.aborted, false);
       issued++;
       return { Graph: { createWorkflow: () => graph } };
     },
@@ -94,6 +96,7 @@ const job = {
   assert.equal(issued, 1);
   assert.equal(ran, 1);
   assert.equal(released, 1);
+  assert.equal(client.options.nativeMissionRecoverySignal.aborted, true);
   assert.ok(checks >= 4);
   for (const missing of [
     'initializeAuthorizedClient',

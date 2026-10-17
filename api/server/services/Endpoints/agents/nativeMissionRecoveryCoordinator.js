@@ -60,6 +60,9 @@ function createNativeMissionRecoveryCoordinator({
     // An exception can occur after promotion; never release that lease from
     // the coordinator's preflight cleanup path.
     let executorEntered = false;
+    // A real AbortSignal, tied to the inspection lease and invocation
+    // lifetime. The SDK supplies its own separately leased execution signal.
+    const recoveryAbort = new AbortController();
     let renewalFailure = null;
     let renewalInFlight = null;
     const renewClaim = async () => {
@@ -80,6 +83,7 @@ function createNativeMissionRecoveryCoordinator({
           }
         } catch (error) {
           renewalFailure = error;
+          recoveryAbort.abort();
           throw error;
         }
       })();
@@ -108,7 +112,15 @@ function createNativeMissionRecoveryCoordinator({
       )
         return false;
       await authorize();
-      const runtime = await reconstruct({ candidate, claim, assertAuthorized: authorize });
+      const runtime = await reconstruct({
+        candidate,
+        claim,
+        assertAuthorized: authorize,
+        signal: recoveryAbort.signal,
+      });
+      if (recoveryAbort.signal.aborted) {
+        throw new Error('NATIVE_RECOVERY_HOST_INSPECTION_LEASE_LOST');
+      }
       if (
         !runtime ||
         typeof runtime.assertReplaySafe !== 'function' ||
@@ -192,6 +204,7 @@ function createNativeMissionRecoveryCoordinator({
       return outcome;
     } finally {
       clearInterval(heartbeat);
+      recoveryAbort.abort();
       if (renewalInFlight) {
         await renewalInFlight.catch(() => {});
       }

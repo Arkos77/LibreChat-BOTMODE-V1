@@ -37,7 +37,7 @@ function createNativeMissionColdRuntimeHost({
   ) {
     throw new Error('NATIVE_COLD_RUNTIME_HOST_DEPENDENCIES_MISSING');
   }
-  return async ({ candidate, claim, assertAuthorized }) => {
+  return async ({ candidate, claim, assertAuthorized, signal }) => {
     if (
       !candidate ||
       !claim ||
@@ -45,7 +45,8 @@ function createNativeMissionColdRuntimeHost({
       claim.streamId !== candidate.streamId ||
       claim.createdAt !== candidate.createdAt ||
       claim.checkpointNamespace !== candidate.checkpointNamespace ||
-      claim.checkpointId !== candidate.checkpointId
+      claim.checkpointId !== candidate.checkpointId ||
+      (signal != null && (typeof signal.addEventListener !== 'function' || signal.aborted === true))
     ) {
       throw new Error('NATIVE_COLD_RUNTIME_HOST_CLAIM_MISMATCH');
     }
@@ -66,6 +67,14 @@ function createNativeMissionColdRuntimeHost({
       job: initialized.job,
       normalizeOracleState,
     });
+    // Reuse the owner's live inspection signal instead of making an
+    // unowned controller in the HTTP-independent document initializer.
+    if (signal != null) {
+      if (!client.options || signal.aborted) {
+        throw new Error('NATIVE_COLD_RUNTIME_HOST_SIGNAL_UNAVAILABLE');
+      }
+      client.options.nativeMissionRecoverySignal = signal;
+    }
     await assertAuthorized();
     const graph = await buildGraph({ client, candidate, claim, assertAuthorized });
     if (!graph || typeof graph.invoke !== 'function' || typeof graph.getState !== 'function') {

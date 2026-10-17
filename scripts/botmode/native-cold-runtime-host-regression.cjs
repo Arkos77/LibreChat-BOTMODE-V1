@@ -33,6 +33,7 @@ const {
     },
   });
   const graph = { getState: async () => ({}), invoke: async () => {} };
+  const recovery = new AbortController();
   const events = [];
   const args = {
     initializeAuthorizedClient: async () => {
@@ -42,6 +43,10 @@ const {
     normalizeOracleState: (x) => x,
     reconstructGraph: async ({ client }) => {
       assert.equal(client.publicationBarrier.active, true);
+      if (client.options.nativeMissionRecoverySignal) {
+        assert.equal(client.options.nativeMissionRecoverySignal, recovery.signal);
+        assert.equal(recovery.signal.aborted, false);
+      }
       events.push('graph');
       return graph;
     },
@@ -61,10 +66,19 @@ const {
     events.push('auth');
   };
   const reconstruct = createNativeMissionColdRuntimeHost(args);
-  const runtime = await reconstruct({ candidate, claim, assertAuthorized });
+  const runtime = await reconstruct({
+    candidate,
+    claim,
+    assertAuthorized,
+    signal: recovery.signal,
+  });
   assert.equal(runtime.graph, graph);
   assert.equal(checks, 3);
   assert.deepEqual(events, ['auth', 'init', 'auth', 'graph', 'auth', 'fences']);
+  await assert.rejects(
+    reconstruct({ candidate, claim, assertAuthorized, signal: AbortSignal.abort() }),
+    /CLAIM_MISMATCH/,
+  );
   await assert.rejects(
     reconstruct({ candidate, claim: { ...claim, checkpointId: 'wrong' }, assertAuthorized }),
     /CLAIM_MISMATCH/,

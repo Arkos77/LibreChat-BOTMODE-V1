@@ -27,6 +27,7 @@ const {
     const calls = [];
     let attempts = 0;
     let renewals = 0;
+    let hostSignal;
     let persistedEvidence = { providerExecutionId: 'recovered-provider' };
     const store = {
       updateRecoveredMissionEvidence: async (id, createdAt, owner, provider, updates) => {
@@ -82,7 +83,9 @@ const {
         calls.push('auth');
         return ++attempts !== denyAt;
       },
-      reconstruct: async () => {
+      reconstruct: async ({ signal }) => {
+        hostSignal = signal;
+        assert.equal(signal.aborted, false);
         calls.push('reconstruct');
         if (reconstructFails) throw Error('reconstruction failed');
         if (slowReconstructionMs)
@@ -146,10 +149,11 @@ const {
     } catch (e) {
       error = e;
     }
-    return { calls, outcome, error, renewals };
+    return { calls, outcome, error, renewals, hostSignal };
   }
   const staged = await verify({ exerciseStage: true });
   assert.equal(staged.outcome, true);
+  assert.equal(staged.hostSignal.aborted, true);
   assert.ok(staged.calls.includes('stage-write'));
   assert.equal(staged.calls.filter((event) => event === 'release').length, 0);
   const passed = await verify();
@@ -187,6 +191,7 @@ const {
   assert.equal(uncertain.calls.filter((x) => x === 'release').length, 0);
   const thrown = await verify({ executionThrows: true });
   assert.match(thrown.error.message, /provider died after activation/);
+  assert.equal(thrown.hostSignal.aborted, true);
   assert.equal(thrown.calls.filter((x) => x === 'release').length, 0);
   const longRebuild = await verify({ slowReconstructionMs: 4_300 });
   assert.equal(longRebuild.outcome, true);
