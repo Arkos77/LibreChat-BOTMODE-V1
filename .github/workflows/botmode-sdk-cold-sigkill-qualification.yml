@@ -21,6 +21,8 @@ on:
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveryCoordinator.js'
       - 'api/server/services/Endpoints/agents/nativeMissionDurablePublicationStage.js'
       - 'scripts/botmode/native-mission-durable-publication-stage-regression.cjs'
+      - 'api/server/services/Endpoints/agents/nativeMissionRecoveredClientBinding.js'
+      - 'scripts/botmode/native-recovered-client-binding-regression.cjs'
       - 'scripts/botmode/native-recovery-coordinator-regression.cjs'
       - 'scripts/botmode/native-mission-claim-probe-regression.cjs'
       - 'scripts/botmode/redis-late-native-plan-lease-regression.cjs'
@@ -85,6 +87,8 @@ jobs:
             --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-recovery-host-authorization-regression.cjs
       - name: Verify durable publication staging ownership and readback
         run: node scripts/botmode/native-mission-durable-publication-stage-regression.cjs
+      - name: Verify authenticated cold client and publication barrier binding
+        run: node scripts/botmode/native-recovered-client-binding-regression.cjs
       - name: Verify host recovery coordinator rejects unsafe handoffs
         run: node scripts/botmode/native-recovery-coordinator-regression.cjs
       - name: Verify host read-only audit never claims or executes
