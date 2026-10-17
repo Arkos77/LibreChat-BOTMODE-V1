@@ -48,6 +48,8 @@ for (const override of [
   { status: 'complete' },
   { pendingAction: { id: 'pending' } },
   { checkpointNamespace: 'other' },
+  { responseMessageId: undefined },
+  { userMessage: undefined },
 ]) {
   assert.throws(
     () =>
@@ -60,6 +62,16 @@ for (const override of [
     /DENIED/,
   );
 }
+assert.throws(
+  () =>
+    bindNativeMissionRecoveredClient({
+      client: { ...makeClient(), responseMessageId: 'wrong' },
+      candidate,
+      job,
+      normalizeOracleState: normalizer,
+    }),
+  /DENIED/,
+);
 assert.throws(
   () =>
     bindNativeMissionRecoveredClient({

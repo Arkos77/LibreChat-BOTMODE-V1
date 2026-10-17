@@ -20,6 +20,12 @@ function bindNativeMissionRecoveredClient({ client, candidate, job, normalizeOra
     job.checkpointNamespace !== candidate.checkpointNamespace ||
     job.status !== 'running' ||
     job.pendingAction != null ||
+    typeof job.responseMessageId !== 'string' ||
+    !job.responseMessageId ||
+    typeof job.userMessage?.messageId !== 'string' ||
+    !job.userMessage.messageId ||
+    typeof job.agent_id !== 'string' ||
+    !job.agent_id ||
     !job.orchestratorPlan ||
     !Array.isArray(job.orchestratorPlan.tasks) ||
     !job.orchestratorPlan.tasks.length ||
@@ -27,6 +33,8 @@ function bindNativeMissionRecoveredClient({ client, candidate, job, normalizeOra
     client.options.req.body?.conversationId !== candidate.streamId ||
     client.conversationId !== candidate.streamId ||
     client.options.agent?.id !== job.agent_id ||
+    (client.responseMessageId != null && client.responseMessageId !== job.responseMessageId) ||
+    (client.parentMessageId != null && client.parentMessageId !== job.userMessage.messageId) ||
     typeof client.publicationBarrier?.activate !== 'function'
   ) {
     throw new Error('NATIVE_MISSION_COLD_CLIENT_BINDING_DENIED');
