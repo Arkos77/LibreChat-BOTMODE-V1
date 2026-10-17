@@ -755,10 +755,12 @@ const RENEW_DRAINED_MISSION_RECOVERY_LUA =
   'if redis.call("GET", KEYS[2]) ~= ARGV[2] then return 0 end ' +
   'return redis.call("PEXPIRE", KEYS[2], ARGV[3])';
 
-/** A stale contender cannot release another owner's newer claim. */
+/** A stale contender cannot release another owner's newer claim, and an
+ * activated recovered provider must retain its claim until lease expiry. */
 const RELEASE_DRAINED_MISSION_RECOVERY_LUA =
   'if redis.call("HGET", KEYS[1], "createdAt") ~= ARGV[1] then return 0 end ' +
   'if redis.call("GET", KEYS[2]) ~= ARGV[2] then return 0 end ' +
+  'if redis.call("HGET", KEYS[1], "__missionRecoveryOwner") == ARGV[2] then return 0 end ' +
   'return redis.call("DEL", KEYS[2])';
 
 /** Exact provider-segment completion fence. A paused segment finishing after a

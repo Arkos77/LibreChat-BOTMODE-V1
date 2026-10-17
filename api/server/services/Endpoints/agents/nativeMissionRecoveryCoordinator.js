@@ -52,7 +52,10 @@ function createNativeMissionRecoveryCoordinator({
       candidate.createdAt,
     );
     if (!claim) return false;
-    let handedOff = false;
+    // Once the executor starts, it or the manager owns the promotion decision.
+    // An exception can occur after promotion; never release that lease from
+    // the coordinator's preflight cleanup path.
+    let executorEntered = false;
     try {
       if (
         claim.streamId !== candidate.streamId ||
@@ -103,9 +106,10 @@ function createNativeMissionRecoveryCoordinator({
       await authorize();
       // Only the supplied executor may hand the claim to the owner-fenced
       // segment; it is responsible for Redis CAS and final publication.
-      // A rejected qualification must not strand this exact Redis claim.
-      // A thrown execution error may have already promoted the provider,
-      // so only release on an explicit `false` (unpromoted) result.
+      // The SDK manager releases qualification refusals before promotion.
+      // Once execution begins, this coordinator must never release a claim:
+      // a throw or indeterminate result may have followed provider promotion.
+      executorEntered = true;
       const outcome = await execute({
         manager,
         claim,
@@ -139,10 +143,9 @@ function createNativeMissionRecoveryCoordinator({
       if (outcome !== true && outcome !== false) {
         throw new Error('NATIVE_RECOVERY_HANDOFF_INDETERMINATE');
       }
-      handedOff = outcome === true;
       return outcome;
     } finally {
-      if (!handedOff) {
+      if (!executorEntered) {
         try {
           await store.releaseDrainedMissionRecovery(
             claim.streamId,

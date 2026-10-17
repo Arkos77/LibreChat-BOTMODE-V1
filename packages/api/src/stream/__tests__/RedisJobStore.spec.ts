@@ -105,6 +105,36 @@ describe('RedisJobStore', () => {
     ]);
   });
 
+  test('never releases a recovery claim after its owner is promoted', async () => {
+    const evalRelease = jest.fn().mockResolvedValue(0);
+    const redis = { isCluster: true, eval: evalRelease } as unknown as Cluster;
+    const store = new RedisJobStore(redis);
+    const owner = 'recovered-owner-token-123456789';
+
+    await expect(
+      store.releaseDrainedMissionRecovery('stream-promoted', 123456, owner),
+    ).resolves.toBe(false);
+
+    const [script, keyCount, jobKey, claimKey, epoch, suppliedOwner] = evalRelease.mock.calls[0];
+    expect(script).toContain('HGET", KEYS[1], "createdAt"');
+    expect(script).toContain('GET", KEYS[2]) ~= ARGV[2]');
+    // The promoted owner is persisted in the job hash by the activation CAS.
+    // Its same-token release must NOT delete the still-live inspection claim.
+    expect(script).toContain(
+      'HGET", KEYS[1], "__missionRecoveryOwner") == ARGV[2] then return 0',
+    );
+    expect(script.indexOf('__missionRecoveryOwner')).toBeLessThan(
+      script.indexOf('redis.call("DEL", KEYS[2])'),
+    );
+    expect([keyCount, jobKey, claimKey, epoch, suppliedOwner]).toEqual([
+      2,
+      'stream:{stream-promoted}:job',
+      'stream:{stream-promoted}:mission-recovery-claim',
+      '123456',
+      owner,
+    ]);
+  });
+
   test('starts only the exact still-running initial provider segment', async () => {
     const evalBegin = jest.fn().mockResolvedValue(1);
     const redis = {
