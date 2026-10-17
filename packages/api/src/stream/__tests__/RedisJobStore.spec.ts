@@ -296,6 +296,43 @@ describe('RedisJobStore', () => {
     expect(evalTransition.mock.calls[0][16]).toBe('300');
   });
 
+  test('recovered terminal CAS leaves a durable persistence barrier for crash reconciliation', async () => {
+    const evalTransition = jest.fn().mockResolvedValue(0);
+    const redis = {
+      isCluster: true,
+      eval: evalTransition,
+      hgetall: jest.fn().mockResolvedValue({
+        streamId: 'recovered-stream',
+        userId: 'user',
+        status: 'running',
+        createdAt: '123456',
+        syncSent: '0',
+      }),
+    } as unknown as Cluster;
+    const store = new RedisJobStore(redis, { completedTtl: 0 });
+    await expect(
+      store.transitionRecoveredMissionToComplete(
+        'recovered-stream',
+        123456,
+        'recovered-owner-123456789',
+        'recovered-provider-123456789',
+        'epoch-123456',
+      ),
+    ).resolves.toBe(false);
+    expect(evalTransition).toHaveBeenCalledTimes(1);
+    const args = evalTransition.mock.calls[0].map(String);
+    expect(args).toContain('terminalPersistencePending');
+    expect(args[args.indexOf('terminalPersistencePending') + 1]).toBe('1');
+    expect(args).toContain('terminalPersistenceStartedAt');
+    expect(args).toContain('completedAt');
+    expect(args[args.indexOf('terminalPersistenceStartedAt') + 1]).toBe(
+      args[args.indexOf('completedAt') + 1],
+    );
+    // Retention must survive a zero completed-job TTL until the same-epoch
+    // terminal publisher or the existing stale-terminal recovery takes over.
+    expect(args).toContain('300');
+  });
+
   test('retains the generation epoch beyond the paused job TTL', async () => {
     const evalTransition = jest.fn().mockResolvedValue(0);
     const redis = {

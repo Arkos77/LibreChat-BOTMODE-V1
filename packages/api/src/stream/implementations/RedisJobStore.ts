@@ -2907,13 +2907,22 @@ export class RedisJobStore implements IJobStoreV2 {
       checkpointNamespace,
       15000,
     );
+    const completedAt = Date.now();
     const result = await this.transitionStatusInternal(
       streamId,
       {
         from: 'running',
         to: 'complete',
         expectCreatedAt: expectedCreatedAt,
-        patch: { completedAt: Date.now() },
+        // If the host crashes after this CAS but before the message and SSE
+        // have been persisted, the normal stale-terminal reconciler must be
+        // able to recover the exact epoch. Never publish a naked terminal
+        // state whose payload can silently disappear during a second crash.
+        patch: {
+          completedAt,
+          terminalPersistencePending: true,
+          terminalPersistenceStartedAt: completedAt,
+        },
       },
       false,
       { ownerToken, providerExecutionId, checkpointNamespace, expectedCreatedAt },
