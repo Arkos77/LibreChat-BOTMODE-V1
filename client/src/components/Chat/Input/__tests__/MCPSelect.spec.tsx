@@ -120,8 +120,11 @@ describe('MCPSelect', () => {
     const items = screen.getAllByRole('menuitemcheckbox');
     expect(items).toHaveLength(2);
 
+    // Ariakit focuses the first menu item when opened. With two items,
+    // two ArrowDown presses must wrap from Server B back to Server A.
+    expect(items[0]).toHaveFocus();
     await user.keyboard('{ArrowDown}');
-    await user.keyboard('{ArrowDown}');
+    expect(items[1]).toHaveFocus();
     await user.keyboard('{ArrowDown}');
     expect(items[0]).toHaveFocus();
   });
