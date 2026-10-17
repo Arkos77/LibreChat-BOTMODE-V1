@@ -15,8 +15,8 @@ const {
   // These are the actual identities from deterministicPlanner.planMission:
   // task.key is the short objective name; task.taskId is what Oracle records.
   const tasks = [
-    { key: 'worker', taskId: 'mission/worker', nodeId: 'p6_worker' },
-    { key: 'specialist', taskId: 'mission/specialist', nodeId: 'p6_specialist' },
+    { key: 'worker', taskId: 'mission/worker', nodeId: 'p6_worker', validation: [{}] },
+    { key: 'specialist', taskId: 'mission/specialist', nodeId: 'p6_specialist', validation: [{}] },
   ];
   const verdict = (task) => ({
     taskId: task.taskId,
@@ -37,6 +37,7 @@ const {
     status: 'running',
     providerExecutionId: identity.providerExecutionId,
     orchestratorPlan: { tasks },
+    missionOracleState: structuredClone(candidate.oracle),
   };
   let writes = 0;
   const store = {
@@ -87,6 +88,50 @@ const {
     await assert.rejects(stage(mutated), /ORACLE_UNVERIFIED/);
     assert.equal(writes, priorWrites, `a rejected ${label} must not stage content`);
   }
+
+  await denied(
+    {
+      ...candidate,
+      oracle: {
+        ...candidate.oracle,
+        results: {
+          ...candidate.oracle.results,
+          [tasks[1].taskId]: {
+            ...verdict(tasks[1]),
+            verdicts: [{ status: 'REJECTED' }],
+          },
+        },
+      },
+    },
+    'Oracle verdict differing from the original persisted state',
+  );
+  await denied(
+    {
+      ...candidate,
+      oracle: {
+        ...candidate.oracle,
+        results: {
+          ...candidate.oracle.results,
+          [tasks[1].taskId]: {
+            ...verdict(tasks[1]),
+            // A substituted VERIFIED answer is not the Redis-persisted one.
+            verdicts: [{ status: 'VERIFIED', validator: { id: 'fabricated' } }],
+          },
+        },
+      },
+    },
+    'fabricated VERIFIED result',
+  );
+  // This same result array is all VERIFIED but does not prove both policy
+  // requirements were evaluated. Reject before any Redis write.
+  const previousPlan = job.orchestratorPlan;
+  job.orchestratorPlan = {
+    tasks: previousPlan.tasks.map((task, index) =>
+      index === 1 ? { ...task, validation: [{}, {}] } : task,
+    ),
+  };
+  await denied(candidate, 'partial requirement coverage');
+  job.orchestratorPlan = previousPlan;
 
   await denied(
     {

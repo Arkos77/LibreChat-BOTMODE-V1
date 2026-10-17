@@ -43,6 +43,18 @@ const {
         status: 'running',
         createdAt: candidate.createdAt,
         checkpointNamespace: candidate.checkpointNamespace,
+        missionOracleState: exerciseStage
+          ? {
+              evidence: {},
+              results: {
+                'mission/task-worker': {
+                  taskId: 'mission/task-worker',
+                  nodeId: 'worker',
+                  verdicts: [{ status: 'VERIFIED' }],
+                },
+              },
+            }
+          : undefined,
         orchestratorPlan: {
           tasks: invalidPlan
             ? [{ nodeId: 'worker', agentId: '' }]
@@ -52,6 +64,7 @@ const {
                   agentId: 'worker',
                   key: 'task-worker',
                   taskId: 'mission/task-worker',
+                  validation: [{}],
                 },
               ],
         },

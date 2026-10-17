@@ -43,6 +43,11 @@ function createNativeMissionDurablePublicationStage({ store, identity, getCandid
       !results ||
       typeof results !== 'object' ||
       Array.isArray(results) ||
+      // The Oracle persister has already committed each verdict under the
+      // recovered provider's owner CAS. A publication callback must not be
+      // able to replace those durable verdicts with newly synthesized ones.
+      !before?.missionOracleState ||
+      JSON.stringify(before.missionOracleState) !== JSON.stringify(candidate.oracle) ||
       // PlannedTask.taskId is the durable Oracle identity, NOT the short
       // objective key. The planner derives e.g. mission/worker and
       // mission/specialist; Oracle stores results under those full IDs.
@@ -57,7 +62,9 @@ function createNativeMissionDurablePublicationStage({ store, identity, getCandid
           !task.nodeId ||
           !Object.hasOwn(results, task.taskId) ||
           !Array.isArray(results[task.taskId]?.verdicts) ||
-          results[task.taskId].verdicts.length === 0 ||
+          !Array.isArray(task.validation) ||
+          task.validation.length === 0 ||
+          results[task.taskId].verdicts.length !== task.validation.length ||
           results[task.taskId].taskId !== task.taskId ||
           results[task.taskId].nodeId !== task.nodeId ||
           results[task.taskId].verdicts.some((verdict) => verdict?.status !== 'VERIFIED'),
