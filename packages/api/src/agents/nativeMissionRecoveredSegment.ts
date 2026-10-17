@@ -68,7 +68,7 @@ export async function executeRecoveredMissionSegment({
   assertEffectFencesReady: () => Promise<void>;
   continueGraph: (signal: AbortSignal) => Promise<void>;
   verifyOracle: () => Promise<void>;
-  stageDurablePublication: () => Promise<void>;
+  stageDurablePublication: (identity: RecoveredSegmentIdentity) => Promise<void>;
   publishTerminal: () => Promise<void>;
   leaseMs?: number;
   heartbeatMs?: number;
@@ -155,7 +155,7 @@ export async function executeRecoveredMissionSegment({
     if (failed || abort.signal.aborted) throw failed ?? new RecoveredSegmentOwnershipLost();
     // The host must persist an Oracle-approved private publication candidate
     // and its idempotent recovery key before making the job terminal.
-    await stageDurablePublication();
+    await stageDurablePublication(identity);
     await pulse();
     if (failed || abort.signal.aborted) throw failed ?? new RecoveredSegmentOwnershipLost();
     // Only a still-owned, Oracle-approved generation can become terminal.
@@ -206,7 +206,7 @@ export async function qualifyAndExecuteRecoveredMissionSegment({
   assertEffectFencesReady: () => Promise<void>;
   continueGraph: (signal: AbortSignal) => Promise<void>;
   verifyOracle: () => Promise<void>;
-  stageDurablePublication: () => Promise<void>;
+  stageDurablePublication: (identity: RecoveredSegmentIdentity) => Promise<void>;
   publishTerminal: () => Promise<void>;
 }): Promise<boolean> {
   if (

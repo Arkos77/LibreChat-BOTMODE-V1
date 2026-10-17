@@ -119,7 +119,8 @@ function createNativeMissionRecoveryCoordinator({
             signal,
           }),
         verifyOracle: runtime.verifyOracle,
-        stageDurablePublication: runtime.stageDurablePublication,
+        stageDurablePublication: (identity) =>
+          runtime.stageDurablePublication({ identity, store, assertAuthorized: authorize }),
         publishTerminal: runtime.publishTerminal,
       });
       // Only an explicit boolean acknowledgement can complete the handoff.
