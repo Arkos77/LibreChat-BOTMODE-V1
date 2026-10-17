@@ -4,6 +4,7 @@ const {
   getDetachedSubagentProducerAgentId,
 } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
+const { resolveAuthorizedAgentConversation } = require('./resolveAuthorizedAgentConversation');
 const { createContentAggregator, GraphNodeKeys } = require('@librechat/agents');
 const {
   resolveSender,
@@ -736,10 +737,16 @@ const initializeClient = async ({
     requestConversationCandidate[Symbol.for('librechat.resolvedConversation.partial')] === true;
   let requestConversation = requestConversationCandidate;
   if (requestConversationIsPartial && typeof conversationId === 'string' && conversationId !== '') {
-    requestConversation = await db.getConvo(req.user.id, conversationId);
-    if (requestConversation == null) {
+    try {
+      requestConversation = await resolveAuthorizedAgentConversation({
+        userId: req.user.id,
+        conversationId,
+        getConvo: db.getConvo,
+      });
+    } catch (cause) {
       const error = new Error('Conversation could not be resolved for continuation');
       error.status = 404;
+      error.cause = cause;
       throw error;
     }
   }

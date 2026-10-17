@@ -13,6 +13,8 @@ on:
       - 'scripts/botmode/native-orphan-claim-regression.cjs'
       - 'scripts/botmode/native-orphan-preflight-cadence-regression.cjs'
       - 'scripts/botmode/native-orphan-activation-regression.cjs'
+      - 'api/server/services/Endpoints/agents/resolveAuthorizedAgentConversation.js'
+      - 'scripts/botmode/authorized-agent-conversation-regression.cjs'
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js'
       - 'scripts/botmode/native-recovery-host-authorization-regression.cjs'
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveryHostAuthorization.js'
@@ -94,6 +96,8 @@ jobs:
             --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-recovery-host-authorization-regression.cjs
       - name: Verify durable publication staging ownership and readback
         run: node scripts/botmode/native-mission-durable-publication-stage-regression.cjs
+      - name: Verify shared owner-scoped conversation resolution
+        run: node scripts/botmode/authorized-agent-conversation-regression.cjs
       - name: Verify authenticated cold client and publication barrier binding
         run: node scripts/botmode/native-recovered-client-binding-regression.cjs
       - name: Verify cold runtime authorized reconstruction contract
