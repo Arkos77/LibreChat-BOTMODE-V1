@@ -1,3 +1,7 @@
+const {
+  createNativeMissionDurablePublicationStage,
+} = require('./nativeMissionDurablePublicationStage');
+
 /**
  * Host-side admission boundary for recovered native missions.
  * All execution callbacks must originate from the real authenticated host
@@ -66,7 +70,7 @@ function createNativeMissionRecoveryCoordinator({
         typeof runtime.assertReplaySafe !== 'function' ||
         typeof runtime.assertEffectFencesReady !== 'function' ||
         typeof runtime.verifyOracle !== 'function' ||
-        typeof runtime.stageDurablePublication !== 'function' ||
+        typeof runtime.getPublicationCandidate !== 'function' ||
         typeof runtime.publishTerminal !== 'function' ||
         !runtime.graph ||
         typeof runtime.graph.getState !== 'function'
@@ -119,8 +123,15 @@ function createNativeMissionRecoveryCoordinator({
             signal,
           }),
         verifyOracle: runtime.verifyOracle,
-        stageDurablePublication: (identity) =>
-          runtime.stageDurablePublication({ identity, store, assertAuthorized: authorize }),
+        stageDurablePublication: async (identity) => {
+          await authorize();
+          await createNativeMissionDurablePublicationStage({
+            store,
+            identity,
+            getCandidate: runtime.getPublicationCandidate,
+          })();
+          await authorize();
+        },
         publishTerminal: runtime.publishTerminal,
       });
       // Only an explicit boolean acknowledgement can complete the handoff.

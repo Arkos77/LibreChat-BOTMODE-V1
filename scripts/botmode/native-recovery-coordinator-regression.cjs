@@ -19,11 +19,22 @@ const {
     refusesExecution = false,
     uncertainExecution = false,
     invalidPlan = false,
+    exerciseStage = false,
   } = {}) {
     const calls = [];
     let attempts = 0;
+    let persistedEvidence = {};
     const store = {
+      updateRecoveredMissionEvidence: async (id, createdAt, owner, provider, updates) => {
+        assert.equal(id, candidate.streamId);
+        assert.equal(owner, claim.ownerToken);
+        assert.equal(provider, 'recovered-provider');
+        persistedEvidence = { ...updates, providerExecutionId: provider };
+        calls.push('stage-write');
+        return true;
+      },
       getJob: async () => ({
+        ...persistedEvidence,
         status: 'running',
         createdAt: candidate.createdAt,
         checkpointNamespace: candidate.checkpointNamespace,
@@ -65,7 +76,11 @@ const {
             if (missingFence) throw Error('no fences');
           },
           verifyOracle: async () => {},
-          stageDurablePublication: async () => {},
+          getPublicationCandidate: async () => ({
+            content: [],
+            attachments: [],
+            oracle: { verdict: 'accept' },
+          }),
           publishTerminal: async () => {},
         };
       },
@@ -79,6 +94,11 @@ const {
         calls.push('execute');
         assert.equal(args.claim.ownerToken, claim.ownerToken);
         await args.continueGraph(new AbortController().signal);
+        if (exerciseStage)
+          await args.stageDurablePublication({
+            ...claim,
+            providerExecutionId: 'recovered-provider',
+          });
         return uncertainExecution ? undefined : !refusesExecution;
       },
       log: { warn: () => {} },
@@ -91,6 +111,10 @@ const {
     }
     return { calls, outcome, error };
   }
+  const staged = await verify({ exerciseStage: true });
+  assert.equal(staged.outcome, true);
+  assert.ok(staged.calls.includes('stage-write'));
+  assert.equal(staged.calls.filter((event) => event === 'release').length, 0);
   const passed = await verify();
   assert.equal(passed.outcome, true);
   assert.deepEqual(passed.calls, [
