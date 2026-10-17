@@ -10,6 +10,8 @@ export async function continueColdNativeMissionGraph({
   graph,
   streamId,
   checkpointNamespace,
+  expectedCheckpointId,
+  plannedNodeIds,
   signal,
 }: {
   graph: {
@@ -18,6 +20,8 @@ export async function continueColdNativeMissionGraph({
   };
   streamId: string;
   checkpointNamespace: string;
+  expectedCheckpointId: string;
+  plannedNodeIds: readonly string[];
   signal: AbortSignal;
 }): Promise<void> {
   if (
@@ -26,6 +30,11 @@ export async function continueColdNativeMissionGraph({
     typeof graph.getState !== 'function' ||
     !streamId ||
     !checkpointNamespace ||
+    !expectedCheckpointId ||
+    !Array.isArray(plannedNodeIds) ||
+    plannedNodeIds.length === 0 ||
+    plannedNodeIds.some((id) => typeof id !== 'string' || !id) ||
+    new Set(plannedNodeIds).size !== plannedNodeIds.length ||
     !signal ||
     signal.aborted
   ) {
@@ -37,8 +46,40 @@ export async function continueColdNativeMissionGraph({
     __librechat_checkpoint_ns: checkpointNamespace,
     nativeMissionEffectFenceRequired: true,
   };
-  // Never replay with an unchecked graph. The external caller must first
-  // match the exact Mongo head to the durable plan via recovery qualification.
+  // Validate the exact graph head *again* immediately before execution. A
+  // previous host admission is not enough if another provider moved the head.
+  const head = await graph.getState({ configurable });
+  if (!head || typeof head !== 'object') throw new Error('NATIVE_MISSION_COLD_HEAD_MISMATCH');
+  const saved = head as {
+    config?: { configurable?: { checkpoint_id?: string; thread_id?: string } };
+    next?: unknown;
+    tasks?: unknown;
+  };
+  const next = saved.next;
+  const tasks = saved.tasks;
+  const allowed = new Set(plannedNodeIds);
+  if (
+    saved.config?.configurable?.checkpoint_id !== expectedCheckpointId ||
+    saved.config?.configurable?.thread_id !== streamId ||
+    !Array.isArray(next) ||
+    next.length === 0 ||
+    !Array.isArray(tasks) ||
+    tasks.length === 0 ||
+    next.some((id) => typeof id !== 'string' || !allowed.has(id)) ||
+    new Set(next).size !== next.length ||
+    tasks.some(
+      (task) =>
+        !task ||
+        typeof task !== 'object' ||
+        !allowed.has(task.name) ||
+        !Array.isArray(task.interrupts) ||
+        task.interrupts.length > 0,
+    ) ||
+    !next.every((id) => tasks.some((task) => task.name === id))
+  ) {
+    throw new Error('NATIVE_MISSION_COLD_HEAD_MISMATCH');
+  }
+  if (signal.aborted) throw new Error('NATIVE_MISSION_COLD_CONTINUATION_ABORTED');
   await graph.invoke(null, { configurable, signal, durability: 'sync' });
   if (signal.aborted) throw new Error('NATIVE_MISSION_COLD_CONTINUATION_ABORTED');
   const state = await graph.getState({ configurable });
