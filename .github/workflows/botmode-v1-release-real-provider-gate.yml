@@ -2,6 +2,12 @@
 name: BOTMODE V1 Current HEAD Free Provider Oracle Gate
 on:
   workflow_dispatch:
+    inputs:
+      run_default_free_router:
+        description: Exercise the exact default free-only host router instead of isolating the primary model
+        type: boolean
+        required: true
+        default: false
 permissions:
   contents: read
 jobs:
@@ -83,6 +89,7 @@ jobs:
       - name: Boot isolated candidate with disposable MongoDB
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CI_TEST_DEFAULT_FREE_ROUTER: ${{ inputs.run_default_free_router }}
         run: |
           set -euo pipefail
           cp .env.example .env
@@ -118,19 +125,35 @@ jobs:
             echo 'BOTMODE_MONGO_PASSWORD=ci-isolated-only'
             echo 'POSTGRES_PASSWORD=ci-isolated-only'
           } >> .env
-          # Deterministic integration: only the already live-tested OpenRouter free route.
-          # Explicit free-only isolation: disable optional multi-model host routing in this disposable test.
-          # This test cannot be reported as a live qualification of production fallback routing.
+          # Route isolation and default-router qualification are distinct:
+          # both paths allow only explicitly free provider models and never paid keys.
           python3 - <<'PY'
-          import json
+          import json,os
           from pathlib import Path
           path=Path('librechat.yaml')
           conf=json.loads(path.read_text())
-          # Native agent setup stores OpenRouter/openrouter/free.
-          # Omit host router so no named paid Gemini binding can be selected.
-          routes=conf['endpoints']['agents'].pop('hostModelRouting',[])
-          path.write_text(json.dumps(conf,ensure_ascii=False,indent=2)+'\n')
-          print('CI_HOST_MODEL_ROUTING_DISABLED_FOR_FREE_ROUTE_TEST='+str(len(routes)))
+          use_default=os.environ.get('CI_TEST_DEFAULT_FREE_ROUTER')=='true'
+          if use_default:
+              policies=conf['endpoints']['agents'].get('hostModelRouting',[])
+              expected={'BOT MODE Worker','RECHERCHE','ANALYSE','CODE','DOCUMENTS','RÉDACTION'}
+              if {p.get('agentName') for p in policies} != expected:
+                  raise SystemExit('CI_DEFAULT_FREE_ROUTER_INVENTORY_INVALID')
+              for policy in policies:
+                  if policy.get('routingConstraints',{}).get('spendingPolicy')!='free_only':
+                      raise SystemExit('CI_DEFAULT_ROUTER_NOT_FREE_ONLY')
+                  if not 2 <= len(policy.get('bindings',[])) <= 4:
+                      raise SystemExit('CI_DEFAULT_ROUTER_CANDIDATE_COUNT_INVALID')
+                  for candidate in policy['bindings']:
+                      model=candidate.get('model','')
+                      if (candidate.get('provider')!='OpenRouter' or
+                          candidate.get('signals',{}).get('pricingTier')!='free' or
+                          not (model=='openrouter/free' or model.endswith(':free'))):
+                          raise SystemExit('CI_DEFAULT_ROUTER_UNAUTHORIZED_OR_PAID_BINDING')
+              print('CI_DEFAULT_FREE_ONLY_ROUTER_GUARD=PASS')
+          else:
+              routes=conf['endpoints']['agents'].pop('hostModelRouting',[])
+              path.write_text(json.dumps(conf,ensure_ascii=False,indent=2)+'\n')
+              print('CI_HOST_MODEL_ROUTING_DISABLED_FOR_FREE_ROUTE_TEST='+str(len(routes)))
           PY
           export BOTMODE_MONGO_PASSWORD=ci-isolated-only
           export POSTGRES_PASSWORD=ci-isolated-only
@@ -520,7 +543,7 @@ jobs:
           python3 scripts/botmode/ci-oracle-publication-gate.py
           echo 'BOTMODE_CURRENT_FREE_RUNTIME_BOOT=PASS'
           echo '### Current HEAD Oracle/QA E2E (REAL free OpenRouter provider, isolated configuration)' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Free provider checked, durable Oracle decision and publication assertions required. Multi-model production router disabled ONLY for this isolated disposable test; real provider fallback remains unqualified. Fail closed on quota/auth.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Free provider checked, durable Oracle decision and publication assertions required. The run_default_free_router input determines whether default free-only host routing was exercised; forced 429 fallback and actual specialists remain separate gates.' >> "$GITHUB_STEP_SUMMARY"
       - name: Always destroy disposable stack
         if: always()
         env:

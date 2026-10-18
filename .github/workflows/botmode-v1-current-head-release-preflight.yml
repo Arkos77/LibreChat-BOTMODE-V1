@@ -11,6 +11,8 @@ on:
       - 'docker-compose.botmode.yml'
       - 'docker-compose.botmode-lite.yml'
       - 'Dockerfile'
+      - 'librechat.yaml'
+      - 'scripts/botmode/tests/test_model_routing_free_only.py'
   workflow_dispatch:
 
 permissions:
@@ -68,6 +70,9 @@ jobs:
             bash -n "$script"
           done
           echo 'BOTMODE_CURRENT_HEAD_COMPOSE_AND_DRYRUN=PASS'
+      - name: Verify free-only default native host routing
+        shell: bash
+        run: python3 -m unittest scripts.botmode.tests.test_model_routing_free_only -v
       - name: Remove disposable dotenv
         if: always()
         run: rm -f .env

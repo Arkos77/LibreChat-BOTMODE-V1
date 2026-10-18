@@ -160,7 +160,7 @@ Backup and restore helpers are available under `scripts/botmode/`.
 
 ## Providers and models
 
-BOTMODE is designed to route across configured providers rather than hard-code a single model family. The visible catalogue must reflect providers that are actually configured/connected. Local and free fallbacks can be used when appropriate, while policy/budget/risk controls remain authoritative.
+BOTMODE is designed to route across configured providers rather than hard-code a single model family. The visible catalogue must reflect providers that are actually configured/connected. The default native Worker/specialist host routes admit only explicitly free OpenRouter models; automatic paid fallback is disabled until an operator deliberately revises the authorized routing and budget policy. This free-only source configuration does not guarantee current provider quota or the availability of every free model. Policy/budget/risk controls remain authoritative.
 
 No API key is shipped in this repository.
 
