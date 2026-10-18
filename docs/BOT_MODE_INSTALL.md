@@ -27,7 +27,7 @@ cd LibreChat-BOTMODE-V1
 ./install.sh
 ```
 
-**Release candidate non stable :** les PR #14 et #18 restent DRAFT. L'image candidate `sha-d4e82dded5df` est publiée et ses contrôles Lite ont réussi. Pour reproduire exactement cette version, utiliser une copie de travail séparée et **ne jamais effacer les volumes existants**.
+**Archive de qualification, PAS l'image du code actuel :** la candidate historique `sha-d4e82dded5df` est publiée et a passé des tests Lite. La PR #29 est toujours en qualification Draft (18/10/2026), sans image GHCR démontrée pour son dernier SHA. Ne pas utiliser la commande historique ci-dessous comme validation de la V1 actuelle. Pour reproduire l'ancienne candidate, utiliser une copie de travail jetable et **ne jamais effacer les volumes existants**.
 
 ```bash
 git clone https://github.com/Arkos77/LibreChat-BOTMODE-V1.git botmode-v1-candidate

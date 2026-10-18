@@ -86,3 +86,9 @@ Connexion Remote `penguin` confirmée ; `git status` initialement vide ; local H
 **Qualification Idées ajoutée :** nouveau test Jest ciblé (absence Worker, erreur API, route Worker), exécution en attente du CI après push. Les 28 workflows de `b49a5bf03` sont terminés : 27 succès + 1 accessibilité ignoré. Aucun succès n’est attribuable par avance au futur commit.
 
 **Prochaine qualification indépendante :** workflow native first-user converti en checkout SHA déclencheur ; ne compter qu'après run terminé avec SHA et logs. Cette action ne publie aucune image. Le premier utilisateur reste un onboarding HTTP explicite, donc zéro étape technique non prouvé.
+
+**Audit sécurité du lock HEAD `921516af4` :** npm production actuel = 3 modérées, 0 élevée/critique (`mammoth`, `argparse`, `sprintf-js`) ; lock SHA256 `4b0b6d51afb679bc3b1633f29609d3aa9bdce8515f4df719bf0ddc67d22b44b3`. Aucune mise à jour de dépendance entreprise ; D-02 toujours ouverte. Le serveur GitHub signale séparément 25 vulnérabilités sur la branche *main*, périmètre différent.
+
+**Run utilisateur réel sur image locale HEAD (fixture fournisseur seulement) :** #39090842532 SUCCESS au SHA `921516af4` ; checkout, image construite sans GHCR, premier compte, JWT, setup REST explicite des six agents, ACL, délégation, idempotence et reprise stop/start. En attente : onboarding sans clic, mission LLM réelle, publication autonome, digest public et rollback staging.
+
+**CI frontend source `921516af4` :** #39090844941 SUCCESS (build Vite, tsc, deux shards et client Jest) mais trace nominative du nouveau test Idées absente ; ne pas généraliser au navigateur. Docs README/install mis à jour en local pour lever références anciennes, et workflow DOCX refactoré pour SHA exact ; commit de ce lot à enregistrer séparément.

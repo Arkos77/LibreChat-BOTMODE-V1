@@ -1,4 +1,4 @@
-name: BOTMODE V1 Mammoth Runtime Reachability
+name: BOTMODE V1 Mammoth Runtime Reachability (exact HEAD)
 
 on:
   pull_request:
@@ -15,8 +15,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: 54b30a342bf8f3480d7385b30cfa669b73c92878
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Attest exact tested head
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
       - uses: actions/setup-node@v5
         with:
           node-version: 24.16.0

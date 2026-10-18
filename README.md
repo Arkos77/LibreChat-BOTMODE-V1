@@ -2,7 +2,7 @@
 
 **LibreChat BOTMODE V1** is a multi-agent orchestration layer built on top of [LibreChat](https://github.com/danny-avila/LibreChat). It turns LibreChat into a governed workspace for durable missions, specialist agents, background work, RAG/memory, model routing, media capabilities, MCP tools, evidence collection, QA and controlled publication.
 
-> Status: **V1 release candidate**. Runtime-distribution fixes are being validated on `botmode-v1-runtime-fix`; `main` remains the stable release branch until the final candidate passes.
+> Status (18 October 2026): **V1 qualification — NO-GO stable**. [PR #29](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/29) is still a **Draft** on `botmode-v1-final-integration-qualification-20261016`. Existing CI checks and previously published images do **not** certify this PR as a released installable image. Do not merge, publish or install over existing data without the separate release gates and approvals.
 
 ## What BOTMODE adds
 
@@ -61,7 +61,7 @@ Runtime hosts need:
 - Docker
 - Docker Compose v2
 
-Node.js/npm are required only for source development and local verification, not for running the published BOTMODE image.
+Node.js/npm are required only for source development and local verification, not for running a published BOTMODE image. **The current PR #29 image has not been published**; use the install command below only with a verified commit whose matching immutable GHCR image exists.
 
 ### Install
 
@@ -94,18 +94,19 @@ Day-to-day lifecycle commands:
 ./doctor.sh
 ```
 
-After `.env` is created, add only the provider/API credentials you actually use. Never commit `.env`.
+After `.env` is created, add only the provider/API credentials you actually use. Never commit `.env`. On a fresh account, the current implementation still exposes **Project → Initialiser BOT MODE** to select a configured model and create the six native agents; this step is **not yet automated**. The source-matched first-user HTTP onboarding is exercised on disposable CI, but no published PR #29 image or live-provider mission is certified yet.
 
 Full installation details: [docs/BOT_MODE_INSTALL.md](docs/BOT_MODE_INSTALL.md)
 
 ## Supported platforms
 
-| Platform | V1 path |
+| Platform | Intended V1 path / qualification |
 | --- | --- |
-| Linux / Xubuntu | Direct |
-| ChromeOS | Crostini / Linux |
-| macOS | Docker Desktop or compatible Docker runtime |
-| Windows | WSL2 |
+| Linux x86_64 | Docker Compose, Lite source-built smoke validated; GHCR release image pending |
+| ChromeOS | Crostini / Linux, profile Lite (hardware-limited validation) |
+| macOS | Docker Desktop or compatible Docker runtime; final candidate smoke pending |
+| Windows | WSL2; final candidate smoke pending |
+| ARM64 Linux/macOS | OCI image/platform manifest and install smoke pending |
 | Native Windows | Not declared supported for V1 |
 
 ## BOTMODE specialists
