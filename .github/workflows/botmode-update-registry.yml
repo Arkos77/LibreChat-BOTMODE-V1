@@ -1,0 +1,52 @@
+name: BOTMODE Optional Updates Registry
+
+on:
+  pull_request:
+    paths:
+      - 'tools/update-registry/**'
+      - '.github/workflows/botmode-update-registry.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-registry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      mongo:
+        image: mongo:4.4.29
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongo --quiet --eval 'db.runCommand({ping:1}).ok' | grep -q 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: tools/update-registry/package-lock.json
+      - name: Install standalone dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: tools/update-registry
+      - name: Run unit tests and real isolated MongoDB lifecycle
+        working-directory: tools/update-registry
+        env:
+          REGISTRY_TEST_MONGODB_URI: mongodb://127.0.0.1:27017/?directConnection=true
+        run: npm test
+      - name: Validate module syntax and drift-free lock
+        working-directory: tools/update-registry
+        run: |
+          node --check src/core.mjs
+          node --check src/storage.mjs
+          node --check src/config.mjs
+          node --check src/server.mjs
+          node --check src/announce.mjs
+          git diff --exit-code -- package-lock.json
