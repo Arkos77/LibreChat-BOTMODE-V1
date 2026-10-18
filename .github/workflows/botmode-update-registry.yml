@@ -49,4 +49,5 @@ jobs:
           node --check src/config.mjs
           node --check src/server.mjs
           node --check src/announce.mjs
+          node --check src/release.mjs
           git diff --exit-code -- package-lock.json

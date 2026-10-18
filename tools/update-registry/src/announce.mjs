@@ -1,6 +1,7 @@
 import { readConfig, createMailer } from './config.mjs';
 import { connectStore } from './storage.mjs';
 import { unsubscribeToken } from './core.mjs';
+import { validateReleaseTarget, verifyPublishedRelease } from './release.mjs';
 
 const args=process.argv.slice(2);
 const sending=args.includes('--send');
@@ -11,11 +12,9 @@ for(let i=0;i<args.length;i++) {
 }
 const param=(name)=>{const pos=args.indexOf(name);return pos>=0?args[pos+1]:null};
 const version=param('--version'),releaseUrl=param('--release-url');
-if (!version||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,48}$/.test(version)) throw new Error('Specify a safe --version');
-if (!releaseUrl || !releaseUrl.startsWith('https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/')) throw new Error('Release URL must be an official HTTPS GitHub release');
-const url=new URL(releaseUrl);
-if(url.hostname!=='github.com'||url.search||url.hash)throw new Error('Unexpected release URL');
+validateReleaseTarget(version, releaseUrl);
 if (sending && process.env.REGISTRY_CONFIRM_SEND!=='YES') throw new Error('Set REGISTRY_CONFIRM_SEND=YES for intentional sending');
+if (sending) await verifyPublishedRelease(version, releaseUrl);
 const config=readConfig();
 const {store,close}=await connectStore(config.mongoUri,config.dbName);
 const mailer=sending?createMailer(config):null;
