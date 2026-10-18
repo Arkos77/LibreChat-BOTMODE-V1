@@ -37,8 +37,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "BOTMODE_MONGO_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
-          echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          # Create exactly one pair of credentials shared by Compose and the
+          # read-only /app/.env mount. Separate generated values break rollback.
+          test ! -e .env
+          cp .env.example .env
+          chmod 600 .env
+          mongo_pass="$(openssl rand -hex 24)"
+          pg_pass="$(openssl rand -hex 24)"
+          {
+            printf 'BOTMODE_MONGO_PASSWORD=%s\n' "$mongo_pass"
+            printf 'POSTGRES_PASSWORD=%s\n' "$pg_pass"
+          } >> .env
+          echo "BOTMODE_MONGO_PASSWORD=$mongo_pass" >> "$GITHUB_ENV"
+          echo "POSTGRES_PASSWORD=$pg_pass" >> "$GITHUB_ENV"
           echo "BOTMODE_HOST_PORT=3090" >> "$GITHUB_ENV"
           echo "COMPOSE_PROJECT_NAME=botmode-ci-digest-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
       - name: Install immutable digest and prove Mongo persists across stop/start
@@ -47,6 +58,9 @@ jobs:
           set -euo pipefail
           # Installer en root sur ce runner jetable : .env reste privé, UID 1000.
           sudo git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          test "$(grep 'BOTMODE_MONGO_PASSWORD=' .env | tail -1 | cut -d= -f2-)" = "$BOTMODE_MONGO_PASSWORD"
+          test "$(grep 'POSTGRES_PASSWORD=' .env | tail -1 | cut -d= -f2-)" = "$POSTGRES_PASSWORD"
+          echo "BOTMODE_STAGING_DOTENV_AND_COMPOSE_CREDENTIALS_MATCH=PASS"
           sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT,COMPOSE_PROJECT_NAME ./install.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1@sha256:94b11ff0bc8f5820b803741f5a52c96a5e265c2994bb268ee565ba35444cee3a
           compose=(sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT,COMPOSE_PROJECT_NAME docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)
           ready=0
