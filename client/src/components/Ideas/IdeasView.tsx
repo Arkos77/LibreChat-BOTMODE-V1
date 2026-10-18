@@ -321,9 +321,36 @@ export default function IdeasView() {
         requiredPermission: PermissionBits.EDIT,
         limit: 1000,
       });
-      const worker = agentsResponse.data.find((item) => item.name?.trim() === 'BOT MODE Worker');
+      let worker = agentsResponse.data.find((item) => item.name?.trim() === 'BOT MODE Worker');
       if (!worker?.id) {
-        throw new Error('BOT_MODE_WORKER_NOT_INITIALIZED');
+        // The first explicit mission request may initialize a user's free-model
+        // Worker via the native authenticated endpoint. Never choose a paid or
+        // ambiguous model automatically merely because it appears in the catalog.
+        const catalog = await dataService.getModels();
+        const freeModels = Object.entries(catalog ?? {}).flatMap(([provider, models]) =>
+          Array.isArray(models)
+            ? models
+                .filter(
+                  (model): model is string =>
+                    typeof model === 'string' &&
+                    provider.toLowerCase() === 'openrouter' &&
+                    model.toLowerCase() === 'openrouter/free',
+                )
+                .map((model) => ({ provider, model }))
+            : [],
+        );
+        if (freeModels.length !== 1) {
+          throw new Error('BOT_MODE_WORKER_NOT_INITIALIZED');
+        }
+        await dataService.initializeBotModeAgents(freeModels[0]);
+        const refreshedAgents = await dataService.listAgents({
+          requiredPermission: PermissionBits.EDIT,
+          limit: 1000,
+        });
+        worker = refreshedAgents.data.find((item) => item.name?.trim() === 'BOT MODE Worker');
+        if (!worker?.id) {
+          throw new Error('BOT_MODE_WORKER_NOT_INITIALIZED');
+        }
       }
       const project = idea.projectId
         ? { _id: idea.projectId }

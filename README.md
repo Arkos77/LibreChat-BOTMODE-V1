@@ -94,7 +94,7 @@ Day-to-day lifecycle commands:
 ./doctor.sh
 ```
 
-After `.env` is created, add only the provider/API credentials you actually use. Never commit `.env`. On a fresh account, the current implementation still exposes **Project → Initialiser BOT MODE** to select a configured model and create the six native agents; this step is **not yet automated**. The source-matched first-user HTTP onboarding is exercised on disposable CI, but no published PR #29 image or live-provider mission is certified yet.
+After `.env` is created, add only the provider/API credentials you actually use. Never commit `.env`. On a fresh account, **Project → Initialiser BOT MODE** still allows explicit model selection and native setup. Work is in qualification to initialize automatically upon an explicit **Ideas** mission request when a unique OpenRouter free model is available; paid or ambiguous model selection is **never automatic**. This does not yet cover every Chat/Work entry point. The source-matched first-user HTTP onboarding is exercised on disposable CI, but no published PR #29 image or live-provider mission is certified yet.
 
 Full installation details: [docs/BOT_MODE_INSTALL.md](docs/BOT_MODE_INSTALL.md)
 

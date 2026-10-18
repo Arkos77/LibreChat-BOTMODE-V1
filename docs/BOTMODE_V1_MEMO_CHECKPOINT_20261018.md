@@ -92,3 +92,7 @@ Connexion Remote `penguin` confirmée ; `git status` initialement vide ; local H
 **Run utilisateur réel sur image locale HEAD (fixture fournisseur seulement) :** #39090842532 SUCCESS au SHA `921516af4` ; checkout, image construite sans GHCR, premier compte, JWT, setup REST explicite des six agents, ACL, délégation, idempotence et reprise stop/start. En attente : onboarding sans clic, mission LLM réelle, publication autonome, digest public et rollback staging.
 
 **CI frontend source `921516af4` :** #39090844941 SUCCESS (build Vite, tsc, deux shards et client Jest) mais trace nominative du nouveau test Idées absente ; ne pas généraliser au navigateur. Docs README/install mis à jour en local pour lever références anciennes, et workflow DOCX refactoré pour SHA exact ; commit de ce lot à enregistrer séparément.
+
+**Lot UX libre-service en préparation** : auto-initialisation native lors du premier clic de mission Idées si le catalogue contient un unique OpenRouter `openrouter/free`. Sinon le sélecteur explicite Projet reste nécessaire, aucun modèle payant choisi automatiquement. Tests : seul agent étranger, erreur API, gratuit unique, catalogue payant seul, Agent Worker trouvé. Pas de claim PASS avant CI.
+
+**DOCX sur source HEAD :** #39091502539 `SUCCESS` au SHA `ccb9ae9f5`, trace Mammoth deux conversions sans argparse/sprintf-js et 15/15 tests ZIP/DOCX ; avis npm non résolus, revue D-02 intacte.
