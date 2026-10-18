@@ -17,7 +17,7 @@ mongo_before="$("${compose[@]}" ps -q mongodb)"
 test -n "$mongo_before"
 ready_api() {
   local ready=0
-  for _ in $(seq 1 90); do
+  for _ in $(seq 1 45); do
     if curl -fsS --max-time 5 http://127.0.0.1:3090/api/config >/dev/null 2>&1; then ready=1; break; fi
     sleep 2
   done
@@ -37,7 +37,25 @@ for target in "$older" "$candidate"; do
   test -n "$api_id"
   test "$(sudo docker inspect "$api_id" --format '{{.Config.Image}}')" = "$target"
   test "$("${compose[@]}" ps -q mongodb)" = "$mongo_before"
-  ready_api
+  if ! ready_api; then
+    echo "BOTMODE_STAGING_API_READY=FAIL image_kind=$([ "$target" = "$older" ] && echo old || echo candidate)" >&2
+    sudo docker inspect "$api_id" --format 'CI_API_CONTAINER_STATE={{.State.Status}} EXIT={{.State.ExitCode}} OOM={{.State.OOMKilled}}' >&2 || true
+    # Logs originate only from the disposable CI image and synthetic credentials.
+    # Redact secrets and emit concise error diagnostics, not full environment dumps.
+    "${compose[@]}" logs --no-color --tail 140 api 2>&1 | \
+      sed -E 's/((password|secret|token|api[_-]?key)[=: ][[:space:]]*)[^[:space:]]+/\1[REDACTED]/Ig' | \
+      grep -Ei 'error|exception|failure|refus|mongo|config|invalid|denied|permission|missing|bind|fatal|listening|startup' | tail -70 >&2 || true
+    # Regardless of the downgrade failure, attempt recovery to the exact
+    # previously healthy candidate. Never declare inter-version rollback PASS.
+    export BOTMODE_IMAGE="$candidate"
+    "${compose[@]}" up -d --no-deps --force-recreate api
+    if ready_api && verify_marker && test "$("${compose[@]}" ps -q mongodb)" = "$mongo_before"; then
+      echo 'BOTMODE_STAGING_RECOVERY_TO_PUBLISHED_DIGEST=PASS'
+    else
+      echo 'BOTMODE_STAGING_RECOVERY_TO_PUBLISHED_DIGEST=FAIL' >&2
+    fi
+    exit 12
+  fi
   verify_marker
 done
 echo 'BOTMODE_STAGING_IMAGE_OLD_NEW_ROLLBACK=PASS'

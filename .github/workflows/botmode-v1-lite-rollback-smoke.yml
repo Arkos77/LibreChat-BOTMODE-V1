@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/botmode-v1-lite-rollback-smoke.yml'
+      - 'scripts/botmode/ci-staging-digest-rollback.sh'
   workflow_dispatch:
 
 permissions:
