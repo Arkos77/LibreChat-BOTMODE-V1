@@ -3,9 +3,26 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd -P)
 ARCHIVE=${1:?usage: restore.sh <mongodb-LibreChat.archive>}
 case "$ARCHIVE" in */mongodb-LibreChat.archive) ;; *) echo 'Refusing restore: expected mongodb-LibreChat.archive' >&2; exit 2;; esac
-[ -f "$ARCHIVE" ] || { echo 'Archive not found' >&2; exit 2; }
+[ -s "$ARCHIVE" ] || { echo 'Restore refused: missing or empty archive' >&2; exit 2; }
 # Resolve caller-relative backup paths BEFORE switching to the verified project.
 ARCHIVE="$(cd "$(dirname "$ARCHIVE")" && pwd -P)/mongodb-LibreChat.archive"
+# New backups carry a checksum. Refuse corruption, but keep explicitly
+# approved historical backups without a checksum restorable.
+if [ -e "$ARCHIVE.sha256" ]; then
+  if command -v sha256sum >/dev/null 2>&1; then
+    CHECK_HASH=(sha256sum --check --status)
+  elif command -v shasum >/dev/null 2>&1; then
+    CHECK_HASH=(shasum -a 256 --check)
+  else
+    echo 'Restore refused: no SHA256 verification tool available' >&2
+    exit 2
+  fi
+  (cd "$(dirname "$ARCHIVE")" &&
+    "${CHECK_HASH[@]}" mongodb-LibreChat.archive.sha256 >/dev/null 2>&1) || {
+    echo 'Restore refused: archive checksum mismatch' >&2
+    exit 2
+  }
+fi
 # docker compose without this chdir can target a different project from the caller's cwd.
 cd "$ROOT"
 docker compose -f docker-compose.botmode.yml ps --status running --services | grep -qx mongodb || { echo 'BOT MODE Compose MongoDB service is not running' >&2; exit 2; }

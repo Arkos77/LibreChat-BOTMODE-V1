@@ -1,6 +1,6 @@
 # BOT MODE V1 — Plan de retour arrière (candidat ; non validé en production)
 
-**Statut : procédure documentée, test de restauration réel non effectué.**
+**Statut : restauration réelle en CI jetable prouvée pour certains volumes et versions compatibles ; retour arrière après migration de schéma NON PROUVÉ.**
 Cette procédure s'applique exclusivement à un environnement de qualification ou à une installation dont l'administrateur maîtrise les sauvegardes. Elle ne constitue pas une autorisation de supprimer ou réinitialiser les données. Le GO/no-go de l'issue #19 reste obligatoire.
 
 ## Avant tout changement de version
@@ -35,6 +35,14 @@ Ne pas entreprendre la mise à niveau avant qu'une restauration sur conteneurs j
 - état des missions et checkpoints durables,
 - lisibilité des documents, fichiers joints et index nécessaires,
 - absence de perte après un second redémarrage.
+
+## Scripts de sauvegarde/restauration — protections sur le HEAD de PR #29
+
+Le script `scripts/botmode/backup.sh <dossier-destination>` conserve le chemin de destination fourni par l'appelant, même lancé depuis un autre répertoire. Il **échoue** si MongoDB n'est pas démarré, si une archive finale existe déjà, si `mongodump` échoue ou si le dump est vide. Il n'annonce `BOTMODE_BACKUP_DB=COMPLETE` qu'après l'écriture de l'archive sous un nom temporaire, la publication du nom final sans écraser une archive existante, puis le calcul de son fichier `.sha256`. En cas d'échec, la sortie partielle est nettoyée. Le dossier `mongodb.SKIPPED` signale un backup incomplet, jamais exploitable comme archive de restauration.
+
+Le script `scripts/botmode/restore.sh <dossier>/mongodb-LibreChat.archive` refuse les archives vides ou corrompues lorsqu'un checksum est présent et garde la confirmation explicite `BOTMODE_CONFIRM_RESTORE=YES` avant `mongorestore --drop`. Les anciennes archives sans checksum exigent la même autorisation et une vérification manuelle préalable. Les checksums détectent les corruptions accidentelles mais **ne prouvent ni l'authenticité ni la cohérence logique des données**.
+
+La sauvegarde native de MongoDB seule n'englobe **pas** les volumes Redis, PostgreSQL, Meilisearch, les fichiers utilisateurs ni les autres services ; elle n'est pas une capture multi-volumes cohérente. Ne jamais s'en servir seule pour autoriser une mise à jour du schéma ou un rollback de mission longue. **Tests de ces protections :** 10 simulations Docker sans données réelles, à revalider dans le préflight GitHub du SHA final.
 
 ## Retour arrière du runtime uniquement (si schéma inchangé)
 
