@@ -630,7 +630,12 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
     try {
       const specialist = await createSavedAgent(page, token, 'Specialist');
       specialistId = specialist.id;
-      const worker = await createSavedAgent(page, token, 'Worker', specialist.id);
+      // A planned Worker -> specialist graph edge is not an SDK delegation
+      // tool invocation. Keep this positive crash-recovery test genuinely
+      // model-only, with BOTH saved agent identities and the explicit edge.
+      // SDK tool delegation is separately rejected without durable child
+      // effect receipts; do not silently strip a previously granted tool.
+      const worker = await createSavedAgent(page, token, 'Worker');
       workerId = worker.id;
       const mission = makeMission(worker.id, specialist.id, false);
       const conversationId = randomUUID();
@@ -701,6 +706,21 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       const durablePreKill = await loadDurableJob(redis, streamId);
       expect(durablePreKill.status).toBe('running');
       expect(Object.keys(durablePreKill.state?.results ?? {})).toHaveLength(0);
+      expect(
+        durablePreKill.plan?.tasks?.map((task) => [task.key, task.agentId, task.dependsOn]),
+      ).toEqual([
+        ['worker', worker.id, []],
+        ['specialist', specialist.id, ['worker']],
+      ]);
+      const originalCapabilityText = await redis.hget(
+        jobKeys[0],
+        'nativeMissionCapabilityAttestation',
+      );
+      expect(
+        originalCapabilityText,
+        'durable original model-only capabilities before SIGKILL',
+      ).toBeTruthy();
+      expect(JSON.parse(originalCapabilityText!)?.mode).toBe('model_only');
       console.log(
         'PR28_PRE_SIGKILL_MONGO_CHECKPOINT_COUNTS=' +
           JSON.stringify(await getPersistedCheckpointCounts(conversationId, namespace!)),

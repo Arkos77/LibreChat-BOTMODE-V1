@@ -130,5 +130,36 @@ const descriptiveCatalog = createNativeMissionCapabilityAttestation({
 });
 assert.equal(descriptiveCatalog.mode, 'model_only');
 assert.equal(descriptiveCatalog.digest, recorded.digest);
+// Orchestrated Worker -> specialist tasks are graph edges, not an SDK tool.
+// The same saved agents with optional SDK subagent delegation enabled must
+// never be replayed as though their original tool surface had been empty.
+const workerToSpecialistPlan = {
+  ...plan,
+  tasks: [
+    { key: 'worker', agentId: 'worker', dependsOn: [], nodeId: 'p6_worker' },
+    { key: 'specialist', agentId: 'specialist', dependsOn: ['worker'], nodeId: 'p6_specialist' },
+  ],
+};
+const graphOnly = createNativeMissionCapabilityAttestation({
+  plan: workerToSpecialistPlan,
+  agents: [worker, specialist],
+});
+assert.equal(graphOnly.mode, 'model_only');
+const delegated = createNativeMissionCapabilityAttestation({
+  plan: workerToSpecialistPlan,
+  agents: [{ ...worker, subagents: { enabled: true, agent_ids: ['specialist'] } }, specialist],
+});
+assert.equal(delegated.mode, 'receipts_required');
+assert.notEqual(delegated.digest, graphOnly.digest);
+assert.throws(
+  () =>
+    assertNativeMissionCapabilityAttestation({
+      recorded: delegated,
+      plan: workerToSpecialistPlan,
+      agents: [worker, specialist],
+    }),
+  /BASELINE_CHANGED/,
+);
+console.log('BOTMODE_WORKER_SPECIALIST_GRAPH_VS_DELEGATION_RECEIPTS=PASS');
 assert.equal(JSON.stringify(recorded).includes('secret'), false);
 console.log('BOTMODE_ORIGINAL_TOOL_DELEGATION_MODEL_DRIFT_DENIAL=PASS');
