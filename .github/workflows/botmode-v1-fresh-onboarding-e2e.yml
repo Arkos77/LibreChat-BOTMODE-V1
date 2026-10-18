@@ -1,4 +1,4 @@
-name: BOTMODE V1 Native Agent Onboarding E2E (pinned)
+name: BOTMODE V1 Native Agent Onboarding E2E (exact HEAD)
 
 on:
   push:
@@ -15,15 +15,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Checkout exact PR18 production-fix candidate
+      - name: Checkout exact triggering SHA (not historical candidate)
         uses: actions/checkout@v4
         with:
-          ref: d4e82dded5df49f17b97e20361c89796b8f1e068
+          ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Verify exact candidate and pristine installation
+      - name: Verify exact triggering revision and pristine installation
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = 'd4e82dded5df49f17b97e20361c89796b8f1e068'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test ! -e .env
           test ! -e .botmode-database-auth-initialized
           echo 'CI_FRESH_INSTALL_INPUT=PRISTINE'
@@ -32,7 +32,7 @@ jobs:
           set -euo pipefail
           docker build --target node -f Dockerfile -t botmode-v1-fresh-install:ci .
           docker image inspect botmode-v1-fresh-install:ci >/dev/null
-          echo 'CI_FRESH_RUNTIME_IMAGE=BUILT_FROM_CANDIDATE'
+          echo 'CI_FRESH_RUNTIME_IMAGE=BUILT_FROM_EXACT_HEAD'
       - name: Install Lite using the published installer contract
         run: |
           set -euo pipefail
@@ -268,8 +268,8 @@ jobs:
         run: |
           {
             echo '### BOT MODE V1 — First-user native agent onboarding'
-            echo 'Pinned head: d4e82dded5df49f17b97e20361c89796b8f1e068'
+            echo "Exact triggering head: $GITHUB_SHA"
             echo 'Runs actual install.sh on a new disposable GitHub runner with the candidate Docker image built locally, no API keys or external inference.'
-            echo 'Checks real first-user HTTP onboarding (6 agents, owner ACL, Worker delegation, idempotence, and restart durability).'
+            echo 'Checks explicit authenticated first-user HTTP onboarding (6 agents, owner ACL, Worker delegation, idempotence, restart durability). The setup POST is deliberate: this does not prove zero-click auto-provisioning.'
             echo 'Does NOT validate public GHCR anonymous pull or externally hosted LLM.'
           } >> "$GITHUB_STEP_SUMMARY"
