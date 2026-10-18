@@ -139,7 +139,9 @@ jobs:
             sleep 2
           done
           test "$ready" = 1
-          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps --status running
+          # The installer correctly keeps .env mode 600 and UID-1000 owned.
+          # Use the same root privilege as the first install to inspect Compose.
+          sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps --status running
           echo 'BOTMODE_CURRENT_FRESH_LITE_HTTP=PASS'
           echo 'SCOPE=source-built exact HEAD, CLI first installation and HTTP; no registry publication, paid provider or external tool replay'
       - name: Delete runner-only stack and generated credentials
