@@ -4,6 +4,9 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 STAMP=${BOTMODE_BACKUP_STAMP:-$(date +%Y%m%d-%H%M%S)}
 DEST=${1:-"$ROOT/../backups/botmode-$STAMP"}
 mkdir -p "$DEST"
+# Backup destinations supplied relative to the caller must not move when
+# changing into the source checkout to run git and Docker Compose.
+DEST="$(cd "$DEST" && pwd -P)"
 cd "$ROOT"
 git diff --check
 git rev-parse HEAD > "$DEST/git-head.txt"

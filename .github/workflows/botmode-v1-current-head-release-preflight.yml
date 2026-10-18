@@ -13,6 +13,9 @@ on:
       - 'Dockerfile'
       - 'librechat.yaml'
       - 'scripts/botmode/tests/test_model_routing_free_only.py'
+      - 'scripts/botmode/tests/test_restore_target.py'
+      - 'scripts/botmode/backup.sh'
+      - 'scripts/botmode/restore.sh'
   workflow_dispatch:
 
 permissions:
@@ -73,6 +76,14 @@ jobs:
       - name: Verify free-only default native host routing
         shell: bash
         run: python3 -m unittest scripts.botmode.tests.test_model_routing_free_only -v
+      - name: Verify safe caller-relative backup and explicit restore boundary (fake Docker only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/botmode/backup.sh
+          bash -n scripts/botmode/restore.sh
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.botmode.tests.test_restore_target -v
+          echo 'BOTMODE_BACKUP_RESTORE_TARGET_SAFETY=PASS'
       - name: Remove disposable dotenv
         if: always()
         run: rm -f .env

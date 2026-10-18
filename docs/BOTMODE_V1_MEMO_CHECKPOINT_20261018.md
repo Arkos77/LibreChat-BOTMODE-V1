@@ -125,3 +125,8 @@ Connexion Remote `penguin` confirmée ; `git status` initialement vide ; local H
 
 
 **Handoff nouvelle source (`3b54802c6`) :** #39118200640 12/12 Playwright mock et #39118200660 1/1 contrat SDK parent→enfant→parent, tous deux SUCCESS sur HEAD ; ne pas prétendre child durable réel avec fournisseur. Revue risque npm/licences rafraîchie dans le fichier EXISTANT `BOTMODE_V1_NPM_RISK_DECISION_20261014.md`. Audit de prod réépinglé à PR HEAD à qualifier par CI ; 3 modérées historiques, D-02 pas accepté. Stable et publication candidate toujours NO-GO sans décision humaine.
+
+
+**Inventaire des CHECKOUTS HISTORIQUES (sans les relancer)** : audit sur PR29 `a682b7828` : plusieurs workflows publiés/fresh-GHCR/pinned-Oracle/rollback utilisent explicitement `54b30a3`, `d4e82dde`, `ea24f476`, `4727adf` ou `8c6c2c4`. Leur statut CI SUCCESS ne couvre jamais le digest/source HEAD. Le détail des fichiers est consigné uniquement dans l'inventaire maître (même document, pas de registre parallèle). Lancer seulement la distribution réellement source-matched et approuvée, pas une série de reproductions historiques.
+
+**Protection données backup/restore** : correctifs ciblés dans les scripts existants : restore résout l'archive avant de se placer dans le bon checkout, backup conserve le répertoire donné par l'appelant. Les 4 tests avec Docker simulé passent, contrôle réel de confirmation `BOTMODE_CONFIRM_RESTORE=YES` intact. Prochain run preflight HEAD vérifiera ces invariants sans créer ni restaurer de DB réelle. D-03/04/05 restent humains.
