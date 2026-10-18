@@ -286,6 +286,11 @@ const ProjectChatList = ({
             role="presentation"
             containerRole="presentation"
             tabIndex={-1}
+            /** Grid's default aria-readonly=true and aria-label="grid" are
+             * valid for an actual grid but not for this presentation wrapper.
+             * Null overrides the library defaults and removes both DOM attrs. */
+            aria-readonly={null as unknown as boolean}
+            aria-label={null as unknown as string}
           />
         )}
       </AutoSizer>
