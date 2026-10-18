@@ -219,7 +219,8 @@ jobs:
             console.error('CI_PHASE=user_insert_pass');
             if (!signingSecret) throw new Error('JWT_SECRET unavailable in mounted .env');
             console.error('CI_PHASE=jwt_sign_begin');
-            process.stdout.write(jwt.sign({ id: String(id) }, signingSecret, { expiresIn: '2m' }));
+            // CI-only principal: bounded to this disposable job, not production authentication.
+            process.stdout.write(jwt.sign({ id: String(id) }, signingSecret, { expiresIn: '15m' }));
             console.error('CI_PHASE=jwt_sign_pass');
             await mongoose.disconnect();
           })().catch((error) => { console.error('CI principal creation:', JSON.stringify({name:error?.name,code:error?.code,codeName:error?.codeName,phase:error?.errorLabelSet ? 'mongo' : undefined,messageClass: /auth/i.test(error?.message || '') ? 'authentication' : /connect|network|server selection/i.test(error?.message || '') ? 'connection' : /module/i.test(error?.message || '') ? 'module' : 'other'})); process.exit(1); });

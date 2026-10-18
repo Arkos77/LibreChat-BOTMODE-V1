@@ -1,4 +1,4 @@
-name: BOTMODE V1 OpenRouter Tool Calling Gate
+name: BOTMODE V1 Current HEAD Free Tool Calling Gate
 on:
   workflow_dispatch:
 permissions:
@@ -8,13 +8,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
-      - name: Checkout immutable candidate
+      - name: Checkout exact triggering source revision
         uses: actions/checkout@v4
         with:
-          ref: ea24f476164153735b5f5c95fe9c7861d4f97a1f
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Assert candidate revision
-        run: test "$(git rev-parse HEAD)" = 'ea24f476164153735b5f5c95fe9c7861d4f97a1f'
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - name: Verify real tool calling with free OpenRouter routing
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -65,4 +65,4 @@ jobs:
         if: always()
         run: |
           echo '### OpenRouter free tool-calling gate' >> "$GITHUB_STEP_SUMMARY"
-          echo 'A successful tool call is necessary, but does not prove the BOTMODE mission E2E or publication.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'A successful single tool call is one sample of the configured OpenRouter/free route; it does not prove specialist delegation, Oracle, long missions, or fallback availability.' >> "$GITHUB_STEP_SUMMARY"
