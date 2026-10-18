@@ -17,7 +17,7 @@ mongo_before="$("${compose[@]}" ps -q mongodb)"
 test -n "$mongo_before"
 ready_api() {
   local ready=0
-  for _ in $(seq 1 45); do
+  for _ in $(seq 1 25); do
     if curl -fsS --max-time 5 http://127.0.0.1:3090/api/config >/dev/null 2>&1; then ready=1; break; fi
     sleep 2
   done
@@ -30,6 +30,29 @@ verify_marker() {
   ' sh 'print(db.rollback_ci.countDocuments({_id:"rollback-smoke",payload:"preserved"}))' | tail -1 | tr -d '\r')"
   test "$count" = 1
 }
+mongo_admin_works() {
+  "${compose[@]}" exec -T mongodb sh -ec '
+    mongo --quiet --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin admin --eval "print(db.adminCommand({ping:1}).ok)"
+  ' 2>/dev/null | tail -1 | grep -qx 1
+}
+api_mongo_uri_matches() {
+  # Only emit booleans, never secrets or the full URI.
+  sudo docker inspect "$1" | python3 -c '
+import json,os,sys,urllib.parse
+obj=json.load(sys.stdin)[0]
+env=dict(v.split("=",1) for v in obj["Config"]["Env"] if "=" in v)
+u=urllib.parse.urlparse(env.get("MONGO_URI",""))
+ok=(u.username=="botmode_admin" and urllib.parse.unquote(u.password or "")==os.environ.get("BOTMODE_MONGO_PASSWORD") and u.hostname=="mongodb" and u.port==27017)
+print("BOTMODE_STAGING_CONTAINER_MONGO_URI_MATCH="+("PASS" if ok else "FAIL"))
+sys.exit(0 if ok else 1)
+'
+}
+if mongo_admin_works; then
+  echo 'BOTMODE_STAGING_MONGO_ADMIN_BEFORE=PASS'
+else
+  echo 'BOTMODE_STAGING_MONGO_ADMIN_BEFORE=FAIL' >&2
+  exit 5
+fi
 for target in "$older" "$candidate"; do
   export BOTMODE_IMAGE="$target"
   "${compose[@]}" up -d --no-deps --force-recreate api
@@ -40,6 +63,8 @@ for target in "$older" "$candidate"; do
   if ! ready_api; then
     echo "BOTMODE_STAGING_API_READY=FAIL image_kind=$([ "$target" = "$older" ] && echo old || echo candidate)" >&2
     sudo docker inspect "$api_id" --format 'CI_API_CONTAINER_STATE={{.State.Status}} EXIT={{.State.ExitCode}} OOM={{.State.OOMKilled}}' >&2 || true
+    if mongo_admin_works; then echo 'BOTMODE_STAGING_MONGO_ADMIN_AFTER_OLD=PASS'; else echo 'BOTMODE_STAGING_MONGO_ADMIN_AFTER_OLD=FAIL' >&2; fi
+    api_mongo_uri_matches "$api_id" || true
     # Logs originate only from the disposable CI image and synthetic credentials.
     # Redact secrets and emit concise error diagnostics, not full environment dumps.
     "${compose[@]}" logs --no-color --tail 140 api 2>&1 | \
@@ -53,6 +78,13 @@ for target in "$older" "$candidate"; do
       echo 'BOTMODE_STAGING_RECOVERY_TO_PUBLISHED_DIGEST=PASS'
     else
       echo 'BOTMODE_STAGING_RECOVERY_TO_PUBLISHED_DIGEST=FAIL' >&2
+      new_api_id="$("${compose[@]}" ps -q api || true)"
+      if [ -n "$new_api_id" ]; then
+        api_mongo_uri_matches "$new_api_id" || true
+        sudo docker inspect "$new_api_id" --format 'CI_RECOVERY_CONTAINER_STATE={{.State.Status}} EXIT={{.State.ExitCode}} OOM={{.State.OOMKilled}}' >&2 || true
+      fi
+      if mongo_admin_works; then echo 'BOTMODE_STAGING_MONGO_ADMIN_AFTER_RECOVERY=PASS'; else echo 'BOTMODE_STAGING_MONGO_ADMIN_AFTER_RECOVERY=FAIL' >&2; fi
+      "${compose[@]}" logs --no-color --tail 60 api 2>&1 | sed -E 's/((password|secret|token|api[_-]?key)[=: ][[:space:]]*)[^[:space:]]+/\1[REDACTED]/Ig' | grep -Ei 'error|exception|failure|authentication|Mongo' | tail -25 >&2 || true
     fi
     exit 12
   fi
