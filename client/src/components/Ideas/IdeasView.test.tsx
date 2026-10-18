@@ -97,6 +97,28 @@ describe('BOT MODE Ideas mission authorization', () => {
     expect(mockNavigate.mock.calls[0][0]).toContain('agent_id=new-worker');
   });
 
+  it('refuses a Worker initialized without its required capabilities', async () => {
+    jest.mocked(dataService.listAgents).mockResolvedValueOnce({ data: [] } as never);
+    jest.mocked(dataService.getModels).mockResolvedValue({
+      OpenRouter: ['openrouter/free'],
+    } as never);
+    jest.mocked(dataService.initializeBotModeAgents).mockResolvedValue({
+      capabilitiesComplete: false,
+      missingCapabilities: [{ name: 'BOT MODE Worker', deniedTools: ['delegate'] }],
+    } as never);
+    renderIdeas();
+    fireEvent.click(await screen.findByRole('button', { name: 'com_ui_idea_analyze' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('capacités');
+    expect(dataService.initializeBotModeAgents).toHaveBeenCalledWith({
+      provider: 'OpenRouter',
+      model: 'openrouter/free',
+    });
+    expect(dataService.listAgents).toHaveBeenCalledTimes(1);
+    expect(dataService.createProject).not.toHaveBeenCalled();
+    expect(dataService.updateIdea).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it('never auto-provisions a paid-only catalog on an idea mission', async () => {
     jest.mocked(dataService.listAgents).mockResolvedValue({ data: [] } as never);
     jest.mocked(dataService.getModels).mockResolvedValue({ Gemini: ['paid-model'] } as never);

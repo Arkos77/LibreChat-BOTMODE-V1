@@ -342,7 +342,10 @@ export default function IdeasView() {
         if (freeModels.length !== 1) {
           throw new Error('BOT_MODE_WORKER_NOT_INITIALIZED');
         }
-        await dataService.initializeBotModeAgents(freeModels[0]);
+        const setup = await dataService.initializeBotModeAgents(freeModels[0]);
+        if (!setup.capabilitiesComplete) {
+          throw new Error('BOT_MODE_CAPABILITIES_INCOMPLETE');
+        }
         const refreshedAgents = await dataService.listAgents({
           requiredPermission: PermissionBits.EDIT,
           limit: 1000,
@@ -385,7 +388,9 @@ export default function IdeasView() {
       setLaunchError(
         error instanceof Error && error.message === 'BOT_MODE_WORKER_NOT_INITIALIZED'
           ? 'Mission non lancée : initialisez d’abord le Worker BOT MODE dans Projet.'
-          : 'Mission non lancée : vérifiez la connexion et les autorisations.',
+          : error instanceof Error && error.message === 'BOT_MODE_CAPABILITIES_INCOMPLETE'
+            ? 'Mission non lancée : certaines capacités du Worker BOT MODE sont indisponibles ou non autorisées.'
+            : 'Mission non lancée : vérifiez la connexion et les autorisations.',
       ),
     onSuccess: ({ projectId, workerId, prompt }, { mode }) => {
       const params = new URLSearchParams({
