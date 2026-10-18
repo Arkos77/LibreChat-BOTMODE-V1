@@ -6,6 +6,8 @@
 
 ## État opérationnel courant — 19 octobre 2026
 
+**Graphe des PR et ordre de validation :** [Release train du 19 octobre](BOTMODE_V1_RELEASE_TRAIN_20261019.md). Document de planification seulement ; aucune fusion/acceptation D-02 implicite.
+
 > **Résumé prioritaire.** Les références E01–E17 et les cases IN/OR/SE ci-dessous documentent l'état initial du 18 octobre et ne doivent pas être interprétées comme des verdicts actuels lorsque des preuves plus récentes sont listées ici ou dans les sections DIST/LIC/SE ultérieures. Les obligations non couvertes restent ouvertes.
 
 | Sujet actuel | Preuve vérifiée | Décision |
