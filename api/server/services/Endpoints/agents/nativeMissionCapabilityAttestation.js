@@ -62,6 +62,10 @@ function createNativeMissionCapabilityAttestation({
         toolRegistry: names(agent.toolRegistry),
         toolOptions: names(agent.tool_options),
         toolResources: names(agent.tool_resources),
+        // Saved legacy agent-chain linkage is the host-authorized graph
+        // binding, NOT an executable SDK subagent tool. Fingerprint it so a
+        // deleted/repointed specialist relationship invalidates cold replay.
+        graphBindingAgentIds: names(agent.agent_ids),
         skills: names(agent.skills),
         files:
           nonempty(agent.files) ||
@@ -80,7 +84,10 @@ function createNativeMissionCapabilityAttestation({
         dynamicTools:
           agent.hasDeferredTools === true ||
           agent.skills_enabled === true ||
-          nonempty(agent.edges) ||
+          // Warm discovery materializes legacy agent_ids into graph edges.
+          // The explicit native MissionPlan supersedes those edges entirely;
+          // treating topology metadata as an executable tool incorrectly
+          // disables originally model-only Worker -> specialist recovery.
           nonempty(agent.deferredToolDefinitions) ||
           nonempty(agent.toolContextMap) ||
           nonempty(agent.dynamicToolContextMap) ||

@@ -53,6 +53,7 @@ async function createSavedAgent(
   token: string,
   role: 'Worker' | 'Specialist',
   subagentId?: string,
+  graphBoundAgentId?: string,
 ): Promise<SavedAgent> {
   return requestJson<SavedAgent>(page, {
     path: '/api/agents',
@@ -67,6 +68,7 @@ async function createSavedAgent(
       ...(subagentId
         ? { subagents: { enabled: true, allowSelf: false, agent_ids: [subagentId] } }
         : {}),
+      ...(graphBoundAgentId ? { agent_ids: [graphBoundAgentId] } : {}),
     },
   });
 }
@@ -630,12 +632,10 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
     try {
       const specialist = await createSavedAgent(page, token, 'Specialist');
       specialistId = specialist.id;
-      // A planned Worker -> specialist graph edge is not an SDK delegation
-      // tool invocation. Keep this positive crash-recovery test genuinely
-      // model-only, with BOTH saved agent identities and the explicit edge.
-      // SDK tool delegation is separately rejected without durable child
-      // effect receipts; do not silently strip a previously granted tool.
-      const worker = await createSavedAgent(page, token, 'Worker');
+      // Authorize the specialist through the existing VIEW-checked legacy
+      // chain. The deterministic native graph executes the planned edges,
+      // without installing an implicit SDK subagent delegation tool.
+      const worker = await createSavedAgent(page, token, 'Worker', undefined, specialist.id);
       workerId = worker.id;
       const mission = makeMission(worker.id, specialist.id, false);
       const conversationId = randomUUID();

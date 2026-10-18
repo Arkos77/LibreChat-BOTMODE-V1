@@ -40,7 +40,6 @@ for (const changed of [
   { ...worker, dynamicToolContextMap: { secret: {} } },
   { ...worker, subagentGraphMemberMetadata: [{ id: 'extra' }] },
   { ...worker, skillCount: 1 },
-  { ...worker, edges: [{ to: 'specialist' }] },
   { ...worker, model: 'gpt-4.1' },
   { ...worker, provider: 'custom' },
 ]) {
@@ -150,6 +149,37 @@ const delegated = createNativeMissionCapabilityAttestation({
   agents: [{ ...worker, subagents: { enabled: true, agent_ids: ['specialist'] } }, specialist],
 });
 assert.equal(delegated.mode, 'receipts_required');
+const chainLinked = createNativeMissionCapabilityAttestation({
+  plan: workerToSpecialistPlan,
+  agents: [{ ...worker, agent_ids: ['specialist'] }, specialist],
+});
+assert.equal(chainLinked.mode, 'model_only');
+const discoveredEdges = createNativeMissionCapabilityAttestation({
+  plan: workerToSpecialistPlan,
+  agents: [
+    {
+      ...worker,
+      agent_ids: ['specialist'],
+      edges: [{ from: 'worker', to: 'specialist', edgeType: 'direct' }],
+    },
+    specialist,
+  ],
+});
+assert.deepEqual(
+  discoveredEdges,
+  chainLinked,
+  'native graph plan replaces warm-only legacy chain edges',
+);
+assert.throws(
+  () =>
+    assertNativeMissionCapabilityAttestation({
+      recorded: chainLinked,
+      plan: workerToSpecialistPlan,
+      agents: [worker, specialist],
+    }),
+  /BASELINE_CHANGED/,
+  'revoking specialist chain binding must block cold replay',
+);
 assert.notEqual(delegated.digest, graphOnly.digest);
 assert.throws(
   () =>
