@@ -27,7 +27,7 @@ jobs:
           source_sha=13edaa4f4d0a44d659d76ccb5b160358ad60dfc2
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
           git fetch --no-tags origin "$source_sha"
-          unexpected="$(git diff --name-only "$source_sha" HEAD | grep -Ev '^(\.github/workflows/botmode-v1-lite-rollback-smoke\.yml|\.github/workflows/botmode-v1-integrated-first-user-acceptance\.yml|\.github/workflows/botmode-v1-published-mission-rehearsal\.yml|scripts/botmode/ci-staging-digest-rollback\.sh|docs/BOTMODE_V1_(INVENTAIRE_MAITRE|MEMO_CHECKPOINT)_20261018\.md|docs/BOTMODE_V1_GHCR_RELEASE_GATE\.md)$' || true)"
+          unexpected="$(git diff --name-only "$source_sha" HEAD | grep -Ev '^(\.github/workflows/botmode-v1-lite-rollback-smoke\.yml|\.github/workflows/botmode-v1-integrated-first-user-acceptance\.yml|\.github/workflows/botmode-v1-published-mission-rehearsal\.yml|\.github/workflows/botmode-v1-ghcr-subagent-oracle-probe\.yml|scripts/botmode/ci-staging-digest-rollback\.sh|docs/BOTMODE_V1_(INVENTAIRE_MAITRE|MEMO_CHECKPOINT)_20261018\.md|docs/BOTMODE_V1_GHCR_RELEASE_GATE\.md)$' || true)"
           test -z "$unexpected" || { echo "Unexpected runtime source drift: $unexpected" >&2; exit 1; }
           test ! -e .env
           docker logout ghcr.io >/dev/null 2>&1 || true
