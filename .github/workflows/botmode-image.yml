@@ -31,9 +31,10 @@ permissions:
   packages: read
 
 concurrency:
-  # Serialize all attempted publications for the same source SHA (even across refs).
-  group: botmode-runtime-image-${{ github.sha }}
-  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+  # Read-only PR preflights cannot cancel a dispatched candidate publication.
+  # Manual guard checks and publication attempts serialize by identical source SHA.
+  group: botmode-runtime-image-${{ github.event_name == 'workflow_dispatch' && 'manual' || 'preflight' }}-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   preflight:
