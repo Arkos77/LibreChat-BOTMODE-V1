@@ -279,6 +279,13 @@ const ProjectChatList = ({
             onRowsRendered={handleRowsRendered}
             className="outline-none"
             style={{ outline: 'none' }}
+            /** React Virtualized defaults to role=grid and containerRole=row,
+             * but our rows contain date labels, articles and buttons rather
+             * than gridcell elements. Do not advertise a broken ARIA grid.
+             * Individual conversation buttons retain keyboard focus. */
+            role="presentation"
+            containerRole="presentation"
+            tabIndex={-1}
           />
         )}
       </AutoSizer>
