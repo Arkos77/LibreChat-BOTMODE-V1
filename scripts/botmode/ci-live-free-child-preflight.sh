@@ -88,5 +88,20 @@ PY_DIAG
     exit 3
 fi
 # Do not emit the JWT, model prompts or any provider reply to Action logs.
+# /api/config can answer before post-listen initialization finishes.
+# Agent POST readiness is explicitly fenced by the application /readyz gate.
+mission_ready=0
+for _ in $(seq 1 60); do
+  if curl -fsS --max-time 4 http://127.0.0.1:3090/readyz >/dev/null 2>&1; then
+    mission_ready=1
+    break
+  fi
+  sleep 2
+done
+if test "$mission_ready" != 1; then
+  echo 'CI_LIVE_FREE_FAIL=MISSION_SERVER_NOT_READY'
+  exit 3
+fi
+echo 'CI_LIVE_FREE_MISSION_SERVER_READY=PASS'
 echo 'CI_LIVE_FREE_REAL_OPENROUTER_ENDPOINT_READY=PASS'
 python3 scripts/botmode/ci-live-free-child-oracle-gate.py
