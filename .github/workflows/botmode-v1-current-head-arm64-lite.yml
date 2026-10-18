@@ -1,0 +1,110 @@
+name: BOTMODE V1 Exact HEAD Native ARM64 Lite
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-current-head-arm64-lite.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Genuine native ARM64, full Lite install from current PR HEAD. This job
+# never pushes to GHCR, consumes provider keys or accesses user volumes.
+jobs:
+  arm64-source-lite:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 100
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      COMPOSE_PROJECT_NAME: botmode-native-source-${{ github.run_id }}-${{ github.run_attempt }}
+      BOTMODE_HOST_PORT: '3098'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - name: Verify exact source and native ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${SOURCE_SHA}"
+          test "$(uname -m)" = aarch64
+          test ! -e .env
+          [[ "${COMPOSE_PROJECT_NAME}" =~ ^botmode-native-source-[0-9]+-[0-9]+$ ]]
+          echo 'CI_ARM64_LITE_NATIVE_HEAD=PASS'
+      - uses: docker/setup-buildx-action@v4
+      - name: Build exact source ARM64 image locally, no push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          target: node
+          platforms: linux/arm64
+          load: true
+          push: false
+          tags: botmode-source-arm64:${{ env.SOURCE_SHA }}
+          cache-from: type=gha,scope=botmode-arm64
+          cache-to: type=gha,mode=max,scope=botmode-arm64
+          build-args: |
+            BUILD_COMMIT=${{ env.SOURCE_SHA }}
+            BUILD_BRANCH=${{ github.head_ref || github.ref_name }}
+      - name: First install full Lite stack on isolated runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(docker image inspect "botmode-source-arm64:${SOURCE_SHA}" --format '{{.Architecture}}')" = arm64
+          sudo git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          sudo --preserve-env=COMPOSE_PROJECT_NAME,BOTMODE_HOST_PORT ./install.sh \
+            --lite --no-pull --image "botmode-source-arm64:${SOURCE_SHA}" \
+            > "${RUNNER_TEMP}/arm64-install.log" 2>&1 || {
+              echo 'CI_ARM64_LITE_INSTALL=FAIL'
+              exit 1
+            }
+          grep -q '^BOTMODE_BOOTSTRAP=PASS$' "${RUNNER_TEMP}/arm64-install.log"
+          grep -q '^BOTMODE_STACK=STARTED$' "${RUNNER_TEMP}/arm64-install.log"
+          test -s .botmode-database-auth-initialized
+          echo 'CI_ARM64_LITE_FRESH_INSTALL=PASS'
+      - name: Verify API, Node runtime, and authenticated MongoDB on ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose=(sudo --preserve-env=COMPOSE_PROJECT_NAME,BOTMODE_HOST_PORT
+                   docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)
+          test "$("${compose[@]}" config --format json | python3 -c 'import json,sys;print(json.load(sys.stdin)["name"])')" = "${COMPOSE_PROJECT_NAME}"
+          api_id="$("${compose[@]}" ps -q api)"
+          test -n "${api_id}"
+          test "$(sudo docker inspect "${api_id}" --format '{{.Config.Image}}')" = "botmode-source-arm64:${SOURCE_SHA}"
+          test "$("${compose[@]}" exec -T api node -p process.arch | tr -d '\r')" = arm64
+          echo 'CI_ARM64_LITE_NODE_IMAGE=PASS'
+          ready=0
+          for i in $(seq 1 90); do
+            if curl -fsS --max-time 5 "http://127.0.0.1:${BOTMODE_HOST_PORT}/api/config" \
+               -o "${RUNNER_TEMP}/arm64-config.json" >/dev/null 2>&1; then ready=1; break; fi
+            sleep 2
+          done
+          test "${ready}" = 1
+          echo 'CI_ARM64_LITE_HTTP=PASS'
+          mongo_ready=0
+          for i in $(seq 1 30); do
+            if "${compose[@]}" exec -T mongodb sh -ec '
+                c=$(command -v mongosh || command -v mongo)
+                "${c}" --quiet --username "${MONGO_INITDB_ROOT_USERNAME}" \
+                  --password "${MONGO_INITDB_ROOT_PASSWORD}" \
+                  --authenticationDatabase admin admin \
+                  --eval "print(db.adminCommand({ping:1}).ok)"' 2>/dev/null \
+                  | tail -1 | grep -qx 1; then mongo_ready=1; break; fi
+            sleep 2
+          done
+          test "${mongo_ready}" = 1
+          echo 'CI_ARM64_LITE_AUTHENTICATED_MONGO=PASS'
+      - name: Clean up this disposable GitHub runner only
+        if: always()
+        shell: bash
+        run: |
+          if [[ "${COMPOSE_PROJECT_NAME:-}" =~ ^botmode-native-source-[0-9]+-[0-9]+$ ]]; then
+            sudo --preserve-env=COMPOSE_PROJECT_NAME,BOTMODE_HOST_PORT \
+              docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml \
+              down --volumes --remove-orphans >/dev/null 2>&1 || true
+          fi
+          sudo rm -f .env .botmode-database-auth-initialized

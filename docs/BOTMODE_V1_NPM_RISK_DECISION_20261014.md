@@ -38,3 +38,11 @@ Status: **REVIEW REQUIRED — NOT ACCEPTED**. Historical 14 Oct candidate was `5
 - Qualify a complete first-user mission with actual persisted Oracle-accepted publication on an unchanged, digest-pinned runtime; successful unit-contract suites are not equivalent.
 - Assess authenticated restore/ACL and durable mission recovery across a rollback, including DB compatibility.
 - Obtain explicit human approval to merge, deploy or move a stable tag/alias.
+
+## 18 octobre 2026 — preuve courante et licence transitive
+
+[Audit npm exact HEAD #39154363987](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39154363987) : 0 low, **3 moderate**, 0 high, 0 critical au commit 487e4046682f2aaf5fe8ee5101075ad91e815564. Le PASS de collecte n'accepte pas les risques. [GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c) décrit sprintf-js <=1.1.3 et ne liste aucune version corrigée.
+
+**Licence indépendante à arbitrer :** le lockfile rattache Sandpack React 2.19.10 → sandpack-client 2.19.8 → @codesandbox/nodebox 0.1.8. Le code client importe effectivement Sandpack dans client/src/components/Artifacts/ArtifactPreview.tsx. La [Sustainable Use License 1.0 de Nodebox](https://github.com/Sandpack/nodebox-runtime/blob/main/packages/nodebox/LICENSE) restreint l'utilisation commerciale et la redistribution à titre gratuit pour usage non commercial. Ne pas déclarer cette chaîne inutilisée, commercialement libre ni implicitement acceptée. Toute distribution stable/commerciale requiert une revue humaine de la licence effective et du mode de distribution ; une solution alternative requiert des tests de régression Artifacts/Sandpack.
+
+**D-02 reste NO-GO** : pas de modification du lockfile, pas de waiver ni d'autorisation commerciale implicite.
