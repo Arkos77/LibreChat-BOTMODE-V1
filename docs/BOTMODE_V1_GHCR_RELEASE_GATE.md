@@ -2,6 +2,12 @@
 
 Status: **NO-GO for stable publication** until all release gates below are evidenced. This checklist is not authorization to merge PRs, push a stable tag, or publish `:latest`.
 
+## Current immutable candidate — 19 October 2026
+
+**Latest precedence:** Runtime source `5fb904d375bffd6c54b5830cb1536088a9e77211` published in multiarchitecture OCI index `sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0` ([GHCR #39160163363](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39160163363), 8/8 success). PR #29 qualification head `bde77b8eb0999cf8507f36505f6cc2356e752b9d` 33 success / 1 skipped. AMD64+ARM64 SUL terms and notices [#39173138530](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39173138530) PASS. Lite API old→new rollback on exact digest [#39161877080](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39161877080) PASS (not full DB/Redis migration), first-user native setup and six agents [#39161877264](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39161877264) PASS, synthetic subagent/Oracle [#39161876975](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39161876975) PASS. The following 18 October historical subsection describes **prior digests and commits**, not the current candidate.
+
+**Open:** three moderate npm advisories (151/151 DOCX tests PASS, not patched or waived), actual free provider HTTP 429 and missing durable Oracle on new candidate, full migration/active-mission recovery scope, user-facing validation and human promotion gate. `main` protection is enabled with two mandatory native-image checks and no forced pushes. No merge, stable tag, or `latest`. **STABLE = NO-GO.**
+
 ## Scope and current evidence — 18 October 2026
 
 - **Current qualification:** [PR #29](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/29), Draft, runtime source `13edaa4f4d0a44d659d76ccb5b160358ad60dfc2`, current qualification source-controlled on PR #29 (latest evidence `83ac9282b096172b4e1f6ebbbace2eb2408872cc`), base `botmode-v1-integrated-candidate-20261014`. Earlier PR #20/#21/#23 results remain historical evidence only, not a release gate for this head.

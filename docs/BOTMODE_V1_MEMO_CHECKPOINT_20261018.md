@@ -2,6 +2,12 @@
 
 **Établi : 18 octobre 2026.** **Référence de continuité actuelle** : [inventaire maître](BOTMODE_V1_INVENTAIRE_MAITRE_20261018.md). Ce mémo devient **un fichier versionné lors du commit Git**, pas une modification automatique de la mémoire personnelle du compte ChatGPT. Les futurs assistants doivent le lire avec le prompt de reprise. Après push de ces documents, le SHA courant sera différent : **ne pas réattribuer 27 PASS au commit documentaire sans vérifier ses propres runs.**
 
+## 0. Actualisation de continuité — 19 octobre 2026
+
+**Référence effective actuelle :** [PR #29](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/29), HEAD de qualification `bde77b8eb0999cf8507f36505f6cc2356e752b9d`, 33 CI SUCCESS / 1 SKIPPED / 0 FAILURE ; image source `5fb904d375bffd6c54b5830cb1536088a9e77211`, index OCI `sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0`, GHCR publiée expérimentalement (#39160163363). L'ancien HEAD `a20cb060...` et les anciennes 28 CI en §2-3 sont des **photographies historiques**, pas l'état de reprise opérationnelle. La matrice de référence mise à jour est en tête de [l'inventaire](BOTMODE_V1_INVENTAIRE_MAITRE_20261018.md).
+
+**Sécurité :** licences SUL présentes sur AMD64/ARM64 (#39173138530) ; 151/151 DOCX PASS, mais trois modérées npm toujours ouvertes (#39173349239). `main` protège désormais les PR, les administrateurs, la résolution des discussions et impose deux checks de build natif ; pas d'approbation humaine implicite. OpenRouter gratuit 429 sur nouveau digest, Oracle externe non durable ; ne pas transformer une réponse SSE terminale en validation. **NO-GO stable.**
+
 ## 1. Objectif final non négociable
 
 **Terminer une BOT MODE V1 réellement utilisable et reproductible**, native dans LibreChat : installer depuis un SHA/tag immuable sur machine neuve, entrer **uniquement les clés API voulues** (les secrets DB sont générés), obtenir les agents natifs initialisés, lancer depuis Chat/Work/Idées/Projet une mission adaptée FAST/DEEP, faire intervenir à la demande Worker + spécialistes avec capacités autorisées, vérifier chaque résultat par Oracle, publier une unique réponse durable visible en conversation/projet. Préserver état, données, pièces jointes, historique MTO et sécurité des actions lors de HITL/pannes/redémarrages.

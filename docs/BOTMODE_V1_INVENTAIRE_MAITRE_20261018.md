@@ -1,8 +1,24 @@
 # BOT MODE V1 — INVENTAIRE MAÎTRE DES EXIGENCES ET PREUVES
 
-**Version du registre :** 2026-10-18, édition 1. **Type :** registre vivant de continuité et de clôture, **pas** certificat de release. **Statut décisionnel : NO-GO stable**, sauf décision ultérieure documentée sur tous les gates.
+**Version du registre :** 2026-10-19, édition 2. **Type :** registre vivant de continuité et de clôture, **pas** certificat de release. **Statut décisionnel : NO-GO stable**, sauf décision ultérieure documentée sur tous les gates.
 
 **Instantané de référence avant commit de documentation :** [PR #29](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/29), branche `botmode-v1-final-integration-qualification-20261016`, base `botmode-v1-integrated-candidate-20261014`, SHA **`a20cb0604a24dc5f4da9b41d30d5bcfa0831fc0a`**. Vérification 18/10/2026 via `git` + `gh`, worktree propre, PR OPEN/Draft, **28 workflows : 27 SUCCESS, 1 SKIPPED (accessibilité), 0 FAILURE**. Ce comptage est attaché à CE SHA antérieur à la version documentaire ; nouveau commit = refaire la lecture des statuts et la correspondance des preuves.
+
+## État opérationnel courant — 19 octobre 2026
+
+> **Résumé prioritaire.** Les références E01–E17 et les cases IN/OR/SE ci-dessous documentent l'état initial du 18 octobre et ne doivent pas être interprétées comme des verdicts actuels lorsque des preuves plus récentes sont listées ici ou dans les sections DIST/LIC/SE ultérieures. Les obligations non couvertes restent ouvertes.
+
+| Sujet actuel | Preuve vérifiée | Décision |
+|---|---|---|
+| Runtime distribué | Source `5fb904d375bffd6c54b5830cb1536088a9e77211`, GHCR `sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0`, [publication #39160163363](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39160163363) **8/8 SUCCESS**, AMD64 + ARM64, pull anonyme, Lite HTTP et navigateur | Candidate expérimentale publiée, **pas** stable |
+| Qualification principale | [PR #29](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/29) au SHA **`bde77b8eb0999cf8507f36505f6cc2356e752b9d`** : **33 SUCCESS, 1 SKIPPED, 0 FAILURE** ; first-user/six agents, Oracle simulé et rollback Lite dans leurs scénarios | V1 partiellement qualifiée ; PR **Draft** |
+| Licence de distribution | Usage **gratuit non commercial** confirmé ; [OCI licence native AMD64/ARM64 #39173138530](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39173138530) **2/2 SUCCESS**, notices et SUL Nodebox complète présentes dans l'image | Preuve de présence acquise, conditions de diffusion à respecter |
+| Sécurité DOCX | [#39173349239](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39173349239) **151/151 tests PASS** ; `npm audit --omit=dev` **3 moderate, 0 high/critical** | Atteignabilité CLI limitée selon analyse, **D-02 non approuvée** |
+| Fournisseur gratuit réel | [#39162031070](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39162031070) Oracle non durable ; [préflight #39162597549](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39162597549) HTTP 429 OpenRouter | **Non validé** sur cette image ; pas de modèle payant engagé |
+| Sécurité GitHub | `main` : PR requise, discussions résolues, admins soumis aux règles, force-push/suppression interdits, **checks AMD64 et ARM64 requis (GitHub Actions, strict)** | Protection technique activée ; aucune fusion autorisée |
+| Extensions hors chemin critique | PR #30 Go optionnel, PR #31 registre e-mail facultatif, PR #32 audit licence, [PR #33](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/33) documentation | Toutes en **Draft**, non intégrées |
+
+**GO stable : NON.** Reste en particulier : décision humaine sur les trois advisories npm, test fournisseur réel sans 429, périmètre migration Full/Redis et données actives, parcours manuel annoncé, promotion avec approbation. Les tests historiques ne prouvent pas à eux seuls ces conditions.
 
 ## 0. Règles de vérité et de classement
 
@@ -16,7 +32,7 @@
 
 | Preuve | Source / lien | Ce qu'elle démontre | Limite explicite |
 |---|---|---|---|
-| E01 | [CI 28 workflows du HEAD](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions?query=branch%3Abotmode-v1-final-integration-qualification-20261016) | 27 SUCCESS, 1 SKIPPED au SHA gelé ; Backend/Frontend/Static/Docker/Playwright verts | PASS n'est pas test universel ; accessibilité ignorée |
+| E01 | [CI du checkpoint initial, 28 workflows](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions?query=branch%3Abotmode-v1-final-integration-qualification-20261016) | 27 SUCCESS, 1 SKIPPED **au checkpoint historique**, remplacé pour le verdict courant par 33 SUCCESS / 1 SKIPPED au SHA `bde77b8eb` ; Backend/Frontend/Static/Docker/Playwright verts | PASS n'est pas test universel ; accessibilité ignorée |
 | E02 | [Oracle crash/restart #39085485305](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39085485305) | API SIGKILL, reprise Oracle et une seule publication dans les scénarios testés | Local fixture/model-only ou contrat testé, pas licence pour rejouer les outils arbitraires |
 | E03 | [SDK Cold SIGKILL #39085485272](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39085485272) | SDK checkpoint/claim, fencing Redis, comportements de crash/reprise SDK | Certaines dépendances SDK sont des images **pinnées** historiques |
 | E04 | [Current Image Subagent/Oracle #39085485235](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39085485235) | Sonde corrigée construisant l'image du HEAD, route des sous-agents modèle simulé | Pas une image GHCR publiée depuis ce HEAD, ni inférence payante |
