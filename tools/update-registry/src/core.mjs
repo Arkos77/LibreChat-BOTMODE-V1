@@ -86,6 +86,7 @@ export function createHandler({store,mailer,publicUrl,adminToken,unsubscribeSecr
           return respond(res,200,JSON.stringify({confirmedSubscribers:total}),'application/json; charset=utf-8');
         }
         if (req.method==='GET' && url.pathname==='/admin/subscribers.csv') {
+          if (await store.countConfirmed()>100000) return respond(res,413,'{"error":"export_limit"}','application/json; charset=utf-8');
           const lines=['email,createdAt,confirmedAt'];
           for (let offset=0;offset<100000;offset+=200) {
             const batch=await store.listConfirmed(offset,200);

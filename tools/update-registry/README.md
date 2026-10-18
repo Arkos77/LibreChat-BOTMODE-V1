@@ -32,7 +32,7 @@ curl -H "Authorization: Bearer $REGISTRY_ADMIN_TOKEN" https://updates.example.or
 curl -H "Authorization: Bearer $REGISTRY_ADMIN_TOKEN" https://updates.example.org/admin/subscribers.csv -o subscribers.csv
 ```
 
-Exports contain only email, signup date and confirmation date, are escaped against spreadsheet-formula injection, and must be handled as private records. Never include the admin token in public URLs.
+Exports contain only email, signup date and confirmation date, are escaped against spreadsheet-formula injection, and must be handled as private records. Bulk CSV export is capped at 100,000 subscribers with an explicit error above this threshold (no silent truncation). Never include the admin token in public URLs.
 
 ### Notify about an existing release
 
