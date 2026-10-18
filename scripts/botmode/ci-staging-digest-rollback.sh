@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Disposable GitHub Actions only: approved experimental source SHA 13edaa4f4
+# Disposable GitHub Actions only: immutable candidate built from SHA 5fb904d375bf
 set -euo pipefail
 [[ "${COMPOSE_PROJECT_NAME:-}" =~ ^botmode-ci-digest-[0-9]+-[0-9]+$ ]] || { echo 'NON_ISOLATED_PROJECT' >&2; exit 2; }
 [[ "${BOTMODE_HOST_PORT:-}" == 3090 ]] || exit 2
 repo=ghcr.io/arkos77/librechat-botmode-v1
-candidate="$repo@sha256:94b11ff0bc8f5820b803741f5a52c96a5e265c2994bb268ee565ba35444cee3a"
+candidate="$repo@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0"
 older_tag="$repo:sha-d4e82dded5df"
 docker logout ghcr.io >/dev/null 2>&1 || true
 docker pull "$older_tag"

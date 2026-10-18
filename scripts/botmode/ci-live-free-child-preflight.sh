@@ -4,7 +4,7 @@
 set -euo pipefail
 test "${CI_EXTERNAL_FREE_PROVIDER:-}" = true || exit 2
 [[ "${COMPOSE_PROJECT_NAME:-}" =~ ^botmode-oci-child-[0-9]+-[0-9]+$ ]] || exit 2
-test "${BOTMODE_PUBLISHED_IMAGE:-}" = 'ghcr.io/arkos77/librechat-botmode-v1@sha256:94b11ff0bc8f5820b803741f5a52c96a5e265c2994bb268ee565ba35444cee3a'
+test "${BOTMODE_PUBLISHED_IMAGE:-}" = 'ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0'
 test -n "${OPENROUTER_API_KEY:-}" || { echo 'CI_LIVE_FREE_BLOCKED=NO_PROVIDER_SECRET'; exit 3; }
 test "${#OPENROUTER_API_KEY}" -gt 16 || { echo 'CI_LIVE_FREE_BLOCKED=INVALID_PROVIDER_SECRET'; exit 3; }
 echo "::add-mask::$OPENROUTER_API_KEY"
