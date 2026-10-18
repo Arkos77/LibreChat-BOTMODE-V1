@@ -1,5 +1,5 @@
-# Reference workflow deliberately manual: protected API key, no paid model, no automatic retries.
-name: BOTMODE V1 Release Real Provider Oracle Gate
+# Manual real-provider qualification: secret only on ephemeral runner, explicit OpenRouter/free, no paid models or GHCR publication.
+name: BOTMODE V1 Current HEAD Free Provider Oracle Gate
 on:
   workflow_dispatch:
 permissions:
@@ -9,13 +9,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
-      - name: Checkout exact release-fix candidate
+      - name: Checkout exact triggering source SHA
         uses: actions/checkout@v4
         with:
-          ref: d4e82dded5df49f17b97e20361c89796b8f1e068
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Prove checked-out revision
-        run: test "$(git rev-parse HEAD)" = 'd4e82dded5df49f17b97e20361c89796b8f1e068'
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - name: OpenRouter key and one minimal free-model inference preflight
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -76,10 +76,10 @@ jobs:
               raise SystemExit('CI_PROVIDER_BLOCKED=INFERENCE_ERROR')
           print('CI_OPENROUTER_FREE_PREFLIGHT=PASS_ONE_REQUEST_ONLY')
           PY_QUOTA
-      - name: Build unmodified release-fix branch image locally
+      - name: Build exact current HEAD image locally, no registry push
         run: |
           set -euo pipefail
-          docker build --target node --build-arg BUILD_COMMIT="$(git rev-parse HEAD)" -t botmode-pr14-exact:local -f Dockerfile .
+          docker build --target node --build-arg BUILD_COMMIT="$(git rev-parse HEAD)" -t botmode-current-free:ci -f Dockerfile .
       - name: Boot isolated candidate with disposable MongoDB
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -87,7 +87,7 @@ jobs:
           set -euo pipefail
           cp .env.example .env
           # CI-only disposable Redis: durable Mission Oracle result readback.
-          # Modify the ephemeral checkout, never the pinned candidate.
+          # Modify only ephemeral CI Compose inputs; not source and not user volumes.
           sed -i '/      - SCHEDULES_SINGLE_PROCESS=true/a\      - USE_REDIS=true\n      - USE_REDIS_STREAMS=true\n      - REDIS_URI=redis://redis:6379\n      - STREAM_KEEP_COMPLETED_JOBS=true' docker-compose.botmode-lite.yml
           # Append a true service under the existing services: map.
           # Avoid a second 'services.depends_on' key, which Compose rejects.
@@ -119,21 +119,22 @@ jobs:
             echo 'POSTGRES_PASSWORD=ci-isolated-only'
           } >> .env
           # Deterministic integration: only the already live-tested OpenRouter free route.
-          # Patch the ephemeral checkout, never the pinned PR14 source.
+          # Explicit free-only isolation: disable optional multi-model host routing in this disposable test.
+          # This test cannot be reported as a live qualification of production fallback routing.
           python3 - <<'PY'
           import json
           from pathlib import Path
           path=Path('librechat.yaml')
           conf=json.loads(path.read_text())
-          # Native agent setup already stores OpenRouter/openrouter-free.
-          # Omit optional host router in this single-provider isolation test.
+          # Native agent setup stores OpenRouter/openrouter/free.
+          # Omit host router so no named paid Gemini binding can be selected.
           routes=conf['endpoints']['agents'].pop('hostModelRouting',[])
           path.write_text(json.dumps(conf,ensure_ascii=False,indent=2)+'\n')
           print('CI_HOST_MODEL_ROUTING_DISABLED_FOR_FREE_ROUTE_TEST='+str(len(routes)))
           PY
           export BOTMODE_MONGO_PASSWORD=ci-isolated-only
           export POSTGRES_PASSWORD=ci-isolated-only
-          export BOTMODE_IMAGE=botmode-pr14-exact:local
+          export BOTMODE_IMAGE=botmode-current-free:ci
           export BOTMODE_HOST_PORT=3090
           docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml up -d
           ready=0
@@ -145,7 +146,7 @@ jobs:
           done
           if [ "$ready" -ne 1 ]; then
             docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps
-            echo "::error::Exact PR14 API was not ready"
+            echo "::error::Exact current HEAD API was not ready"
             exit 1
           fi
           # Use a recognized browser UA for API requests; LibreChat blocks and scores curl clients.
@@ -167,7 +168,7 @@ jobs:
             echo "::error::Unauthenticated BOTMODE setup expected HTTP 401, got $unauth_status"
             exit 1
           fi
-          echo 'BOTMODE_PR14_UNAUTHENTICATED_SETUP=401_PASS'
+          echo 'BOTMODE_CURRENT_FREE_UNAUTHENTICATED_SETUP=401_PASS'
           # Create an isolated database-backed test principal and sign a real JWT
           # with the exact API runtime's secret. No production account or secret used.
           export CI_JWT_SECRET="$(sed -n 's/^JWT_SECRET=//p' .env)"
@@ -221,7 +222,7 @@ jobs:
             echo "::error::Authenticated BOT MODE setup-status expected HTTP 200; received $auth_status"
             exit 1
           fi
-          echo 'BOTMODE_PR14_AUTHENTICATED_STATUS=200_PASS'
+          echo 'BOTMODE_CURRENT_FREE_AUTHENTICATED_STATUS=200_PASS'
           # Real native provisioning; verification of persisted inventory and routing.
           setup_status=$(curl -sS -o /tmp/botmode-setup-result.json -w '%{http_code}' \
             -X POST -H 'Content-Type: application/json' -H "User-Agent: $browser_ua" \
@@ -267,7 +268,7 @@ jobs:
               if data.get(name) is not True:
                   raise SystemExit('Incomplete native agent setup: '+name)
           PY
-          echo 'BOTMODE_PR14_SIX_AGENT_PROVISIONING=PASS'
+          echo 'BOTMODE_CURRENT_FREE_SIX_AGENT_PROVISIONING=PASS'
           # HTTP/SSE mission admission is a separate gate from successful setup.
           # This is a real Worker turn, never a fabricated oracle/publication PASS.
           docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE' > /tmp/botmode-ci-worker-id
@@ -507,18 +508,16 @@ jobs:
 
 
 
-          # The pinned candidate does not contain this main-branch CI harness.
-          # Pull the exact harness bytes from a reviewed main commit, not a
-          # mutable branch reference during the running job.
-          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/1bd8b1be29d0bf1b37778e1e209a2e13d445f1ba/scripts/botmode/ci-oracle-publication-gate.py -o /tmp/botmode-ci-oracle-publication-gate.py
-          python3 /tmp/botmode-ci-oracle-publication-gate.py
-          echo 'BOTMODE_PR14_RUNTIME_BOOT=PASS'
-          echo '### Release-fix branch Oracle/QA E2E (REAL free OpenRouter provider)' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Live provider checked; requires exact durable Oracle decision and publication checks. Fail closed on model quota/auth errors.' >> "$GITHUB_STEP_SUMMARY"
+          # Run the harness tracked in the exact same source revision, not a downloaded historical script.
+          test -s scripts/botmode/ci-oracle-publication-gate.py
+          python3 scripts/botmode/ci-oracle-publication-gate.py
+          echo 'BOTMODE_CURRENT_FREE_RUNTIME_BOOT=PASS'
+          echo '### Current HEAD Oracle/QA E2E (REAL free OpenRouter provider, isolated configuration)' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Free provider checked, durable Oracle decision and publication assertions required. Multi-model production router disabled ONLY for this isolated disposable test; real provider fallback remains unqualified. Fail closed on quota/auth.' >> "$GITHUB_STEP_SUMMARY"
       - name: Always destroy disposable stack
         if: always()
         env:
           BOTMODE_MONGO_PASSWORD: ci-isolated-only
           POSTGRES_PASSWORD: ci-isolated-only
-          BOTMODE_IMAGE: botmode-pr14-exact:local
+          BOTMODE_IMAGE: botmode-current-free:ci
         run: docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
