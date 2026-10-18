@@ -1,4 +1,4 @@
-name: BOTMODE V1 Pinned Subagent Handoff E2E
+name: BOTMODE V1 Exact HEAD Subagent Handoff E2E
 
 on:
   pull_request:
@@ -21,10 +21,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: 54b30a342bf8f3480d7385b30cfa669b73c92878
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-      - name: Assert pinned candidate
-        run: test "$(git rev-parse HEAD)" = 54b30a342bf8f3480d7385b30cfa669b73c92878
+      - name: Assert exact PR HEAD
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
       - uses: actions/setup-node@v5
         with:
           node-version: '24.16.0'
@@ -46,4 +46,4 @@ jobs:
       - name: Evidence boundary
         if: always()
         run: |
-          echo 'Pinned candidate with UI-level nested/parallel mock-model handoffs; no proof of GHCR-runtime subagent Oracle mission.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Exact PR HEAD source with UI-level nested/parallel mock-model handoffs; no proof of GHCR published runtime or real-provider Oracle mission.' >> "$GITHUB_STEP_SUMMARY"
