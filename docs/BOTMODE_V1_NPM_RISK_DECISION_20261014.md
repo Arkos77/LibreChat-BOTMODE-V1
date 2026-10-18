@@ -1,6 +1,16 @@
 # BOT MODE V1 — Residual npm advisory decision record
 
-Status: **REVIEW REQUIRED — NOT ACCEPTED**. Prepared on 2026-10-14 for isolated candidate `54b30a342bf8f3480d7385b30cfa669b73c92878`.
+Status: **REVIEW REQUIRED — NOT ACCEPTED**. Historical 14 Oct candidate was `54b30a342bf8f3480d7385b30cfa669b73c92878`.
+
+## 18 October 2026 — live release-candidate refresh (no risk acceptance)
+
+- Qualifying [PR #29](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/29), current checkpoint `3b54802c610978312e223a5fb940140ed52e112e` (the final release SHA is not frozen).
+- Lockfile SHA256: `4b0b6d51afb679bc3b1633f29609d3aa9bdce8515f4df719bf0ddc67d22b44b3`. A local `npm audit --omit=dev --package-lock-only` on this lockfile recorded **3 moderate, 0 high, 0 critical**; GitHub's default-branch 25 findings are a different scope and must not be conflated with the candidate lockfile.
+- [DOCX reachability #39091502539](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39091502539) checked source at `ccb9ae9f5`: successful benign DOCX conversions with `BOTMODE_DOCX_LIBRARY_MODULE_LOADS=[]` and 15/15 ZIP/DOCX regressions. The workflow is now SHA-dependent on PR head, but no evidence excludes all hostile DOCX or indirect sinks.
+- [Docker security distribution #39116675413](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39116675413) and [DOCX runtime #39116675429](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39116675429) were both green on `3cf108484`, but do not authorize acceptance of the vulnerable dependency range.
+- The production audit workflow formerly pinned to SHA `54b30a3` has been switched to exact PR HEAD. **Do not mark the new audit validated until its own run finishes.**
+- Distribution is still **NO-GO** until the appropriate owner reviews the actual exposure, the Nodebox SUL redistribution/commercial-use restrictions, and agrees on remediation, an explicit scoped/expiring risk acceptance, or continued block.
+
 
 ## Evidence
 - Production lockfile npm audit: https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/38499277928 (PASS evidence gathering). 3 moderate, 0 high, 0 critical.

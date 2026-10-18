@@ -1,9 +1,11 @@
-name: BOTMODE V1 Pinned Production npm Audit
+name: BOTMODE V1 Exact HEAD Production npm Audit
 
 on:
   pull_request:
     paths:
       - '.github/workflows/botmode-v1-pinned-npm-audit.yml'
+      - 'package-lock.json'
+      - 'package.json'
 
 permissions:
   contents: read
@@ -15,10 +17,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: 54b30a342bf8f3480d7385b30cfa669b73c92878
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-      - name: Assert immutable candidate
-        run: test "$(git rev-parse HEAD)" = 54b30a342bf8f3480d7385b30cfa669b73c92878
+      - name: Assert exact PR head
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
       - uses: actions/setup-node@v5
         with:
           node-version: 24.16.0
