@@ -20,12 +20,12 @@ jobs:
       - name: Checkout exact integrated candidate
         uses: actions/checkout@v4
         with:
-          ref: 13edaa4f4d0a44d659d76ccb5b160358ad60dfc2
+          ref: 5fb904d375bffd6c54b5830cb1536088a9e77211
           persist-credentials: false
       - name: Verify exact candidate and pristine installation
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '13edaa4f4d0a44d659d76ccb5b160358ad60dfc2'
+          test "$(git rev-parse HEAD)" = '5fb904d375bffd6c54b5830cb1536088a9e77211'
           test ! -e .env
           test ! -e .botmode-database-auth-initialized
           echo 'CI_FRESH_INSTALL_INPUT=PRISTINE'
@@ -33,19 +33,19 @@ jobs:
         run: |
           set -euo pipefail
           docker logout ghcr.io >/dev/null 2>&1 || true
-          docker pull ghcr.io/arkos77/librechat-botmode-v1@sha256:94b11ff0bc8f5820b803741f5a52c96a5e265c2994bb268ee565ba35444cee3a
-          docker image inspect ghcr.io/arkos77/librechat-botmode-v1@sha256:94b11ff0bc8f5820b803741f5a52c96a5e265c2994bb268ee565ba35444cee3a >/dev/null
+          docker pull ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0
+          docker image inspect ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0 >/dev/null
           echo 'CI_FRESH_RUNTIME_IMAGE=PUBLIC_GHCR_CANDIDATE_DIGEST'
       - name: Install Lite using the published installer contract
         run: |
           set -euo pipefail
-          sudo env BOTMODE_HOST_PORT=3093 ./install.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1@sha256:94b11ff0bc8f5820b803741f5a52c96a5e265c2994bb268ee565ba35444cee3a > /tmp/botmode-fresh-install.log 2>&1 || {
+          sudo env BOTMODE_HOST_PORT=3093 ./install.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0 > /tmp/botmode-fresh-install.log 2>&1 || {
             echo 'CI_FRESH_INSTALL=FAIL'
             tail -80 /tmp/botmode-fresh-install.log | sed -E 's/(PASSWORD|SECRET|KEY)=([^[:space:]]+)/\1=[REDACTED]/g'
             exit 1
           }
           grep -q '^BOTMODE_BOOTSTRAP=PASS$' /tmp/botmode-fresh-install.log
-          expected_image='ghcr.io/arkos77/librechat-botmode-v1@sha256:94b11ff0bc8f5820b803741f5a52c96a5e265c2994bb268ee565ba35444cee3a'
+          expected_image='ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0'
           api_id="$(sudo env BOTMODE_HOST_PORT=3093 docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps -q api)"
           test -n "$api_id"
           test "$(sudo docker inspect "$api_id" --format '{{.Config.Image}}')" = "$expected_image"
@@ -276,7 +276,7 @@ jobs:
         run: |
           {
             echo '### BOT MODE V1 — First-user native agent onboarding'
-            echo 'Pinned head: 13edaa4f4d0a44d659d76ccb5b160358ad60dfc2'
+            echo 'Pinned head: 5fb904d375bffd6c54b5830cb1536088a9e77211'
             echo 'Pulls immutable qualified GHCR candidate without auth, runs actual ./install.sh --lite with explicit digest pin and verifies first-user native onboarding, JWT and persistence.'
             echo 'Checks real first-user HTTP onboarding (6 agents, owner ACL, Worker delegation, idempotence, and restart durability).'
             echo 'Does NOT validate public GHCR anonymous pull or externally hosted LLM.'

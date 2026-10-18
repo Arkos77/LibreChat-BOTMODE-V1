@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
     env:
-      IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:94b11ff0bc8f5820b803741f5a52c96a5e265c2994bb268ee565ba35444cee3a
+      IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0
     steps:
       - name: Assert native ARM64 GitHub runner
         shell: bash
