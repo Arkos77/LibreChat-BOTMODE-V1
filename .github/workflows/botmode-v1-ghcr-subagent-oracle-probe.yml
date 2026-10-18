@@ -1,4 +1,4 @@
-name: BOTMODE V1 Current Image Subagent Oracle Probe
+name: BOTMODE V1 Published OCI Digest Subagent Oracle Probe
 on:
   pull_request:
   push:
@@ -10,9 +10,12 @@ permissions:
 # The old probe repeatedly tested PR14 SHA 54b30a3 and an immutable, unrelated
 # GHCR image. It could not validate ANY fix on PR29. Keep its previous run
 # evidence in GitHub history, but make the release gate test its own exact SHA.
-# No image is published and no real inference credentials are consumed.
+# Qualify the already published immutable experimental digest. No additional
+# publication, real inference credentials, or user volumes are used.
 env:
   BOTMODE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  BOTMODE_PUBLISHED_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:94b11ff0bc8f5820b803741f5a52c96a5e265c2994bb268ee565ba35444cee3a
+  COMPOSE_PROJECT_NAME: botmode-oci-child-${{ github.run_id }}-${{ github.run_attempt }}
 
 jobs:
   current-candidate-runtime:
@@ -26,28 +29,42 @@ jobs:
           persist-credentials: false
       - name: Prove checked-out revision
         run: test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
-      - uses: docker/setup-buildx-action@v4
-      - name: Build exact candidate locally without registry publication
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: Dockerfile
-          target: node
-          platforms: linux/amd64
-          push: false
-          load: true
-          tags: botmode-subagent-ci:${{ env.BOTMODE_CANDIDATE_SHA }}
-          cache-from: type=gha,scope=botmode-amd64
-          cache-to: type=gha,mode=max,scope=botmode-amd64
-          build-args: |
-            BUILD_COMMIT=${{ env.BOTMODE_CANDIDATE_SHA }}
-            BUILD_BRANCH=${{ github.head_ref || github.ref_name }}
-      - name: Prove exact locally built runtime exists
+      - name: Verify runtime source unchanged since the published image
+        shell: bash
         run: |
           set -euo pipefail
-          docker image inspect "botmode-subagent-ci:$BOTMODE_CANDIDATE_SHA" >/dev/null
-          echo "CI_SUBAGENT_CANDIDATE_SHA=$BOTMODE_CANDIDATE_SHA"
-          echo 'CI_SUBAGENT_IMAGE_BUILD=PASS'
+          published_sha=13edaa4f4d0a44d659d76ccb5b160358ad60dfc2
+          git fetch --no-tags origin "$published_sha"
+          test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+          python3 - <<'PY_SOURCE'
+          import subprocess
+          permitted = {
+            '.github/workflows/botmode-v1-integrated-first-user-acceptance.yml',
+            '.github/workflows/botmode-v1-lite-rollback-smoke.yml',
+            '.github/workflows/botmode-v1-published-mission-rehearsal.yml',
+            '.github/workflows/botmode-v1-ghcr-subagent-oracle-probe.yml',
+            'docs/BOTMODE_V1_GHCR_RELEASE_GATE.md',
+            'docs/BOTMODE_V1_INVENTAIRE_MAITRE_20261018.md',
+            'docs/BOTMODE_V1_MEMO_CHECKPOINT_20261018.md',
+            'scripts/botmode/ci-staging-digest-rollback.sh',
+          }
+          changed = set(subprocess.check_output(
+            ['git','diff','--name-only','13edaa4f4d0a44d659d76ccb5b160358ad60dfc2','HEAD'],
+            text=True).splitlines())
+          unexpected = sorted(changed - permitted)
+          print('CI_PUBLISHED_OCI_RUNTIME_UNMODIFIED=' + str(not unexpected).upper())
+          print('CI_PUBLISHED_OCI_CHANGE_COUNT=' + str(len(changed)))
+          if unexpected:
+            raise SystemExit('CI_PUBLISHED_OCI_RUNTIME_DRIFT_NOT_ALLOWED')
+          PY_SOURCE
+      - name: Pull exact public OCI image without GHCR credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          docker pull "$BOTMODE_PUBLISHED_IMAGE"
+          docker image inspect "$BOTMODE_PUBLISHED_IMAGE" >/dev/null
+          echo 'CI_PUBLISHED_OCI_SUBAGENT_ANONYMOUS_PULL=PASS'
       - name: Boot current candidate with disposable MongoDB
         env:
           OPENROUTER_API_KEY: ci-local-fixture-no-real-key
@@ -120,7 +137,7 @@ jobs:
           sudo chmod 640 .env
           export BOTMODE_MONGO_PASSWORD=ci-isolated-only
           export POSTGRES_PASSWORD=ci-isolated-only
-          export BOTMODE_IMAGE=botmode-subagent-ci:${BOTMODE_CANDIDATE_SHA}
+          export BOTMODE_IMAGE=${BOTMODE_PUBLISHED_IMAGE}
           export BOTMODE_HOST_PORT=3090
           docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml up -d
           ready=0
@@ -135,6 +152,10 @@ jobs:
             echo "::error::Current candidate API was not ready"
             exit 1
           fi
+          api_id="$(docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps -q api)"
+          test -n "$api_id"
+          test "$(docker inspect "$api_id" --format '{{.Config.Image}}')" = "$BOTMODE_PUBLISHED_IMAGE"
+          echo 'CI_PUBLISHED_OCI_SUBAGENT_EXACT_IMAGE_RUNNING=PASS'
           # Use a recognized browser UA for API requests; LibreChat blocks and scores curl clients.
           browser_ua='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
           # Compare exact runtime SDK with the offline pinned SDK check.
@@ -567,13 +588,13 @@ jobs:
           python3 /tmp/botmode-ci-oracle-publication-gate.py
           echo 'BOTMODE_CURRENT_IMAGE_SUBAGENT_ORACLE_PROBE=PASS'
           echo '### Release-fix branch Oracle/QA E2E (local synthetic provider)' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Exact PR head image built locally without publication; fixture is not hosted inference.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Published immutable OCI digest tested with local synthetic subagent model; no real-provider inference.' >> "$GITHUB_STEP_SUMMARY"
       - name: Classify child execution exception from API logs
         if: failure()
         env:
           BOTMODE_MONGO_PASSWORD: ci-isolated-only
           POSTGRES_PASSWORD: ci-isolated-only
-          BOTMODE_IMAGE: botmode-subagent-ci:${{ env.BOTMODE_CANDIDATE_SHA }}
+          BOTMODE_IMAGE: ${{ env.BOTMODE_PUBLISHED_IMAGE }}
         shell: bash
         run: |
           docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs --no-color api > /tmp/botmode-api-failure.log 2>/dev/null || true
@@ -623,5 +644,5 @@ jobs:
         env:
           BOTMODE_MONGO_PASSWORD: ci-isolated-only
           POSTGRES_PASSWORD: ci-isolated-only
-          BOTMODE_IMAGE: botmode-subagent-ci:${{ env.BOTMODE_CANDIDATE_SHA }}
+          BOTMODE_IMAGE: ${{ env.BOTMODE_PUBLISHED_IMAGE }}
         run: sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
