@@ -1,4 +1,4 @@
-name: BOTMODE V1 Disposable Lite Rollback Smoke
+name: BOTMODE V1 Published Digest Lite Restart and Staging Rollback
 
 on:
   pull_request:
@@ -14,13 +14,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - name: Verify candidate ancestry and available GHCR image
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify published candidate source and immutable digest
         shell: bash
         run: |
           set -euo pipefail
-          # GitHub pull_request checkouts use a shallow synthetic merge commit.\n          # Fetch only the pinned candidate to verify its existence, not ancestry.\n          git fetch --no-tags --depth=1 origin d4e82dded5df49f17b97e20361c89796b8f1e068\n          git cat-file -e d4e82dded5df49f17b97e20361c89796b8f1e068^{commit}
-          docker pull ghcr.io/arkos77/librechat-botmode-v1:sha-d4e82dded5df
+          source_sha=13edaa4f4d0a44d659d76ccb5b160358ad60dfc2
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          git fetch --no-tags origin "$source_sha"
+          unexpected="$(git diff --name-only "$source_sha" HEAD | grep -Ev '^(\.github/workflows/botmode-v1-lite-rollback-smoke\.yml|scripts/botmode/ci-staging-digest-rollback\.sh|docs/BOTMODE_V1_(INVENTAIRE_MAITRE|MEMO_CHECKPOINT)_20261018\.md|docs/BOTMODE_V1_GHCR_RELEASE_GATE\.md)$' || true)"
+          test -z "$unexpected" || { echo "Unexpected runtime source drift: $unexpected" >&2; exit 1; }
+          test ! -e .env
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          docker pull ghcr.io/arkos77/librechat-botmode-v1@sha256:94b11ff0bc8f5820b803741f5a52c96a5e265c2994bb268ee565ba35444cee3a
+          echo 'BOTMODE_PUBLISHED_DIGEST_ANONYMOUS_PULL=PASS'
       - name: Start disposable Lite installation
         shell: bash
         run: |
@@ -28,14 +39,15 @@ jobs:
           echo "BOTMODE_MONGO_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
           echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
           echo "BOTMODE_HOST_PORT=3090" >> "$GITHUB_ENV"
-      - name: Install and assert data survives stop/start
+          echo "COMPOSE_PROJECT_NAME=botmode-ci-digest-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+      - name: Install immutable digest and prove Mongo persists across stop/start
         shell: bash
         run: |
           set -euo pipefail
           # Installer en root sur ce runner jetable : .env reste privé, UID 1000.
           sudo git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT ./install.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1:sha-d4e82dded5df
-          compose=(sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)
+          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT,COMPOSE_PROJECT_NAME ./install.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1@sha256:94b11ff0bc8f5820b803741f5a52c96a5e265c2994bb268ee565ba35444cee3a
+          compose=(sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT,COMPOSE_PROJECT_NAME docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)
           ready=0
           for n in $(seq 1 90); do
             if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then ready=1; break; fi
@@ -53,9 +65,9 @@ jobs:
           '
           before=$("${compose[@]}" exec -T mongodb sh -ec 'mongo --quiet --username botmode_admin --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''print(db.rollback_ci.countDocuments({_id:"rollback-smoke",payload:"preserved"}))'\''' | tail -1 | tr -d '\r')
           test "$before" = 1
-          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT ./stop.sh
-          # Stop never uses --volumes. Re-open the same pinned image.
-          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT ./start.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1:sha-d4e82dded5df
+          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT,COMPOSE_PROJECT_NAME ./stop.sh
+          # Stop never uses --volumes. Re-open the exact published OCI digest.
+          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT,COMPOSE_PROJECT_NAME ./start.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1@sha256:94b11ff0bc8f5820b803741f5a52c96a5e265c2994bb268ee565ba35444cee3a
           ready=0
           for n in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then ready=1; break; fi
@@ -66,8 +78,13 @@ jobs:
           test "$after" = 1
           echo 'BOTMODE_LITE_RESTART_PRESERVES_MONGO=PASS'
           echo 'SCOPE=stop/start persistence only; NOT upgrade downgrade migration rollback'
+      - name: Rehearse API downgrade and return on the same isolated project
+        shell: bash
+        run: bash scripts/botmode/ci-staging-digest-rollback.sh
       - name: Destroy runner-only resources
         if: always()
         shell: bash
         run: |
-          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
+          if [[ "${COMPOSE_PROJECT_NAME:-}" =~ ^botmode-ci-digest-[0-9]+-[0-9]+$ ]]; then
+            sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT,COMPOSE_PROJECT_NAME docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
+          fi
