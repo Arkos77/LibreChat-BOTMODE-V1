@@ -72,7 +72,7 @@ jobs:
         if: success()
         run: |
           echo 'BOTMODE_FREE_AXE_PLAYWRIGHT=PASS'
-          echo 'SCOPE=existing six browser-based axe-core scans using local app, synthetic signup and isolated Mongo; no SaaS or external model'
+          echo 'SCOPE=seven browser-based axe-core scans including BOT MODE project workspace, isolated signup/Mongo, no SaaS key or paid inference'
           echo 'LIMIT=automated axe WCAG scans only, not manual screen reader, focus/keyboard, mobile or all workflows'
 
       - name: Retain failing snapshots and trace for diagnostics

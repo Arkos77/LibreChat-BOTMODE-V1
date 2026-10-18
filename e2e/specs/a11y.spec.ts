@@ -104,3 +104,26 @@ test('Tools menu should be accessible when open', async ({ page }) => {
 
   expect(accessibilityScanResults.violations).toEqual([]);
 });
+
+/** The BOT MODE panel is not present on the chat landing page. Qualify the
+ * real project workspace and its initial mission controls without configuring
+ * a provider, starting a mission or introducing any paid model dependency.
+ * The project and its user live only in the isolated e2e Mongo instance. */
+test('BOT MODE project workspace and mission setup should be accessible', async ({ page }) => {
+  test.setTimeout(60_000);
+
+  const projectName = 'A11y BOT MODE ' + Date.now();
+  await page.goto('/projects', { timeout: 30_000 });
+  await page.getByRole('button', { name: 'New project' }).first().click();
+
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('textbox', { name: 'Project name' }).fill(projectName);
+  await dialog.getByRole('button', { name: 'Create project' }).click();
+
+  await expect(page.getByRole('heading', { name: projectName })).toBeVisible();
+  await expect(page.getByTestId('bot-mode-project-state')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('button', { name: 'Initialiser BOT MODE' })).toBeVisible();
+
+  const accessibilityScanResults = await new AxeBuilder({ page }).analyze();
+  expect(accessibilityScanResults.violations).toEqual([]);
+});

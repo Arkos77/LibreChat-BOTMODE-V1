@@ -47,3 +47,5 @@ Status: **NO-GO for stable publication** until all release gates below are evide
 ### Non-goals
 
 This document does not trigger GHCR publishing, deploy, merge, tag creation or release approval. It intentionally distinguishes **pre-push build success** from **published distribution qualification**.
+
+**UX automatisée :** [#39151912466](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39151912466) SUCCESS : 6 scans gratuits axe-core/Playwright sur navigateur Chrome et Mongo temporaire, sans Deque SaaS. Ne couvre pas clavier/lecteur d'écran/mobile ni, à ce SHA, la fiche BOT MODE. Un 7e scan de la fiche projet BOT MODE est préparé, à vérifier par run distinct avant promotion ; ce n'est pas une approbation UX manuelle.
