@@ -8,10 +8,13 @@ Never prints prompts, provider responses, JWTs, or API credentials.
 import json
 import os
 import runpy
+import socket
 import subprocess
 import time
 import uuid
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 if os.environ.get("CI_EXTERNAL_FREE_PROVIDER") != "true":
     raise SystemExit("CI_LIVE_FREE_GATE_REFUSED=NOT_EXPLICITLY_ENABLED")
@@ -68,46 +71,6 @@ except (ValueError, KeyError, TypeError):
     raise SystemExit("CI_LIVE_FREE_FAIL=INVALID_START_ENVELOPE")
 print("CI_LIVE_FREE_MISSION_STARTED=PASS", flush=True)
 
-stream_status, sse = request("GET", "/api/agents/chat/stream/" + stream_id + "?resume=true")
-events = result_events(sse)
-finals = [e for e in events if e.get("final") is True]
-errors = [e for e in events if e.get("event") == "error" or e.get("type") == "error"]
-print("CI_LIVE_FREE_SSE_HTTP=" + str(stream_status), flush=True)
-print("CI_LIVE_FREE_FINAL_COUNT=" + str(len(finals)), flush=True)
-print("CI_LIVE_FREE_ERROR_FRAME_COUNT=" + str(len(errors)), flush=True)
-if stream_status != 200 or len(finals) != 1 or errors:
-    classes, _, _ = helpers["diagnostic_error_class"](events)
-    print("CI_LIVE_FREE_ERROR_CLASSES=" + classes, flush=True)
-    raise SystemExit("CI_LIVE_FREE_FAIL=NO_CLEAN_SINGLE_TERMINAL")
-
-durable = None
-for _ in range(30):
-    _, raw_plan, raw_state = redis_job(stream_id)
-    if raw_plan and raw_state:
-        try:
-            plan, state = json.loads(raw_plan), json.loads(raw_state)
-            verdicts = state.get("results", {}).get(task_id, {}).get("verdicts", [])
-            if verdicts:
-                durable = (plan, verdicts)
-                break
-        except (TypeError, ValueError, AttributeError):
-            pass
-    time.sleep(1)
-if durable is None:
-    raise SystemExit("CI_LIVE_FREE_FAIL=ORACLE_NOT_DURABLE")
-plan, verdicts = durable
-if (plan.get("mission", {}).get("missionId") != mission_id or
-        len(verdicts) != 1 or verdicts[0].get("status") != "VERIFIED"):
-    print("CI_LIVE_FREE_ORACLE_VERDICTS=" + str(len(verdicts)), flush=True)
-    raise SystemExit("CI_LIVE_FREE_FAIL=ORACLE_NOT_VERIFIED")
-if not any(response_text(e.get("responseMessage")).strip()
-           for e in finals if isinstance(e.get("responseMessage"), dict)):
-    raise SystemExit("CI_LIVE_FREE_FAIL=NO_PUBLISHED_RESPONSE")
-print("CI_LIVE_FREE_ORACLE_VERIFIED_AND_PUBLISHED=PASS", flush=True)
-
-# Distinguish a real completed child from a running/error child. The
-# synthetic verifier accepts any terminal status; the LIVE gate requires
-# successful completion, *before* the Oracle publication.
 def child_state(parent_id):
     js = r"""
 const mongoose=require('mongoose');
@@ -160,6 +123,98 @@ def emit_child_state(label, state):
     for key in ('children','completed','failed','active','messages'):
         print('CI_LIVE_FREE_CHILD_'+label+'_'+key.upper()+'='+str(state[key]),flush=True)
 
+# SSE streams can stay open while the hosted free model/child is pending.
+# Stop at the first *actual* terminal event, not TCP EOF (which may never
+# arrive), and distinguish a bounded idle timeout from a child/Oracle failure.
+# Do not print model text, event payloads, token, or the HTTP response body.
+def read_terminal_stream(stream_path):
+    req = Request(
+        helpers["BASE"] + stream_path,
+        headers={"Authorization": "Bearer " + helpers["TOKEN"],
+                 "User-Agent": helpers["UA"], "Accept": "text/event-stream"},
+        method="GET",
+    )
+    started = time.monotonic()
+    items = []
+    try:
+        with urlopen(req, timeout=75) as response:
+            http_status = response.status
+            for line in response:
+                if time.monotonic() - started > 210:
+                    return http_status, items, "TOTAL_DEADLINE"
+                if not line.startswith(b"data:"):
+                    continue
+                try:
+                    item = json.loads(line[5:].strip())
+                except (TypeError, ValueError):
+                    continue
+                if not isinstance(item, dict):
+                    continue
+                items.append(item)
+                if item.get("final") is True or item.get("event") == "error" or item.get("type") == "error":
+                    return http_status, items, "TERMINAL_FRAME"
+            return http_status, items, "STREAM_EOF"
+    except HTTPError as exc:
+        return exc.code, items, "HTTP_ERROR"
+    except (socket.timeout, TimeoutError):
+        return 200 if items else 0, items, "SSE_IDLE_TIMEOUT"
+    except (URLError, ConnectionError, OSError):
+        return 0, items, "SSE_CONNECTION_ERROR"
+
+stream_status, events, stream_outcome = read_terminal_stream(
+    "/api/agents/chat/stream/" + stream_id + "?resume=true"
+)
+finals = [e for e in events if e.get("final") is True]
+errors = [e for e in events if e.get("event") == "error" or e.get("type") == "error"]
+print("CI_LIVE_FREE_SSE_HTTP=" + str(stream_status), flush=True)
+print("CI_LIVE_FREE_SSE_OUTCOME=" + stream_outcome, flush=True)
+print("CI_LIVE_FREE_SSE_EVENTS_SEEN=" + str(len(events)), flush=True)
+print("CI_LIVE_FREE_FINAL_COUNT=" + str(len(finals)), flush=True)
+print("CI_LIVE_FREE_ERROR_FRAME_COUNT=" + str(len(errors)), flush=True)
+if stream_status != 200 or len(finals) != 1 or errors:
+    try:
+        job_status, raw_plan, raw_state = redis_job(stream_id)
+        if job_status not in ("queued", "pending", "running", "completed", "complete", "failed", "error", "paused", "cancelled"):
+            job_status = "OTHER_OR_MISSING"
+        print("CI_LIVE_FREE_REDIS_JOB_STATUS=" + job_status, flush=True)
+        print("CI_LIVE_FREE_REDIS_ORACLE_STATE_PRESENT=" + str(bool(raw_state)).upper(), flush=True)
+    except (subprocess.SubprocessError, OSError):
+        print("CI_LIVE_FREE_REDIS_DIAG_UNAVAILABLE=TRUE", flush=True)
+    try:
+        emit_child_state("AT_SSE_FAILURE", child_state(conversation_id))
+    except (SystemExit, subprocess.SubprocessError, OSError):
+        print("CI_LIVE_FREE_CHILD_DIAG_UNAVAILABLE=TRUE", flush=True)
+    failure = stream_outcome if stream_outcome != "TERMINAL_FRAME" else "INVALID_TERMINAL_FRAME"
+    raise SystemExit("CI_LIVE_FREE_FAIL=" + failure)
+
+durable = None
+for _ in range(30):
+    _, raw_plan, raw_state = redis_job(stream_id)
+    if raw_plan and raw_state:
+        try:
+            plan, state = json.loads(raw_plan), json.loads(raw_state)
+            verdicts = state.get("results", {}).get(task_id, {}).get("verdicts", [])
+            if verdicts:
+                durable = (plan, verdicts)
+                break
+        except (TypeError, ValueError, AttributeError):
+            pass
+    time.sleep(1)
+if durable is None:
+    raise SystemExit("CI_LIVE_FREE_FAIL=ORACLE_NOT_DURABLE")
+plan, verdicts = durable
+if (plan.get("mission", {}).get("missionId") != mission_id or
+        len(verdicts) != 1 or verdicts[0].get("status") != "VERIFIED"):
+    print("CI_LIVE_FREE_ORACLE_VERDICTS=" + str(len(verdicts)), flush=True)
+    raise SystemExit("CI_LIVE_FREE_FAIL=ORACLE_NOT_VERIFIED")
+if not any(response_text(e.get("responseMessage")).strip()
+           for e in finals if isinstance(e.get("responseMessage"), dict)):
+    raise SystemExit("CI_LIVE_FREE_FAIL=NO_PUBLISHED_RESPONSE")
+print("CI_LIVE_FREE_ORACLE_VERIFIED_AND_PUBLISHED=PASS", flush=True)
+
+# Distinguish a real completed child from a running/error child. The
+# synthetic verifier accepts any terminal status; the LIVE gate requires
+# successful completion, *before* the Oracle publication.
 at_oracle=child_state(conversation_id)
 emit_child_state('AT_ORACLE',at_oracle)
 if at_oracle['children']!=1:
