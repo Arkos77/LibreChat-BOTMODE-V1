@@ -384,14 +384,15 @@ export default function IdeasView() {
       };
     },
     onMutate: () => setLaunchError(''),
-    onError: (error: unknown) =>
-      setLaunchError(
-        error instanceof Error && error.message === 'BOT_MODE_WORKER_NOT_INITIALIZED'
-          ? 'Mission non lancée : initialisez d’abord le Worker BOT MODE dans Projet.'
-          : error instanceof Error && error.message === 'BOT_MODE_CAPABILITIES_INCOMPLETE'
-            ? 'Mission non lancée : certaines capacités du Worker BOT MODE sont indisponibles ou non autorisées.'
-            : 'Mission non lancée : vérifiez la connexion et les autorisations.',
-      ),
+    onError: (error: unknown) => {
+      let message = 'Mission non lancée : vérifiez la connexion et les autorisations.';
+      if (error instanceof Error && error.message === 'BOT_MODE_WORKER_NOT_INITIALIZED') {
+        message = 'Mission non lancée : initialisez d’abord le Worker BOT MODE dans Projet.';
+      } else if (error instanceof Error && error.message === 'BOT_MODE_CAPABILITIES_INCOMPLETE') {
+        message = 'Mission non lancée : certaines capacités du Worker BOT MODE sont indisponibles ou non autorisées.';
+      }
+      setLaunchError(message);
+    },
     onSuccess: ({ projectId, workerId, prompt }, { mode }) => {
       const params = new URLSearchParams({
         projectId,
