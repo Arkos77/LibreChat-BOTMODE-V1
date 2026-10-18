@@ -13,18 +13,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
-      - name: Checkout immutable PR14 candidate
+      - name: Checkout immutable published source
         uses: actions/checkout@v4
         with:
-          ref: 54b30a342bf8f3480d7385b30cfa669b73c92878
+          ref: 13edaa4f4d0a44d659d76ccb5b160358ad60dfc2
           persist-credentials: false
       - name: Prove checked-out revision
-        run: test "$(git rev-parse HEAD)" = '54b30a342bf8f3480d7385b30cfa669b73c92878'
+        run: test "$(git rev-parse HEAD)" = '13edaa4f4d0a44d659d76ccb5b160358ad60dfc2'
       - name: Pull exact publicly published candidate image
         run: |
           set -euo pipefail
           docker logout ghcr.io >/dev/null 2>&1 || true
-          docker pull ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95
+          docker pull ghcr.io/arkos77/librechat-botmode-v1@sha256:94b11ff0bc8f5820b803741f5a52c96a5e265c2994bb268ee565ba35444cee3a
       - name: Boot isolated candidate with disposable MongoDB
         env:
           OPENROUTER_API_KEY: ci-local-fixture-no-real-key
@@ -43,7 +43,8 @@ jobs:
           YAML
           # Fixture is pinned to this commit, copied into the ephemeral checkout;
           # the source candidate and its lockfile remain immutable.
-          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/ab1aeef5858584e6a3022929e351d63226a22540/scripts/botmode/ci-openai-compatible-mock.py -o /tmp/botmode-ci-model-fixture.py
+          cp scripts/botmode/ci-openai-compatible-mock.py /tmp/botmode-ci-model-fixture.py
+          test -s /tmp/botmode-ci-model-fixture.py
           python3 /tmp/botmode-ci-model-fixture.py >/tmp/botmode-ci-fixture.log 2>&1 &
           fixture_pid=$!
           echo "$fixture_pid" > /tmp/botmode-ci-fixture.pid
@@ -97,7 +98,7 @@ jobs:
           sudo chmod 640 .env
           export BOTMODE_MONGO_PASSWORD=ci-isolated-only
           export POSTGRES_PASSWORD=ci-isolated-only
-          export BOTMODE_IMAGE=ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95
+          export BOTMODE_IMAGE=ghcr.io/arkos77/librechat-botmode-v1@sha256:94b11ff0bc8f5820b803741f5a52c96a5e265c2994bb268ee565ba35444cee3a
           export BOTMODE_HOST_PORT=3090
           docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml up -d
           ready=0
@@ -112,6 +113,10 @@ jobs:
             echo "::error::Exact PR14 API was not ready"
             exit 1
           fi
+          api_id="$(docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps -q api)"
+          test -n "$api_id"
+          test "$(docker inspect "$api_id" --format '{{.Config.Image}}')" = "$BOTMODE_IMAGE"
+          echo 'CI_PUBLISHED_MISSION_EXACT_OCI_DIGEST=PASS'
           # Use a recognized browser UA for API requests; LibreChat blocks and scores curl clients.
           browser_ua='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
           # Compare exact runtime SDK with the offline pinned SDK check.
@@ -471,18 +476,18 @@ jobs:
 
 
 
-          # The pinned candidate does not contain this main-branch CI harness.
-          # Pull the exact harness bytes from a reviewed main commit, not a
-          # mutable branch reference during the running job.
-          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/1bd8b1be29d0bf1b37778e1e209a2e13d445f1ba/scripts/botmode/ci-oracle-publication-gate.py -o /tmp/botmode-ci-oracle-publication-gate.py
+          # Use Oracle gate from the exact published source checkout.
+          # No network-fetched harness or moving branch reference.
+          cp scripts/botmode/ci-oracle-publication-gate.py /tmp/botmode-ci-oracle-publication-gate.py
+          test -s /tmp/botmode-ci-oracle-publication-gate.py
           python3 /tmp/botmode-ci-oracle-publication-gate.py
           echo 'BOTMODE_PUBLISHED_CANDIDATE_MISSION_REHEARSAL=PASS'
           echo '### Release-fix branch Oracle/QA E2E (local synthetic provider)' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Test image built without source-code CI hotpatches; local fixture is not hosted inference.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'GHCR image fetched by immutable OCI digest; local fixture is not hosted inference.' >> "$GITHUB_STEP_SUMMARY"
       - name: Always destroy disposable stack
         if: always()
         env:
           BOTMODE_MONGO_PASSWORD: ci-isolated-only
           POSTGRES_PASSWORD: ci-isolated-only
-          BOTMODE_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95
+          BOTMODE_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:94b11ff0bc8f5820b803741f5a52c96a5e265c2994bb268ee565ba35444cee3a
         run: sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
