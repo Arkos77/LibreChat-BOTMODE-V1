@@ -116,3 +116,7 @@ Connexion Remote `penguin` confirmée ; `git status` initialement vide ; local H
 **Free provider tool-calling** : manual workflow historically pinned converted locally to current triggering SHA, one functional `tool_choice=required` using OpenRouter/free. Pending real runner; do not mistake provider tool call for a persisted native subagent.
 
 **Routeur free_only réel #39094670848 (`e75e7d3d2`) :** Worker SSE final et Oracle ACCEPT VERIFIED + publication PASS avec routeur multi-candidats ACTIF ; workflow FAIL seulement lors du REVIEW : HTTP 401 après expiration du JWT fixture à 2 min, authentification jamais renouvelée. Correctif local JWT CI 15 min (pas la politique production), retest des deux scénarios requis.
+
+**Free tool calling #39095195551** : SUCCESS au SHA `82d7abca1`, un vrai `tool_calls` OpenRouter/free avec schéma fonction strict et `status=ready`. Complète les preuves de capacité externe; ne prouve pas délégation/Oracle multi-agents.
+
+**Reprise 11h43, HEAD 82d7abca1 :** CI 30 SUCCESS, 1 SKIPPED, 2 FAIL (#39095196717 recovery publication Mongo immédiate absente malgré VERIFIED, #39095193886 upstream idle timeout + Oracle absent). Patch Playwright local : poll borné Mongo 30s, exigence de publication exactly-once inchangée ; nécessite qualification CI. Ne pas considérer un verdict Redis suffisant pour une publication utilisateur.

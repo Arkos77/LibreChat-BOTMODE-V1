@@ -593,22 +593,31 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
         );
         throw error;
       }
-      const messages = await requestJson<
-        Array<{
-          messageId?: string;
-          isCreatedByUser?: boolean;
-          text?: string;
-          content?: unknown;
-        }>
-      >(page, {
-        path: `/api/messages/${encodeURIComponent(conversationId)}`,
-        token,
-      });
-      expect(
-        messages.filter(
-          (m) => m.isCreatedByUser === false && responseText(m).includes('{"ok":true}'),
-        ),
-      ).toHaveLength(1);
+      // A durable Oracle VERIFIED result precedes the independent Mongo
+      // message publication write. Poll that distinct readback boundary rather
+      // than treating an eventual write as a synchronous response. Still require
+      // exactly one published answer and globally unique message IDs.
+      type PublishedMessage = {
+        messageId?: string;
+        isCreatedByUser?: boolean;
+        text?: string;
+        content?: unknown;
+      };
+      let messages: PublishedMessage[] = [];
+      await expect
+        .poll(
+          async () => {
+            messages = await requestJson<PublishedMessage[]>(page, {
+              path: `/api/messages/${encodeURIComponent(conversationId)}`,
+              token,
+            });
+            return messages.filter(
+              (m) => m.isCreatedByUser === false && responseText(m).includes('{"ok":true}'),
+            ).length;
+          },
+          { timeout: 30_000, intervals: [300, 750, 1500] },
+        )
+        .toBe(1);
       expect(new Set(messages.map((m) => m.messageId)).size).toBe(messages.length);
       console.log('PR28_MODEL_ONLY_POST_SIGKILL_ORACLE_PUBLISHED_ONCE=PASS');
     } finally {
