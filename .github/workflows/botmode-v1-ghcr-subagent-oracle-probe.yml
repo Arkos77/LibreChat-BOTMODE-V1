@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      live_free_provider:
+        description: 'Additionally test real OpenRouter/free delegated child and Oracle (never paid)'
+        type: boolean
+        required: true
+        default: false
 permissions:
   contents: read
 
@@ -11,7 +17,8 @@ permissions:
 # GHCR image. It could not validate ANY fix on PR29. Keep its previous run
 # evidence in GitHub history, but make the release gate test its own exact SHA.
 # Qualify the already published immutable experimental digest. No additional
-# publication, real inference credentials, or user volumes are used.
+# publication or user volumes are used. Real provider credentials are read
+# only in an explicitly triggered manual free-only follow-up step.
 env:
   BOTMODE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   BOTMODE_PUBLISHED_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:94b11ff0bc8f5820b803741f5a52c96a5e265c2994bb268ee565ba35444cee3a
@@ -48,6 +55,8 @@ jobs:
             'docs/BOTMODE_V1_INVENTAIRE_MAITRE_20261018.md',
             'docs/BOTMODE_V1_MEMO_CHECKPOINT_20261018.md',
             'scripts/botmode/ci-staging-digest-rollback.sh',
+            'scripts/botmode/ci-live-free-child-oracle-gate.py',
+            'scripts/botmode/ci-live-free-child-preflight.sh',
           }
           changed = set(subprocess.check_output(
             ['git','diff','--name-only','13edaa4f4d0a44d659d76ccb5b160358ad60dfc2','HEAD'],
@@ -204,7 +213,7 @@ jobs:
             console.error('CI_PHASE=user_insert_pass');
             if (!signingSecret) throw new Error('JWT_SECRET unavailable in mounted .env');
             console.error('CI_PHASE=jwt_sign_begin');
-            process.stdout.write(jwt.sign({ id: String(id) }, signingSecret, { expiresIn: '2m' }));
+            process.stdout.write(jwt.sign({ id: String(id) }, signingSecret, { expiresIn: '15m' }));
             console.error('CI_PHASE=jwt_sign_pass');
             await mongoose.disconnect();
           })().catch((error) => { console.error('CI principal creation:', JSON.stringify({name:error?.name,code:error?.code,codeName:error?.codeName,phase:error?.errorLabelSet ? 'mongo' : undefined,messageClass: /auth/i.test(error?.message || '') ? 'authentication' : /connect|network|server selection/i.test(error?.message || '') ? 'connection' : /module/i.test(error?.message || '') ? 'module' : 'other'})); process.exit(1); });
@@ -590,6 +599,14 @@ jobs:
           echo 'BOTMODE_CURRENT_IMAGE_SUBAGENT_ORACLE_PROBE=PASS'
           echo '### Release-fix branch Oracle/QA E2E (local synthetic provider)' >> "$GITHUB_STEP_SUMMARY"
           echo 'Published immutable OCI digest tested with local synthetic subagent model; no real-provider inference.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Optional real OpenRouter free-only delegated child and Oracle
+        if: github.event_name == 'workflow_dispatch' && inputs.live_free_provider == true
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CI_EXTERNAL_FREE_PROVIDER: 'true'
+        run: |
+          bash scripts/botmode/ci-live-free-child-preflight.sh
       - name: Classify child execution exception from API logs
         if: failure()
         env:
