@@ -43,6 +43,7 @@ jobs:
             '.github/workflows/botmode-v1-lite-rollback-smoke.yml',
             '.github/workflows/botmode-v1-published-mission-rehearsal.yml',
             '.github/workflows/botmode-v1-ghcr-subagent-oracle-probe.yml',
+            '.github/workflows/botmode-v1-published-arm64-image.yml',
             'docs/BOTMODE_V1_GHCR_RELEASE_GATE.md',
             'docs/BOTMODE_V1_INVENTAIRE_MAITRE_20261018.md',
             'docs/BOTMODE_V1_MEMO_CHECKPOINT_20261018.md',
