@@ -42,7 +42,7 @@ services:
       - botmode-librechat-data:/app/data
 
   admin-panel:
-    image: registry.librechat.ai/clickhouse/librechat-admin-panel:latest
+    image: registry.librechat.ai/clickhouse/librechat-admin-panel@sha256:a395465d1daa3c11495810a8c224df86675985d50de42e98e36eeedbd8aecb94
     restart: always
     ports:
       - "${ADMIN_PANEL_PORT:-3000}:3000"
@@ -87,7 +87,7 @@ services:
       - botmode-pgdata:/var/lib/postgresql/data
 
   rag_api:
-    image: registry.librechat.ai/danny-avila/librechat-rag-api-dev-lite:latest
+    image: registry.librechat.ai/danny-avila/librechat-rag-api-dev-lite@sha256:a62ce2221b43a9bb57fa6cb733e7047c80132960272c33d5704028f3071a1251
     restart: always
     depends_on:
       - vectordb
