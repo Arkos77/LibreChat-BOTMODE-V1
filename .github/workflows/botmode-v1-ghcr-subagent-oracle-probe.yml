@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       live_free_provider:
-        description: 'Additionally test real OpenRouter/free delegated child and Oracle (never paid)'
+        description: 'Real free-model structured Worker-to-specialist Oracle; nested child checked separately'
         type: boolean
         required: true
         default: false

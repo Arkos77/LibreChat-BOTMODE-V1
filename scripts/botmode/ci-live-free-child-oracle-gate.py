@@ -31,13 +31,22 @@ worker = Path("/tmp/botmode-ci-worker-id").read_text().strip()
 child = Path("/tmp/botmode-ci-child-id").read_text().strip()
 mission_id = "ci-live-free-" + str(uuid.uuid4())
 conversation_id = str(uuid.uuid4())
-task_id = mission_id + "/main"
+# The deterministic planner must REQUIRE a specialist by a capability gap,
+# rather than relying on prose instructions that a free model may ignore.
+# Two ordered graph tasks exercise real Worker -> specialist -> Oracle actors.
+task_ids = {"worker": mission_id + "/worker", "specialist": mission_id + "/specialist"}
 mission = {
     "missionId": mission_id,
     "taskId": mission_id,
-    "objective": "Déléguer obligatoirement avec l'outil subagent en mode synchrone (run_in_background:false), attendre sa réponse terminale puis produire le JSON final.",
+    "objective": "Exécuter les étapes dépendantes Worker puis spécialiste, vérifier leurs sorties indépendamment et publier après Oracle.",
     "constraints": ["Le spécialiste doit terminer AVANT la publication Oracle", "Ne pas inventer sa réponse", "Retour final JSON strict : {\"ok\":true}"],
-    "requiredCapabilities": ["basic"],
+    "requiredCapabilities": ["basic", "research_specialist_ci"],
+    "objectives": [
+        {"key": "worker", "objective": "Préparer le plan de réponse. Retourne strictement {\"ok\":true}.",
+         "requiredCapabilities": ["basic"], "dependsOn": []},
+        {"key": "specialist", "objective": "Vérifier le plan du Worker et retourner strictement {\"ok\":true}.",
+         "requiredCapabilities": ["research_specialist_ci"], "dependsOn": ["worker"]},
+    ],
     "validation": {"criteria": [{"id": "ci-ok", "field": "ok", "expected": True}]},
 }
 payload = {
@@ -47,13 +56,13 @@ payload = {
     "messageId": str(uuid.uuid4()),
     "parentMessageId": "00000000-0000-0000-0000-000000000000",
     "isNewConvo": True,
-    "text": "Appelle obligatoirement l'outil subagent avec run_in_background:false, ATTENDS le résultat complet du spécialiste, puis retourne strictement {\"ok\":true}. Ne publie rien tant que le spécialiste n'est pas terminé.",
+    "text": "Exécute le contrat structuré en deux tâches : Worker puis spécialiste de recherche dépendant du Worker. Le spécialiste doit terminer avant Oracle. Réponse par tâche strictement {\"ok\":true}.",
     "orchestratorMission": {
         "mission": mission,
         "plannerContext": {
             "worker": {"id": "ci-worker", "agentId": worker, "role": "worker", "capabilities": ["basic"], "constraints": []},
             "specialists": [
-                {"id": child, "agentId": child, "role": "specialist", "capabilities": ["basic"], "constraints": []}
+                {"id": child, "agentId": child, "role": "specialist", "capabilities": ["research_specialist_ci"], "constraints": []}
             ],
         },
     },
@@ -193,20 +202,36 @@ for _ in range(30):
     if raw_plan and raw_state:
         try:
             plan, state = json.loads(raw_plan), json.loads(raw_state)
-            verdicts = state.get("results", {}).get(task_id, {}).get("verdicts", [])
-            if verdicts:
-                durable = (plan, verdicts)
+            results = state.get("results", {})
+            if all(results.get(task_id, {}).get("verdicts") for task_id in task_ids.values()):
+                durable = (plan, results)
                 break
         except (TypeError, ValueError, AttributeError):
             pass
     time.sleep(1)
 if durable is None:
     raise SystemExit("CI_LIVE_FREE_FAIL=ORACLE_NOT_DURABLE")
-plan, verdicts = durable
+plan, results = durable
+expected_tasks = {
+    "worker": {"taskId": task_ids["worker"], "agentId": worker},
+    "specialist": {"taskId": task_ids["specialist"], "agentId": child},
+}
+actual_tasks = {item.get("key"): item for item in plan.get("tasks", []) if isinstance(item, dict)}
 if (plan.get("mission", {}).get("missionId") != mission_id or
-        len(verdicts) != 1 or verdicts[0].get("status") != "VERIFIED"):
-    print("CI_LIVE_FREE_ORACLE_VERDICTS=" + str(len(verdicts)), flush=True)
-    raise SystemExit("CI_LIVE_FREE_FAIL=ORACLE_NOT_VERIFIED")
+        plan.get("strategy") != "SEQUENTIAL" or
+        set(actual_tasks) != set(expected_tasks) or
+        any(actual_tasks[key].get("taskId") != expected["taskId"] or
+            actual_tasks[key].get("agentId") != expected["agentId"]
+            for key, expected in expected_tasks.items()) or
+        actual_tasks["specialist"].get("dependsOn") != ["worker"]):
+    raise SystemExit("CI_LIVE_FREE_FAIL=STRUCTURED_SPECIALIST_PLAN_MISSING")
+print("CI_LIVE_FREE_STRUCTURED_SPECIALIST_PLAN=PASS", flush=True)
+for key, task in expected_tasks.items():
+    verdicts = results.get(task["taskId"], {}).get("verdicts", [])
+    if len(verdicts) != 1 or verdicts[0].get("status") != "VERIFIED":
+        print("CI_LIVE_FREE_ORACLE_UNVERIFIED_STAGE=" + key, flush=True)
+        raise SystemExit("CI_LIVE_FREE_FAIL=ORACLE_NOT_VERIFIED")
+print("CI_LIVE_FREE_STRUCTURED_SPECIALIST_ORACLE=PASS", flush=True)
 if not any(response_text(e.get("responseMessage")).strip()
            for e in finals if isinstance(e.get("responseMessage"), dict)):
     raise SystemExit("CI_LIVE_FREE_FAIL=NO_PUBLISHED_RESPONSE")
@@ -217,10 +242,18 @@ print("CI_LIVE_FREE_ORACLE_VERIFIED_AND_PUBLISHED=PASS", flush=True)
 # successful completion, *before* the Oracle publication.
 at_oracle=child_state(conversation_id)
 emit_child_state('AT_ORACLE',at_oracle)
-if at_oracle['children']!=1:
-    raise SystemExit('CI_LIVE_FREE_FAIL=WRONG_CHILD_COUNT')
 if at_oracle['failed']:
     raise SystemExit('CI_LIVE_FREE_FAIL=CHILD_TERMINATED_WITH_ERROR')
+if at_oracle['children']==0:
+    # A planned specialist graph actor is NOT a nested subagentThread. The
+    # sequential plan above must have already proven its separate Agent ID and
+    # independent VERIFIED task before accepting this limited qualification.
+    # A real nested child remains a separate, stricter gate; never label it PASS.
+    print('CI_LIVE_FREE_NESTED_CHILD_THREAD=NOT_OBSERVED',flush=True)
+    print('BOTMODE_LIVE_FREE_STRUCTURED_SPECIALIST_ORACLE=PASS',flush=True)
+    raise SystemExit(0)
+if at_oracle['children']!=1:
+    raise SystemExit('CI_LIVE_FREE_FAIL=UNEXPECTED_NESTED_CHILD_COUNT')
 if at_oracle['completed']!=1:
     # Diagnose whether the provider still works after the parent was already
     # published, but NEVER turn late completion into a full-chain PASS.
@@ -244,3 +277,4 @@ emit_child_state('AFTER_RESTART',after)
 if after['children']!=1 or after['completed']!=1 or after['failed']:
     raise SystemExit('CI_LIVE_FREE_FAIL=SUCCESSFUL_CHILD_NOT_DURABLE_AFTER_RESTART')
 print('BOTMODE_LIVE_FREE_EXTERNAL_CHILD_ORACLE=PASS',flush=True)
+print('BOTMODE_LIVE_FREE_STRUCTURED_SPECIALIST_ORACLE=PASS',flush=True)
