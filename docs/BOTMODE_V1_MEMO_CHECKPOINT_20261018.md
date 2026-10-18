@@ -96,3 +96,9 @@ Connexion Remote `penguin` confirmée ; `git status` initialement vide ; local H
 **Lot UX libre-service en préparation** : auto-initialisation native lors du premier clic de mission Idées si le catalogue contient un unique OpenRouter `openrouter/free`. Sinon le sélecteur explicite Projet reste nécessaire, aucun modèle payant choisi automatiquement. Tests : seul agent étranger, erreur API, gratuit unique, catalogue payant seul, Agent Worker trouvé. Pas de claim PASS avant CI.
 
 **DOCX sur source HEAD :** #39091502539 `SUCCESS` au SHA `ccb9ae9f5`, trace Mammoth deux conversions sans argparse/sprintf-js et 15/15 tests ZIP/DOCX ; avis npm non résolus, revue D-02 intacte.
+
+**Protection main** : API GitHub : force-push/deletion refusés, mais aucune review obligatoire, aucun status check requis, enforce-admins désactivé, aucun ruleset renvoyé. Décision D-04/G5 ouverte, aucune mutation de paramètre effectuée.
+
+**Publication GHCR** : durcissement local de la chaîne `botmode-image.yml` (SHA candidate unique, refus tag existant, rejet edge/latest, branche requise, sérialisation SHA, 5 tests script PASS) ; endpoint des versions GHCR inaccessible via token local (403 read:packages). Mode guard-only sans publication ajouté pour vérifier la permission Actions avant D-03, résultat en attente.
+
+**Échec statique isolé sur e05c57a8 :** job Static checks #39091743728 en failure : seul `IdeasView.test.tsx` a une erreur Prettier ligne 79 et un ordre d'imports divergent, malgré Jest nommé PASS #39091743682. Fix ciblé par tri officiel `scripts/sort-imports.mts` et format du chaînage ; contrôle local de tri PASS, 5 tests gardiens GHCR PASS. Attendre requalification SHA, ne pas inventer une résolution CI.

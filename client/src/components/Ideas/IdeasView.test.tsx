@@ -1,7 +1,7 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { dataService } from 'librechat-data-provider';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import IdeasView from './IdeasView';
 
 const mockNavigate = jest.fn();
@@ -76,7 +76,8 @@ describe('BOT MODE Ideas mission authorization', () => {
   });
 
   it('initializes a missing Worker only when one explicitly free model is configured', async () => {
-    jest.mocked(dataService.listAgents)
+    jest
+      .mocked(dataService.listAgents)
       .mockResolvedValueOnce({ data: [{ id: 'unrelated', name: 'Other Agent' }] } as never)
       .mockResolvedValueOnce({ data: [{ id: 'new-worker', name: 'BOT MODE Worker' }] } as never);
     jest.mocked(dataService.getModels).mockResolvedValue({
