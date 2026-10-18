@@ -166,3 +166,90 @@ jobs:
         run: |
           sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down -v --remove-orphans || true
           sudo rm -f .env .botmode-database-auth-initialized
+
+  mongo-authenticated-restore:
+    name: Authenticated MongoDB backup/restore on disposable runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact HEAD
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BOTMODE_CANDIDATE_SHA }}
+          persist-credentials: false
+      - name: Exercise backup and restore on isolated MongoDB only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+          test ! -e .env
+          export COMPOSE_PROJECT_NAME="botmode-db-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          export BOTMODE_MONGO_PASSWORD
+          BOTMODE_MONGO_PASSWORD="$(openssl rand -hex 24)"
+          export POSTGRES_PASSWORD
+          POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+          touch .env
+          chmod 600 .env
+          compose=(docker compose -f docker-compose.botmode.yml)
+          actual_project="$("${compose[@]}" config --format json | python3 -c 'import json,sys;print(json.load(sys.stdin)["name"])')"
+          test "$actual_project" = "$COMPOSE_PROJECT_NAME" || {
+            echo 'Refusing to create MongoDB: Compose project is not isolated.' >&2
+            exit 1
+          }
+          cleanup() {
+            "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+            rm -f .env
+          }
+          trap cleanup EXIT
+          "${compose[@]}" up -d --no-deps mongodb
+          mongo_exec() {
+            "${compose[@]}" exec -T mongodb sh -ec '
+              test -n "$MONGO_INITDB_ROOT_USERNAME"
+              test -n "$MONGO_INITDB_ROOT_PASSWORD"
+              client="$(command -v mongosh || command -v mongo)"
+              "$client" --quiet --username "$MONGO_INITDB_ROOT_USERNAME" \
+                --password "$MONGO_INITDB_ROOT_PASSWORD" \
+                --authenticationDatabase admin LibreChat --eval "$1"
+            ' sh "$1"
+          }
+          ready=0
+          for i in $(seq 1 60); do
+            if mongo_exec 'db.adminCommand({ping:1}).ok' >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = 1 || {
+            echo 'Isolated MongoDB did not authenticate.' >&2
+            exit 1
+          }
+          mongo_exec 'db.botmode_ci_restore.insertOne({_id:"roundtrip", value:"before"}).acknowledged' |
+            grep -q 'true'
+          backup_dir="$(mktemp -d "$RUNNER_TEMP/botmode-real-restore.XXXXXX")"
+          bash scripts/botmode/backup.sh "$backup_dir" > "$RUNNER_TEMP/botmode-db-backup.log"
+          grep -q '^BOTMODE_BACKUP_DB=COMPLETE$' "$RUNNER_TEMP/botmode-db-backup.log"
+          test -s "$backup_dir/mongodb-LibreChat.archive"
+          test -s "$backup_dir/mongodb-LibreChat.archive.sha256"
+          mongo_exec 'db.botmode_ci_restore.updateOne({_id:"roundtrip"},{$set:{value:"after"}}).modifiedCount' |
+            grep -q '1'
+          # Corruption MUST be denied before any database write.
+          mkdir "$backup_dir/corrupt"
+          cp "$backup_dir/mongodb-LibreChat.archive" "$backup_dir/corrupt/"
+          cp "$backup_dir/mongodb-LibreChat.archive.sha256" "$backup_dir/corrupt/"
+          printf 'corrupt' >> "$backup_dir/corrupt/mongodb-LibreChat.archive"
+          set +e
+          BOTMODE_CONFIRM_RESTORE=YES bash scripts/botmode/restore.sh \
+            "$backup_dir/corrupt/mongodb-LibreChat.archive" > "$RUNNER_TEMP/restore-denied.log" 2>&1
+          denied_code=$?
+          set -e
+          test "$denied_code" = 2
+          test "$(mongo_exec 'db.botmode_ci_restore.findOne({_id:"roundtrip"}).value' | tail -1)" = 'after'
+          # The destructive restore is authorized ONLY for this isolated GitHub
+          # runner project, whose unique Compose name was verified above.
+          BOTMODE_CONFIRM_RESTORE=YES bash scripts/botmode/restore.sh \
+            "$backup_dir/mongodb-LibreChat.archive" > "$RUNNER_TEMP/restore-authorized.log"
+          grep -q '^BOTMODE_RESTORE=PASS$' "$RUNNER_TEMP/restore-authorized.log"
+          test "$(mongo_exec 'db.botmode_ci_restore.findOne({_id:"roundtrip"}).value' | tail -1)" = 'before'
+          echo 'BOTMODE_AUTHENTICATED_MONGO_BACKUP_RESTORE_ROUNDTRIP=PASS'
+          echo 'SCOPE=isolated exact HEAD MongoDB, no user volumes, no transversion migration'

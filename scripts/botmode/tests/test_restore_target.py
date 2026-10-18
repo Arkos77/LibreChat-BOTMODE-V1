@@ -22,7 +22,7 @@ def fake_docker_env(sandbox, *, mongo_on=True, dump_fail=False, dump_empty=False
         ' *" ps --status running --services")\n'
         '   [ "$FAKE_MONGO_ON" = "1" ] && echo mongodb\n'
         '   ;;\n'
-        ' *" mongodump --db LibreChat --archive")\n'
+        ' *mongodump*)\n'
         '   [ "$FAKE_DUMP_EMPTY" = "1" ] || printf "FAKE-DATABASE-ARCHIVE"\n'
         '   [ "$FAKE_DUMP_FAIL" = "1" ] && exit 6\n'
         '   ;;\n'
@@ -75,7 +75,9 @@ class RestoreTargetTests(unittest.TestCase):
         self.assertIn('BOTMODE_RESTORE=PASS', result.stdout)
         self.assertEqual(len(calls), 2)
         self.assertTrue(all(f'PWD={ROOT} ARGS=compose -f docker-compose.botmode.yml' in c for c in calls))
-        self.assertIn(' mongorestore --db LibreChat --archive --drop', calls[-1])
+        self.assertIn('mongorestore', calls[-1])
+        self.assertIn('--authenticationDatabase admin', calls[-1])
+        self.assertIn('MONGO_INITDB_ROOT_PASSWORD', calls[-1])
 
     def test_absolute_archive_still_targets_repository(self):
         result, calls = self.invoke(approve=True, archive_kind='absolute')
@@ -155,6 +157,9 @@ class BackupTargetTests(unittest.TestCase):
         self.assertEqual(r['archive'], b'FAKE-DATABASE-ARCHIVE')
         self.assertIn(hashlib.sha256(r['archive']).hexdigest(), r['checksum'])
         self.assertEqual(len(r['calls']), 2)
+        self.assertIn('mongodump', r['calls'][-1])
+        self.assertIn('--authenticationDatabase admin', r['calls'][-1])
+        self.assertIn('MONGO_INITDB_ROOT_PASSWORD', r['calls'][-1])
         self.assertTrue(all(f'PWD={ROOT} ' in c for c in r['calls']))
         self.assertEqual(r['part_files'], [])
 

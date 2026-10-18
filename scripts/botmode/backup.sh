@@ -33,7 +33,7 @@ fi
 # An interrupted dump must not leave a misleading restore-ready archive.
 TMP_ARCHIVE=$(mktemp "$DEST/.mongodb-LibreChat.archive.partial.XXXXXX")
 trap 'rm -f "$TMP_ARCHIVE"' EXIT
-if ! docker compose -f docker-compose.botmode.yml exec -T mongodb mongodump --db LibreChat --archive > "$TMP_ARCHIVE"; then
+if ! docker compose -f docker-compose.botmode.yml exec -T mongodb sh -ec   'test -n "$MONGO_INITDB_ROOT_USERNAME" && test -n "$MONGO_INITDB_ROOT_PASSWORD";    exec mongodump --username "$MONGO_INITDB_ROOT_USERNAME"    --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin    --db LibreChat --archive' > "$TMP_ARCHIVE"; then
   echo 'BOTMODE_BACKUP_DB=DUMP_FAILED' >&2
   exit 4
 fi

@@ -389,7 +389,8 @@ export default function IdeasView() {
       if (error instanceof Error && error.message === 'BOT_MODE_WORKER_NOT_INITIALIZED') {
         message = 'Mission non lancée : initialisez d’abord le Worker BOT MODE dans Projet.';
       } else if (error instanceof Error && error.message === 'BOT_MODE_CAPABILITIES_INCOMPLETE') {
-        message = 'Mission non lancée : certaines capacités du Worker BOT MODE sont indisponibles ou non autorisées.';
+        message =
+          'Mission non lancée : certaines capacités du Worker BOT MODE sont indisponibles ou non autorisées.';
       }
       setLaunchError(message);
     },

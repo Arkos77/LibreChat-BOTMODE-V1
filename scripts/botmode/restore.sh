@@ -31,5 +31,5 @@ if [ "${BOTMODE_CONFIRM_RESTORE:-}" != 'YES' ]; then
   echo 'Set BOTMODE_CONFIRM_RESTORE=YES to execute restore.' >&2
   exit 3
 fi
-docker compose -f docker-compose.botmode.yml exec -T mongodb mongorestore --db LibreChat --archive --drop < "$ARCHIVE"
+docker compose -f docker-compose.botmode.yml exec -T mongodb sh -ec   'test -n "$MONGO_INITDB_ROOT_USERNAME" && test -n "$MONGO_INITDB_ROOT_PASSWORD";    exec mongorestore --username "$MONGO_INITDB_ROOT_USERNAME"    --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin    --db LibreChat --archive --drop' < "$ARCHIVE"
 printf 'BOTMODE_RESTORE=PASS\n'
