@@ -77,3 +77,10 @@ Si un gate est inconnu : NO-GO avec action précise, pas de certitude temporelle
 5. En fin de lot, mettre à jour un seul registre, ce mémo, puis conserver un checkpoint vérifié sans dérive.
 
 **Résumé :** objectif = livraison utilisable et reproductible fidèle à la vision, pas « une CI verte ». Conserver les preuves acquises, éviter les relectures et corrections cycliques, ne pas forcer une release non sûre.
+
+
+## Reprise du 18 octobre — delta après b49a5bf03
+
+Connexion Remote `penguin` confirmée ; `git status` initialement vide ; local HEAD=PR #29 head=`b49a5bf03d4f48b05f219ae417cb2c0aa99ec4ad`, PR ouverte en Draft. Sur ce SHA au premier relevé : 24 succès, 3 workflows en cours, 1 accessibilité ignoré. Le scénario onboarding historique référence l'ancienne révision `d4e82dde` et appelle l'initialisation manuelle. Écart concret `IdeasView.tsx` : fallback sur un agent arbitraire ; correctif isolé en préparation, aucune assertion E2E revendiquée. Test local Prettier indisponible (`prettier-plugin-tailwindcss` manquant), pas de contournement des dépendances. Rester NO-GO jusqu'aux preuves HEAD et aux approbations D-02/03/04.
+
+**Qualification Idées ajoutée :** nouveau test Jest ciblé (absence Worker, erreur API, route Worker), exécution en attente du CI après push. Les 28 workflows de `b49a5bf03` sont terminés : 27 succès + 1 accessibilité ignoré. Aucun succès n’est attribuable par avance au futur commit.

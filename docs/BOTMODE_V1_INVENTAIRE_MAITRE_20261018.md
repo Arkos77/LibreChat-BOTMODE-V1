@@ -178,3 +178,20 @@ Ce sont des gates, **pas** un nombre garanti de corrections ni un pourcentage fi
 - Décisions humaines : D-01 scope V1 ; D-02 risques npm/licences ; D-03 publication candidate GHCR ; D-04 merge/tag/release stable ; D-05 crédits, secrets, actions destructives.
 - Tests jetables automatiques autorisés ; volumes personnels Chromebook/Mac intouchables sans accord.
 - Ce registre couvre les **domaines historiques** ; il ne certifie pas chaque fonction. Réduire les « INCONNU » par tests reproductibles et décisions tracées.
+
+
+## 6. Checkpoint complémentaire — 18/10/2026, reprise PR #29
+
+**Révision inspectée** : `b49a5bf03d4f48b05f219ae417cb2c0aa99ec4ad` ; worktree initial propre ; PR #29 OPEN/Draft ; Desktop Commander `penguin` Online. Lors du premier relevé, 24 SUCCESS, 3 IN_PROGRESS (Static, Main Integration, Playwright), 1 SKIPPED accessibilité. Résultats encore en cours non extrapolables. Aucun digest GHCR attribué à ce SHA.
+
+**UX-02 / SE-01 — PARTIEL, correction locale en qualification :** `IdeasView.tsx` utilisait à tort `agentsResponse.data[0]` si le Worker BOT MODE était absent, après avoir déjà créé/modifié le projet et l'idée. Correction en cours : recherche du Worker avec permission EDIT avant création/mutation, refus explicite s'il est absent, navigation uniquement vers son ID. Preuve positive attendue : test navigateur sur image du nouveau SHA ; négatif attendu : zéro mutation de projet/idée et aucune mission lancée si le Worker n'est pas disponible. Ne PAS marquer validé tant que ces tests n'ont pas réussi.
+
+**IN-04 / OR-05 — PARTIEL, écart confirmé :** `botmode-v1-fresh-onboarding-e2e.yml` est un scénario historique épinglé à `d4e82dded5df49f17b97e20361c89796b8f1e068` et appelle explicitement `POST /api/agents/botmode/setup`. Le statut SUCCESS de ce workflow au SHA de la PR reflète la version déclenchante du YAML, pas une image ou un onboarding automatiquement réalisés depuis le HEAD. Le code courant expose l'initialisation utilisateur dans `BotModeProjectPanel.tsx`, mais l'absence de clic n'est pas prouvée comme fonctionnelle. Garder le gate ouvert, ne pas créer d'agent en base via scripts legacy.
+
+**IN-08 / IN-07 — BLOQUÉ_HITL** : aucun GHCR candidate attesté pour `b49a5bf03`; D-03 publication doit rester distinct de la décision stable.
+
+**UX-05 — PARTIEL** : workflow accessibilité SKIPPED, jamais comptabilisé comme PASS.
+
+**Nouveau test ciblé :** `client/src/components/Ideas/IdeasView.test.tsx` couvre (1) absence de Worker malgré un agent ordinaire, (2) échec de l’API ACL, (3) sélection explicite du Worker ; il reste NON EXÉCUTÉ avant CI de qualification. Sur `b49a5bf03`, tous les workflows sont maintenant terminés : 27 SUCCESS et 1 SKIPPED accessibilité, 0 FAILURE (contrôles du code de cette révision uniquement).
+
+**Validation locale de correction :** `git diff --check` passé ; `npx prettier --check` bloqué par dépendance locale manquante `prettier-plugin-tailwindcss`, donc lint/format non validés localement. Poursuivre par CI exact SHA et tests négatifs pertinents, sans modifier les volumes personnels.

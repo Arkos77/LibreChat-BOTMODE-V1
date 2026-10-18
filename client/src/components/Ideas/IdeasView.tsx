@@ -292,6 +292,7 @@ export default function IdeasView() {
   const qc = useQueryClient();
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [launchError, setLaunchError] = useState('');
   const ideas = useQuery(['ideas'], () => dataService.listIdeas(), { staleTime: 60_000 });
   const create = useMutation((x: { title: string; content: string }) => dataService.createIdea(x), {
     onSuccess: () => {
@@ -314,6 +315,16 @@ export default function IdeasView() {
 
   const launchIdeaMission = useMutation({
     mutationFn: async ({ idea, mode }: { idea: TIdea; mode: 'analyze' | 'develop' | 'watch' }) => {
+      // Never change an idea or create a project until an authorized Worker is available.
+      // In particular, do not silently launch BOT MODE on an unrelated agent.
+      const agentsResponse = await dataService.listAgents({
+        requiredPermission: PermissionBits.EDIT,
+        limit: 1000,
+      });
+      const worker = agentsResponse.data.find((item) => item.name?.trim() === 'BOT MODE Worker');
+      if (!worker?.id) {
+        throw new Error('BOT_MODE_WORKER_NOT_INITIALIZED');
+      }
       const project = idea.projectId
         ? { _id: idea.projectId }
         : await dataService.createProject({
@@ -338,22 +349,22 @@ export default function IdeasView() {
       await dataService.updateIdea({ ideaId: idea._id, status, projectId: project._id });
       return {
         projectId: project._id,
+        workerId: worker.id,
         prompt: `${prefix}\n\nIDÉE : ${idea.title}\n\nCONTENU : ${idea.content}`,
       };
     },
-    onSuccess: async ({ projectId, prompt }, { mode }) => {
-      const agentsResponse = await dataService.listAgents({
-        requiredPermission: PermissionBits.EDIT,
-        limit: 1000,
-      });
-      const agent =
-        agentsResponse.data.find((item) => item.name?.trim() === 'BOT MODE Worker') ??
-        agentsResponse.data[0];
-      if (!agent?.id) return;
+    onMutate: () => setLaunchError(''),
+    onError: (error: unknown) =>
+      setLaunchError(
+        error instanceof Error && error.message === 'BOT_MODE_WORKER_NOT_INITIALIZED'
+          ? 'Mission non lancée : initialisez d’abord le Worker BOT MODE dans Projet.'
+          : 'Mission non lancée : vérifiez la connexion et les autorisations.',
+      ),
+    onSuccess: ({ projectId, workerId, prompt }, { mode }) => {
       const params = new URLSearchParams({
         projectId,
         chatProjectId: projectId,
-        agent_id: agent.id,
+        agent_id: workerId,
         prompt,
         submit: 'true',
         botmode: '1',
@@ -399,6 +410,11 @@ export default function IdeasView() {
             className="mt-3 min-h-28 w-full rounded-xl border border-border-light bg-transparent p-3"
           />
         </form>
+        {launchError && (
+          <p role="alert" className="text-sm text-red-600">
+            {launchError}
+          </p>
+        )}
         <section className="space-y-3">
           {ideas.data?.ideas.map((idea) => (
             <article key={idea._id} className="rounded-2xl border border-border-light p-4">
@@ -424,6 +440,7 @@ export default function IdeasView() {
                 <Button
                   size="sm"
                   variant="outline"
+                  disabled={launchIdeaMission.isLoading}
                   onClick={() => launchIdeaMission.mutate({ idea, mode: 'analyze' })}
                 >
                   {localize('com_ui_idea_analyze')}
@@ -431,6 +448,7 @@ export default function IdeasView() {
                 <Button
                   size="sm"
                   variant="outline"
+                  disabled={launchIdeaMission.isLoading}
                   onClick={() => launchIdeaMission.mutate({ idea, mode: 'develop' })}
                 >
                   {localize('com_ui_idea_develop')}
@@ -438,6 +456,7 @@ export default function IdeasView() {
                 <Button
                   size="sm"
                   variant="outline"
+                  disabled={launchIdeaMission.isLoading}
                   onClick={() => launchIdeaMission.mutate({ idea, mode: 'watch' })}
                 >
                   {localize('com_ui_idea_watch')}
