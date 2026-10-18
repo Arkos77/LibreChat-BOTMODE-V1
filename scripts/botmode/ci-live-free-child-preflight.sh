@@ -50,7 +50,37 @@ for _ in $(seq 1 60); do
     if curl -fsS --max-time 4 http://127.0.0.1:3090/api/config >/dev/null 2>&1; then ready=1; break; fi
     sleep 2
 done
-test "$ready" = 1 || { echo 'CI_LIVE_FREE_FAIL=API_NOT_READY'; exit 3; }
+if test "$ready" != 1; then
+    echo 'CI_LIVE_FREE_FAIL=API_NOT_READY'
+    docker inspect "$api_id" --format 'CI_LIVE_API_STATE={{.State.Status}} EXIT={{.State.ExitCode}} OOM={{.State.OOMKilled}} RESTARTS={{.RestartCount}}' || true
+    code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 4 http://127.0.0.1:3090/api/config || true)"
+    echo "CI_LIVE_API_HTTP_STATUS=$code"
+    if "${compose[@]}" exec -T mongodb sh -ec 'mongo --quiet -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin admin --eval "print(db.adminCommand({ping:1}).ok)"' 2>/dev/null | tail -1 | grep -qx 1; then
+      echo 'CI_LIVE_MONGO_ADMIN_AUTH=PASS'
+    else
+      echo 'CI_LIVE_MONGO_ADMIN_AUTH=FAIL'
+    fi
+    "${compose[@]}" logs --no-color --tail 180 api > /tmp/botmode-ci-live-api-startup.log 2>/dev/null || true
+    python3 - <<'PY_DIAG'
+from pathlib import Path
+raw=Path('/tmp/botmode-ci-live-api-startup.log').read_text(errors='replace').lower()
+categories={
+ 'MONGO_AUTH':('authentication failed','auth failed','mongoservererror'),
+ 'DB_CONNECTION':('server selection','connect econnrefused','mongodb connection'),
+ 'PERMISSION':('eacces','permission denied','operation not permitted'),
+ 'CONFIG':('invalid configuration','config failed','yamlexception','configuration error'),
+ 'KEY':('api key missing','api key required','key not provided'),
+ 'MODULE':('module not found','cannot find module'),
+ 'PROVIDER':('provider','openrouter','upstream idle timeout'),
+ 'REDIS':('redis connection','error connecting redis'),
+ 'SERVER_START':('failed to start server','uncaught exception','fatal'),
+}
+for category,terms in categories.items():
+    print('CI_LIVE_API_LOG_'+category+'='+str(any(s in raw for s in terms)).upper(),flush=True)
+print('CI_LIVE_API_LOG_LINES='+str(len(raw.splitlines())),flush=True)
+PY_DIAG
+    exit 3
+fi
 # Do not emit the JWT, model prompts or any provider reply to Action logs.
 echo 'CI_LIVE_FREE_REAL_OPENROUTER_ENDPOINT_READY=PASS'
 python3 scripts/botmode/ci-live-free-child-oracle-gate.py
