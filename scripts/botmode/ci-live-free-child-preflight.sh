@@ -38,6 +38,9 @@ sudo chmod 640 .env
 # Once the synthetic gate is complete, stop its model fixture entirely.
 if test -r /tmp/botmode-ci-fixture.pid; then kill "$(cat /tmp/botmode-ci-fixture.pid)" 2>/dev/null || true; fi
 export BOTMODE_IMAGE="$BOTMODE_PUBLISHED_IMAGE"
+# GitHub Actions run steps have independent shell environments. The original
+# synthetic setup used host port 3090, so preserve it on API recreation.
+export BOTMODE_HOST_PORT=3090
 export BOTMODE_MONGO_PASSWORD=ci-isolated-only
 export POSTGRES_PASSWORD=ci-isolated-only
 compose=(docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)
@@ -45,6 +48,9 @@ compose=(docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-
 api_id="$("${compose[@]}" ps -q api)"
 test -n "$api_id"
 test "$(docker inspect "$api_id" --format '{{.Config.Image}}')" = "$BOTMODE_PUBLISHED_IMAGE"
+# A live API on the *wrong* host port is not an upstream provider failure.
+port_binding="$("${compose[@]}" port api 3080)"
+case "$port_binding" in *:3090) echo 'CI_LIVE_FREE_HOST_PORT_MATCH=PASS';; *) echo 'CI_LIVE_FREE_FAIL=WRONG_HOST_PORT'; exit 3;; esac
 ready=0
 for _ in $(seq 1 60); do
     if curl -fsS --max-time 4 http://127.0.0.1:3090/api/config >/dev/null 2>&1; then ready=1; break; fi
