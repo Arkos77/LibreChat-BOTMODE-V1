@@ -44,7 +44,7 @@ npm run announce -- --version v1.0.0 --release-url https://github.com/Arkos77/Li
 REGISTRY_CONFIRM_SEND=YES npm run announce -- --send --version v1.0.0 --release-url https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.0
 ```
 
-Before a real send, the notifier queries the official GitHub Releases API and refuses drafts, prereleases, unpublished or mismatched tags; URL validation is exact, with no redirects. The dry run sends no email and does not need a release to exist yet. Mail is intentionally throttled and contains an unsubscribe link requiring user confirmation. Re-running the same version will not resend successful deliveries; failed ones can be retried. This script neither creates a GitHub release nor publishes a Docker image.
+Before a real send, the notifier queries the official GitHub Releases API and refuses drafts, prereleases, unpublished or mismatched tags; URL validation is exact, with no redirects. The dry run sends no email and does not need a release to exist yet. Mail is intentionally throttled and contains an unsubscribe link requiring user confirmation. Re-running the same version will not resend successful deliveries; failed ones can be retried, and a stale unsent reservation can be reclaimed after a ten-minute lease. A process interruption between SMTP acceptance and marking sent may still produce a duplicate email on retry; no guarantee of exactly-once SMTP delivery is claimed. This script neither creates a GitHub release nor publishes a Docker image.
 
 ## Development / acceptance
 

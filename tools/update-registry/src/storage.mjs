@@ -54,8 +54,21 @@ export async function connectStore(mongoUri, dbName) {
       for await (const user of cursor) yield user;
     },
     async reserveAnnouncement(version,recipientKey,now) {
-      try {await announcements.insertOne({version,recipientKey,status:'reserved',createdAt:now}); return true;}
-      catch(error) {if(error?.code===11000)return false;throw error;}
+      // Reclaim an abandoned reservation only after its bounded lease expires.
+      // A successful send stays marked sent and is never reserved again.
+      const leaseUntil = new Date(now.getTime() + 10 * 60 * 1000);
+      const claimed = await announcements.updateOne(
+        {version,recipientKey,status:'reserved',leaseUntil:{$lte:now}},
+        {$set:{leaseUntil,updatedAt:now}},
+      );
+      if (claimed.modifiedCount) return true;
+      try {
+        await announcements.insertOne({version,recipientKey,status:'reserved',createdAt:now,leaseUntil});
+        return true;
+      } catch(error) {
+        if(error?.code===11000)return false;
+        throw error;
+      }
     },
     async markAnnouncementSent(version,recipientKey,now) {
       await announcements.updateOne({version,recipientKey,status:'reserved'},{$set:{status:'sent',sentAt:now}});

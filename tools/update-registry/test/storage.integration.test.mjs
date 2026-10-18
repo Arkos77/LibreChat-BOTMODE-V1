@@ -25,6 +25,8 @@ test('MongoDB subscriber lifecycle, indexed deduplication, and announcement idem
     assert.equal((await store.listConfirmed(0,10))[0].email,email);
     assert.equal(await store.reserveAnnouncement('v1.0.0','recipient-hmac',now),true);
     assert.equal(await store.reserveAnnouncement('v1.0.0','recipient-hmac',now),false);
+    assert.equal(await store.reserveAnnouncement('v1.0.0','recipient-hmac',new Date(now.getTime()+11*60*1000)),true); // crash recovery lease
+    assert.equal(await store.reserveAnnouncement('v1.0.0','recipient-hmac',new Date(now.getTime()+12*60*1000)),false);
     await store.markAnnouncementSent('v1.0.0','recipient-hmac',now);
     assert.equal(await store.reserveAnnouncement('v1.0.0','recipient-hmac',now),false);
     assert.equal(await store.unsubscribe(unsub,now),true);
