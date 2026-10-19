@@ -45,6 +45,8 @@
 
 **OR-LIVE-04 — succès réel récent :** [#39183872416](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39183872416) **SUCCESS**, `openrouter/free`, 14 événements SSE, Worker→spécialiste graphe, verdicts Oracle durables et publication vérifiés. Aucun nested child thread observé. Les anciens runs de timeout et 429 restent un **historique de pannes résolues dans leur périmètre**, pas le dernier verdict du graphe structuré.
 
+**DIST-16 — retour version Full :** [#39184624603](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39184624603) **SUCCESS** : candidate OCI → ancien OCI → candidate OCI sur le même MongoDB 8 CI restauré, Worker et ACL confirmés à chaque étape ; les migrations de schéma arbitraires et Redis actif restent hors champ.
+
 ## Arbitrages / NO-GO restants
 
 1. **D-02** : acceptation explicite et bornée du risque npm Mammoth/argparse/sprintf-js ou remédiation vérifiée ; pas de waiver silencieux. Voir [dossier](BOTMODE_V1_NPM_RISK_DECISION_20261014.md).
