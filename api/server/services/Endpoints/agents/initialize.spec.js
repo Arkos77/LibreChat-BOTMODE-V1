@@ -3627,36 +3627,43 @@ describe('initializeClient — subagent loading', () => {
 
   it.each([
     ['paid model selected', 'paid-model', undefined],
-    ['free model with hidden fallback', 'openrouter/free', [{ provider: 'openAI', clientOptions: { model: 'paid-model' } }]],
-  ])('removes BOT MODE self-spawn at runtime for %s without changing saved permissions', async (_label, model, fallbacks) => {
-    const persistedSubagents = { enabled: true, allowSelf: true, agent_ids: [] };
-    mockInitializeAgent.mockResolvedValue({
-      ...makePrimaryConfig({ subagents: persistedSubagents }),
-      model,
-      provider: 'openAI',
-      model_parameters: { model, ...(fallbacks ? { fallbacks } : {}) },
-    });
-    const endpointOption = makeEndpointOption();
-    endpointOption.agent = Promise.resolve({
-      id: PRIMARY_ID,
-      name: 'BOT MODE Worker',
-      provider: 'openrouter',
-      model,
-      tools: [],
-    });
-    endpointOption.model_parameters = { model };
-    await initializeClient({
-      req: makeSubagentReq(),
-      res: {},
-      signal: new AbortController().signal,
-      endpointOption,
-    });
-    expect(agentClientArgs.agent.subagents).toMatchObject({
-      enabled: true,
-      allowSelf: false,
-    });
-    expect(persistedSubagents.allowSelf).toBe(true);
-  });
+    [
+      'free model with hidden fallback',
+      'openrouter/free',
+      [{ provider: 'openAI', clientOptions: { model: 'paid-model' } }],
+    ],
+  ])(
+    'removes BOT MODE self-spawn at runtime for %s without changing saved permissions',
+    async (_label, model, fallbacks) => {
+      const persistedSubagents = { enabled: true, allowSelf: true, agent_ids: [] };
+      mockInitializeAgent.mockResolvedValue({
+        ...makePrimaryConfig({ subagents: persistedSubagents }),
+        model,
+        provider: 'openAI',
+        model_parameters: { model, ...(fallbacks ? { fallbacks } : {}) },
+      });
+      const endpointOption = makeEndpointOption();
+      endpointOption.agent = Promise.resolve({
+        id: PRIMARY_ID,
+        name: 'BOT MODE Worker',
+        provider: 'openrouter',
+        model,
+        tools: [],
+      });
+      endpointOption.model_parameters = { model };
+      await initializeClient({
+        req: makeSubagentReq(),
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption,
+      });
+      expect(agentClientArgs.agent.subagents).toMatchObject({
+        enabled: true,
+        allowSelf: false,
+      });
+      expect(persistedSubagents.allowSelf).toBe(true);
+    },
+  );
 
   it('clears subagents config on primary when the capability is disabled', async () => {
     /** Admin can turn subagents off at the endpoint level even if an agent was
