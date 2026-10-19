@@ -57,7 +57,12 @@ const STALE_SEND_REVALIDATION_MS = 5_000;
 export function getBotModeExecutionMode(searchParams: URLSearchParams, text = ''): string {
   const explicit = searchParams.get('botmode_mode');
   // Never allow an arbitrary query parameter to opt into an expensive mission.
-  if (explicit === 'fast' || explicit === 'analyze' || explicit === 'develop' || explicit === 'watch') {
+  if (
+    explicit === 'fast' ||
+    explicit === 'analyze' ||
+    explicit === 'develop' ||
+    explicit === 'watch'
+  ) {
     return explicit;
   }
   if (explicit != null) return 'fast';
