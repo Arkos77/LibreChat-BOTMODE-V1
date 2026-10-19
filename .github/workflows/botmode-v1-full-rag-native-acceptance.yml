@@ -73,7 +73,8 @@ jobs:
             'EMBEDDINGS_PROVIDER=openai' \
             'EMBEDDINGS_MODEL=text-embedding-3-small' \
             'RAG_OPENAI_API_KEY=ci-nonpaid-local-only' \
-            'RAG_OPENAI_BASEURL=http://ci-embeddings:8118/v1' | sudo tee -a .env >/dev/null
+            'RAG_OPENAI_BASEURL=http://ci-embeddings:8118/v1' \
+            'RAG_CHECK_EMBEDDING_CTX_LENGTH=false' | sudo tee -a .env >/dev/null
           sudo chmod 600 .env
           echo 'CI_FULL_RAG_LOCAL_EMBEDDING_PROVIDER_CONFIGURED=PASS'
           docker image inspect "$BOTMODE_IMAGE" >/dev/null

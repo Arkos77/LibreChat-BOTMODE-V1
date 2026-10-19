@@ -26,7 +26,8 @@ http.createServer(async (req, res) => {
     const inputs = Array.isArray(body.input) ? body.input : [body.input];
     if (inputs.length < 1 || inputs.length > 64) throw Error('bad input');
     const data = inputs.map((input, index) => {
-      const text = typeof input === 'string' ? input : JSON.stringify(input);
+      if (typeof input !== 'string') throw Error('CI_EMBEDDINGS_RAW_TEXT_REQUIRED');
+      const text = input;
       const floats = new Float32Array(1536);
       floats[/ORANGE-17/i.test(text) ? 0 : 1] = 1;
       const encoding = body.encoding_format === 'base64'
