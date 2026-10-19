@@ -60,11 +60,11 @@ export function getBotModeExecutionMode(searchParams: URLSearchParams, text = ''
   if (searchParams.get('botmode') !== '1') return 'fast';
 
   const prompt = text.normalize('NFKC').toLowerCase();
-  const engineering = 
+  const engineering =
     /\b(?:cod(?:e|er|ing)|développ(?:e|er|ement)|develop|implement|implément|program|script|application)\b/u.test(
       prompt,
     );
-  const testing = 
+  const testing =
     /\b(?:test(?:er|s|ing)?|vérifi(?:er|cation)|verify|debug|débog|correcti(?:on|f)|déploy|deploy)\b/u.test(
       prompt,
     );
@@ -76,11 +76,11 @@ export function getBotModeExecutionMode(searchParams: URLSearchParams, text = ''
   );
   if (monitoring && sources) return 'watch';
 
-  const investigation = 
+  const investigation =
     /\b(?:analys(?:e|er|is)|étud(?:e|ier)|research|recherch(?:e|er)|compar(?:e|er|aison)|investigat)\b/u.test(
       prompt,
     );
-  const evidence = 
+  const evidence =
     /\b(?:sources?|preuves?|risques?|faisabilité|feasibility|options?|scénarios?|synthès(?:e|es)|rapport|report)\b/u.test(
       prompt,
     );
