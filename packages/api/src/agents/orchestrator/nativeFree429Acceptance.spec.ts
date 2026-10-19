@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { attemptInvoke, FakeChatModel, Providers, tryFallbackProviders } from '@librechat/agents';
 import { AIMessageChunk, HumanMessage } from '@librechat/agents/langchain/messages';
+import { attemptInvoke, FakeChatModel, Providers, tryFallbackProviders } from '@librechat/agents';
+import type { AddressInfo } from 'node:net';
 import { decideHostModel } from './hostModelDecision';
 
 const FREE_PRIMARY = 'ci-primary:free';
@@ -185,12 +185,20 @@ describe('native SDK strict 429 fallback after host free_only admission', () => 
       });
       expect(JSON.stringify(fallbacks)).not.toContain('ci-paid-model');
       const primaryError = await makeObservedPrimaryError('rate_limit');
+      const deliveredChunks: string[] = [];
       const served = await tryFallbackProviders({
         fallbacks,
         primaryError,
         messages: [new HumanMessage('CI only: no external provider')],
+        // A direct SDK invocation has no graph. Let the public onChunk
+        // consumer receive the stream; otherwise its default handler
+        // correctly rejects the missing graph before the test can assert.
+        onChunk: (chunk) => {
+          deliveredChunks.push(String(chunk.content ?? ''));
+        },
       });
-      expect(JSON.stringify(served)).toContain('CI_FREE_FALLBACK_OK');
+      expect(deliveredChunks.join('')).toContain('CI_FREE_FALLBACK_OK');
+      expect(served).toBeDefined();
       expect(fixture.requests).toEqual([FREE_ALTERNATE]);
       console.log('CI_NATIVE_429_TO_AUTHORIZED_FREE_ONLY=PASS');
     } finally {
