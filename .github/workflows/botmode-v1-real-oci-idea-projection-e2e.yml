@@ -24,6 +24,8 @@ jobs:
           fetch-depth: 0
       - name: Verify exact source composition and preserve published OCI guard
         shell: bash
+        env:
+          CI_EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: python3 scripts/botmode/ci-release-composition-source-guard.py
       - name: Set up Buildx (ephemeral source runtime, never push)
         uses: docker/setup-buildx-action@v4

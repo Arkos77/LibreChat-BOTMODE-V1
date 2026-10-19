@@ -29,7 +29,11 @@ def fail(label):
 
 
 head = git("rev-parse", "HEAD")
-if os.environ.get("GITHUB_SHA") and head != os.environ["GITHUB_SHA"]:
+# pull_request runs execute under GitHub's synthetic merge GITHUB_SHA.
+# This job deliberately checks out github.event.pull_request.head.sha instead.
+# Require that precise checked-out source SHA, never an unverified branch name.
+expected_source_sha = os.environ.get("CI_EXPECTED_SOURCE_SHA") or os.environ.get("GITHUB_SHA")
+if expected_source_sha and head != expected_source_sha:
     fail("WRONG_CHECKOUT_SHA")
 if git("status", "--porcelain"):
     fail("UNCLEAN_CHECKOUT")
