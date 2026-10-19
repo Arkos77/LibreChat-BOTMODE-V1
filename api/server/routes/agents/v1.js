@@ -200,6 +200,13 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
 
     // Requested tools are only proposals: createAgent filters them against
     // the authenticated user's actual tool and MCP permissions.
+    const freeSelfDelegation =
+      provider.trim().toLowerCase() === 'openrouter' && model.trim() === 'openrouter/free';
+    // Native self-spawn creates short-lived focused child contexts; it never
+    // provisions a new saved agent or grants a new tool/MCP permission. Only
+    // the explicitly selected free OpenRouter pool enables it automatically.
+    // Other (possibly paid) providers retain explicit five-specialist delegation
+    // until the host has a durable approval/budget contract for extra calls.
     const requestedTools = {
       'BOT MODE Worker': ['web_search'],
       RECHERCHE: ['web_search'],
@@ -308,7 +315,7 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
           body: {
             subagents: {
               enabled: true,
-              allowSelf: false,
+              allowSelf: freeSelfDelegation,
               agent_ids: specialists.map((agent) => agent.id),
             },
           },
