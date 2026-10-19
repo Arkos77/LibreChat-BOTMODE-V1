@@ -70,11 +70,11 @@ jobs:
           # Lite RAG requires an embeddings backend. Only a CI-local network
           # provider is permitted; never send requests to paid OpenAI.
           printf '%s\n' \
-            'EMBEDDINGS_PROVIDER=openai' \
-            'EMBEDDINGS_MODEL=text-embedding-3-small' \
-            'RAG_OPENAI_API_KEY=ci-nonpaid-local-only' \
-            'RAG_OPENAI_BASEURL=http://ci-embeddings:8118/v1' \
-            'RAG_CHECK_EMBEDDING_CTX_LENGTH=false' | sudo tee -a .env >/dev/null
+            'BOTMODE_RAG_EMBEDDINGS_PROVIDER=openai' \
+            'BOTMODE_RAG_EMBEDDINGS_MODEL=text-embedding-3-small' \
+            'BOTMODE_RAG_APPROVED_EMBEDDINGS_API_KEY=ci-nonpaid-local-only' \
+            'BOTMODE_RAG_EMBEDDINGS_BASEURL=http://ci-embeddings:8118/v1' \
+            'BOTMODE_RAG_CHECK_EMBEDDING_CTX_LENGTH=false' | sudo tee -a .env >/dev/null
           sudo chmod 600 .env
           echo 'CI_FULL_RAG_LOCAL_EMBEDDING_PROVIDER_CONFIGURED=PASS'
           docker image inspect "$BOTMODE_IMAGE" >/dev/null

@@ -91,14 +91,27 @@ services:
     restart: always
     depends_on:
       - vectordb
-    env_file:
-      - .env
+    # No env_file: .env: the optional Python sidecar must never inherit all
+    # LibreChat provider keys. A general OPENAI_API_KEY is NOT RAG spending consent.
     environment:
       - DB_HOST=vectordb
       - POSTGRES_DB=mydatabase
       - POSTGRES_USER=myuser
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       - RAG_PORT=${RAG_PORT:-8000}
+      # Same JWT as API; generated only for a new installation by bootstrap.
+      - JWT_SECRET=${JWT_SECRET:-}
+      # The approved RAG-only key is intentionally independent of every global
+      # provider key. Absent explicit approval, embeddings fail closed.
+      - OPENAI_API_KEY=
+      - RAG_OPENAI_API_KEY=${BOTMODE_RAG_APPROVED_EMBEDDINGS_API_KEY:-}
+      - RAG_OPENAI_BASEURL=${BOTMODE_RAG_EMBEDDINGS_BASEURL:-}
+      - EMBEDDINGS_PROVIDER=${BOTMODE_RAG_EMBEDDINGS_PROVIDER:-openai}
+      - EMBEDDINGS_MODEL=${BOTMODE_RAG_EMBEDDINGS_MODEL:-text-embedding-3-small}
+      - RAG_CHECK_EMBEDDING_CTX_LENGTH=${BOTMODE_RAG_CHECK_EMBEDDING_CTX_LENGTH:-true}
+      - OLLAMA_BASE_URL=${BOTMODE_RAG_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   botmode-librechat-data:
