@@ -43,6 +43,33 @@ describe('BOT MODE execution depth', () => {
     },
   );
 
+  it('keeps a short ordinary question on FAST', () => {
+    const params = new URLSearchParams({ botmode: '1' });
+    expect(getBotModeExecutionMode(params, 'Bonjour, quelle heure est-il ?')).toBe('fast');
+    expect(shouldUseBotModeMission(params, 'Bonjour')).toBe(false);
+  });
+
+  it.each([
+    ['Développer une application et tester le code', 'develop'],
+    ['Faire une veille des actualités et tendances', 'watch'],
+    ['Analyser les risques et comparer les scénarios', 'analyze'],
+  ])('automatically classifies %s as %s', (prompt, mode) => {
+    const params = new URLSearchParams({ botmode: '1' });
+    expect(getBotModeExecutionMode(params, prompt)).toBe(mode);
+    expect(shouldUseBotModeMission(params, prompt)).toBe(true);
+  });
+
+  it('honors explicit FAST even when request is complex', () => {
+    const params = new URLSearchParams({ botmode: '1', botmode_mode: 'fast' });
+    expect(getBotModeExecutionMode(params, 'Développer une application et tester le code')).toBe('fast');
+    expect(shouldUseBotModeMission(params, 'Développer une application et tester le code')).toBe(false);
+  });
+
+  it('never starts an automatic mission outside BOT MODE', () => {
+    const params = new URLSearchParams();
+    expect(shouldUseBotModeMission(params, 'Analyser les risques et comparer les scénarios')).toBe(false);
+  });
+
   it('does not create a mission when BOT MODE itself is not active', () => {
     const params = new URLSearchParams({ botmode_mode: 'analyze' });
     expect(shouldUseBotModeMission(params)).toBe(false);
