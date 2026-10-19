@@ -28,13 +28,22 @@ async function makeObservedPrimaryError(kind: ModelErrorKind): Promise<unknown> 
     }
     throw error;
   };
+  let chunksBeforeError = 0;
   try {
     await attemptInvoke({
       model,
       messages: [new HumanMessage('CI free-only fallback probe')],
       provider: Providers.OPENAI,
+      // Keep stream delivery under the SDK's normal attempt accounting,
+      // without constructing a graph; an unregistered default stream handler
+      // would throw Graph not found before the synthetic 429 is reached.
+      onChunk: () => {
+        chunksBeforeError += 1;
+      },
     });
   } catch (caught) {
+    expect(chunksBeforeError).toBe(kind === 'partial_rate_limit' ? 1 : 0);
+    expect(caught).toBe(error);
     return caught;
   }
   throw new Error('CI primary must reject');
