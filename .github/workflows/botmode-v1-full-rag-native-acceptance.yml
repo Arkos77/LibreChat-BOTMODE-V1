@@ -61,7 +61,12 @@ jobs:
           set -euo pipefail
           sudo ./install.sh --full --no-pull --no-start --image "$BOTMODE_IMAGE" >/dev/null
           echo "MEILI_MASTER_KEY=$(openssl rand -hex 24)" | sudo tee -a .env >/dev/null
+          # Diagnostic: both independent Full services must verify the SAME
+          # JWT. Without an explicit shared value API bootstraps one privately
+          # inside /app/data/.env.temp while rag_api reads .env.
+          echo "JWT_SECRET=$(openssl rand -hex 32)" | sudo tee -a .env >/dev/null
           sudo chmod 600 .env
+          echo 'CI_FULL_RAG_SHARED_TEST_ONLY_JWT_CONFIGURED=PASS'
           docker image inspect "$BOTMODE_IMAGE" >/dev/null
           echo 'CI_FULL_RAG_LOCAL_BUILD=PASS'
 
