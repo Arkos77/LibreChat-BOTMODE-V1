@@ -131,32 +131,43 @@ describe('native SDK strict 429 fallback after host free_only admission', () => 
   it('serves a typed zero-chunk 429 through the only host-approved local free fallback', async () => {
     const fixture = await startLocalFreeModel();
     try {
+      // Use the production host's explicit provider/model binding contract:
+      // provider identity is OpenRouter; executable SDK transport is a
+      // separately resolved OpenAI-compatible binding at a CI-only loopback URL.
       const routed = await decideHostModel({
         agentId: 'ci-agent',
-        provider: 'OpenRouter',
-        currentModel: FREE_PRIMARY,
-        resolvedOptions: {
-          model: FREE_PRIMARY,
-          apiKey: 'local-ci-only',
-        },
-        authorizedModels: [FREE_PRIMARY, FREE_ALTERNATE],
-        resolvedAlternatives: [
+        bindings: [
           {
+            id: 'free-primary',
+            provider: 'OpenRouter',
+            runtimeProvider: Providers.OPENAI,
+            model: FREE_PRIMARY,
+            options: { model: FREE_PRIMARY, apiKey: 'local-ci-only' },
+            signals: { pricingTier: 'free' },
+          },
+          {
+            id: 'free-alternate',
+            provider: 'OpenRouter',
+            runtimeProvider: Providers.OPENAI,
             model: FREE_ALTERNATE,
             options: {
               model: FREE_ALTERNATE,
               apiKey: 'local-ci-only',
               configuration: { baseURL: fixture.baseURL },
             },
+            signals: { pricingTier: 'free' },
+          },
+          {
+            id: 'unapproved-paid',
+            provider: 'OpenRouter',
+            runtimeProvider: Providers.OPENAI,
+            model: 'ci-paid-model',
+            options: { model: 'ci-paid-model', apiKey: 'local-ci-only' },
+            signals: { pricingTier: 'paid' },
           },
         ],
-        availableModels: [FREE_PRIMARY, FREE_ALTERNATE],
-        preferredModel: FREE_PRIMARY,
+        preferredBindingId: 'free-primary',
         routingMode: 'static',
-        routingSignals: {
-          [FREE_PRIMARY]: { pricingTier: 'free' },
-          [FREE_ALTERNATE]: { pricingTier: 'free' },
-        },
         routingConstraints: { spendingPolicy: 'free_only' },
         allowFailover: true,
         traceId: 'ci-free-only-429',
