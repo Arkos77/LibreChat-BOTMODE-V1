@@ -39,6 +39,8 @@
 
 **Diff différentiel fournisseur :** entre le commit dernier succès réel `4ee221bf` et la source OCI actuelle `5fb904d37`, aucun fichier backend `api/` ou `packages/` n'a changé ; diagnostic de quota/configuration à poursuivre, sans déduire une cause certaine ni relancer les modèles payants.
 
+**Authentification fournisseur (lecture seule) :** [run #39180594273](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39180594273) `GET /api/v1/key` OpenRouter **401**, génération ignorée, quotas inconnus. Nécessite vérification de clé côté propriétaire ; preuve indépendante du 429 de preflight génération et du verdict Oracle absent.
+
 ## Arbitrages / NO-GO restants
 
 1. **D-02** : acceptation explicite et bornée du risque npm Mammoth/argparse/sprintf-js ou remédiation vérifiée ; pas de waiver silencieux. Voir [dossier](BOTMODE_V1_NPM_RISK_DECISION_20261014.md).
