@@ -1679,6 +1679,32 @@ const initializeClient = async ({
     );
   };
 
+  /**
+   * BOT MODE free-pool self-spawn is a mission-scoped convenience, never a
+   * second source of permissions or permission to spend. A saved Worker may
+   * have been edited after onboarding, or host routing may have switched its
+   * effective model. Re-evaluate the effective model EVERY generation.
+   *
+   * Do not allow a hidden paid/other-provider fallback within spawned children.
+   * Explicit authorized saved specialists remain available independently.
+   * Never mutate the persisted Worker or its user-configured delegation graph.
+   */
+  if (
+    originalPrimaryAgent.name === 'BOT MODE Worker' &&
+    primaryConfig.subagents?.enabled === true &&
+    primaryConfig.subagents.allowSelf === true
+  ) {
+    const fallbackBindings = primaryConfig.model_parameters?.fallbacks;
+    const freeEphemeralChildPermitted =
+      originalPrimaryAgent.provider?.toLowerCase() === 'openrouter' &&
+      primaryConfig.model === 'openrouter/free' &&
+      (fallbackBindings == null ||
+        (Array.isArray(fallbackBindings) && fallbackBindings.length === 0));
+    if (!freeEphemeralChildPermitted) {
+      primaryConfig.subagents = { ...primaryConfig.subagents, allowSelf: false };
+    }
+  }
+
   const rootSubagentConfigs = [primaryConfig, ...agentConfigs.values()];
   await resolveSubagentTrees(rootSubagentConfigs);
 
