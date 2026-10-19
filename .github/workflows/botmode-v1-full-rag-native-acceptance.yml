@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/botmode-v1-full-rag-native-acceptance.yml'
       - 'scripts/botmode/ci-full-rag-native-acceptance.py'
+      - 'scripts/botmode/ci-mock-embeddings.js'
   workflow_dispatch:
 
 permissions:
@@ -35,6 +36,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           test ! -e .env
           python3 -m py_compile scripts/botmode/ci-full-rag-native-acceptance.py
+          node --check scripts/botmode/ci-mock-embeddings.js
           grep -Fq 'librechat-rag-api-dev-lite@sha256:a62ce2221b43a9bb57fa6cb733e7047c80132960272c33d5704028f3071a1251' docker-compose.botmode.yml
           grep -Fq 'librechat-admin-panel@sha256:a395465d1daa3c11495810a8c224df86675985d50de42e98e36eeedbd8aecb94' docker-compose.botmode.yml
           echo 'CI_FULL_RAG_SOURCE_AND_DIGEST_PINS=PASS'
@@ -65,8 +67,15 @@ jobs:
           # JWT. Without an explicit shared value API bootstraps one privately
           # inside /app/data/.env.temp while rag_api reads .env.
           echo "JWT_SECRET=$(openssl rand -hex 32)" | sudo tee -a .env >/dev/null
+          # Lite RAG requires an embeddings backend. Only a CI-local network
+          # provider is permitted; never send requests to paid OpenAI.
+          printf '%s\n' \
+            'EMBEDDINGS_PROVIDER=openai' \
+            'EMBEDDINGS_MODEL=text-embedding-3-small' \
+            'RAG_OPENAI_API_KEY=ci-nonpaid-local-only' \
+            'RAG_OPENAI_BASEURL=http://ci-embeddings:8118/v1' | sudo tee -a .env >/dev/null
           sudo chmod 600 .env
-          echo 'CI_FULL_RAG_SHARED_TEST_ONLY_JWT_CONFIGURED=PASS'
+          echo 'CI_FULL_RAG_LOCAL_EMBEDDING_PROVIDER_CONFIGURED=PASS'
           docker image inspect "$BOTMODE_IMAGE" >/dev/null
           echo 'CI_FULL_RAG_LOCAL_BUILD=PASS'
 
@@ -74,7 +83,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo -E docker compose -f docker-compose.botmode.yml up -d mongodb vectordb meilisearch rag_api api
+          sudo -E docker compose -f docker-compose.botmode.yml up -d mongodb vectordb
+          docker run -d --name "ci-embeddings-${{ github.run_id }}" \
+            --network "${COMPOSE_PROJECT_NAME}_default" \
+            --network-alias ci-embeddings \
+            --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --user 1000:1000 --memory 128m \
+            --env CI=true --env CI_EMBEDDINGS_MOCK_ONLY=true \
+            --mount "type=bind,src=$PWD/scripts/botmode/ci-mock-embeddings.js,dst=/app/ci-mock-embeddings.js,readonly" \
+            --entrypoint node "$BOTMODE_IMAGE" /app/ci-mock-embeddings.js >/dev/null
+          docker exec "ci-embeddings-${{ github.run_id }}" node -e "require('http').get('http://127.0.0.1:8118/health',r=>{if(r.statusCode!==200)process.exit(1)}).on('error',()=>process.exit(1))"
+          echo 'CI_FULL_RAG_MOCK_EMBEDDING_SERVER=PASS'
+          sudo -E docker compose -f docker-compose.botmode.yml up -d meilisearch rag_api api
           ready=0
           for n in $(seq 1 100); do
             if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then ready=1; break; fi
@@ -91,6 +111,7 @@ jobs:
         if: always()
         shell: bash
         run: |
+          docker rm -f "ci-embeddings-${{ github.run_id }}" >/dev/null 2>&1 || true
           sudo -E docker compose -f docker-compose.botmode.yml down --volumes --remove-orphans >/dev/null 2>&1 || true
 
       - name: Record exact scope and limitations
@@ -100,6 +121,6 @@ jobs:
             echo '### BOT MODE Full RAG source-qualification'
             echo "Tested SHA: $(git rev-parse HEAD)"
             echo 'Locally built API, pinned Full RAG, real PostgreSQL/pgvector. No GHCR push, secrets, real provider, user data or existing volumes.'
-            echo 'Real native internal RAG ingest/query, persisted chunk source, model-simulated agent tool consumption, owner isolation, irrelevant-query refusal and cleanup.'
+            echo 'Real RAG ingest/query using a deterministic local embeddings fixture, persisted chunk source and model-simulated agent tool consumption, owner isolation, irrelevant-query refusal and cleanup.'
             echo 'Not proof of public browser file upload, provider inference, 3-hour tool workflow, remote OCI distribution, or stable release.'
           } >> "$GITHUB_STEP_SUMMARY"
