@@ -1,0 +1,150 @@
+name: BOTMODE V1 Full Pinned External Images Restore Qualification
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-full-pinned-external-restore.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restored-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Verify exact OCI digest and anonymous multiarch manifest
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          img='ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0'
+          docker pull "$img" >/dev/null
+          actual="$(docker image inspect "$img" --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^BUILD_COMMIT=//p' | head -1)"
+          test "$actual" = '5fb904d375bffd6c54b5830cb1536088a9e77211'
+          echo 'CI_FULL_PUBLISHED_OCI_SOURCE_VERIFIED=PASS'
+      - name: Verify external Full pinned indexes are immutable and multiarch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_PINS'
+          from pathlib import Path
+          x=Path('docker-compose.botmode.yml').read_text()
+          expected=['registry.librechat.ai/clickhouse/librechat-admin-panel@sha256:a395465d1daa3c11495810a8c224df86675985d50de42e98e36eeedbd8aecb94','registry.librechat.ai/danny-avila/librechat-rag-api-dev-lite@sha256:a62ce2221b43a9bb57fa6cb733e7047c80132960272c33d5704028f3071a1251']
+          assert all(x.count('image: '+image)==1 for image in expected)
+          assert 'librechat-admin-panel:latest' not in x
+          assert 'librechat-rag-api-dev-lite:latest' not in x
+          print('CI_FULL_EXACT_EXTERNAL_IMAGE_PINS=PASS')
+          PY_PINS
+          for ref in \
+            'registry.librechat.ai/clickhouse/librechat-admin-panel@sha256:a395465d1daa3c11495810a8c224df86675985d50de42e98e36eeedbd8aecb94' \
+            'registry.librechat.ai/danny-avila/librechat-rag-api-dev-lite@sha256:a62ce2221b43a9bb57fa6cb733e7047c80132960272c33d5704028f3071a1251'; do
+            manifest=$(docker buildx imagetools inspect "$ref")
+            grep -q 'linux/amd64' <<< "$manifest"
+            grep -q 'linux/arm64' <<< "$manifest"
+          done
+          echo 'CI_FULL_EXTERNAL_IMAGE_PINS_BOTH_ARCHITECTURES=PASS'
+      - name: Prepare isolated credentials
+        shell: bash
+        run: |
+          echo "BOTMODE_MONGO_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo "MEILI_MASTER_KEY=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo 'BOTMODE_HOST_PORT=3090' >> "$GITHUB_ENV"
+          echo 'ADMIN_PANEL_PORT=3091' >> "$GITHUB_ENV"
+      - name: Install disposable Full runtime and create durable marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,MEILI_MASTER_KEY,BOTMODE_HOST_PORT,ADMIN_PANEL_PORT ./install.sh --full --image ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0
+          for n in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3090/api/config >/dev/null
+          compose=(sudo env -u BOTMODE_MONGO_PASSWORD -u POSTGRES_PASSWORD -u MEILI_MASTER_KEY BOTMODE_HOST_PORT=3090 ADMIN_PANEL_PORT=3091 docker compose -f docker-compose.botmode.yml)
+          "${compose[@]}" exec -T mongodb sh -ec 'mongosh --quiet -u botmode_admin -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''db.restore_epoch_ci.insertOne({_id:"api-restore-boot",state:"committed"})'\'''
+          "${compose[@]}" exec -T mongodb sh -ec 'mongosh --quiet -u botmode_admin -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''for(let i=0;i<6;i++){db.ci_restore_agents.updateOne({_id:"ci-agent-"+i},{$set:{name:"CI specialist "+i,checkpoint:"epoch-001"}},{upsert:true});db.ci_restore_acls.updateOne({_id:"ci-acl-"+i},{$set:{agentId:"ci-agent-"+i,principal:"ci-test-user"}},{upsert:true})}; if(db.ci_restore_agents.countDocuments({checkpoint:"epoch-001"})!==6||db.ci_restore_acls.countDocuments({principal:"ci-test-user"})!==6)quit(41); print("CI_SYNTHETIC_AGENT_ACL_SOURCE=PASS")'\'''
+          echo 'BOTMODE_FULL_PUBLISHED_OCI_HTTP_AND_MONGO=PASS'
+          echo 'BOTMODE_RESTORE_BOOT_SOURCE_API=PASS'
+      - name: Provision real Worker and verify owner ACL before backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose=(sudo env -u BOTMODE_MONGO_PASSWORD -u POSTGRES_PASSWORD -u MEILI_MASTER_KEY BOTMODE_HOST_PORT=3090 ADMIN_PANEL_PORT=3091 docker compose -f docker-compose.botmode.yml)
+          "${compose[@]}" exec -T mongodb sh -ec 'mongosh --quiet -u botmode_admin -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''const owner=ObjectId("665000000000000000000123"); db.users.updateOne({_id:owner},{$setOnInsert:{username:"ci-restore-owner",email:"ci-restore@example.invalid",createdAt:new Date()}},{upsert:true}); db.accessroles.updateOne({accessRoleId:"agent_owner"},{$setOnInsert:{accessRoleId:"agent_owner",permBits:127}},{upsert:true}); print("CI_WORKER_OWNER_FIXTURE=PASS")'\'''
+          cat scripts/botmode/provision-worker.js | "${compose[@]}" exec -T api node - --apply --user-id 665000000000000000000123 --provider openAI --model ci-no-inference
+          "${compose[@]}" exec -T mongodb sh -ec 'mongosh --quiet -u botmode_admin -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''const a=db.agents.findOne({id:"botmode-worker"});const acl=a&&db.aclentries.findOne({resourceId:a._id,principalId:ObjectId("665000000000000000000123"),resourceType:"agent"});if(!a||!acl){print("CI_REAL_WORKER_SOURCE=FAIL");quit(43)};print("CI_REAL_WORKER_SOURCE=PASS")'\'''
+      - name: Capture stopped Mongo and restore into a distinct disposable volume
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose=(sudo env -u BOTMODE_MONGO_PASSWORD -u POSTGRES_PASSWORD -u MEILI_MASTER_KEY BOTMODE_HOST_PORT=3090 ADMIN_PANEL_PORT=3091 docker compose -f docker-compose.botmode.yml)
+          "${compose[@]}" stop api mongodb
+          source_id=$("${compose[@]}" ps -aq mongodb)
+          test -n "$source_id"
+          source_vol=$(sudo docker inspect "$source_id" --format '{{range .Mounts}}{{if eq .Destination "/data/db"}}{{.Name}}{{end}}{{end}}')
+          test -n "$source_vol"
+          sudo docker volume create botmode-ci-restored-mongo >/dev/null
+          sudo docker run --rm -v "$source_vol:/source:ro" -v botmode-ci-restored-mongo:/target alpine:3.20 sh -ec 'cd /source && tar cf - . | (cd /target && tar xf -)'
+          # Stop the source and replace only the Mongo mount in an ephemeral override.
+          # No real user's volume is removed or altered.
+          cat > "$RUNNER_TEMP/restore-compose.yml" <<'YAML'
+          services:
+            mongodb:
+              volumes:
+                - botmode-ci-restored-mongo:/data/db
+          volumes:
+            botmode-ci-restored-mongo:
+              external: true
+          YAML
+          printf '%s\n' "$RUNNER_TEMP/restore-compose.yml" > "$RUNNER_TEMP/restore-compose-path"
+          echo 'BOTMODE_RESTORE_BOOT_OFFLINE_COPY=PASS'
+      - name: Boot Full API against restored isolated Mongo and verify marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose=(sudo env -u BOTMODE_MONGO_PASSWORD -u POSTGRES_PASSWORD -u MEILI_MASTER_KEY BOTMODE_HOST_PORT=3090 ADMIN_PANEL_PORT=3091 docker compose -f docker-compose.botmode.yml -f "$RUNNER_TEMP/restore-compose.yml")
+          "${compose[@]}" up -d --force-recreate mongodb api
+          for n in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          if ! curl -fsS http://127.0.0.1:3090/api/config >/dev/null; then
+            echo 'BOTMODE_RESTORED_FULL_API_HTTP=FAIL'
+            echo 'CI_API_PORT_PUBLISHING'
+            "${compose[@]}" port api 3080 || true
+            sudo docker inspect "$("${compose[@]}" ps -q api)" --format '{{json .NetworkSettings.Ports}}' || true
+            echo 'CI_LOCAL_PORT_LISTENERS'
+            sudo ss -ltn '( sport = :3090 )' || true
+            echo 'CI_API_CONTAINER_HTTP'
+            "${compose[@]}" exec -T api node -e "require('http').get('http://127.0.0.1:3080/api/config',r=>{console.log('CI_CONTAINER_HTTP_STATUS='+r.statusCode);r.resume()}).on('error',e=>{console.log('CI_CONTAINER_HTTP_ERROR='+e.code);process.exitCode=1})" || true
+            "${compose[@]}" ps --format json | python3 -c 'import json,sys; [print("CI_SERVICE_STATE="+str({k:v for k,v in json.loads(line).items() if k in ("Service","State","Health","ExitCode")})) for line in sys.stdin if line.strip()]' || true
+            if "${compose[@]}" exec -T mongodb sh -ec 'mongosh --quiet -u botmode_admin -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "db.adminCommand({ping:1}).ok" | grep -q 1'; then
+              echo 'BOTMODE_RESTORED_MONGO_AUTH_PING=PASS'
+            else
+              echo 'BOTMODE_RESTORED_MONGO_AUTH_PING=FAIL'
+            fi
+            for svc in mongodb api; do
+              echo "CI_LOG_SERVICE=$svc"
+              "${compose[@]}" logs --tail 60 --no-color "$svc" 2>&1 | sed -E 's#(mongodb://[^:[:space:]]+:)[^@[:space:]]+@#\\1[REDACTED]@#g; s/((password|secret|token|api[_-]?key)[=: ]+)[^[:space:]]+/\\1[REDACTED]/Ig' || true
+            done
+            exit 1
+          fi
+          result=$("${compose[@]}" exec -T mongodb sh -ec 'mongosh --quiet -u botmode_admin -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''print(db.restore_epoch_ci.countDocuments({_id:"api-restore-boot",state:"committed"}))'\''' | tail -1 | tr -d '\r')
+          test "$result" = 1
+          echo 'BOTMODE_RESTORED_FULL_API_HTTP=PASS'
+          "${compose[@]}" exec -T mongodb sh -ec 'mongosh --quiet -u botmode_admin -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''for(let i=0;i<6;i++){if(!db.ci_restore_agents.findOne({_id:"ci-agent-"+i,checkpoint:"epoch-001"})||!db.ci_restore_acls.findOne({_id:"ci-acl-"+i,agentId:"ci-agent-"+i,principal:"ci-test-user"})){print("CI_SYNTHETIC_AGENT_ACL_RESTORE=FAIL");quit(42)}};print("CI_SYNTHETIC_AGENT_ACL_RESTORE=PASS")'\'''
+          "${compose[@]}" exec -T mongodb sh -ec 'mongosh --quiet -u botmode_admin -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''const a=db.agents.findOne({id:"botmode-worker",author:ObjectId("665000000000000000000123")});const acl=a&&db.aclentries.findOne({resourceId:a._id,principalId:ObjectId("665000000000000000000123"),resourceType:"agent"});if(!a||!acl){print("CI_REAL_WORKER_RESTORED=FAIL");quit(44)};print("CI_REAL_WORKER_RESTORED=PASS")'\'''
+          cat scripts/botmode/provision-worker.js | "${compose[@]}" exec -T api node - --apply --user-id 665000000000000000000123 --provider openAI --model ci-no-inference
+          echo 'BOTMODE_RESTORED_MONGO_MARKER=PASS'
+          echo 'BOTMODE_FULL_PUBLISHED_OCI_RESTORED_WORKER_ACL=PASS'
+          echo 'SCOPE=published OCI FULL with pinned RAG and admin images, via Mongo8, API HTTP on separate restored Mongo volume, six synthetic agents/ACL plus real Worker owner ACL persistence/idempotent provision; NOT live external inference, full version-schema migration, active Redis task recovery or acceptance of stable release'
+      - name: Destroy CI-only resources
+        if: always()
+        shell: bash
+        run: |
+          sudo docker compose -f docker-compose.botmode.yml down --volumes --remove-orphans >/dev/null 2>&1 || true
+          sudo docker volume rm -f botmode-ci-restored-mongo >/dev/null 2>&1 || true
