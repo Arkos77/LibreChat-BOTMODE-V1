@@ -29,9 +29,12 @@ jobs:
           python3 - <<'PY_CI_SOURCE'
           import subprocess
           changed=set(subprocess.check_output(['git','diff','--name-only','6da38ba1b70655c7a6266c6648f6734bdb8c9c85','HEAD'],text=True).splitlines())
-          allowed={'.github/workflows/botmode-v1-real-oci-idea-projection-e2e.yml','scripts/botmode/ci-projection-oci-idea-acceptance.py'
-      - 'scripts/botmode/ci-oracle-publication-project-gate.py'
-      - 'scripts/botmode/ci-idea-browser-e2e.cjs'}
+          allowed={
+            '.github/workflows/botmode-v1-real-oci-idea-projection-e2e.yml',
+            'scripts/botmode/ci-projection-oci-idea-acceptance.py',
+            'scripts/botmode/ci-oracle-publication-project-gate.py',
+            'scripts/botmode/ci-idea-browser-e2e.cjs',
+          }
           if changed-allowed:
               raise SystemExit('CI_REAL_OCI_PROJECTION_SOURCE_DIFF_REFUSED')
           print('CI_REAL_OCI_PROJECTION_RUNTIME_SOURCE_PARITY=PASS')
