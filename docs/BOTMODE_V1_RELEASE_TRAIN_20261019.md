@@ -41,6 +41,8 @@
 
 **Authentification fournisseur (lecture seule) :** [run #39180594273](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39180594273) `GET /api/v1/key` OpenRouter **401**, génération ignorée, quotas inconnus. Nécessite vérification de clé côté propriétaire ; preuve indépendante du 429 de preflight génération et du verdict Oracle absent.
 
+**Nouvel essai réel free-only :** [#39182214989](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39182214989) : SSE 200, 9 événements, aucun final, Redis `running`/état Oracle présent, arrêt après 75 s d'inactivité. Oracle réel non validé ; le correctif de harness PR35 `a972d8288` autorise seulement une reconnexion SSE bornée (sans nouvelle génération), CI encore à contrôler.
+
 ## Arbitrages / NO-GO restants
 
 1. **D-02** : acceptation explicite et bornée du risque npm Mammoth/argparse/sprintf-js ou remédiation vérifiée ; pas de waiver silencieux. Voir [dossier](BOTMODE_V1_NPM_RISK_DECISION_20261014.md).
