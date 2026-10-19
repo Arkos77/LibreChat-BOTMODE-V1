@@ -197,7 +197,7 @@ async function createBotModeProjectProjection({ userId, tenantId, projectId, dep
 
     const messages = await deps.getMessages(
       { user: userId, conversationId },
-      'messageId conversationId isCreatedByUser metadata',
+      'messageId conversationId isCreatedByUser content metadata',
       { sort: { createdAt: 1 }, limit: MAX_MESSAGES_PER_CONVERSATION },
     );
 

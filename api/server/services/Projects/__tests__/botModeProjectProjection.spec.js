@@ -251,6 +251,42 @@ describe('createBotModeProjectProjection', () => {
     );
   });
 
+  it('requests persisted content from MongoDB before rendering an Oracle result', async () => {
+    const deps = makeDeps();
+    const persisted = {
+      messageId: 'oracle-final-persisted',
+      conversationId: 'conv-a',
+      isCreatedByUser: false,
+      content: [
+        { type: 'text', text: 'Verified result from durable MongoDB' },
+        { type: 'thinking', text: 'private model reasoning' },
+      ],
+      metadata: { mtoTraceId: 'oracle-trace' },
+    };
+    // Unlike the other fixtures, emulate MongoDB's explicit select() fields.
+    // If `content` is not requested, the result must not magically exist.
+    deps.getMessages.mockImplementation(async (_filter, select) => {
+      const selected = new Set(String(select).split(/\s+/));
+      return [
+        Object.fromEntries(Object.entries(persisted).filter(([field]) => selected.has(field))),
+      ];
+    });
+    const projection = await createBotModeProjectProjection({
+      userId: 'owner',
+      projectId: projectA,
+      deps,
+    });
+    expect(deps.getMessages).toHaveBeenCalledWith(
+      { user: 'owner', conversationId: 'conv-a' },
+      expect.stringContaining('content'),
+      { sort: { createdAt: 1 }, limit: 200 },
+    );
+    expect(projection.conversations[0].results).toEqual([
+      { messageId: 'oracle-final-persisted', content: 'Verified result from durable MongoDB' },
+    ]);
+    expect(JSON.stringify(projection)).not.toContain('private model reasoning');
+  });
+
   it('projects only public text results and excludes internal reasoning/tool payloads', async () => {
     const deps = makeDeps();
     deps.getMessages.mockResolvedValueOnce([
