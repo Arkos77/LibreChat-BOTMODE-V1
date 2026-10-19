@@ -61,13 +61,19 @@ describe('BOT MODE execution depth', () => {
 
   it('honors explicit FAST even when request is complex', () => {
     const params = new URLSearchParams({ botmode: '1', botmode_mode: 'fast' });
-    expect(getBotModeExecutionMode(params, 'Développer une application et tester le code')).toBe('fast');
-    expect(shouldUseBotModeMission(params, 'Développer une application et tester le code')).toBe(false);
+    expect(getBotModeExecutionMode(params, 'Développer une application et tester le code')).toBe(
+      'fast',
+    );
+    expect(shouldUseBotModeMission(params, 'Développer une application et tester le code')).toBe(
+      false,
+    );
   });
 
   it('never starts an automatic mission outside BOT MODE', () => {
     const params = new URLSearchParams();
-    expect(shouldUseBotModeMission(params, 'Analyser les risques et comparer les scénarios')).toBe(false);
+    expect(shouldUseBotModeMission(params, 'Analyser les risques et comparer les scénarios')).toBe(
+      false,
+    );
   });
 
   it('does not create a mission when BOT MODE itself is not active', () => {
