@@ -24,8 +24,8 @@
 | [#32](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/32) | Sonde des licences SUL/notice sur image GHCR AMD64+ARM64, **2/2 PASS** | Conserver comme preuve CI ; aucune nécessité de rebâtir l'image pour ces notices déjà présentes |
 | [#33](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/33) | Inventaire, mémo, décisions de risques, digest, contrôles | Documents à réconcilier dans la branche cible après GO ; ne pas pousser sur SHA gelé pour déclencher 34 CI inutilement |
 | [#34](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/34) | [Full OCI + restauration réelle du Worker/ACL #39176379024](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39176379024) **PASS**, aucun changement de runtime | Garder comme preuve indépendante ; **pas** de migration de schéma prouvée |
-| [#35](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/35) | Diagnostics sans secrets lorsque le fournisseur gratuit finit en SSE mais Oracle non durable | Aucun changement d'orchestrateur, aucune nouvelle requête payante ; attendre ses CI restantes |
-| [#36](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/36) | Remplacement des deux images Full `:latest` (RAG/admin) par des digests OCI AMD64/ARM64 | **Modification du manifeste Full** à qualifier avant intégration, source différent de l'image API publiée ; ne pas contourner garde provenance |
+| [#35](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/35) | Diagnostics sans secrets lorsque le fournisseur gratuit finit en SSE mais Oracle non durable | **6/6 CI SUCCESS** ; aucune preuve fournisseur réel supplémentaire ni modification d'orchestrateur |
+| [#36](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/36) | Deux images Full RAG/admin épinglées à des digests multiarchitecture ; [nouveau Full restore #39179159645](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39179159645) **PASS** | Test API/Mongo/Worker ACL et pins réussi sur runner jetable ; garde de provenance ancienne **FAIL attendu** car manifeste différent ; pas de GO, fonctions RAG/admin complètes non prouvées |
 
 ## Preuves de clôture déjà disponibles
 
@@ -36,6 +36,8 @@
 - [SIGKILL mission en cours #39161877003](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39161877003) **4/4 PASS** dont reprise automatique et publication Oracle unique avec fournisseur simulé.
 - [SUL complète AMD64+ARM64 #39173138530](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39173138530) **2/2 PASS**.
 - [Audit DOCX #39173349239](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39173349239) **151/151 PASS** ; `npm audit --omit=dev` **3 modérées** non corrigées ni acceptées.
+
+**Diff différentiel fournisseur :** entre le commit dernier succès réel `4ee221bf` et la source OCI actuelle `5fb904d37`, aucun fichier backend `api/` ou `packages/` n'a changé ; diagnostic de quota/configuration à poursuivre, sans déduire une cause certaine ni relancer les modèles payants.
 
 ## Arbitrages / NO-GO restants
 
