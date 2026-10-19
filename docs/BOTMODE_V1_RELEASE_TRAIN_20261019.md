@@ -27,6 +27,11 @@
 | [#35](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/35) | Diagnostics sans secrets lorsque le fournisseur gratuit finit en SSE mais Oracle non durable | **6/6 CI SUCCESS** ; aucune preuve fournisseur réel supplémentaire ni modification d'orchestrateur |
 | [#36](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/36) | Deux images Full RAG/admin épinglées à des digests multiarchitecture ; [nouveau Full restore #39179159645](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39179159645) **PASS** | **7 SUCCESS + 1 provenance FAILURE attendu** ; [Playwright #39179159559](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39179159559) PASS ; garde de provenance ancienne FAIL car manifeste différent ; pas de GO, fonctions RAG/admin complètes non prouvées |
 
+## Lot UX ciblé et risque de branche par défaut — 19 octobre 2026
+
+- [PR #38](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/38) **Draft**, tests React de rendu Oracle `SETTLED` dans la fiche Idée et isolation d'une Idée non liée : [Frontend Unit #39187173493](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39187173493) **6217 PASS**, [Static Checks après formatage #39187934617](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39187934617) **PASS**. Tests seulement ; ne pas prétendre navigateur complet/ACL intertenant. Pas de merge.
+- **Avertissement branche `main` :** API GitHub Dependabot montre **25 alertes ouvertes** sur la branche par défaut (2 critical, 3 high, 15 moderate, 5 low), dont `handlebars`, `braces` et `@grpc/grpc-js`. **Ce résultat n'est pas l'audit du lockfile candidat PR29** ; celui-ci est SHA256 `4b0b6d51afb679bc3b1633f29609d3aa9bdce8515f4df719bf0ddc67d22b44b3`, audit prod 3 moderate / 0 high/critical. La dérogation D-02 n'exonère **aucun** nouveau high/critical : contrôle du lock exact sur le SHA **fusionné** avant tout GO stable.
+
 ## Preuves de clôture déjà disponibles
 
 - [PR29](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/29) **33 SUCCESS, 1 SKIPPED, 0 FAILURE** au SHA `bde77b8eb`.
