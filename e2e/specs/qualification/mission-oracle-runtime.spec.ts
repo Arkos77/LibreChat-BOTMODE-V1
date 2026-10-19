@@ -1000,6 +1000,75 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
     }
   });
 
+  test('unlinked saved specialist cannot be delegated to or published', async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.goto('/c/new');
+    const token = await getAccessToken(page);
+    let workerId: string | undefined;
+    let specialistId: string | undefined;
+    try {
+      const specialist = await createSavedAgent(page, token, 'Specialist');
+      specialistId = specialist.id;
+      // Neither the legacy agent_ids graph nor the subagents allowlist delegates this agent.
+      const worker = await createSavedAgent(page, token, 'Worker');
+      workerId = worker.id;
+      const mission = makeMission(worker.id, specialist.id, false);
+      const conversationId = randomUUID();
+      const response = await page.request.post('/api/agents/chat/agents', {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          endpoint: 'agents',
+          agent_id: worker.id,
+          conversationId,
+          messageId: randomUUID(),
+          parentMessageId: '00000000-0000-0000-0000-000000000000',
+          isNewConvo: true,
+          text: `E2E_MISSION_ORACLE_JSON:${mission.missionId}`,
+          orchestratorMission: { mission: mission.mission, plannerContext: mission.plannerContext },
+        },
+        timeout: 60_000,
+      });
+      expect([200, 400, 403, 404, 422]).toContain(response.status());
+      if (response.status() === 200) {
+        const admitted = (await response.json()) as MissionRun;
+        expect(admitted.streamId).toBeTruthy();
+        const stream = await page.request.get(
+          `/api/agents/chat/stream/${encodeURIComponent(admitted.streamId!)}?resume=true`,
+          { headers: { Authorization: `Bearer ${token}` }, timeout: 150_000 },
+        );
+        expect(stream.status()).toBe(200);
+        expect(
+          (await stream.text()).split(/\\r?\\n/).some(
+            (line) => line.startsWith('data:') && /"final"\\s*:\\s*true/.test(line),
+          ),
+          'an unlinked specialist must not produce a published final',
+        ).toBe(false);
+      }
+      const savedResponse = await page.request.get(
+        `/api/messages/${encodeURIComponent(conversationId)}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      expect([200, 404]).toContain(savedResponse.status());
+      const saved = savedResponse.status() === 200
+        ? ((await savedResponse.json()) as Array<{
+            isCreatedByUser?: boolean;
+            text?: string;
+            content?: unknown;
+          }>)
+        : [];
+      expect(
+        saved.some((message) =>
+          message.isCreatedByUser === false && responseText(message).includes('{"ok":true}'),
+        ),
+        'an unlinked specialist cannot yield an Oracle-approved saved publication',
+      ).toBe(false);
+      console.log('PR28_ORACLE_RUNTIME_UNLINKED_SPECIALIST_NO_PUBLICATION=PASS');
+    } finally {
+      if (workerId) await cleanupAgent(page, workerId);
+      if (specialistId) await cleanupAgent(page, specialistId);
+    }
+  });
+
   test('unknown specialist cannot produce a published answer', async ({ page }) => {
     test.setTimeout(180_000);
     await page.goto('/c/new');
