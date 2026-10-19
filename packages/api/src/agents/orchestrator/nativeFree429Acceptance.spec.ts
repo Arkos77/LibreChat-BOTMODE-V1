@@ -148,7 +148,6 @@ describe('native SDK strict 429 fallback after host free_only admission', () => 
               apiKey: 'local-ci-only',
               configuration: { baseURL: fixture.baseURL },
             },
-            signals: { pricingTier: 'free' },
           },
         ],
         availableModels: [FREE_PRIMARY, FREE_ALTERNATE],
