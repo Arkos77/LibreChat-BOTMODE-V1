@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/botmode-v1-published-oci-full-restore.yml'
+      - 'scripts/botmode/ci-full-cross-version-rollback.sh'
   workflow_dispatch:
 
 permissions:
@@ -121,6 +122,11 @@ jobs:
           echo 'BOTMODE_RESTORED_MONGO_MARKER=PASS'
           echo 'BOTMODE_FULL_PUBLISHED_OCI_RESTORED_WORKER_ACL=PASS'
           echo 'SCOPE=published OCI FULL via Mongo8, API HTTP on separate restored Mongo volume, six synthetic agents/ACL plus real Worker owner ACL persistence/idempotent provision; NOT live external inference, full version-schema migration, active Redis task recovery or acceptance of stable release'
+      - name: Verify prior immutable API and return with restored Full Worker ACL
+        shell: bash
+        env:
+          CI: 'true'
+        run: bash scripts/botmode/ci-full-cross-version-rollback.sh
       - name: Destroy CI-only resources
         if: always()
         shell: bash
