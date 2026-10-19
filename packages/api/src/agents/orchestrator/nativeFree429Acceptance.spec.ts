@@ -133,19 +133,15 @@ describe('native SDK strict 429 fallback after host free_only admission', () => 
     try {
       const routed = await decideHostModel({
         agentId: 'ci-agent',
-        bindings: [
+        provider: 'OpenRouter',
+        currentModel: FREE_PRIMARY,
+        resolvedOptions: {
+          model: FREE_PRIMARY,
+          apiKey: 'local-ci-only',
+        },
+        authorizedModels: [FREE_PRIMARY, FREE_ALTERNATE],
+        resolvedAlternatives: [
           {
-            id: 'free-primary',
-            provider: 'OpenRouter',
-            runtimeProvider: Providers.OPENAI,
-            model: FREE_PRIMARY,
-            options: { model: FREE_PRIMARY, apiKey: 'local-ci-only' },
-            signals: { pricingTier: 'free' },
-          },
-          {
-            id: 'free-alternate',
-            provider: 'OpenRouter',
-            runtimeProvider: Providers.OPENAI,
             model: FREE_ALTERNATE,
             options: {
               model: FREE_ALTERNATE,
@@ -154,17 +150,14 @@ describe('native SDK strict 429 fallback after host free_only admission', () => 
             },
             signals: { pricingTier: 'free' },
           },
-          {
-            id: 'unapproved-paid',
-            provider: 'OpenRouter',
-            runtimeProvider: Providers.OPENAI,
-            model: 'ci-paid-model',
-            options: { model: 'ci-paid-model', apiKey: 'local-ci-only' },
-            signals: { pricingTier: 'paid' },
-          },
         ],
-        preferredBindingId: 'free-primary',
+        availableModels: [FREE_PRIMARY, FREE_ALTERNATE],
+        preferredModel: FREE_PRIMARY,
         routingMode: 'static',
+        routingSignals: {
+          [FREE_PRIMARY]: { pricingTier: 'free' },
+          [FREE_ALTERNATE]: { pricingTier: 'free' },
+        },
         routingConstraints: { spendingPolicy: 'free_only' },
         allowFailover: true,
         traceId: 'ci-free-only-429',
