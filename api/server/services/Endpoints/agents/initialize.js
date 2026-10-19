@@ -1708,8 +1708,7 @@ const initializeClient = async ({
         authorizedPool.length >= 2 &&
         authorizedPool.every(
           (binding) =>
-            binding.provider?.toLowerCase() === 'openrouter' &&
-            isExplicitFreeModel(binding.model),
+            binding.provider?.toLowerCase() === 'openrouter' && isExplicitFreeModel(binding.model),
         ));
     const onlyFreeFallbacks =
       fallbackBindings == null ||
