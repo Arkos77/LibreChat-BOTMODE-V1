@@ -164,7 +164,9 @@ describe('native SDK strict 429 fallback after host free_only admission', () => 
         traceEventId: 'ci-free-only-429-event',
         timestamp: '2026-10-19T12:00:00.000Z',
       });
-      const fallbacks = routed.modelParameters.fallbacks ?? [];
+      const fallbacks = routed.modelParameters.fallbacks as Parameters<
+        typeof tryFallbackProviders
+      >[0]['fallbacks'];
       expect(fallbacks).toHaveLength(1);
       expect(fallbacks[0]).toMatchObject({
         retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
