@@ -1695,9 +1695,14 @@ const initializeClient = async ({
     primaryConfig.subagents.allowSelf === true
   ) {
     const fallbackBindings = primaryConfig.model_parameters?.fallbacks;
+    const hostDecision = primaryConfig.hostModelDecision;
     const freeEphemeralChildPermitted =
       originalPrimaryAgent.provider?.toLowerCase() === 'openrouter' &&
       primaryConfig.model === 'openrouter/free' &&
+      (hostDecision == null ||
+        (hostDecision.selectedProvider?.toLowerCase() === 'openrouter' &&
+          hostDecision.selectedModel === 'openrouter/free' &&
+          hostDecision.spendingPolicy === 'free_only')) &&
       (fallbackBindings == null ||
         (Array.isArray(fallbackBindings) && fallbackBindings.length === 0));
     if (!freeEphemeralChildPermitted) {
