@@ -120,7 +120,8 @@ async function startLocalFreeModel(): Promise<{
   return {
     baseURL: `http://127.0.0.1:${port}/v1`,
     requests,
-    close: () => new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve()))),
+    close: () =>
+      new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve()))),
   };
 }
 
