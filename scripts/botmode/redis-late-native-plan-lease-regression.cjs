@@ -18,6 +18,16 @@ function flatten(node) {
   if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
     return flatten(node.left) + flatten(node.right);
   }
+  // Heartbeat's bounded active-job renewal is a single named Lua fragment.
+  // Resolve only this exact source constant, never evaluate arbitrary code.
+  if (ts.isIdentifier(node) && node.text === 'LIVE_PROVIDER_ACTIVITY_RENEWAL_LUA') {
+    const activity = ast.statements
+      .filter(ts.isVariableStatement)
+      .flatMap((v) => [...v.declarationList.declarations])
+      .find((v) => v.name.getText(ast) === node.text);
+    assert.ok(activity, 'Missing bounded activity renewal source');
+    return flatten(activity.initializer);
+  }
   throw Error('Unexpected Lua expression');
 }
 const lua = {};
@@ -43,7 +53,7 @@ const invoke = (name, ks, args) => redis.eval(lua[name], ks.length, ...ks, ...ar
 const update = (generation, fields) =>
   invoke('JOB_UPDATE_LUA', keys, [generation, '0', '3600', '3600', '3600', ...Object.entries(fields).flat()]);
 const begin = () => invoke('PROVIDER_BEGIN_LUA', [job], [epoch, provider, 15_000]);
-const heartbeat = () => invoke('HEARTBEAT_MISSION_PROVIDER_LUA', [job], [epoch, provider, 15_000]);
+const heartbeat = () => invoke('HEARTBEAT_MISSION_PROVIDER_LUA', [job], [epoch, provider, 15_000, 1200]);
 const claim = () => invoke('CLAIM_DRAINED_MISSION_RECOVERY_LUA', [job, claimKey],
   [epoch, nowMs() - 20_000, owner, 5_000]);
 async function seed(overrides = {}) {
