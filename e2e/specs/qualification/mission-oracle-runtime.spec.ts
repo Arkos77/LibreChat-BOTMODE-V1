@@ -1000,6 +1000,105 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
     }
   });
 
+  test('foreign-owner specialist cannot be used for Oracle publication', async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.goto('/c/new');
+    const firstToken = await getAccessToken(page);
+    const external = {
+      email: `oracle-owner-${randomUUID()}@example.com`,
+      name: 'Oracle Foreign Owner',
+      password: 'securepassword123',
+    };
+    let workerId: string | undefined;
+    let foreignAgentId: string | undefined;
+    let secondToken: string | undefined;
+    try {
+      const registered = await page.request.post('/api/auth/register', {
+        data: { ...external, confirm_password: external.password },
+      });
+      expect(registered.ok(), 'isolated second principal registration').toBe(true);
+      const loggedIn = await page.request.post('/api/auth/login', {
+        data: { email: external.email, password: external.password },
+      });
+      expect(loggedIn.ok(), 'isolated second principal login').toBe(true);
+      secondToken = ((await loggedIn.json()) as { token?: string }).token;
+      expect(secondToken).toBeTruthy();
+      const foreign = await requestJson<SavedAgent>(page, {
+        path: '/api/agents',
+        token: secondToken!,
+        method: 'POST',
+        body: {
+          name: `Foreign specialist ${randomUUID().slice(0, 8)}`,
+          description: 'Cross-owner Oracle isolation fixture',
+          instructions: 'Return strict JSON',
+          provider: MOCK_ENDPOINTS[0].label,
+          model: MOCK_ENDPOINTS[0].model,
+        },
+      });
+      foreignAgentId = foreign.id;
+      const worker = await createSavedAgent(page, firstToken, 'Worker');
+      workerId = worker.id;
+      const mission = makeMission(worker.id, foreign.id, false);
+      const conversationId = randomUUID();
+      const admitted = await page.request.post('/api/agents/chat/agents', {
+        headers: { Authorization: `Bearer ${firstToken}` },
+        data: {
+          endpoint: 'agents',
+          agent_id: worker.id,
+          conversationId,
+          messageId: randomUUID(),
+          parentMessageId: '00000000-0000-0000-0000-000000000000',
+          isNewConvo: true,
+          text: `E2E_MISSION_ORACLE_JSON:${mission.missionId}`,
+          orchestratorMission: { mission: mission.mission, plannerContext: mission.plannerContext },
+        },
+        timeout: 60_000,
+      });
+      expect([200, 400, 403, 404, 422]).toContain(admitted.status());
+      if (admitted.status() === 200) {
+        const run = (await admitted.json()) as MissionRun;
+        expect(run.streamId).toBeTruthy();
+        const stream = await page.request.get(
+          `/api/agents/chat/stream/${encodeURIComponent(run.streamId!)}?resume=true`,
+          { headers: { Authorization: `Bearer ${firstToken}` }, timeout: 150_000 },
+        );
+        expect(stream.status()).toBe(200);
+        expect(
+          (await stream.text()).split(/\\r?\\n/).some(
+            (line) => line.startsWith('data:') && /"final"\\s*:\\s*true/.test(line),
+          ),
+          'foreign-owner specialist must never finalize publication',
+        ).toBe(false);
+      }
+      const readback = await page.request.get(
+        `/api/messages/${encodeURIComponent(conversationId)}`,
+        { headers: { Authorization: `Bearer ${firstToken}` } },
+      );
+      expect([200, 404]).toContain(readback.status());
+      const messages = readback.status() === 200
+        ? ((await readback.json()) as Array<{
+            isCreatedByUser?: boolean;
+            text?: string;
+            content?: unknown;
+          }>)
+        : [];
+      expect(
+        messages.some((message) =>
+          message.isCreatedByUser === false && responseText(message).includes('{"ok":true}'),
+        ),
+        'foreign-owner specialist cannot publish an approved saved answer',
+      ).toBe(false);
+      console.log('PR28_ORACLE_RUNTIME_FOREIGN_OWNER_NO_PUBLICATION=PASS');
+    } finally {
+      if (workerId) await cleanupAgent(page, workerId);
+      if (foreignAgentId && secondToken) {
+        await page.request.delete(`/api/agents/${encodeURIComponent(foreignAgentId)}`, {
+          headers: { Authorization: `Bearer ${secondToken}` },
+        });
+      }
+    }
+  });
+
   test('unlinked saved specialist cannot be delegated to or published', async ({ page }) => {
     test.setTimeout(180_000);
     await page.goto('/c/new');
