@@ -141,6 +141,7 @@ test('setup route commits six distinct agents, owner ACL and stable second initi
   ).toBe(true);
   const worker = initial.find((a) => a.name === 'BOT MODE Worker');
   expect(worker.subagents.enabled).toBe(true);
+  expect(worker.subagents.allowSelf).toBe(false);
   expect(new Set(worker.subagents.agent_ids).size).toBe(5);
   const ids = new Set(initial.map((a) => a.id));
   const second = res();
@@ -158,6 +159,34 @@ test('setup route commits six distinct agents, owner ACL and stable second initi
     permissionsComplete: true,
     delegationConfigured: true,
   });
+});
+
+test('free-only self-spawn flag is durable in real Mongo and does not bypass agent ACLs', async () => {
+  const { loadModels } = require('~/server/controllers/ModelController');
+  loadModels.mockResolvedValueOnce({ openrouter: ['openrouter/free'] });
+  const free = req();
+  free.body = { provider: 'openrouter', model: 'openrouter/free' };
+  const result = res();
+  await setup(free, result);
+  expect(result.code).toBe(200);
+  expect(result.payload.created).toHaveLength(6);
+  const worker = await Agent.findOne({ author: ownerId, name: 'BOT MODE Worker' }).lean();
+  expect(worker.subagents.enabled).toBe(true);
+  expect(worker.subagents.allowSelf).toBe(true);
+  expect(worker.subagents.agent_ids).toHaveLength(5);
+  const permittedAgents = await Agent.find({ author: ownerId }).lean();
+  const grants = await Acl.find({ principalId: String(ownerId) }).lean();
+  expect(permittedAgents).toHaveLength(6);
+  expect(grants).toHaveLength(6);
+
+  // Repeated onboarding preserves the same owner and delegation graph.
+  loadModels.mockResolvedValueOnce({ openrouter: ['openrouter/free'] });
+  const again = res();
+  await setup(free, again);
+  expect(again.code).toBe(200);
+  expect(again.payload.created).toHaveLength(0);
+  expect((await Agent.findOne({ id: worker.id }).lean()).subagents).toEqual(worker.subagents);
+  expect(await Agent.countDocuments({ author: ownerId })).toBe(6);
 });
 
 test('HTTP POST and GET travel through Express with a test-authenticated owner', async () => {

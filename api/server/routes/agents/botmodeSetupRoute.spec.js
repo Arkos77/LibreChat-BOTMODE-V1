@@ -117,6 +117,7 @@ test('creates six agents and delegates to five, then reuses identical ids', asyn
   const ids = mockAgents.map((agent) => agent.id);
   const worker = mockAgents.find((agent) => agent.name === 'BOT MODE Worker');
   expect(worker.subagents.enabled).toBe(true);
+  expect(worker.subagents.allowSelf).toBe(false); // no implicit paid child executions
   expect(worker.subagents.agent_ids).toHaveLength(5);
   expect(new Set(worker.subagents.agent_ids).size).toBe(5);
   expect(mockAgents.every((agent) => mockPermissions.has(agent._id))).toBe(true);
@@ -134,6 +135,37 @@ test('creates six agents and delegates to five, then reuses identical ids', asyn
   expect(state.payload.inventoryComplete).toBe(true);
   expect(state.payload.permissionsComplete).toBe(true);
   expect(state.payload.delegationConfigured).toBe(true);
+});
+
+test('free OpenRouter onboarding allows isolated ephemeral self children only for configured free pool', async () => {
+  const { loadModels } = require('~/server/controllers/ModelController');
+  loadModels.mockResolvedValueOnce({ openrouter: ['openrouter/free'] });
+  const free = request();
+  free.body = { provider: 'openrouter', model: 'openrouter/free' };
+  const created = response();
+  await setup(free, created);
+  expect(created.code).toBe(200);
+  expect(created.payload.created).toHaveLength(6);
+  const worker = mockAgents.find((agent) => agent.name === 'BOT MODE Worker');
+  expect(worker.subagents).toMatchObject({
+    enabled: true,
+    allowSelf: true,
+  });
+  expect(worker.subagents.agent_ids).toHaveLength(5);
+  expect(mockAgents.every((agent) => mockPermissions.has(agent._id))).toBe(true);
+
+  // The second setup cannot invent duplicate specialists or overwrite
+  // existing (possibly user-modified) delegation choices.
+  const prior = structuredClone(worker.subagents);
+  const previousIds = mockAgents.map((agent) => agent.id);
+  loadModels.mockResolvedValueOnce({ openrouter: ['openrouter/free'] });
+  const repeated = response();
+  await setup(free, repeated);
+  expect(repeated.code).toBe(200);
+  expect(repeated.payload.created).toHaveLength(0);
+  expect(worker.subagents).toEqual(prior);
+  expect(mockAgents.map((agent) => agent.id)).toEqual(previousIds);
+  expect(mockUpdateAgent).toHaveBeenCalledTimes(1);
 });
 
 test('rejects an unavailable model before creating agents', async () => {
