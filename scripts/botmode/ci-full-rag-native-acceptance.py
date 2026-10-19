@@ -2,6 +2,7 @@
 """CI-only acceptance of real Full RAG: pgvector, source evidence, owner separation."""
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -24,7 +25,11 @@ created = False
 def call(argv, stdin=None, timeout=120):
     proc = subprocess.run(argv, input=stdin, capture_output=True, text=True, timeout=timeout)
     if proc.returncode:
-        raise RuntimeError("EXIT_" + str(proc.returncode))
+        # The internal bridge deliberately prints error CLASS and HTTP STATUS,
+        # not bearer tokens or request bodies. Keep just these bounded fields.
+        match = re.search(r"P7_ERROR=([A-Za-z][A-Za-z0-9]*):(\d{3}|operation failed)", proc.stderr)
+        detail = match.group(1) + "_" + match.group(2).replace(" ", "_") if match else "unknown"
+        raise RuntimeError("BRIDGE_" + detail)
     return proc.stdout
 
 def native(action, more=None, timeout=150):
@@ -103,6 +108,8 @@ try:
 except Exception as exc:
     print("CI_FULL_RAG_FAILED_PHASE=" + stage, file=sys.stderr)
     print("CI_FULL_RAG_FAILED_TYPE=" + type(exc).__name__, file=sys.stderr)
+    if isinstance(exc, RuntimeError):
+        print("CI_FULL_RAG_FAIL_CODE=" + str(exc)[:80], file=sys.stderr)
     sys.exit(1)
 finally:
     if created:
