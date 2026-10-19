@@ -439,14 +439,15 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       expect(started.status).toBe('started');
       const streamId = started.streamId!;
       expect(streamId).toBeTruthy();
-      const jobKey = `stream:{${streamId}}:job`;
-
-      await expect
-        .poll(async () => redis.hget(jobKey, 'status'), {
-          timeout: 20_000,
-          intervals: [500, 1000],
-        })
-        .toBe('running');
+      // The CI Redis adapter may prefix all keys with an isolated namespace.
+      // Reuse the exact suffix-based lookup used by loadDurableJob above.
+      let jobKey = '';
+      await expect.poll(async () => {
+        const keys = await redis.keys(`*stream:{${streamId}}:job`);
+        if (keys.length !== 1) return null;
+        jobKey = keys[0];
+        return redis.hget(jobKey, 'status');
+      }, { timeout: 30_000, intervals: [500, 1000] }).toBe('running');
       let firstCheckpoint = '';
       await expect.poll(async () => {
         firstCheckpoint = (await redis.hget(jobKey, 'checkpointNamespace')) ?? '';
