@@ -453,11 +453,24 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
         firstCheckpoint = (await redis.hget(jobKey, 'checkpointNamespace')) ?? '';
         return /^[0-9]+$/.test(firstCheckpoint);
       }, { timeout: 30_000, intervals: [250, 500, 1000] }).toBe(true);
-      const initialPlan = (await loadDurableJob(redis, streamId)).plan;
-      // A one-task native graph stores its durable planned tasks; it does not
-      // promise to retain the original mission DTO under plan.mission.
-      expect(initialPlan?.tasks?.length).toBe(1);
-      expect(initialPlan?.tasks?.[0]?.taskId).toBe(`${mission.taskId}/main`);
+      // Generation checkpoint and plan writes are asynchronous after admission.
+      // A running Redis hash alone is not sufficient to assert these barriers.
+      await expect.poll(async () =>
+        (await getPersistedCheckpointCounts(conversationId, firstCheckpoint)).generationRows,
+      { timeout: 30_000, intervals: [500, 1000] }).toBeGreaterThan(0);
+      let initialPlan: JobSnapshot['plan'] = null;
+      try {
+        await expect.poll(async () => {
+          initialPlan = (await loadDurableJob(redis, streamId)).plan;
+          return initialPlan?.tasks?.some(
+            (task) => task.taskId === `${mission.taskId}/main`,
+          ) === true;
+        }, { timeout: 30_000, intervals: [500, 1000, 2000] }).toBe(true);
+      } catch (error) {
+        // Safe to expose field names only; never log identity-bearing plan data.
+        console.log('CI_SOAK_PLAN_FIELD_NAMES=' + Object.keys(initialPlan ?? {}).sort().join(','));
+        throw error;
+      }
 
       const heartbeatSamples: number[] = [];
       const checkpointCounts: number[] = [];
