@@ -14,6 +14,9 @@ function extractLua(name) {
     if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
       return flatten(node.left) + flatten(node.right);
     }
+    if (ts.isIdentifier(node) && node.text === 'LIVE_PROVIDER_ACTIVITY_RENEWAL_LUA') {
+      return extractLua(node.text);
+    }
     throw new Error('Unexpected Lua expression in ' + name + ': ' + ts.SyntaxKind[node.kind]);
   }
   for (const statement of root.statements) {
@@ -88,7 +91,7 @@ async function main() {
         [created, token, provider, namespace, 5000]);
     const beat = (token, provider) =>
       evalLua('HEARTBEAT_RECOVERED_MISSION_PROVIDER_LUA', [key, lease],
-        [created, token, provider, 'qual-namespace', 5000]);
+        [created, token, provider, 'qual-namespace', 5000, 1200]);
     const evidence = (owner, provider, field, value) =>
       evalLua('RECOVERED_MISSION_METADATA_UPDATE_LUA',
         [key, lease], [created, owner, provider, field, value]);

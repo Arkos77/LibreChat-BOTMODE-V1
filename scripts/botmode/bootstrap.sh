@@ -129,7 +129,9 @@ if [ "$PROFILE" = "lite" ]; then
   COMPOSE_ARGS+=(-f docker-compose.botmode-lite.yml)
 fi
 
+CREATED_NEW_ENV=0
 if [ ! -f .env ]; then
+  CREATED_NEW_ENV=1
   cp .env.example .env
   chmod 600 .env
   printf 'BOTMODE_ENV_CREATED=%s\n' "$ROOT/.env"
@@ -193,6 +195,25 @@ if [ -z "$mongo_pass" ] || [ -z "$pg_pass" ]; then
     set_env_value POSTGRES_PASSWORD "$pg_pass"
   fi
   chmod 600 .env
+fi
+
+# For a brand-new installation only, give LibreChat and Full/RAG the SAME
+# durable JWT credentials. Do not rotate an existing install: that would break
+# existing sessions/refresh tokens and may invalidate a persisted database.
+if [ "$CHECK_ONLY" -eq 0 ] && [ "$CREATED_NEW_ENV" -eq 1 ]; then
+  need openssl
+  if [ -z "$(read_env_value JWT_SECRET)" ]; then
+    set_env_value JWT_SECRET "$(openssl rand -hex 32)"
+  fi
+  if [ -z "$(read_env_value JWT_REFRESH_SECRET)" ]; then
+    set_env_value JWT_REFRESH_SECRET "$(openssl rand -hex 32)"
+  fi
+  chmod 600 .env
+  printf 'BOTMODE_NEW_INSTALL_SHARED_JWT=PASS\n'
+fi
+if [ "$PROFILE" = "full" ] && [ -z "$(read_env_value JWT_SECRET)" ]; then
+  # Do not generate a fresh signing key on top of existing credentials.
+  echo 'BOTMODE_FULL_RAG_SHARED_JWT_MISSING: existing .env has no JWT_SECRET; authenticate an upgrade/migration explicitly before using RAG.' >&2
 fi
 
 # Docker's database initialization credentials only apply to empty data
