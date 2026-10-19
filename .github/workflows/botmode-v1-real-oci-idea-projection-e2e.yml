@@ -7,6 +7,7 @@ on:
       - 'scripts/botmode/ci-oracle-publication-project-gate.py'
       - 'scripts/botmode/ci-idea-browser-e2e.cjs'
       - 'scripts/botmode/ci-real-idea-runner.sh'
+      - 'scripts/botmode/ci-release-composition-source-guard.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,26 +22,9 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
           fetch-depth: 0
-      - name: Verify runtime parity with candidate source (allow test-only differences)
+      - name: Verify exact source composition and preserve published OCI guard
         shell: bash
-        run: |
-          set -euo pipefail
-          source_sha='6da38ba1b70655c7a6266c6648f6734bdb8c9c85'
-          test "$(git merge-base HEAD "$source_sha")" = "$source_sha"
-          python3 - <<'PY_CI_SOURCE'
-          import subprocess
-          changed=set(subprocess.check_output(['git','diff','--name-only','6da38ba1b70655c7a6266c6648f6734bdb8c9c85','HEAD'],text=True).splitlines())
-          allowed={
-            '.github/workflows/botmode-v1-real-oci-idea-projection-e2e.yml',
-            'scripts/botmode/ci-projection-oci-idea-acceptance.py',
-            'scripts/botmode/ci-oracle-publication-project-gate.py',
-            'scripts/botmode/ci-idea-browser-e2e.cjs',
-            'scripts/botmode/ci-real-idea-runner.sh',
-          }
-          if changed-allowed:
-              raise SystemExit('CI_REAL_OCI_PROJECTION_SOURCE_DIFF_REFUSED')
-          print('CI_REAL_OCI_PROJECTION_RUNTIME_SOURCE_PARITY=PASS')
-          PY_CI_SOURCE
+        run: python3 scripts/botmode/ci-release-composition-source-guard.py
       - name: Set up Buildx (ephemeral source runtime, never push)
         uses: docker/setup-buildx-action@v4
       - name: Build exact tested source into the runner only
