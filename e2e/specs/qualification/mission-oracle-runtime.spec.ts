@@ -454,7 +454,10 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
         return /^[0-9]+$/.test(firstCheckpoint);
       }, { timeout: 30_000, intervals: [250, 500, 1000] }).toBe(true);
       const initialPlan = (await loadDurableJob(redis, streamId)).plan;
-      expect(initialPlan?.mission?.missionId).toBe(mission.missionId);
+      // A one-task native graph stores its durable planned tasks; it does not
+      // promise to retain the original mission DTO under plan.mission.
+      expect(initialPlan?.tasks?.length).toBe(1);
+      expect(initialPlan?.tasks?.[0]?.taskId).toBe(`${mission.taskId}/main`);
 
       const heartbeatSamples: number[] = [];
       const checkpointCounts: number[] = [];
