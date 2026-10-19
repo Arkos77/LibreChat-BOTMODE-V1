@@ -3665,6 +3665,93 @@ describe('initializeClient — subagent loading', () => {
     },
   );
 
+  it('keeps native self-spawn enabled after free_only routing chooses an alternate free model', async () => {
+    mockInitializeAgent.mockResolvedValue({
+      ...makePrimaryConfig({
+        subagents: { enabled: true, allowSelf: true, agent_ids: [] },
+      }),
+      model: 'nvidia/nemotron-3.5-lightning:free',
+      provider: 'openAI',
+      model_parameters: {
+        model: 'nvidia/nemotron-3.5-lightning:free',
+        fallbacks: [
+          {
+            provider: 'openAI',
+            clientOptions: { model: 'openrouter/free' },
+            retryOn: 'MODEL_RETRYABLE_ZERO_CHUNK',
+          },
+        ],
+      },
+      hostModelDecision: {
+        selectedProvider: 'OpenRouter',
+        selectedModel: 'nvidia/nemotron-3.5-lightning:free',
+        spendingPolicy: 'free_only',
+        authorizedBindings: [
+          { provider: 'OpenRouter', model: 'openrouter/free' },
+          { provider: 'OpenRouter', model: 'nvidia/nemotron-3.5-lightning:free' },
+        ],
+      },
+    });
+    const endpointOption = makeEndpointOption();
+    endpointOption.agent = Promise.resolve({
+      id: PRIMARY_ID,
+      name: 'BOT MODE Worker',
+      provider: 'openrouter',
+      model: 'openrouter/free',
+      tools: [],
+    });
+    endpointOption.model_parameters = { model: 'openrouter/free' };
+    await initializeClient({
+      req: makeSubagentReq(),
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption,
+    });
+    expect(agentClientArgs.agent.subagents).toMatchObject({
+      enabled: true,
+      allowSelf: true,
+    });
+  });
+
+  it('rejects a paid alternate even when the selected model is free and the host claims free_only', async () => {
+    mockInitializeAgent.mockResolvedValue({
+      ...makePrimaryConfig({
+        subagents: { enabled: true, allowSelf: true, agent_ids: [] },
+      }),
+      model: 'openrouter/free',
+      provider: 'openAI',
+      model_parameters: { model: 'openrouter/free' },
+      hostModelDecision: {
+        selectedProvider: 'OpenRouter',
+        selectedModel: 'openrouter/free',
+        spendingPolicy: 'free_only',
+        authorizedBindings: [
+          { provider: 'OpenRouter', model: 'openrouter/free' },
+          { provider: 'OpenRouter', model: 'nvidia/paid-model' },
+        ],
+      },
+    });
+    const endpointOption = makeEndpointOption();
+    endpointOption.agent = Promise.resolve({
+      id: PRIMARY_ID,
+      name: 'BOT MODE Worker',
+      provider: 'openrouter',
+      model: 'openrouter/free',
+      tools: [],
+    });
+    endpointOption.model_parameters = { model: 'openrouter/free' };
+    await initializeClient({
+      req: makeSubagentReq(),
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption,
+    });
+    expect(agentClientArgs.agent.subagents).toMatchObject({
+      enabled: true,
+      allowSelf: false,
+    });
+  });
+
   it('blocks a cross-provider routing decision even when the returned model is named openrouter/free', async () => {
     mockInitializeAgent.mockResolvedValue({
       ...makePrimaryConfig({
