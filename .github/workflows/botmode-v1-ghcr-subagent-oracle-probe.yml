@@ -58,6 +58,7 @@ jobs:
             'scripts/botmode/ci-staging-digest-rollback.sh',
             'scripts/botmode/ci-live-free-child-oracle-gate.py',
             'scripts/botmode/ci-live-free-child-preflight.sh',
+            'client/src/components/Ideas/IdeasView.test.tsx',
           }
           changed = set(subprocess.check_output(
             ['git','diff','--name-only','5fb904d375bffd6c54b5830cb1536088a9e77211','HEAD'],
