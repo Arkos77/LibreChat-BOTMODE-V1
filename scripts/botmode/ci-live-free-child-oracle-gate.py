@@ -144,31 +144,43 @@ def read_terminal_stream(stream_path):
         method="GET",
     )
     started = time.monotonic()
+    deadline = started + 210
     items = []
-    try:
-        with urlopen(req, timeout=75) as response:
-            http_status = response.status
-            for line in response:
-                if time.monotonic() - started > 210:
-                    return http_status, items, "TOTAL_DEADLINE"
-                if not line.startswith(b"data:"):
-                    continue
-                try:
-                    item = json.loads(line[5:].strip())
-                except (TypeError, ValueError):
-                    continue
-                if not isinstance(item, dict):
-                    continue
-                items.append(item)
-                if item.get("final") is True or item.get("event") == "error" or item.get("type") == "error":
-                    return http_status, items, "TERMINAL_FRAME"
-            return http_status, items, "STREAM_EOF"
-    except HTTPError as exc:
-        return exc.code, items, "HTTP_ERROR"
-    except (socket.timeout, TimeoutError):
-        return 200 if items else 0, items, "SSE_IDLE_TIMEOUT"
-    except (URLError, ConnectionError, OSError):
-        return 0, items, "SSE_CONNECTION_ERROR"
+    retries = 0
+    http_status = 0
+    # Free providers may stay silent >75 s while Redis still shows running.
+    # Reconnect ONLY the existing streamId with resume=true. Never repeat POST.
+    while time.monotonic() < deadline:
+        timeout = max(1, min(75, deadline - time.monotonic()))
+        try:
+            with urlopen(req, timeout=timeout) as response:
+                http_status = response.status
+                for line in response:
+                    if time.monotonic() >= deadline:
+                        return http_status, items, "SSE_TOTAL_DEADLINE"
+                    if not line.startswith(b"data:"):
+                        continue
+                    try:
+                        item = json.loads(line[5:].strip())
+                    except (TypeError, ValueError):
+                        continue
+                    if not isinstance(item, dict):
+                        continue
+                    items.append(item)
+                    if item.get("final") is True or item.get("event") == "error" or item.get("type") == "error":
+                        return http_status, items, "TERMINAL_FRAME"
+                return http_status, items, "STREAM_EOF"
+        except HTTPError as exc:
+            return exc.code, items, "HTTP_ERROR"
+        except (socket.timeout, TimeoutError):
+            if time.monotonic() >= deadline or retries >= 2:
+                return http_status, items, "SSE_IDLE_TOTAL_DEADLINE"
+            retries += 1
+            # This GET merely resumes observation of the same already-started
+            # mission and does not consume another model-generation request.
+        except (URLError, ConnectionError, OSError):
+            return http_status, items, "SSE_CONNECTION_ERROR"
+    return http_status, items, "SSE_TOTAL_DEADLINE"
 
 stream_status, events, stream_outcome = read_terminal_stream(
     "/api/agents/chat/stream/" + stream_id + "?resume=true"
@@ -210,6 +222,28 @@ for _ in range(30):
             pass
     time.sleep(1)
 if durable is None:
+    # Emit only state shape and bounded counts. Never log provider payloads,
+    # prompts, JWTs, Redis keys, user IDs, raw plans or any credential.
+    try:
+        job_status, raw_plan, raw_state = redis_job(stream_id)
+        allowed = {"queued", "pending", "running", "completed", "complete", "failed", "error", "paused", "cancelled"}
+        print("CI_LIVE_FREE_REDIS_JOB_STATUS=" + (job_status if job_status in allowed else "OTHER_OR_MISSING"), flush=True)
+        print("CI_LIVE_FREE_REDIS_PLAN_PRESENT=" + str(bool(raw_plan)).upper(), flush=True)
+        print("CI_LIVE_FREE_REDIS_ORACLE_STATE_PRESENT=" + str(bool(raw_state)).upper(), flush=True)
+        if raw_state:
+            parsed = json.loads(raw_state)
+            results = parsed.get("results", {}) if isinstance(parsed, dict) else {}
+            if not isinstance(results, dict):
+                results = {}
+            print("CI_LIVE_FREE_RESULT_TASK_COUNT=" + str(min(len(results), 9999)), flush=True)
+            print("CI_LIVE_FREE_WORKER_VERDICT_PRESENT=" + str(bool(results.get(task_ids["worker"], {}).get("verdicts")) if isinstance(results.get(task_ids["worker"]), dict) else False).upper(), flush=True)
+            print("CI_LIVE_FREE_SPECIALIST_VERDICT_PRESENT=" + str(bool(results.get(task_ids["specialist"], {}).get("verdicts")) if isinstance(results.get(task_ids["specialist"]), dict) else False).upper(), flush=True)
+    except (OSError, ValueError, TypeError, AttributeError, subprocess.SubprocessError):
+        print("CI_LIVE_FREE_REDIS_DIAG_UNAVAILABLE=TRUE", flush=True)
+    try:
+        emit_child_state("ORACLE_NOT_DURABLE", child_state(conversation_id))
+    except (SystemExit, OSError, subprocess.SubprocessError):
+        print("CI_LIVE_FREE_CHILD_DIAG_UNAVAILABLE=TRUE", flush=True)
     raise SystemExit("CI_LIVE_FREE_FAIL=ORACLE_NOT_DURABLE")
 plan, results = durable
 expected_tasks = {

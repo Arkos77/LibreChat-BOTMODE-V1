@@ -10,6 +10,11 @@ on:
         type: boolean
         required: true
         default: false
+      quota_only:
+        description: 'Read OpenRouter free daily quota, strictly no inference or paid model'
+        type: boolean
+        required: true
+        default: false
 permissions:
   contents: read
 
@@ -25,7 +30,55 @@ env:
   COMPOSE_PROJECT_NAME: botmode-oci-child-${{ github.run_id }}-${{ github.run_attempt }}
 
 jobs:
+  openrouter-free-quota-only:
+    if: github.event_name == 'workflow_dispatch' && inputs.quota_only == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Query only key quota metadata without inference
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_QUOTA'
+          import json, os
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError, URLError
+          secret=os.environ.get('OPENROUTER_API_KEY', '')
+          if len(secret)<17:
+              raise SystemExit('CI_OPENROUTER_FREE_QUOTA=KEY_UNAVAILABLE')
+          request=Request('https://openrouter.ai/api/v1/key',
+              headers={'Authorization':'Bearer '+secret,'Accept':'application/json'}, method='GET')
+          try:
+              with urlopen(request,timeout=25) as response:
+                  result=json.load(response)
+          except HTTPError as exc:
+              print('CI_OPENROUTER_KEY_METADATA_HTTP='+str(exc.code))
+              raise SystemExit('CI_OPENROUTER_FREE_QUOTA=METADATA_HTTP_FAIL')
+          except (URLError,TimeoutError,ValueError):
+              raise SystemExit('CI_OPENROUTER_FREE_QUOTA=METADATA_UNAVAILABLE')
+          key=result.get('data',{}) if isinstance(result,dict) else {}
+          if not isinstance(key,dict):
+              raise SystemExit('CI_OPENROUTER_FREE_QUOTA=SCHEMA_UNEXPECTED')
+          if key.get('is_management_key') is True:
+              raise SystemExit('CI_OPENROUTER_FREE_QUOTA=MANAGEMENT_KEY')
+          quota=key.get('free_model_daily_requests')
+          if not isinstance(quota,dict):
+              print('CI_OPENROUTER_FREE_DAILY_STATUS=UNKNOWN_SCHEMA')
+          else:
+              used,limit,remaining=(quota.get(k) for k in ('used','limit','remaining'))
+              if all(type(v) is int and 0<=v<=1000000 for v in (used,limit,remaining)):
+                  # Positive daily headroom is not a promise of provider capacity
+                  # or available per-minute tokens; never trigger inference here.
+                  print('CI_OPENROUTER_FREE_DAILY_STATUS='+('REMAINING_POSITIVE' if remaining>0 else 'DAILY_EXHAUSTED'))
+              else:
+                  print('CI_OPENROUTER_FREE_DAILY_STATUS=UNKNOWN_SCHEMA')
+          print('CI_OPENROUTER_FREE_QUOTA_METADATA_ONLY=PASS')
+          print('CI_OPENROUTER_MODEL_GENERATION_REQUESTS=0')
+          PY_QUOTA
   current-candidate-runtime:
+    if: github.event_name != 'workflow_dispatch' || inputs.quota_only != true
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -36,6 +89,8 @@ jobs:
           persist-credentials: false
       - name: Prove checked-out revision
         run: test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+      - name: Verify bounded free-only SSE resume static safeguards offline
+        run: python3 scripts/botmode/tests/test_ci_live_free_sse_resume.py
       - name: Verify runtime source unchanged since the published image
         shell: bash
         run: |
@@ -57,6 +112,7 @@ jobs:
             'docs/BOTMODE_V1_MEMO_CHECKPOINT_20261018.md',
             'scripts/botmode/ci-staging-digest-rollback.sh',
             'scripts/botmode/ci-live-free-child-oracle-gate.py',
+            'scripts/botmode/tests/test_ci_live_free_sse_resume.py',
             'scripts/botmode/ci-live-free-child-preflight.sh',
             'client/src/components/Ideas/IdeasView.test.tsx',
             'e2e/specs/mock/ideas-botmode-results.spec.ts',
