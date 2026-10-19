@@ -396,6 +396,127 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
     }
   });
 
+  test('durable model-only mission soak: heartbeat, Oracle and unique publication', async ({
+    page,
+  }) => {
+    test.skip(process.env.E2E_MISSION_SOAK !== 'true', 'Explicit CI soak only');
+    const minutes = Number(process.env.E2E_SOAK_MINUTES ?? '3');
+    expect(Number.isInteger(minutes) && minutes >= 1 && minutes <= 180).toBe(true);
+    const duration = minutes * 60_000;
+    test.setTimeout(duration + 240_000);
+    await page.goto('/c/new');
+    const token = await getAccessToken(page);
+    const redis = new Redis(process.env.REDIS_URI || 'redis://127.0.0.1:6379', {
+      maxRetriesPerRequest: 1,
+    });
+    let workerId: string | undefined;
+    try {
+      const worker = await createSavedAgent(page, token, 'Worker');
+      workerId = worker.id;
+      const mission = makeMission(worker.id, undefined, false);
+      const conversationId = randomUUID();
+      const startedAt = Date.now();
+      const admitted = await page.request.post('/api/agents/chat/agents', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'x-librechat-generation-protocol': '2',
+        },
+        data: {
+          generationProtocolVersion: 2,
+          endpoint: 'agents',
+          agent_id: worker.id,
+          conversationId,
+          messageId: randomUUID(),
+          parentMessageId: '00000000-0000-0000-0000-000000000000',
+          isNewConvo: true,
+          text: `E2E_MISSION_ORACLE_SOAK_JSON:${mission.missionId}`,
+          orchestratorMission: { mission: mission.mission, plannerContext: mission.plannerContext },
+        },
+        timeout: 60_000,
+      });
+      expect(admitted.status()).toBe(200);
+      const started = (await admitted.json()) as MissionRun;
+      expect(started.status).toBe('started');
+      const streamId = started.streamId!;
+      expect(streamId).toBeTruthy();
+      const jobKey = `stream:{${streamId}}:job`;
+
+      await expect
+        .poll(async () => redis.hget(jobKey, 'status'), {
+          timeout: 20_000,
+          intervals: [500, 1000],
+        })
+        .toBe('running');
+      let firstCheckpoint = '';
+      await expect.poll(async () => {
+        firstCheckpoint = (await redis.hget(jobKey, 'checkpointNamespace')) ?? '';
+        return /^[0-9]+$/.test(firstCheckpoint);
+      }, { timeout: 30_000, intervals: [250, 500, 1000] }).toBe(true);
+      const initialPlan = (await loadDurableJob(redis, streamId)).plan;
+      expect(initialPlan?.mission?.missionId).toBe(mission.missionId);
+
+      const heartbeatSamples: number[] = [];
+      const checkpointCounts: number[] = [];
+      // Wall-clock observations rather than fake timers; the first
+      // 20-30s must still be pre-Oracle for each duration variant.
+      for (let i = 0; i < 3; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 8_000));
+        const state = await loadDurableJob(redis, streamId);
+        expect(state.status).toBe('running');
+        expect(state.plan).toEqual(initialPlan);
+        const stamp = Number(await redis.hget(jobKey, 'lastActiveAt'));
+        expect(Number.isFinite(stamp) && stamp > 0).toBe(true);
+        heartbeatSamples.push(stamp);
+        expect((await redis.ttl(jobKey)) > 0).toBe(true);
+        checkpointCounts.push(
+          (await getPersistedCheckpointCounts(conversationId, firstCheckpoint!)).generationRows,
+        );
+        const before = await requestJson<
+          Array<{ messageId?: string; isCreatedByUser?: boolean; text?: string; content?: unknown }>
+        >(page, { path: `/api/messages/${encodeURIComponent(conversationId)}`, token });
+        expect(
+          before.filter(
+            (message) => message.isCreatedByUser === false && /"ok"\s*:\s*true/.test(responseText(message)),
+          ),
+        ).toHaveLength(0);
+      }
+      expect(heartbeatSamples[2]).toBeGreaterThanOrEqual(heartbeatSamples[0]);
+      expect(checkpointCounts[2]).toBeGreaterThanOrEqual(checkpointCounts[0]);
+      console.log('CI_MISSION_SOAK_RUNNING_HEARTBEATS_AND_NO_EARLY_PUBLICATION=PASS');
+
+      const taskIds = [`${mission.taskId}/main`];
+      await expect.poll(async () => {
+        const state = await loadDurableJob(redis, streamId);
+        return taskIds.every((taskId) =>
+          state.state?.results?.[taskId]?.verdicts?.some((v) => v.status === 'VERIFIED') === true);
+      }, { timeout: duration + 130_000, intervals: [1000, 2500, 4000] }).toBe(true);
+
+      const elapsed = Date.now() - startedAt;
+      // Never claim a three-hour soak if the fake provider returned early.
+      expect(elapsed).toBeGreaterThanOrEqual(duration * 0.90);
+
+      let messages: Array<{
+        messageId?: string; isCreatedByUser?: boolean; text?: string; content?: unknown;
+      }> = [];
+      await expect.poll(async () => {
+        messages = await requestJson<typeof messages>(page, {
+          path: `/api/messages/${encodeURIComponent(conversationId)}`, token,
+        });
+        return messages.filter(
+          (m) => m.isCreatedByUser === false && /"ok"\s*:\s*true/.test(responseText(m)),
+        ).length;
+      }, { timeout: 45_000, intervals: [500, 1000, 2500] }).toBe(1);
+      expect(new Set(messages.map((m) => m.messageId)).size).toBe(messages.length);
+      expect((await loadDurableJob(redis, streamId)).plan).toEqual(initialPlan);
+      console.log('CI_MISSION_SOAK_ORACLE_VERIFIED_AND_MONGO_UNIQUE=PASS');
+      console.log('CI_MISSION_SOAK_WALL_MINUTES=' + (elapsed / 60000).toFixed(2));
+      console.log('CI_MISSION_SOAK_SCOPE=single_model_only_task_fixture_no_live_provider_no_real_tools');
+    } finally {
+      if (workerId) await cleanupAgent(page, workerId);
+      await redis.quit();
+    }
+  });
+
   test('in-flight SIGKILL retains plan and never publishes an unverified candidate', async ({
     page,
   }) => {

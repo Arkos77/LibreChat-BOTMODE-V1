@@ -494,6 +494,24 @@ function replyResponses(text) {
     return { responses: ['{"ok":true}'], sleep: 10_000 };
   }
 
+  // Bounded CI mission-soak fixture. JSON remains valid for the actual
+  // Oracle verifier, but incremental whitespace-separated tokens keep the
+  // provider segment active for the configured real wall-clock duration.
+  // Every token traverses the production graph/Redis stream; no fake Oracle.
+  if (text.includes('E2E_MISSION_ORACLE_SOAK_JSON:')) {
+    const delay = Number(process.env.E2E_SOAK_CHUNK_DELAY_MS || '3000');
+    const minutes = Number(process.env.E2E_SOAK_MINUTES || '3');
+    if (!Number.isFinite(delay) || delay < 100 || delay > 20000 ||
+        !Number.isInteger(minutes) || minutes < 1 || minutes > 180) {
+      throw new Error('Invalid bounded mission soak configuration');
+    }
+    const words = Math.max(1, Math.ceil((minutes * 60000 / delay - 1) / 2));
+    return {
+      responses: ['{"ok":true,"soak":"' + 'progress '.repeat(words) + 'done"}'],
+      sleep: delay,
+    };
+  }
+
   // Deterministic, strict JSON for a real mission graph's Oracle validators.
   // The model is a CI fixture; it cannot grant authorization or fake persisted verdicts.
   if (getMarkerValue(text, MISSION_ORACLE_JSON_MARKER)) {
