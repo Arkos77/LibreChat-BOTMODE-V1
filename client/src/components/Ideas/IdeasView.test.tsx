@@ -150,23 +150,42 @@ describe('BOT MODE Ideas mission authorization', () => {
     } as never);
     mockUseBotModeProjectProjectionQuery.mockImplementation((projectId: string) => ({
       isLoading: false,
-      data: projectId === 'project-one' ? {
-        projectId,
-        conversations: [{
-          conversationId: 'conversation-one',
-          traces: [{ observations: [{ traceEventId: 'settled-one', type: 'SETTLED', source: 'oracle' }] }],
-          plans: [{ plan: { planVersion: 1, objective: 'Évaluer l’idée', tasks: [] } }],
-          results: [{ messageId: 'message-final', content: 'CI Oracle : résultat final publié dans la fiche Idée' }],
-        }],
-        sources: [],
-      } : undefined,
+      data:
+        projectId === 'project-one'
+          ? {
+              projectId,
+              conversations: [
+                {
+                  conversationId: 'conversation-one',
+                  traces: [
+                    {
+                      observations: [
+                        { traceEventId: 'settled-one', type: 'SETTLED', source: 'oracle' },
+                      ],
+                    },
+                  ],
+                  plans: [{ plan: { planVersion: 1, objective: 'Évaluer l’idée', tasks: [] } }],
+                  results: [
+                    {
+                      messageId: 'message-final',
+                      content: 'CI Oracle : résultat final publié dans la fiche Idée',
+                    },
+                  ],
+                },
+              ],
+              sources: [],
+            }
+          : undefined,
     }));
     renderIdeas();
-    expect(await screen.findByText('CI Oracle : résultat final publié dans la fiche Idée')).toBeVisible();
+    expect(
+      await screen.findByText('CI Oracle : résultat final publié dans la fiche Idée'),
+    ).toBeVisible();
     expect(screen.getByText('com_ui_bot_mode_project_results')).toBeVisible();
     expect(screen.getByText('com_ui_bot_mode_idea_state_completed')).toBeVisible();
     expect(mockUseBotModeProjectProjectionQuery).toHaveBeenCalledWith(
-      'project-one', expect.objectContaining({ enabled: true }),
+      'project-one',
+      expect.objectContaining({ enabled: true }),
     );
   });
 
@@ -174,17 +193,25 @@ describe('BOT MODE Ideas mission authorization', () => {
     jest.mocked(dataService.listIdeas).mockResolvedValue({ ideas: [idea] } as never);
     mockUseBotModeProjectProjectionQuery.mockReturnValue({
       isLoading: false,
-      data: { projectId: 'other-project', conversations: [{
-        conversationId: 'unrelated-conversation', traces: [], plans: [],
-        results: [{ messageId: 'unrelated', content: 'OTHER PROJECT CONFIDENTIAL RESULT' }],
-      }] },
+      data: {
+        projectId: 'other-project',
+        conversations: [
+          {
+            conversationId: 'unrelated-conversation',
+            traces: [],
+            plans: [],
+            results: [{ messageId: 'unrelated', content: 'OTHER PROJECT CONFIDENTIAL RESULT' }],
+          },
+        ],
+      },
     });
     renderIdeas();
     expect(await screen.findByText(idea.title)).toBeVisible();
     expect(screen.getByText('com_ui_bot_mode_idea_tracking_unavailable')).toBeVisible();
     expect(screen.queryByText('OTHER PROJECT CONFIDENTIAL RESULT')).not.toBeInTheDocument();
     expect(mockUseBotModeProjectProjectionQuery).toHaveBeenCalledWith(
-      '', expect.objectContaining({ enabled: false }),
+      '',
+      expect.objectContaining({ enabled: false }),
     );
   });
 
