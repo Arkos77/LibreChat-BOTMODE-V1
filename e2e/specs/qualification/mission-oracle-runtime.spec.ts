@@ -1039,9 +1039,19 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
           'a missing specialist must not reach final publication',
         ).toBe(false);
       }
-      const saved = await requestJson<
-        Array<{ isCreatedByUser?: boolean; text?: string; content?: unknown }>
-      >(page, { path: `/api/messages/${encodeURIComponent(conversationId)}`, token });
+      const savedResponse = await page.request.get(
+        `/api/messages/${encodeURIComponent(conversationId)}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      // A rejected pre-admission mission may not have a conversation yet.
+      expect([200, 404]).toContain(savedResponse.status());
+      const saved = savedResponse.status() === 200
+        ? ((await savedResponse.json()) as Array<{
+            isCreatedByUser?: boolean;
+            text?: string;
+            content?: unknown;
+          }>)
+        : [];
       expect(
         saved.some(
           (message) =>
