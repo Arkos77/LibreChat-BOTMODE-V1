@@ -144,31 +144,43 @@ def read_terminal_stream(stream_path):
         method="GET",
     )
     started = time.monotonic()
+    deadline = started + 210
     items = []
-    try:
-        with urlopen(req, timeout=75) as response:
-            http_status = response.status
-            for line in response:
-                if time.monotonic() - started > 210:
-                    return http_status, items, "TOTAL_DEADLINE"
-                if not line.startswith(b"data:"):
-                    continue
-                try:
-                    item = json.loads(line[5:].strip())
-                except (TypeError, ValueError):
-                    continue
-                if not isinstance(item, dict):
-                    continue
-                items.append(item)
-                if item.get("final") is True or item.get("event") == "error" or item.get("type") == "error":
-                    return http_status, items, "TERMINAL_FRAME"
-            return http_status, items, "STREAM_EOF"
-    except HTTPError as exc:
-        return exc.code, items, "HTTP_ERROR"
-    except (socket.timeout, TimeoutError):
-        return 200 if items else 0, items, "SSE_IDLE_TIMEOUT"
-    except (URLError, ConnectionError, OSError):
-        return 0, items, "SSE_CONNECTION_ERROR"
+    retries = 0
+    http_status = 0
+    # Free providers may stay silent >75 s while Redis still shows running.
+    # Reconnect ONLY the existing streamId with resume=true. Never repeat POST.
+    while time.monotonic() < deadline:
+        timeout = max(1, min(75, deadline - time.monotonic()))
+        try:
+            with urlopen(req, timeout=timeout) as response:
+                http_status = response.status
+                for line in response:
+                    if time.monotonic() >= deadline:
+                        return http_status, items, "SSE_TOTAL_DEADLINE"
+                    if not line.startswith(b"data:"):
+                        continue
+                    try:
+                        item = json.loads(line[5:].strip())
+                    except (TypeError, ValueError):
+                        continue
+                    if not isinstance(item, dict):
+                        continue
+                    items.append(item)
+                    if item.get("final") is True or item.get("event") == "error" or item.get("type") == "error":
+                        return http_status, items, "TERMINAL_FRAME"
+                return http_status, items, "STREAM_EOF"
+        except HTTPError as exc:
+            return exc.code, items, "HTTP_ERROR"
+        except (socket.timeout, TimeoutError):
+            if time.monotonic() >= deadline or retries >= 2:
+                return http_status, items, "SSE_IDLE_TOTAL_DEADLINE"
+            retries += 1
+            # This GET merely resumes observation of the same already-started
+            # mission and does not consume another model-generation request.
+        except (URLError, ConnectionError, OSError):
+            return http_status, items, "SSE_CONNECTION_ERROR"
+    return http_status, items, "SSE_TOTAL_DEADLINE"
 
 stream_status, events, stream_outcome = read_terminal_stream(
     "/api/agents/chat/stream/" + stream_id + "?resume=true"

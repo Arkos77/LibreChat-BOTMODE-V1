@@ -89,6 +89,8 @@ jobs:
           persist-credentials: false
       - name: Prove checked-out revision
         run: test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+      - name: Verify bounded free-only SSE resume static safeguards offline
+        run: python3 scripts/botmode/tests/test_ci_live_free_sse_resume.py
       - name: Verify runtime source unchanged since the published image
         shell: bash
         run: |
@@ -110,6 +112,7 @@ jobs:
             'docs/BOTMODE_V1_MEMO_CHECKPOINT_20261018.md',
             'scripts/botmode/ci-staging-digest-rollback.sh',
             'scripts/botmode/ci-live-free-child-oracle-gate.py',
+            'scripts/botmode/tests/test_ci_live_free_sse_resume.py',
             'scripts/botmode/ci-live-free-child-preflight.sh',
           }
           changed = set(subprocess.check_output(
