@@ -1,0 +1,99 @@
+name: BOTMODE V1 Real Redis Mission Soak Qualification
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-mission-soak.yml'
+      - 'e2e/playwright.config.mission-soak.ts'
+      - 'e2e/specs/qualification/mission-oracle-runtime.spec.ts'
+      - 'e2e/setup/fake-model.js'
+  workflow_dispatch:
+    inputs:
+      duration_minutes:
+        description: 'Real wall-clock model-only mission duration (3 or 180)'
+        type: choice
+        options:
+          - '3'
+          - '180'
+        default: '3'
+
+permissions:
+  contents: read
+
+jobs:
+  single-mission-soak:
+    name: One live runtime, Redis heartbeat and durable Oracle
+    runs-on: ubuntu-latest
+    timeout-minutes: 225
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: 'true'
+      E2E_CHROMIUM_CHANNEL: chrome
+      E2E_STREAM_STORE: redis
+      REDIS_URI: redis://127.0.0.1:6379
+      STREAM_KEEP_COMPLETED_JOBS: 'true'
+      E2E_MISSION_SOAK: 'true'
+      E2E_SOAK_MINUTES: ${{ github.event_name == 'workflow_dispatch' && inputs.duration_minutes || '3' }}
+      E2E_SOAK_CHUNK_DELAY_MS: ${{ github.event_name == 'workflow_dispatch' && inputs.duration_minutes == '180' && '12000' || '3000' }}
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact source and bounded wall-clock duration
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          case "$E2E_SOAK_MINUTES" in
+            3|180) ;;
+            *) echo 'REFUSED_NON_STANDARD_SOAK_DURATION'; exit 2;;
+          esac
+          test "$E2E_MISSION_SOAK" = true
+          echo "CI_MISSION_SOAK_TESTED_SOURCE=$EXPECTED_SHA"
+          echo "CI_MISSION_SOAK_REQUESTED_REAL_MINUTES=$E2E_SOAK_MINUTES"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Compile real runtime and browser frontend
+        run: |
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:api
+          npm run build:client-package
+          npm run build:client
+      - name: Execute actual wall-clock mission, verify Redis heartbeats and Oracle once
+        run: npx playwright test --config=e2e/playwright.config.mission-soak.ts --workers=1 --retries=0
+      - name: Record bounded evidence
+        if: always()
+        run: |
+          {
+            echo '### Native mission soak qualification'
+            echo "Exact source SHA: $(git rev-parse HEAD)"
+            echo "Requested real duration: $E2E_SOAK_MINUTES minutes"
+            echo 'The test must assert wall-clock elapsed >= 90% of configured duration, model-only job kept running with Redis heartbeats, exact unchanged mission plan and checkpoint, no early Mongo final, Oracle VERIFIED then exactly one published Mongo result.'
+            echo 'This uses the real runtime with a deterministic in-process fake model; no external inference, tools, remote specialists, paid models, or registry image promotion.'
+            echo 'A 3-minute PASS does NOT qualify a 3-hour soak. A 3-hour PASS does not prove arbitrary long tool workflows, context compaction, multi-provider fallback or live interversion upgrades.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: botmode-v1-mission-soak-failures
+          path: |
+            e2e/specs/.test-results/
+            e2e/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7

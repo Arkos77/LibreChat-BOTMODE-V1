@@ -17,5 +17,9 @@ if ! git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>
   echo "BOTMODE update refused: branch '$branch' has no configured upstream." >&2
   exit 2
 fi
+# Strictly before any change to the checkout or containers.
+bash ./scripts/botmode/check-update-quiescence.sh
 git pull --ff-only
+# A second safety check covers state changes during remote fetch.
+bash ./scripts/botmode/check-update-quiescence.sh
 exec ./scripts/botmode/bootstrap.sh "$@"

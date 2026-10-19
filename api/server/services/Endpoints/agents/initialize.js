@@ -1679,6 +1679,60 @@ const initializeClient = async ({
     );
   };
 
+  /**
+   * BOT MODE free-pool self-spawn is a mission-scoped convenience, never a
+   * second source of permissions or permission to spend. A saved Worker may
+   * have been edited after onboarding, or host routing may have switched its
+   * effective model. Re-evaluate the effective model EVERY generation.
+   *
+   * Do not allow a hidden paid/other-provider fallback within spawned children.
+   * Explicit authorized saved specialists remain available independently.
+   * Never mutate the persisted Worker or its user-configured delegation graph.
+   */
+  if (
+    originalPrimaryAgent.name === 'BOT MODE Worker' &&
+    primaryConfig.subagents?.enabled === true &&
+    primaryConfig.subagents.allowSelf === true
+  ) {
+    const fallbackBindings = primaryConfig.model_parameters?.fallbacks;
+    const hostDecision = primaryConfig.hostModelDecision;
+    const isExplicitFreeModel = (model) =>
+      typeof model === 'string' && (model === 'openrouter/free' || model.endsWith(':free'));
+    const authorizedPool = hostDecision?.authorizedBindings;
+    const freeOnlyHostRoute =
+      hostDecision == null ||
+      (hostDecision.spendingPolicy === 'free_only' &&
+        hostDecision.selectedProvider?.toLowerCase() === 'openrouter' &&
+        hostDecision.selectedModel === primaryConfig.model &&
+        Array.isArray(authorizedPool) &&
+        authorizedPool.length >= 2 &&
+        authorizedPool.every(
+          (binding) =>
+            binding.provider?.toLowerCase() === 'openrouter' && isExplicitFreeModel(binding.model),
+        ));
+    const onlyFreeFallbacks =
+      fallbackBindings == null ||
+      (Array.isArray(fallbackBindings) &&
+        fallbackBindings.every(
+          (fallback) =>
+            isExplicitFreeModel(fallback?.clientOptions?.model) &&
+            authorizedPool?.some(
+              (binding) =>
+                binding.provider?.toLowerCase() === 'openrouter' &&
+                binding.model === fallback.clientOptions.model,
+            ),
+        ));
+    const freeEphemeralChildPermitted =
+      originalPrimaryAgent.provider?.toLowerCase() === 'openrouter' &&
+      isExplicitFreeModel(originalPrimaryAgent.model) &&
+      isExplicitFreeModel(primaryConfig.model) &&
+      freeOnlyHostRoute &&
+      onlyFreeFallbacks;
+    if (!freeEphemeralChildPermitted) {
+      primaryConfig.subagents = { ...primaryConfig.subagents, allowSelf: false };
+    }
+  }
+
   const rootSubagentConfigs = [primaryConfig, ...agentConfigs.values()];
   await resolveSubagentTrees(rootSubagentConfigs);
 

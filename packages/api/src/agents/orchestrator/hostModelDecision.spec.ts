@@ -253,6 +253,52 @@ describe('host P11 model decision', () => {
     expect(fallbacks[0].clientOptions.timeout).toBeUndefined();
   });
 
+  it.each([
+    ['paid', 'paid'],
+    ['unknown', undefined],
+  ])(
+    'never installs a %s candidate as an implicit free_only fallback',
+    async (_label, pricingTier) => {
+      const result = await decideHostModel({
+        ...input,
+        preferredModel: 'model-a:free',
+        allowFailover: true,
+        routingMode: 'adaptive',
+        routingSignals: {
+          'model-a:free': { pricingTier: 'free' },
+          'model-b:free': pricingTier == null ? {} : { pricingTier: 'paid' },
+        },
+        routingConstraints: { spendingPolicy: 'free_only' },
+      });
+
+      expect(result.selectedModel).toBe('model-a:free');
+      expect(result.modelParameters.fallbacks).toEqual([]);
+      expect(result.record.selectedOption).toBe('model-a:free');
+      expect(JSON.stringify(result.event)).not.toContain('secret');
+    },
+  );
+
+  it('allows only the explicitly authorized free fallback under free_only', async () => {
+    const result = await decideHostModel({
+      ...input,
+      preferredModel: 'model-a:free',
+      allowFailover: true,
+      routingSignals: {
+        'model-a:free': { pricingTier: 'free' },
+        'model-b:free': { pricingTier: 'free' },
+      },
+      routingConstraints: { spendingPolicy: 'free_only' },
+    });
+    expect(result.selectedModel).toBe('model-a:free');
+    expect(result.modelParameters.fallbacks).toEqual([
+      expect.objectContaining({
+        provider: 'OpenRouter',
+        retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
+        clientOptions: expect.objectContaining({ model: 'model-b:free' }),
+      }),
+    ]);
+  });
+
   it('fails closed when free_only has no free admissible model', async () => {
     await expect(
       decideHostModel({
