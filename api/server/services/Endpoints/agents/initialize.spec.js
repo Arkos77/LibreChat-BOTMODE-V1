@@ -3716,68 +3716,68 @@ describe('initializeClient — subagent loading', () => {
   it.each([false, true])(
     'rejects a paid alternate under free_only with a DEEP mission payload=%s',
     async (deepMission) => {
-    mockInitializeAgent.mockResolvedValue({
-      ...makePrimaryConfig({
-        subagents: { enabled: true, allowSelf: true, agent_ids: [] },
-      }),
-      model: 'openrouter/free',
-      provider: 'openAI',
-      model_parameters: { model: 'openrouter/free' },
-      hostModelDecision: {
-        selectedProvider: 'OpenRouter',
-        selectedModel: 'openrouter/free',
-        spendingPolicy: 'free_only',
-        authorizedBindings: [
-          { provider: 'OpenRouter', model: 'openrouter/free' },
-          { provider: 'OpenRouter', model: 'nvidia/paid-model' },
-        ],
-      },
-    });
-    const endpointOption = makeEndpointOption();
-    endpointOption.agent = Promise.resolve({
-      id: PRIMARY_ID,
-      name: 'BOT MODE Worker',
-      provider: 'openrouter',
-      model: 'openrouter/free',
-      tools: [],
-    });
-    endpointOption.model_parameters = { model: 'openrouter/free' };
-    await initializeClient({
-      req: deepMission
-        ? {
-            ...makeSubagentReq(),
-            body: {
-              ...makeSubagentReq().body,
-              orchestratorMission: {
-                mission: {
-                  missionId: 'automatic-deep-budget-test',
-                  taskId: 'automatic-deep-task',
-                  objective: 'Développer une application et tester le code',
-                  requiredCapabilities: ['execute_code'],
-                  constraints: [],
-                },
-                plannerContext: {
-                  worker: {
-                    id: 'worker',
-                    agentId: PRIMARY_ID,
-                    role: 'worker',
-                    capabilities: ['basic'],
+      mockInitializeAgent.mockResolvedValue({
+        ...makePrimaryConfig({
+          subagents: { enabled: true, allowSelf: true, agent_ids: [] },
+        }),
+        model: 'openrouter/free',
+        provider: 'openAI',
+        model_parameters: { model: 'openrouter/free' },
+        hostModelDecision: {
+          selectedProvider: 'OpenRouter',
+          selectedModel: 'openrouter/free',
+          spendingPolicy: 'free_only',
+          authorizedBindings: [
+            { provider: 'OpenRouter', model: 'openrouter/free' },
+            { provider: 'OpenRouter', model: 'nvidia/paid-model' },
+          ],
+        },
+      });
+      const endpointOption = makeEndpointOption();
+      endpointOption.agent = Promise.resolve({
+        id: PRIMARY_ID,
+        name: 'BOT MODE Worker',
+        provider: 'openrouter',
+        model: 'openrouter/free',
+        tools: [],
+      });
+      endpointOption.model_parameters = { model: 'openrouter/free' };
+      await initializeClient({
+        req: deepMission
+          ? {
+              ...makeSubagentReq(),
+              body: {
+                ...makeSubagentReq().body,
+                orchestratorMission: {
+                  mission: {
+                    missionId: 'automatic-deep-budget-test',
+                    taskId: 'automatic-deep-task',
+                    objective: 'Développer une application et tester le code',
+                    requiredCapabilities: ['execute_code'],
                     constraints: [],
                   },
-                  specialists: [],
+                  plannerContext: {
+                    worker: {
+                      id: 'worker',
+                      agentId: PRIMARY_ID,
+                      role: 'worker',
+                      capabilities: ['basic'],
+                      constraints: [],
+                    },
+                    specialists: [],
+                  },
                 },
               },
-            },
-          }
-        : makeSubagentReq(),
-      res: {},
-      signal: new AbortController().signal,
-      endpointOption,
-    });
-    expect(agentClientArgs.agent.subagents).toMatchObject({
-      enabled: true,
-      allowSelf: false,
-    });
+            }
+          : makeSubagentReq(),
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption,
+      });
+      expect(agentClientArgs.agent.subagents).toMatchObject({
+        enabled: true,
+        allowSelf: false,
+      });
     },
   );
 
