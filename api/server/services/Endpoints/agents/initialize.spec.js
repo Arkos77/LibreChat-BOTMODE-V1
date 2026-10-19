@@ -3665,6 +3665,41 @@ describe('initializeClient — subagent loading', () => {
     },
   );
 
+  it('blocks a cross-provider routing decision even when the returned model is named openrouter/free', async () => {
+    mockInitializeAgent.mockResolvedValue({
+      ...makePrimaryConfig({
+        subagents: { enabled: true, allowSelf: true, agent_ids: [] },
+      }),
+      model: 'openrouter/free',
+      provider: 'openAI',
+      model_parameters: { model: 'openrouter/free' },
+      hostModelDecision: {
+        selectedProvider: 'Gemini',
+        selectedModel: 'openrouter/free',
+        spendingPolicy: 'free_only',
+      },
+    });
+    const endpointOption = makeEndpointOption();
+    endpointOption.agent = Promise.resolve({
+      id: PRIMARY_ID,
+      name: 'BOT MODE Worker',
+      provider: 'openrouter',
+      model: 'openrouter/free',
+      tools: [],
+    });
+    endpointOption.model_parameters = { model: 'openrouter/free' };
+    await initializeClient({
+      req: makeSubagentReq(),
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption,
+    });
+    expect(agentClientArgs.agent.subagents).toMatchObject({
+      enabled: true,
+      allowSelf: false,
+    });
+  });
+
   it('clears subagents config on primary when the capability is disabled', async () => {
     /** Admin can turn subagents off at the endpoint level even if an agent was
      *  configured for them. The primary's `subagents` field should be
