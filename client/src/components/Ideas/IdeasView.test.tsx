@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import IdeasView from './IdeasView';
 
 const mockNavigate = jest.fn();
+const mockUseBotModeProjectProjectionQuery = jest.fn();
 
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
@@ -16,7 +17,8 @@ jest.mock('~/hooks', () => ({
 }));
 
 jest.mock('~/data-provider', () => ({
-  useBotModeProjectProjectionQuery: () => ({ data: undefined, isLoading: false }),
+  useBotModeProjectProjectionQuery: (...args: unknown[]) =>
+    mockUseBotModeProjectProjectionQuery(...args),
   useParentSubagentsQuery: () => ({ data: undefined }),
 }));
 
@@ -54,6 +56,7 @@ function renderIdeas() {
 describe('BOT MODE Ideas mission authorization', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseBotModeProjectProjectionQuery.mockReturnValue({ data: undefined, isLoading: false });
     jest.mocked(dataService.listIdeas).mockResolvedValue({ ideas: [idea] } as never);
     jest.mocked(dataService.getModels).mockResolvedValue({} as never);
     jest.mocked(dataService.createProject).mockResolvedValue({ _id: 'project-one' } as never);
@@ -139,6 +142,77 @@ describe('BOT MODE Ideas mission authorization', () => {
     expect(dataService.createProject).not.toHaveBeenCalled();
     expect(dataService.updateIdea).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('renders a settled Oracle result directly in the linked Idea card', async () => {
+    jest.mocked(dataService.listIdeas).mockResolvedValue({
+      ideas: [{ ...idea, projectId: 'project-one', status: 'done' }],
+    } as never);
+    mockUseBotModeProjectProjectionQuery.mockImplementation((projectId: string) => ({
+      isLoading: false,
+      data:
+        projectId === 'project-one'
+          ? {
+              projectId,
+              conversations: [
+                {
+                  conversationId: 'conversation-one',
+                  traces: [
+                    {
+                      observations: [
+                        { traceEventId: 'settled-one', type: 'SETTLED', source: 'oracle' },
+                      ],
+                    },
+                  ],
+                  plans: [{ plan: { planVersion: 1, objective: 'Évaluer l’idée', tasks: [] } }],
+                  results: [
+                    {
+                      messageId: 'message-final',
+                      content: 'CI Oracle : résultat final publié dans la fiche Idée',
+                    },
+                  ],
+                },
+              ],
+              sources: [],
+            }
+          : undefined,
+    }));
+    renderIdeas();
+    expect(
+      await screen.findByText('CI Oracle : résultat final publié dans la fiche Idée'),
+    ).toBeVisible();
+    expect(screen.getByText('com_ui_bot_mode_project_results')).toBeVisible();
+    expect(screen.getByText('com_ui_bot_mode_idea_state_completed')).toBeVisible();
+    expect(mockUseBotModeProjectProjectionQuery).toHaveBeenCalledWith(
+      'project-one',
+      expect.objectContaining({ enabled: true }),
+    );
+  });
+
+  it('never displays a different project result on an unlinked Idea card', async () => {
+    jest.mocked(dataService.listIdeas).mockResolvedValue({ ideas: [idea] } as never);
+    mockUseBotModeProjectProjectionQuery.mockReturnValue({
+      isLoading: false,
+      data: {
+        projectId: 'other-project',
+        conversations: [
+          {
+            conversationId: 'unrelated-conversation',
+            traces: [],
+            plans: [],
+            results: [{ messageId: 'unrelated', content: 'OTHER PROJECT CONFIDENTIAL RESULT' }],
+          },
+        ],
+      },
+    });
+    renderIdeas();
+    expect(await screen.findByText(idea.title)).toBeVisible();
+    expect(screen.getByText('com_ui_bot_mode_idea_tracking_unavailable')).toBeVisible();
+    expect(screen.queryByText('OTHER PROJECT CONFIDENTIAL RESULT')).not.toBeInTheDocument();
+    expect(mockUseBotModeProjectProjectionQuery).toHaveBeenCalledWith(
+      '',
+      expect.objectContaining({ enabled: false }),
+    );
   });
 
   it('selects the authorized Worker, never the first unrelated agent', async () => {
