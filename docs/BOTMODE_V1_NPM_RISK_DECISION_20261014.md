@@ -1,6 +1,25 @@
 # BOT MODE V1 — Residual npm advisory decision record
 
-Status: **REVIEW REQUIRED — NOT ACCEPTED**. Historical 14 Oct candidate was `54b30a342bf8f3480d7385b30cfa669b73c92878`.
+Status: **D-02 ACCEPTÉ TEMPORAIREMENT ET SOUS CONDITIONS — jusqu'au 18 novembre 2026 à 23:59, Europe/Paris**. Ne signifie ni vulnérabilités corrigées, ni GO stable. Les formulations « non accepté » ci-dessous sont des *instantanés historiques* antérieurs à cette décision. Historique du 14 octobre : candidat `54b30a342bf8f3480d7385b30cfa669b73c92878`.
+
+## 19 octobre 2026 — décision prioritaire D-02, approbation explicite du propriétaire
+
+| Champ | Décision faisant foi |
+|---|---|
+| Décideur | Propriétaire du projet BOT MODE V1, accord exprimé dans la conversation du **19 octobre 2026** : « une acceptation temporaire et documentée de ces trois risques, avec réévaluation obligatoire » |
+| Périmètre | **BOT MODE V1 uniquement, distribution gratuite et non commerciale** ; [PR #29](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/29) commit `bde77b8eb0999cf8507f36505f6cc2356e752b9d`, `package-lock.json` SHA256 `4b0b6d51afb679bc3b1633f29609d3aa9bdce8515f4df719bf0ddc67d22b44b3` |
+| Alertes tolérées | Les **trois constats modérés** de `npm audit --omit=dev` : `mammoth@1.12.3` (direct), `argparse@1.0.10` et `sprintf-js@1.0.3` (transitifs). Une **seule chaîne de dépendances**, ne pas les interpréter comme trois failles indépendantes. L'avis racine identifié [GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c) concerne la disponibilité/DoS sur format de précision non bornée ; aucune version corrigée publiée au contrôle du 19/10. **0 high, 0 critical** pour cet audit production précis |
+| Acceptation | **Limitée dans le temps**, sans mise à jour trompeuse de l'audit, des versions vulnérables, du niveau de gravité ou des verdicts de tests. L'exception ne vaut pas pour le reste des alertes Dependabot de `main`, d'autres packages, d'autres versions ou d'autres produits |
+| Date de revue | **16 novembre 2026**, avant échéance ; [issue de suivi #37](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/37), doit rester ouverte jusqu'à la décision documentée |
+| Fin ferme | **18 novembre 2026 à 23:59 Europe/Paris** : **expiration automatique au plan décisionnel / NO-GO D-02** sans nouvel accord écrit, correctif testé ou décision de blocage. Aucun renouvellement tacite ; un contrôle CI de date n'est *pas* installé sur la branche de publication à cette étape |
+
+**Base factuelle des compensations existantes :** Mammoth est consommé comme **bibliothèque** pour le DOCX dans un worker isolé (`packages/api/src/files/documents/docxWorker.ts`, 2 actifs, 8 en attente, limite 20 s et limites mémoire 256/64 Mo) ; le scénario dynamique de test n'a pas chargé les modules `argparse`/`sprintf-js` et [les 151 tests DOCX](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39173349239) ont réussi. **Cela ne prouve pas** l'inaccessibilité de toutes les chaînes malveillantes ni l'absence de risque DoS. Conserver ces garde-fous et la surveillance des dépendances, sans exposer la CLI Mammoth directement à des contenus non fiables.
+
+**Conditions d'invalidation immédiate :** changement du lockfile/version ou des chemins d'appel DOCX/CLI non requalifié ; disparition des limites du worker ; nouvelle vulnérabilité haute/critique ou preuve d'exploitation ; modification du périmètre vers commercial ; découverte d'une entrée externe non fiable qui atteint un format vulnérable ; ou expiration de la date. En cas d'invalidation, **D-02 revient à NO-GO** jusqu'à une décision nouvelle et explicite.
+
+**Réévaluation obligatoire :** relancer `npm audit --omit=dev` sur le **verrou exact qui sera livré** ; consulter versions/advisories upstream, analyser les chemins DOCX/CLI, maintenir les tests de régression ; choisir et consigner **correction + requalification**, **nouvelle acceptation explicitement datée**, ou **maintien NO-GO**. Le correctif amont publié, s'il existe, doit être évalué avant toute prolongation. [Checklist exécutable / échéance #37](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/37).
+
+**Autres verrous de release indépendants :** migration/schema et Redis en vol, qualifications fonctionnelles V1, provenance du manifeste final, licences applicables, CI à la fusion et **GO humain final**. Cet accord D-02 ne fusionne pas les PR et ne déplace aucun alias GHCR.
 
 ## 18 October 2026 — live release-candidate refresh (no risk acceptance)
 
@@ -32,7 +51,7 @@ Status: **REVIEW REQUIRED — NOT ACCEPTED**. Historical 14 Oct candidate was `5
 2. **Temporarily accept:** security reviewer documents actual reachable invocation paths and trust boundaries, deployment-specific DOCX exposure, compensating controls, risk tolerance, review/expiry date, and explicit sign-off; retain monitoring and a remediation issue.
 3. **Block stable:** if trust boundary or exposure remains uncertain.
 
-**Current recommendation: keep stable release NO-GO pending explicit owner/security sign-off, regardless of successful dynamic trace.** No human approval has been recorded.
+**Recommandation historique AVANT le 19 octobre : stable NO-GO en l'absence d'accord du propriétaire.** Décision actuelle bornée en tête de document ; le GO final reste distinct.
 
 ## Other independent release gates
 - Qualify a complete first-user mission with actual persisted Oracle-accepted publication on an unchanged, digest-pinned runtime; successful unit-contract suites are not equivalent.
@@ -45,7 +64,7 @@ Status: **REVIEW REQUIRED — NOT ACCEPTED**. Historical 14 Oct candidate was `5
 
 **Licence indépendante à arbitrer :** le lockfile rattache Sandpack React 2.19.10 → sandpack-client 2.19.8 → @codesandbox/nodebox 0.1.8. Le code client importe effectivement Sandpack dans client/src/components/Artifacts/ArtifactPreview.tsx. La [Sustainable Use License 1.0 de Nodebox](https://github.com/Sandpack/nodebox-runtime/blob/main/packages/nodebox/LICENSE) restreint l'utilisation commerciale et la redistribution à titre gratuit pour usage non commercial. Ne pas déclarer cette chaîne inutilisée, commercialement libre ni implicitement acceptée. Toute distribution stable/commerciale requiert une revue humaine de la licence effective et du mode de distribution ; une solution alternative requiert des tests de régression Artifacts/Sandpack.
 
-**D-02 reste NO-GO** : pas de modification du lockfile, pas de waiver ni d'autorisation commerciale implicite.
+**État historique au 18 octobre : D-02 restait NO-GO** (remplacé par l'approbation temporaire explicite du 19 octobre). Aucun waiver commercial implicite.
 
 
 ## 18 octobre 2026 — distinction multi-ecosystemes et Go optionnel

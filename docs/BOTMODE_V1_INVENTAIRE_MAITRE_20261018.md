@@ -6,7 +6,7 @@
 
 ## État opérationnel courant — 19 octobre 2026
 
-**Graphe des PR et ordre de validation :** [Release train du 19 octobre](BOTMODE_V1_RELEASE_TRAIN_20261019.md). Document de planification seulement ; aucune fusion/acceptation D-02 implicite.
+**Graphe des PR et ordre de validation :** [Release train du 19 octobre](BOTMODE_V1_RELEASE_TRAIN_20261019.md). Document de planification seulement ; aucune fusion ni approbation de publication implicite ; la décision D-02 est désormais **explicitement acceptée sous conditions** dans [son registre](BOTMODE_V1_NPM_RISK_DECISION_20261014.md).
 
 > **Résumé prioritaire.** Les références E01–E17 et les cases IN/OR/SE ci-dessous documentent l'état initial du 18 octobre et ne doivent pas être interprétées comme des verdicts actuels lorsque des preuves plus récentes sont listées ici ou dans les sections DIST/LIC/SE ultérieures. Les obligations non couvertes restent ouvertes.
 
@@ -15,7 +15,7 @@
 | Runtime distribué | Source `5fb904d375bffd6c54b5830cb1536088a9e77211`, GHCR `sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0`, [publication #39160163363](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39160163363) **8/8 SUCCESS**, AMD64 + ARM64, pull anonyme, Lite HTTP et navigateur | Candidate expérimentale publiée, **pas** stable |
 | Qualification principale | [PR #29](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/29) au SHA **`bde77b8eb0999cf8507f36505f6cc2356e752b9d`** : **33 SUCCESS, 1 SKIPPED, 0 FAILURE** ; first-user/six agents, Oracle simulé et rollback Lite dans leurs scénarios | V1 partiellement qualifiée ; PR **Draft** |
 | Licence de distribution | Usage **gratuit non commercial** confirmé ; [OCI licence native AMD64/ARM64 #39173138530](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39173138530) **2/2 SUCCESS**, notices et SUL Nodebox complète présentes dans l'image | Preuve de présence acquise, conditions de diffusion à respecter |
-| Sécurité DOCX | [#39173349239](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39173349239) **151/151 tests PASS** ; `npm audit --omit=dev` **3 moderate, 0 high/critical** | Atteignabilité CLI limitée selon analyse, **D-02 non approuvée** |
+| Sécurité DOCX / D-02 | [#39173349239](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39173349239) **151/151 PASS** ; 3 moderate, 0 high/critical dans le lock prod | **Acceptation temporaire approuvée par propriétaire (19/10→18/11/2026 23:59 Paris)**, [dossier D-02](BOTMODE_V1_NPM_RISK_DECISION_20261014.md), [réexamen #37](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/37) ; non corrigé, aucune exonération des nouveaux risques |
 | Fournisseur gratuit réel | [#39183872416](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39183872416) **SUCCESS**, OpenRouter/free, 14 SSE, deux tâches Worker→spécialiste graphe, Oracle VERIFIED durable et publication | **VALIDÉ pour la chaîne structurée**, thread enfant imbriqué NOT_OBSERVED ; pas de preuve universelle ni GO stable |
 | Restauration Full et missions | [Full publiée #39176379024](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39176379024) **PASS** (Mongo 8 / Worker+ACL / copie à froid), [4 stockages #39176451376](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39176451376) **PASS** au SHA courant ; [SIGKILL mission active #39161877003](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39161877003) **4/4 PASS** en modèle simulé | Migration inter-version Full / outils externes réels **non validés** |
 | Manifeste Full immuable (isolé) | [PR #36](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/36) : RAG/admin figés par digests AMD64/ARM64, [test Full #39179159645](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39179159645) **PASS** | Source Compose différente de la publication API existante, garde de provenance **FAIL attendu**, pas de merge |
@@ -23,7 +23,7 @@
 | Sécurité GitHub | `main` : PR requise, discussions résolues, admins soumis aux règles, force-push/suppression interdits, **checks AMD64 et ARM64 requis (GitHub Actions, strict)** | Protection technique activée ; aucune fusion autorisée |
 | Extensions hors chemin critique | PR #30 Go optionnel, PR #31 registre e-mail facultatif, PR #32 audit licence, [PR #33](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/33) documentation | Toutes en **Draft**, non intégrées |
 
-**GO stable : NON.** Reste en particulier : décision humaine sur les trois advisories npm, test fournisseur réel sans 429, périmètre migration Full/Redis et données actives, parcours manuel annoncé, promotion avec approbation. Les tests historiques ne prouvent pas à eux seuls ces conditions.
+**GO stable : NON.** La décision **D-02 est temporairement prise** et bornée au 18/11/2026, sans remplacer audit ni correctif. Restent notamment la qualification fonctionnelle complète, les limites du rollback de schémas/Redis, la provenance de la composition finale, l'intégration Git/CI et le GO humain de publication. Le fournisseur gratuit structuré [#39183872416](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39183872416) est PASS mais le sous-agent imbriqué réel n'a pas été observé.
 
 ## 0. Règles de vérité et de classement
 

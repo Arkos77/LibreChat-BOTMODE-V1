@@ -4,6 +4,8 @@
 
 ## 0. Actualisation de continuité — 19 octobre 2026
 
+**Arbitrage propriétaire D-02 du 19 octobre :** acceptation **temporaire** des 3 constats npm modérés du verrou de PR29 jusqu'au **18 novembre 2026 à 23:59 Europe/Paris**, sous conditions et avec [réexamen obligatoire #37](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/37) le 16/11. Document faisant foi : [dossier D-02](BOTMODE_V1_NPM_RISK_DECISION_20261014.md). Vulnérabilités toujours présentes ; autres verrous et GO stable non levés.
+
 **Ne pas mélanger les branches Draft :** [release train / dépendances PR](BOTMODE_V1_RELEASE_TRAIN_20261019.md). Les PR #30–#36 sont isolées et aucune n'autorise la fusion PR #29 ou le tag stable.
 
 **Référence effective actuelle :** [PR #29](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/29), HEAD de qualification `bde77b8eb0999cf8507f36505f6cc2356e752b9d`, 33 CI SUCCESS / 1 SKIPPED / 0 FAILURE ; image source `5fb904d375bffd6c54b5830cb1536088a9e77211`, index OCI `sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0`, GHCR publiée expérimentalement (#39160163363). L'ancien HEAD `a20cb060...` et les anciennes 28 CI en §2-3 sont des **photographies historiques**, pas l'état de reprise opérationnelle. La matrice de référence mise à jour est en tête de [l'inventaire](BOTMODE_V1_INVENTAIRE_MAITRE_20261018.md).

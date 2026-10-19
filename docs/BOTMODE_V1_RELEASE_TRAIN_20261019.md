@@ -1,6 +1,6 @@
 # BOT MODE V1 — Release train et ordre des décisions (19 octobre 2026)
 
-> **NON AUTORISÉ À FUSIONNER OU PROMOUVOIR**. Ce document est un plan de validation, pas une approbation de risques, un tag `stable`, ni une consigne de déplacer `latest`.
+> **NON AUTORISÉ À FUSIONNER OU PROMOUVOIR**. Ce document est un plan de validation, **pas un GO stable** ni une consigne de déplacer `latest`. L'acceptation **D-02 uniquement** a été explicitement autorisée le 19/10 avec échéance et suivi [#37](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/37).
 
 ## Architecture Git vérifiée, sans réécriture
 
@@ -49,10 +49,10 @@
 
 ## Arbitrages / NO-GO restants
 
-1. **D-02** : acceptation explicite et bornée du risque npm Mammoth/argparse/sprintf-js ou remédiation vérifiée ; pas de waiver silencieux. Voir [dossier](BOTMODE_V1_NPM_RISK_DECISION_20261014.md).
+1. **D-02 — arbitrage réalisé sous conditions :** [dossier](BOTMODE_V1_NPM_RISK_DECISION_20261014.md) **acceptation temporaire explicite propriétaire du 19/10 au 18/11/2026 23:59 Europe/Paris** des seuls trois constats modérés du lock de PR29, [revue #37](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/37) obligatoire le 16/11. Pas de patch, autre lock/candidate ou high/critical hors périmètre ; expiration = retour NO-GO. Ce n'est plus une décision humaine D-02 en attente tant que les conditions sont respectées.
 2. **Fournisseur gratuit réel** : [run #39183872416](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39183872416) **PASS** pour Worker→spécialiste graphe→Oracle durable→publication sur le digest publié. **Encore conditionnel** : sous-agent imbriqué avec modèle externe non observé, disponibilité des quotas et budget/retry non attestés dans ce scénario. Ne pas élargir le PASS au-delà de la chaîne testée.
 3. **Migration Full entre versions** : les restaurations prouvées sont des copies à froid au sein d'une même configuration ; réversibilité des changements de schéma/données de missions actives non attestée. Garder un plan de sauvegarde et de non-retour si migration irréversible.
 4. **OS/capacités promis** : parcours utilisateur réel, RAG et outils externes, missions multi-heures : valider chaque promesse effectivement incluse ou laisser une limitation explicite à arbitrer, sans la reclasser silencieusement en roadmap.
 5. **GO humain**, protection de `main` et nouveaux checks sur le SHA réellement fusionné, provenance OCI/source recontrôlée, promotion stable/`latest` interdite sans décision finale explicite.
 
-**Ordre technique proposé (non autorisation de fusion)** : fermer les CI des PR spécialisées → isoler la panne Oracle externe → décider D-02 et les limites V1 → qualifier l'ensemble de manifests/source final sur staging → uniquement alors demander le GO humain avant tout merge/promotion. PR #26 précède le contenu PR #29 dans le graphe ; vérifier à nouveau la tête de `main` et le diff de fusion à cet instant.
+**Ordre technique proposé (non autorisation de fusion)** : fermer les CI des PR spécialisées → isoler la panne Oracle externe → vérifier la portée et l'échéance de D-02, puis les limites V1 → qualifier l'ensemble de manifests/source final sur staging → uniquement alors demander le GO humain avant tout merge/promotion. PR #26 précède le contenu PR #29 dans le graphe ; vérifier à nouveau la tête de `main` et le diff de fusion à cet instant.
