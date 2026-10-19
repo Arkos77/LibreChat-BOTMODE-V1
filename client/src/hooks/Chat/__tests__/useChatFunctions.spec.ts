@@ -69,6 +69,16 @@ describe('BOT MODE execution depth', () => {
     );
   });
 
+  it.each(['unknown', 'DEEP', 'paid', '../develop'])(
+    'fails closed for an unsupported explicit mode: %s',
+    (mode) => {
+      const params = new URLSearchParams({ botmode: '1', botmode_mode: mode });
+      const complex = 'Développer une application et tester le code';
+      expect(getBotModeExecutionMode(params, complex)).toBe('fast');
+      expect(shouldUseBotModeMission(params, complex)).toBe(false);
+    },
+  );
+
   it('never starts an automatic mission outside BOT MODE', () => {
     const params = new URLSearchParams();
     expect(shouldUseBotModeMission(params, 'Analyser les risques et comparer les scénarios')).toBe(
