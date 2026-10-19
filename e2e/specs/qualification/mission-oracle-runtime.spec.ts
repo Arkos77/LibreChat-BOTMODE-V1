@@ -1000,6 +1000,61 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
     }
   });
 
+  test('unknown specialist cannot produce a published answer', async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.goto('/c/new');
+    const token = await getAccessToken(page);
+    let workerId: string | undefined;
+    try {
+      const worker = await createSavedAgent(page, token, 'Worker');
+      workerId = worker.id;
+      const mission = makeMission(worker.id, `absent-specialist-${randomUUID()}`, false);
+      const conversationId = randomUUID();
+      const response = await page.request.post('/api/agents/chat/agents', {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          endpoint: 'agents',
+          agent_id: worker.id,
+          conversationId,
+          messageId: randomUUID(),
+          parentMessageId: '00000000-0000-0000-0000-000000000000',
+          isNewConvo: true,
+          text: `E2E_MISSION_ORACLE_JSON:${mission.missionId}`,
+          orchestratorMission: { mission: mission.mission, plannerContext: mission.plannerContext },
+        },
+        timeout: 60_000,
+      });
+      expect([200, 400, 403, 404, 422]).toContain(response.status());
+      if (response.status() === 200) {
+        const admitted = (await response.json()) as MissionRun;
+        expect(admitted.streamId).toBeTruthy();
+        const stream = await page.request.get(
+          `/api/agents/chat/stream/${encodeURIComponent(admitted.streamId!)}?resume=true`,
+          { headers: { Authorization: `Bearer ${token}` }, timeout: 150_000 },
+        );
+        expect(stream.status()).toBe(200);
+        const lines = (await stream.text()).split(/\\r?\\n/);
+        expect(
+          lines.some((line) => line.startsWith('data:') && /"final"\\s*:\\s*true/.test(line)),
+          'a missing specialist must not reach final publication',
+        ).toBe(false);
+      }
+      const saved = await requestJson<
+        Array<{ isCreatedByUser?: boolean; text?: string; content?: unknown }>
+      >(page, { path: `/api/messages/${encodeURIComponent(conversationId)}`, token });
+      expect(
+        saved.some(
+          (message) =>
+            message.isCreatedByUser === false && responseText(message).includes('{"ok":true}'),
+        ),
+        'a missing specialist must not publish an Oracle-approved answer',
+      ).toBe(false);
+      console.log('PR28_ORACLE_RUNTIME_MISSING_SPECIALIST_NO_PUBLICATION=PASS');
+    } finally {
+      if (workerId) await cleanupAgent(page, workerId);
+    }
+  });
+
   test('human-review Oracle verdict blocks candidate publication', async ({ page }) => {
     test.setTimeout(180_000);
     await page.goto('/c/new');
