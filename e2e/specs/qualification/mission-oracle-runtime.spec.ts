@@ -5,6 +5,7 @@ import { expect, test } from '@playwright/test';
 import Redis from 'ioredis';
 import { MongoClient } from 'mongodb';
 import type { Page } from '@playwright/test';
+import { getE2EUser } from '../../setup/user';
 import { cleanupAgent } from '../mock/agents.helpers';
 import { getAccessToken, MOCK_ENDPOINTS, requestJson } from '../mock/helpers';
 
@@ -410,6 +411,7 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       maxRetriesPerRequest: 1,
     });
     let workerId: string | undefined;
+    let loginTokenAfterSoak: string | undefined;
     try {
       const worker = await createSavedAgent(page, token, 'Worker');
       workerId = worker.id;
@@ -502,22 +504,55 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       console.log('CI_MISSION_SOAK_RUNNING_HEARTBEATS_AND_NO_EARLY_PUBLICATION=PASS');
 
       const taskIds = [`${mission.taskId}/main`];
+      const observedLongMilestones = new Set<number>();
       await expect.poll(async () => {
         const state = await loadDurableJob(redis, streamId);
+        if (minutes === 180 && state.status === 'running') {
+          const elapsedMinutes = (Date.now() - startedAt) / 60_000;
+          for (const threshold of [30, 90, 150]) {
+            if (elapsedMinutes < threshold || observedLongMilestones.has(threshold)) continue;
+            const activeAt = Number(await redis.hget(jobKey, 'lastActiveAt'));
+            expect(activeAt, 'live provider must refresh Redis activity during long missions').toBeGreaterThan(
+              Date.now() - 10 * 60_000,
+            );
+            expect(await redis.ttl(jobKey), 'long mission Redis state must remain retained').toBeGreaterThan(0);
+            observedLongMilestones.add(threshold);
+            console.log(`CI_MISSION_SOAK_RUNNING_AT_${threshold}_MIN=PASS`);
+          }
+        }
         return taskIds.every((taskId) =>
           state.state?.results?.[taskId]?.verdicts?.some((v) => v.status === 'VERIFIED') === true);
-      }, { timeout: duration + 130_000, intervals: [1000, 2500, 4000] }).toBe(true);
+      }, {
+        timeout: duration + 130_000,
+        intervals: minutes === 180 ? [5000, 10000, 15000] : [1000, 2500, 4000],
+      }).toBe(true);
+      console.log('CI_MISSION_SOAK_REDIS_ORACLE_VERIFIED=PASS');
 
       const elapsed = Date.now() - startedAt;
       // Never claim a three-hour soak if the fake provider returned early.
       expect(elapsed).toBeGreaterThanOrEqual(duration * 0.90);
+
+      // The browser's initial JWT/refresh cookie can expire during 180min.
+      // Reauthenticate the CI fixture via the same public login API before
+      // checking final persisted messages. Never bypass user ACL or use DB reads
+      // to substitute for an authenticated publication.
+      const user = getE2EUser();
+      const relogin = await page.request.post('/api/auth/login', {
+        data: { email: user.email, password: user.password },
+        timeout: 30_000,
+      });
+      expect(relogin.status(), 'test user login after a 3-hour mission').toBe(200);
+      const credentials = (await relogin.json()) as { token?: string };
+      expect(credentials.token, 'fresh owner auth token after three hours').toBeTruthy();
+      loginTokenAfterSoak = credentials.token!;
+      console.log('CI_MISSION_SOAK_OWNER_REAUTH_AFTER_180_MIN=PASS');
 
       let messages: Array<{
         messageId?: string; isCreatedByUser?: boolean; text?: string; content?: unknown;
       }> = [];
       await expect.poll(async () => {
         messages = await requestJson<typeof messages>(page, {
-          path: `/api/messages/${encodeURIComponent(conversationId)}`, token,
+          path: `/api/messages/${encodeURIComponent(conversationId)}`, token: loginTokenAfterSoak!,
         });
         return messages.filter(
           (m) => m.isCreatedByUser === false && /"ok"\s*:\s*true/.test(responseText(m)),
@@ -529,8 +564,24 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       console.log('CI_MISSION_SOAK_WALL_MINUTES=' + (elapsed / 60000).toFixed(2));
       console.log('CI_MISSION_SOAK_SCOPE=single_model_only_task_fixture_no_live_provider_no_real_tools');
     } finally {
-      if (workerId) await cleanupAgent(page, workerId);
-      await redis.quit();
+      // Never replace a real Oracle/TTL failure with an unrelated expired
+      // browser refresh-cookie error during cleanup. Global teardown removes
+      // this test user and its agents if the explicit deletion is unavailable.
+      try {
+        if (workerId && loginTokenAfterSoak) {
+          await requestJson(page, {
+            path: `/api/agents/${encodeURIComponent(workerId)}`,
+            token: loginTokenAfterSoak,
+            method: 'DELETE',
+          });
+        } else if (workerId) {
+          console.log('CI_MISSION_SOAK_EXPLICIT_CLEANUP_DEFERRED_TO_GLOBAL_TEARDOWN');
+        }
+      } catch (_error) {
+        console.log('CI_MISSION_SOAK_EXPLICIT_CLEANUP_DEFERRED_TO_GLOBAL_TEARDOWN');
+      } finally {
+        await redis.quit();
+      }
     }
   });
 
