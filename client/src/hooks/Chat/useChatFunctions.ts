@@ -56,7 +56,11 @@ const STALE_SEND_REVALIDATION_MS = 5_000;
  */
 export function getBotModeExecutionMode(searchParams: URLSearchParams, text = ''): string {
   const explicit = searchParams.get('botmode_mode');
-  if (explicit) return explicit;
+  // Never allow an arbitrary query parameter to opt into an expensive mission.
+  if (explicit === 'fast' || explicit === 'analyze' || explicit === 'develop' || explicit === 'watch') {
+    return explicit;
+  }
+  if (explicit != null) return 'fast';
   if (searchParams.get('botmode') !== '1') return 'fast';
 
   const prompt = text.normalize('NFKC').toLowerCase();
