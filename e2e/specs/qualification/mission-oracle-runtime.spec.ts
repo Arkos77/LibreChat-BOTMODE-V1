@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, request as playwrightRequest, test } from '@playwright/test';
 import Redis from 'ioredis';
 import { MongoClient } from 'mongodb';
 import type { Page } from '@playwright/test';
@@ -1011,23 +1011,25 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
     };
     let workerId: string | undefined;
     let foreignAgentId: string | undefined;
+    const foreignApi = await playwrightRequest.newContext({
+      baseURL: new URL(page.url()).origin,
+      storageState: { cookies: [], origins: [] },
+    });
     let secondToken: string | undefined;
     try {
-      const registered = await page.request.post('/api/auth/register', {
+      const registered = await foreignApi.post('/api/auth/register', {
         data: { ...external, confirm_password: external.password },
       });
       expect(registered.ok(), 'isolated second principal registration').toBe(true);
-      const loggedIn = await page.request.post('/api/auth/login', {
+      const loggedIn = await foreignApi.post('/api/auth/login', {
         data: { email: external.email, password: external.password },
       });
       expect(loggedIn.ok(), 'isolated second principal login').toBe(true);
       secondToken = ((await loggedIn.json()) as { token?: string }).token;
       expect(secondToken).toBeTruthy();
-      const foreign = await requestJson<SavedAgent>(page, {
-        path: '/api/agents',
-        token: secondToken!,
-        method: 'POST',
-        body: {
+      const foreignResponse = await foreignApi.post('/api/agents', {
+        headers: { Authorization: `Bearer ${secondToken}` },
+        data: {
           name: `Foreign specialist ${randomUUID().slice(0, 8)}`,
           description: 'Cross-owner Oracle isolation fixture',
           instructions: 'Return strict JSON',
@@ -1035,6 +1037,8 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
           model: MOCK_ENDPOINTS[0].model,
         },
       });
+      expect(foreignResponse.ok()).toBe(true);
+      const foreign = (await foreignResponse.json()) as SavedAgent;
       foreignAgentId = foreign.id;
       const worker = await createSavedAgent(page, firstToken, 'Worker');
       workerId = worker.id;
@@ -1092,10 +1096,11 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
     } finally {
       if (workerId) await cleanupAgent(page, workerId);
       if (foreignAgentId && secondToken) {
-        await page.request.delete(`/api/agents/${encodeURIComponent(foreignAgentId)}`, {
+        await foreignApi.delete(`/api/agents/${encodeURIComponent(foreignAgentId)}`, {
           headers: { Authorization: `Bearer ${secondToken}` },
         });
       }
+      await foreignApi.dispose();
     }
   });
 
