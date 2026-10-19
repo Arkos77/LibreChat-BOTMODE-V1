@@ -43,10 +43,12 @@
 
 **Nouvel essai réel free-only :** [#39182214989](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39182214989) : SSE 200, 9 événements, aucun final, Redis `running`/état Oracle présent, arrêt après 75 s d'inactivité. Oracle réel non validé ; le correctif de harness PR35 `a972d8288` autorise seulement une reconnexion SSE bornée (sans nouvelle génération), CI encore à contrôler.
 
+**OR-LIVE-04 — succès réel récent :** [#39183872416](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39183872416) **SUCCESS**, `openrouter/free`, 14 événements SSE, Worker→spécialiste graphe, verdicts Oracle durables et publication vérifiés. Aucun nested child thread observé. Les anciens runs de timeout et 429 restent un **historique de pannes résolues dans leur périmètre**, pas le dernier verdict du graphe structuré.
+
 ## Arbitrages / NO-GO restants
 
 1. **D-02** : acceptation explicite et bornée du risque npm Mammoth/argparse/sprintf-js ou remédiation vérifiée ; pas de waiver silencieux. Voir [dossier](BOTMODE_V1_NPM_RISK_DECISION_20261014.md).
-2. **Fournisseur gratuit réel** : [#39176515135](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39176515135) dernier échec `ORACLE_NOT_DURABLE`, SSE final HTTP 200 / 3 événements, contre ancien succès [#39150077172](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39150077172) 28 événements avec Oracle vérifié ; le HTTP 429 fut un autre préflight. Ne pas attribuer de cause unique sans preuve. Aucun modèle payant.
+2. **Fournisseur gratuit réel** : [run #39183872416](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39183872416) **PASS** pour Worker→spécialiste graphe→Oracle durable→publication sur le digest publié. **Encore conditionnel** : sous-agent imbriqué avec modèle externe non observé, disponibilité des quotas et budget/retry non attestés dans ce scénario. Ne pas élargir le PASS au-delà de la chaîne testée.
 3. **Migration Full entre versions** : les restaurations prouvées sont des copies à froid au sein d'une même configuration ; réversibilité des changements de schéma/données de missions actives non attestée. Garder un plan de sauvegarde et de non-retour si migration irréversible.
 4. **OS/capacités promis** : parcours utilisateur réel, RAG et outils externes, missions multi-heures : valider chaque promesse effectivement incluse ou laisser une limitation explicite à arbitrer, sans la reclasser silencieusement en roadmap.
 5. **GO humain**, protection de `main` et nouveaux checks sur le SHA réellement fusionné, provenance OCI/source recontrôlée, promotion stable/`latest` interdite sans décision finale explicite.
