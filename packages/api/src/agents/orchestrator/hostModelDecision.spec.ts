@@ -256,24 +256,27 @@ describe('host P11 model decision', () => {
   it.each([
     ['paid', 'paid'],
     ['unknown', undefined],
-  ])('never installs a %s candidate as an implicit free_only fallback', async (_label, pricingTier) => {
-    const result = await decideHostModel({
-      ...input,
-      preferredModel: 'model-a:free',
-      allowFailover: true,
-      routingMode: 'adaptive',
-      routingSignals: {
-        'model-a:free': { pricingTier: 'free' },
-        'model-b:free': pricingTier == null ? {} : { pricingTier: 'paid' },
-      },
-      routingConstraints: { spendingPolicy: 'free_only' },
-    });
+  ])(
+    'never installs a %s candidate as an implicit free_only fallback',
+    async (_label, pricingTier) => {
+      const result = await decideHostModel({
+        ...input,
+        preferredModel: 'model-a:free',
+        allowFailover: true,
+        routingMode: 'adaptive',
+        routingSignals: {
+          'model-a:free': { pricingTier: 'free' },
+          'model-b:free': pricingTier == null ? {} : { pricingTier: 'paid' },
+        },
+        routingConstraints: { spendingPolicy: 'free_only' },
+      });
 
-    expect(result.selectedModel).toBe('model-a:free');
-    expect(result.modelParameters.fallbacks).toEqual([]);
-    expect(result.record.selectedOption).toBe('model-a:free');
-    expect(JSON.stringify(result.event)).not.toContain('secret');
-  });
+      expect(result.selectedModel).toBe('model-a:free');
+      expect(result.modelParameters.fallbacks).toEqual([]);
+      expect(result.record.selectedOption).toBe('model-a:free');
+      expect(JSON.stringify(result.event)).not.toContain('secret');
+    },
+  );
 
   it('allows only the explicitly authorized free fallback under free_only', async () => {
     const result = await decideHostModel({
