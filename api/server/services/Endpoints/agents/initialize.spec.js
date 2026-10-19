@@ -3713,7 +3713,9 @@ describe('initializeClient — subagent loading', () => {
     });
   });
 
-  it('rejects a paid alternate even when the selected model is free and the host claims free_only', async () => {
+  it.each([false, true])(
+    'rejects a paid alternate under free_only with a DEEP mission payload=%s',
+    async (deepMission) => {
     mockInitializeAgent.mockResolvedValue({
       ...makePrimaryConfig({
         subagents: { enabled: true, allowSelf: true, agent_ids: [] },
@@ -3741,7 +3743,33 @@ describe('initializeClient — subagent loading', () => {
     });
     endpointOption.model_parameters = { model: 'openrouter/free' };
     await initializeClient({
-      req: makeSubagentReq(),
+      req: deepMission
+        ? {
+            ...makeSubagentReq(),
+            body: {
+              ...makeSubagentReq().body,
+              orchestratorMission: {
+                mission: {
+                  missionId: 'automatic-deep-budget-test',
+                  taskId: 'automatic-deep-task',
+                  objective: 'Développer une application et tester le code',
+                  requiredCapabilities: ['execute_code'],
+                  constraints: [],
+                },
+                plannerContext: {
+                  worker: {
+                    id: 'worker',
+                    agentId: PRIMARY_ID,
+                    role: 'worker',
+                    capabilities: ['basic'],
+                    constraints: [],
+                  },
+                  specialists: [],
+                },
+              },
+            },
+          }
+        : makeSubagentReq(),
       res: {},
       signal: new AbortController().signal,
       endpointOption,
@@ -3750,7 +3778,8 @@ describe('initializeClient — subagent loading', () => {
       enabled: true,
       allowSelf: false,
     });
-  });
+    },
+  );
 
   it('blocks a cross-provider routing decision even when the returned model is named openrouter/free', async () => {
     mockInitializeAgent.mockResolvedValue({
