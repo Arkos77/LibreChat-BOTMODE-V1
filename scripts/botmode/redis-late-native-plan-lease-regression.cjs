@@ -18,6 +18,16 @@ function flatten(node) {
   if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
     return flatten(node.left) + flatten(node.right);
   }
+  // Heartbeat's bounded active-job renewal is a single named Lua fragment.
+  // Resolve only this exact source constant, never evaluate arbitrary code.
+  if (ts.isIdentifier(node) && node.text === 'LIVE_PROVIDER_ACTIVITY_RENEWAL_LUA') {
+    const activity = ast.statements
+      .filter(ts.isVariableStatement)
+      .flatMap((v) => [...v.declarationList.declarations])
+      .find((v) => v.name.getText(ast) === node.text);
+    assert.ok(activity, 'Missing bounded activity renewal source');
+    return flatten(activity.initializer);
+  }
   throw Error('Unexpected Lua expression');
 }
 const lua = {};
@@ -43,7 +53,7 @@ const invoke = (name, ks, args) => redis.eval(lua[name], ks.length, ...ks, ...ar
 const update = (generation, fields) =>
   invoke('JOB_UPDATE_LUA', keys, [generation, '0', '3600', '3600', '3600', ...Object.entries(fields).flat()]);
 const begin = () => invoke('PROVIDER_BEGIN_LUA', [job], [epoch, provider, 15_000]);
-const heartbeat = () => invoke('HEARTBEAT_MISSION_PROVIDER_LUA', [job], [epoch, provider, 15_000]);
+const heartbeat = () => invoke('HEARTBEAT_MISSION_PROVIDER_LUA', [job], [epoch, provider, 15_000, 1200]);
 const claim = () => invoke('CLAIM_DRAINED_MISSION_RECOVERY_LUA', [job, claimKey],
   [epoch, nowMs() - 20_000, owner, 5_000]);
 async function seed(overrides = {}) {
@@ -79,7 +89,12 @@ async function assertLeasePresent() {
     assert.equal(await update(epoch, { orchestratorPlan: '{"tasks":[{"key":"worker"}]}' }), 1);
     assert.ok(Number(await redis.hget(job, '__missionProviderLeaseUntil')) < nowMs(),
       'duplicate plan HSET must never remint an expired lease');
-    assert.equal(await claim(), 1, 'expired provider is reclaimable after plan persisted');
+    // The new live heartbeat correctly advances lastActiveAt. Claim is NOT
+    // allowed immediately after that evidence, even if we force an expired
+    // lease. Simulate a later truly-stale period for the takeover contract.
+    assert.equal(await claim(), 0, 'recent heartbeat must block premature claim');
+    await redis.hset(job, 'lastActiveAt', String(nowMs() - 40_000));
+    assert.equal(await claim(), 1, 'truly stale expired provider remains reclaimable');
     assert.equal(await invoke('RELEASE_DRAINED_MISSION_RECOVERY_LUA', [job, claimKey],
       [epoch, owner]), 1);
     console.log('BOTMODE_LATE_NATIVE_PLAN_INITIAL_LEASE_AND_CLAIM=PASS');

@@ -41,6 +41,7 @@ const luaSource = fs.readFileSync(
 );
 const luaTree = ts.createSourceFile('RedisJobStore.ts', luaSource, ts.ScriptTarget.Latest, true);
 const luaNames = [
+  'LIVE_PROVIDER_ACTIVITY_RENEWAL_LUA',
   'CLAIM_DRAINED_MISSION_RECOVERY_LUA',
   'ACTIVATE_DRAINED_MISSION_RECOVERY_LUA',
   'BEGIN_RECOVERED_MISSION_PROVIDER_LUA',
@@ -138,7 +139,7 @@ async function main() {
       invoke(
         'HEARTBEAT_RECOVERED_MISSION_PROVIDER_LUA',
         [keys[0], claimKey],
-        [epoch, owner, nextProvider, namespace, 20000],
+        [epoch, owner, nextProvider, namespace, 20000, 1200],
       );
     const evidence = (who, value) =>
       invoke(
