@@ -46,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           git diff --name-only "$BASE_SHA" "$HEAD_SHA" > /tmp/changed.txt
-          if grep -Eq '^(Dockerfile($|[./])|\.dockerignore$|docker-compose[^/]*\.ya?ml$|api/|client/|config/|packages/|package(-lock)?\.json$)' /tmp/changed.txt; then
+          if grep -Eq '^(Dockerfile($|[./])|\.dockerignore$|docker-compose[^/]*\.ya?ml$|api/|client/|config/|skill/|packages/|package(-lock)?\.json$)' /tmp/changed.txt; then
             docker build --target node --file Dockerfile --tag "botmode-safety:${HEAD_SHA:0:12}" .
           else
             echo 'No Docker runtime changes; architecture build not applicable.'
