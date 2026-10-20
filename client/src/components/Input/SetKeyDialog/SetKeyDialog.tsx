@@ -41,6 +41,17 @@ const endpointComponents = {
   default: OtherConfig,
 };
 
+// Explicit allowlist: custom endpoints should never be sent to an unrelated provider portal.
+const providerKeyPortals: Record<string, { name: string; url: string }> = {
+  openAI: { name: 'OpenAI', url: 'https://platform.openai.com/api-keys' },
+  assistants: { name: 'OpenAI', url: 'https://platform.openai.com/api-keys' },
+  google: { name: 'Google Gemini', url: 'https://aistudio.google.com/apikey' },
+  openrouter: { name: 'OpenRouter', url: 'https://openrouter.ai/settings/keys' },
+  anthropic: { name: 'Anthropic', url: 'https://console.anthropic.com/settings/keys' },
+  mistral: { name: 'Mistral AI', url: 'https://console.mistral.ai/api-keys' },
+  deepseek: { name: 'DeepSeek', url: 'https://platform.deepseek.com/api_keys' },
+};
+
 const formSet: Set<string> = new Set([
   EModelEndpoint.openAI,
   EModelEndpoint.custom,
@@ -194,6 +205,10 @@ const SetKeyDialog = ({
 
   const expirationOptions = Object.values(EXPIRY);
   const configuredEndpoint = endpointType ?? endpoint;
+  const portal = providerKeyPortals[configuredEndpoint.toLowerCase()] ??
+    providerKeyPortals[configuredEndpoint] ??
+    providerKeyPortals[endpoint.toLowerCase()] ??
+    providerKeyPortals[endpoint];
 
   const handleExpirationChange = (label: string) => {
     setExpiresAtLabel(label);
@@ -381,6 +396,24 @@ const SetKeyDialog = ({
           </OGDialogTitle>
         </OGDialogHeader>
         <div className="grid w-full items-center gap-2 py-2">
+          {portal && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-medium bg-surface-secondary p-3">
+              <div>
+                <p className="text-sm font-medium">Vous n'avez pas encore de clé API ?</p>
+                <p className="text-xs text-text-secondary">
+                  Ouvrez le portail officiel de {portal.name}. Aucune clé n'est transmise par ce lien.
+                </p>
+              </div>
+              <a
+                href={portal.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+              >
+                {currentExpiryLabel ? 'Renouveler la clé' : 'Créer une clé API'} {portal.name} ↗
+              </a>
+            </div>
+          )}
           {currentExpiryLabel && (
             <small className="text-text-destructive">{currentExpiryLabel}</small>
           )}
