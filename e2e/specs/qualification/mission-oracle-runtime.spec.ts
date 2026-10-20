@@ -402,6 +402,52 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
     }
   });
 
+  test('minimal DEEP mission uses only the authorized Worker and publishes once', async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.goto('/c/new');
+    const token = await getAccessToken(page);
+    const redis = new Redis(process.env.REDIS_URI || 'redis://127.0.0.1:6379', {
+      maxRetriesPerRequest: 1,
+    });
+    let workerId: string | undefined;
+    try {
+      const worker = await createSavedAgent(page, token, 'Worker');
+      workerId = worker.id;
+      // A mission requiring no specialist must not require unrelated default specialists.
+      const mission = makeMission(worker.id, undefined, false);
+      const run = await startMission(page, token, worker.id, mission);
+      const job = await waitForOracle(redis, run.streamId, [`${mission.taskId}/worker`], 'VERIFIED');
+      expect(job.plan?.tasks).toHaveLength(1);
+      expect(job.plan?.tasks?.[0]).toMatchObject({
+        key: 'worker',
+        agentId: worker.id,
+        taskId: `${mission.taskId}/worker`,
+      });
+      expect(job.plan?.mission?.missionId).toBe(mission.missionId);
+      expect(
+        run.events.some(
+          (event) => event.final === true && responseText(event.responseMessage).includes('{"ok":true}'),
+        ),
+      ).toBe(true);
+      const messages = await requestJson<
+        Array<{ isCreatedByUser?: boolean; text?: string; content?: unknown }>
+      >(page, {
+        path: `/api/messages/${encodeURIComponent(run.conversationId)}`,
+        token,
+      });
+      expect(
+        messages.filter(
+          (message) =>
+            message.isCreatedByUser === false && responseText(message).includes('{"ok":true}'),
+        ),
+      ).toHaveLength(1);
+      console.log('BOTMODE_MINIMAL_AUTHORIZED_MISSION_ORACLE=PASS');
+    } finally {
+      if (workerId) await cleanupAgent(page, workerId);
+      await redis.quit();
+    }
+  });
+
   test('durable model-only mission soak: heartbeat, Oracle and unique publication', async ({
     page,
   }) => {
