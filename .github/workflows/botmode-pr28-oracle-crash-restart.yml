@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   oracle-crash-restart:
-    if: github.event.pull_request.number == 28 || github.event.pull_request.number == 29
+    if: contains(fromJSON('[28,29,53]'), github.event.pull_request.number)
     name: SIGKILL API, restart, preserve Oracle verdict and unique publication
     runs-on: ubuntu-latest
     timeout-minutes: 35
