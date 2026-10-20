@@ -59,7 +59,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          crane auth login ghcr.io -u "$GITHUB_ACTOR" -p "$GH_TOKEN"
+          printf "%s\\n" "$GH_TOKEN" | crane auth login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           test "$(crane digest "$IMAGE:$CANDIDATE_TAG")" = "$EXPECTED_DIGEST"
           test "$(crane digest "$IMAGE:$SHA_TAG")" = "$EXPECTED_DIGEST"
           for alias in stable latest; do
