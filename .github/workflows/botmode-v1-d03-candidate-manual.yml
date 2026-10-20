@@ -30,12 +30,9 @@ jobs:
       - name: Verify immutable candidate tag availability
         env:
           GH_TOKEN: ${{ github.token }}
-          GITHUB_SHA: ${{ env.SOURCE_SHA }}
-          GITHUB_REF_TYPE: branch
-          GITHUB_REPOSITORY_OWNER: Arkos77
         run: |
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          bash scripts/botmode/guard-candidate-ghcr.sh
+          env GITHUB_SHA="$SOURCE_SHA" GITHUB_REF_TYPE=branch bash scripts/botmode/guard-candidate-ghcr.sh
   build:
     needs: preflight
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
@@ -101,10 +98,9 @@ jobs:
       - name: Recheck tags immediately before manifest
         env:
           GH_TOKEN: ${{ github.token }}
-          GITHUB_SHA: ${{ env.SOURCE_SHA }}
-          GITHUB_REF_TYPE: branch
-          GITHUB_REPOSITORY_OWNER: Arkos77
-        run: bash scripts/botmode/guard-candidate-ghcr.sh
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          env GITHUB_SHA="$SOURCE_SHA" GITHUB_REF_TYPE=branch bash scripts/botmode/guard-candidate-ghcr.sh
       - name: Publish immutable candidate without stable or latest
         working-directory: /tmp/digests
         run: |
@@ -115,3 +111,21 @@ jobs:
           docker buildx imagetools create -t "$IMAGE:$CANDIDATE_TAG" -t "$IMAGE:$SHA_TAG" "${digests[@]/#/$IMAGE@sha256:}"
           docker buildx imagetools inspect --raw "$IMAGE:$CANDIDATE_TAG" > /tmp/candidate-manifest.json
           jq -e '([.manifests[]?.platform?.architecture] | index("amd64") != null and index("arm64") != null)' /tmp/candidate-manifest.json
+  anonymous-pull:
+    name: Anonymous candidate pull (${{ matrix.arch }})
+    needs: manifest
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Verify unauthenticated pull on native architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          docker pull "$IMAGE:$CANDIDATE_TAG"
+          actual="$(docker image inspect "$IMAGE:$CANDIDATE_TAG" --format '{{.Architecture}}')"
+          test "$actual" = "${{ matrix.arch }}"
+          echo "D03_ANONYMOUS_PULL_${{ matrix.arch }}=PASS"
