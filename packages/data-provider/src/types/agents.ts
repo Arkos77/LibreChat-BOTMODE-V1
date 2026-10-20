@@ -290,6 +290,8 @@ export namespace Agents {
 
   /** State data sent to reconnecting clients */
   export interface ResumeState {
+    /** Host-approved planning evidence; opaque to clients, not a capability grant. */
+    orchestratorPlan?: unknown;
     runSteps: RunStep[];
     /** Aggregated content parts - can be MessageContentComplex[] or ContentPart[] */
     aggregatedContent?: MessageContentComplex[];

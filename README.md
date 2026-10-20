@@ -2,7 +2,7 @@
 
 **LibreChat BOTMODE V1** is a multi-agent orchestration layer built on top of [LibreChat](https://github.com/danny-avila/LibreChat). It turns LibreChat into a governed workspace for durable missions, specialist agents, background work, RAG/memory, model routing, media capabilities, MCP tools, evidence collection, QA and controlled publication.
 
-> Status: **V1 release candidate**. The current public development branch is `bot-mode-p4-closed`; `main` will become the stable BOTMODE branch after final release validation.
+> Status (18 October 2026): **V1 qualification — NO-GO stable**. [PR #29](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/29) is still a **Draft** on `botmode-v1-final-integration-qualification-20261016`. Existing CI checks and previously published images do **not** certify this PR as a released installable image. Do not merge, publish or install over existing data without the separate release gates and approvals.
 
 ## What BOTMODE adds
 
@@ -55,11 +55,13 @@ Final answer / artifact
 
 ### Requirements
 
+Runtime hosts need:
+
 - Git
-- Node.js 24.x
-- npm
 - Docker
 - Docker Compose v2
+
+Node.js/npm are required only for source development and local verification, not for running a published BOTMODE image. **The current PR #29 image has not been published**; use the install command below only with a verified commit whose matching immutable GHCR image exists.
 
 ### Install
 
@@ -69,32 +71,42 @@ cd LibreChat-BOTMODE-V1
 ./install.sh
 ```
 
-The installer does **not** use `sudo`, does not overwrite an existing `.env`, and does not delete application data. It validates the host, installs Node dependencies, builds the packages/client, validates Docker Compose and runs BOTMODE reproducibility tests.
+The installer auto-selects the **Lite** profile on hosts with less than 4 GiB RAM or on x86_64 CPUs without AVX. It creates `.env` if needed, validates Docker/Compose, pulls the BOTMODE runtime image whose `sha-<commit>` tag matches the checked-out Git commit, and starts the stack. This prevents the configuration/scripts from silently drifting away from the runtime image.
 
-To install and start the stack in the same run:
-
-```bash
-./install.sh --start
-```
-
-On a low-memory system:
+Force Lite explicitly with:
 
 ```bash
 ./install.sh --lite
 ```
 
-After `.env` is created, add only the provider/API credentials you actually use. Never commit `.env`.
+Prepare and pull without starting:
+
+```bash
+./install.sh --no-start
+```
+
+Day-to-day lifecycle commands:
+
+```bash
+./start.sh
+./stop.sh
+./update.sh
+./doctor.sh
+```
+
+After `.env` is created, add only the provider/API credentials you actually use. Never commit `.env`. On a fresh account, **Project → Initialiser BOT MODE** still allows explicit model selection and native setup. Work is in qualification to initialize automatically upon an explicit **Ideas** mission request when a unique OpenRouter free model is available; paid or ambiguous model selection is **never automatic**. This does not yet cover every Chat/Work entry point. The source-matched first-user HTTP onboarding is exercised on disposable CI, but no published PR #29 image or live-provider mission is certified yet.
 
 Full installation details: [docs/BOT_MODE_INSTALL.md](docs/BOT_MODE_INSTALL.md)
 
 ## Supported platforms
 
-| Platform | V1 path |
+| Platform | Intended V1 path / qualification |
 | --- | --- |
-| Linux / Xubuntu | Direct |
-| ChromeOS | Crostini / Linux |
-| macOS | Docker Desktop or compatible Docker runtime |
-| Windows | WSL2 |
+| Linux x86_64 | Docker Compose, Lite source-built smoke validated; GHCR release image pending |
+| ChromeOS | Crostini / Linux, profile Lite (hardware-limited validation) |
+| macOS | Docker Desktop or compatible Docker runtime; final candidate smoke pending |
+| Windows | WSL2; final candidate smoke pending |
+| ARM64 Linux/macOS | OCI image/platform manifest and install smoke pending |
 | Native Windows | Not declared supported for V1 |
 
 ## BOTMODE specialists
@@ -148,7 +160,7 @@ Backup and restore helpers are available under `scripts/botmode/`.
 
 ## Providers and models
 
-BOTMODE is designed to route across configured providers rather than hard-code a single model family. The visible catalogue must reflect providers that are actually configured/connected. Local and free fallbacks can be used when appropriate, while policy/budget/risk controls remain authoritative.
+BOTMODE is designed to route across configured providers rather than hard-code a single model family. The visible catalogue must reflect providers that are actually configured/connected. The default native Worker/specialist host routes admit only explicitly free OpenRouter models; automatic paid fallback is disabled until an operator deliberately revises the authorized routing and budget policy. This free-only source configuration does not guarantee current provider quota or the availability of every free model. Policy/budget/risk controls remain authoritative.
 
 No API key is shipped in this repository.
 

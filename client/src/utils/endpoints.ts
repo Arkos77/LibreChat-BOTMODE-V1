@@ -172,6 +172,20 @@ function isStoredAgentPick(
   );
 }
 
+/**
+ * Rehydrate a genuine stored agent pick only when the loaded, permission-filtered
+ * agent map confirms it is still available. Returning no model spec is not enough:
+ * the cold New Chat initializer otherwise restores the endpoint without agent_id.
+ * Deleted and cross-organization ids must never be resurrected.
+ */
+export function getStoredAvailableAgentPreset(agentsMap?: t.TAgentsMap): t.TPreset | undefined {
+  const saved = parseStoredModelSelection(localStorage.getItem(firstLocalConvoKey));
+  if (!isStoredAgentPick(saved) || agentsMap?.[saved.agent_id] == null) {
+    return undefined;
+  }
+  return { endpoint: EModelEndpoint.agents, agent_id: saved.agent_id, spec: null };
+}
+
 export function hasModelSelection(selection?: Partial<StoredModelSelection> | null): boolean {
   if (!selection) {
     return false;
@@ -475,6 +489,40 @@ export function getDefaultModelSpec(
     return { default: list[0] };
   }
   return;
+}
+
+/**
+ * Rehydrate an explicit agent selection on a cold New Chat load when there is
+ * no winning model spec. getDefaultModelSpec correctly yields to the user's
+ * manual pick, but returning no spec is not by itself enough to restore the
+ * agent: the new-chat constructor needs its id in the preset.
+ *
+ * Only the VIEW-filtered agent map can authorize reuse. A deleted, inaccessible
+ * or disallowed agent must not be resurrected from browser storage.
+ */
+export function getStoredAgentSelectionPreset(
+  startupConfig?: t.TStartupConfig,
+  endpointsConfig?: t.TEndpointsConfig,
+  agentsMap?: t.TAgentsMap,
+): t.TPreset | undefined {
+  const stored = parseStoredModelSelection(
+    localStorage.getItem(LocalStorageKeys.LAST_CONVO_SETUP + '_0'),
+  );
+  if (
+    startupConfig?.interface?.modelSelect !== true ||
+    !isStoredAgentPick(stored) ||
+    endpointsConfig?.[EModelEndpoint.agents] == null ||
+    agentsMap?.[stored.agent_id] == null
+  ) {
+    return undefined;
+  }
+
+  const addedEndpoints = startupConfig.modelSpecs?.addedEndpoints ?? [];
+  if (addedEndpoints.length > 0 && !addedEndpoints.includes(EModelEndpoint.agents)) {
+    return undefined;
+  }
+
+  return { endpoint: EModelEndpoint.agents, agent_id: stored.agent_id };
 }
 
 /**

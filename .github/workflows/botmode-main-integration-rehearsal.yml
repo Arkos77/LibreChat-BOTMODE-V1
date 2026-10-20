@@ -1,0 +1,93 @@
+name: BOTMODE Main Integration Rehearsal
+on:
+  pull_request:
+    paths:
+      - scripts/botmode-main-integration-dryrun.sh
+      - .github/workflows/botmode-main-integration-rehearsal.yml
+  push:
+    branches:
+      - botmode-v1-main-integration-dryrun-20261013
+    paths:
+      - scripts/botmode-main-integration-dryrun.sh
+      - .github/workflows/botmode-main-integration-rehearsal.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dryrun:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Rehearse Git merge with temporary worktree
+        shell: bash
+        env:
+          BOTMODE_DRYRUN_VALIDATE: '1'
+          BOTMODE_DRYRUN_EXTENDED: '1'
+        run: bash scripts/botmode-main-integration-dryrun.sh
+
+  integrated-docker:
+    name: Integrated Docker (${{ matrix.arch }})
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v4
+      - name: Build and smoke actual ephemeral merged Dockerfile
+        shell: bash
+        env:
+          BOTMODE_DRYRUN_DOCKER: '1'
+          BOTMODE_DRYRUN_ARCH: ${{ matrix.arch }}
+        run: bash scripts/botmode-main-integration-dryrun.sh
+
+  integrated-e2e:
+    name: Integrated Playwright approvals and soft default
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      NODE_OPTIONS: '--max-old-space-size=6144'
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.16.0'
+      - name: Verify Chrome
+        run: google-chrome --version
+      - name: Run targeted Playwright on ephemeral merge
+        shell: bash
+        env:
+          BOTMODE_DRYRUN_E2E: '1'
+        run: bash scripts/botmode-main-integration-dryrun.sh
+
+  persist-integrated-candidate:
+    name: Persist isolated integrated candidate (no release)
+    needs: [dryrun]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/botmode-v1-main-integration-dryrun-20261013'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Create immutable initial candidate ref
+        shell: bash
+        env:
+          BOTMODE_DRYRUN_PERSIST_BRANCH: '1'
+        run: bash scripts/botmode-main-integration-dryrun.sh

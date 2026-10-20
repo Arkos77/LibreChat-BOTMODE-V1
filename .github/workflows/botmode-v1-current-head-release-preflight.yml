@@ -1,0 +1,255 @@
+name: BOTMODE V1 Current HEAD Release Preflight
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-current-head-release-preflight.yml'
+      - 'install.sh'
+      - 'scripts/botmode/bootstrap.sh'
+      - 'scripts/botmode/audit-public-release.sh'
+      - 'scripts/botmode/verify-runtime-distribution.sh'
+      - 'docker-compose.botmode.yml'
+      - 'docker-compose.botmode-lite.yml'
+      - 'Dockerfile'
+      - 'librechat.yaml'
+      - 'scripts/botmode/tests/test_model_routing_free_only.py'
+      - 'scripts/botmode/tests/test_restore_target.py'
+      - 'scripts/botmode/backup.sh'
+      - 'scripts/botmode/restore.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Prove the source being evaluated. Historical fixed release tags and GHCR
+# digests remain separate archival tests, never proof for the current PR.
+env:
+  BOTMODE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  current-source-audit:
+    name: Exact HEAD secret audit, Docker contract and installer dry runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact candidate with audit history
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BOTMODE_CANDIDATE_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify current SHA and run tracked/history secret audit
+        env:
+          BOTMODE_AUDIT_BRANCH: ${{ github.base_ref || 'main' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+          git fetch --no-tags origin "$BOTMODE_AUDIT_BRANCH:refs/remotes/origin/$BOTMODE_AUDIT_BRANCH"
+          audit_base=$(git merge-base HEAD "origin/$BOTMODE_AUDIT_BRANCH")
+          test -n "$audit_base"
+          BOTMODE_PUBLIC_AUDIT_BASE="$audit_base" bash scripts/botmode/audit-public-release.sh
+          echo 'BOTMODE_CURRENT_HEAD_SECRET_AUDIT=PASS'
+      - name: Validate compose and read-only automatic / Lite bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e .env
+          cp .env.example .env
+          chmod 600 .env
+          {
+            echo 'BOTMODE_MONGO_PASSWORD=ci-source-preflight-only'
+            echo 'POSTGRES_PASSWORD=ci-source-preflight-only'
+          } >> .env
+          before=$(sha256sum .env | awk '{print $1}')
+          bash scripts/botmode/verify-runtime-distribution.sh
+          ./install.sh --lite --check-only > "$RUNNER_TEMP/botmode-lite-check.log"
+          grep -q '^BOTMODE_PROFILE=lite$' "$RUNNER_TEMP/botmode-lite-check.log"
+          grep -q '^BOTMODE_BOOTSTRAP_CHECK=PASS$' "$RUNNER_TEMP/botmode-lite-check.log"
+          ./install.sh --check-only > "$RUNNER_TEMP/botmode-auto-check.log"
+          grep -q '^BOTMODE_BOOTSTRAP_CHECK=PASS$' "$RUNNER_TEMP/botmode-auto-check.log"
+          test "$(sha256sum .env | awk '{print $1}')" = "$before"
+          for script in install.sh doctor.sh start.sh stop.sh update.sh scripts/botmode/bootstrap.sh; do
+            bash -n "$script"
+          done
+          echo 'BOTMODE_CURRENT_HEAD_COMPOSE_AND_DRYRUN=PASS'
+      - name: Verify free-only default native host routing
+        shell: bash
+        run: python3 -m unittest scripts.botmode.tests.test_model_routing_free_only -v
+      - name: Verify safe caller-relative backup and explicit restore boundary (fake Docker only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/botmode/backup.sh
+          bash -n scripts/botmode/restore.sh
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.botmode.tests.test_restore_target -v
+          echo 'BOTMODE_BACKUP_RESTORE_TARGET_SAFETY=PASS'
+      - name: Remove disposable dotenv
+        if: always()
+        run: rm -f .env
+
+  current-source-lite-runtime:
+    name: Fresh Lite install from locally built exact HEAD, no publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BOTMODE_CANDIDATE_SHA }}
+          persist-credentials: false
+      - name: Verify source revision before building
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+          test ! -e .env
+          echo "BOTMODE_CURRENT_FRESH_SOURCE_SHA=$BOTMODE_CANDIDATE_SHA"
+      - uses: docker/setup-buildx-action@v4
+      - name: Build the exact candidate image locally
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          target: node
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: botmode-local-release:${{ env.BOTMODE_CANDIDATE_SHA }}
+          cache-from: type=gha,scope=botmode-amd64
+          cache-to: type=gha,mode=max,scope=botmode-amd64
+          build-args: |
+            BUILD_COMMIT=${{ env.BOTMODE_CANDIDATE_SHA }}
+            BUILD_BRANCH=${{ github.head_ref || github.ref_name }}
+      - name: Install source-built image on disposable Lite MongoDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker image inspect "botmode-local-release:$BOTMODE_CANDIDATE_SHA" >/dev/null
+          sudo git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          # No provider API key, external services or GHCR push required.
+          # The official installer must create the .env and secure database
+          # credentials and start the source-matched image in one invocation.
+          sudo ./install.sh --lite --no-pull --image "botmode-local-release:$BOTMODE_CANDIDATE_SHA" > "$RUNNER_TEMP/botmode-fresh-current.log" 2>&1 || {
+            tail -55 "$RUNNER_TEMP/botmode-fresh-current.log" |
+              sed -E 's/(password|secret|token|api[_-]?key)([=: ]+)[^ ]+/\1\2[REDACTED]/Ig'
+            exit 1
+          }
+          grep -q '^BOTMODE_BOOTSTRAP=PASS$' "$RUNNER_TEMP/botmode-fresh-current.log"
+          grep -q '^BOTMODE_PROFILE=lite$' "$RUNNER_TEMP/botmode-fresh-current.log"
+          grep -q '^BOTMODE_STACK=STARTED$' "$RUNNER_TEMP/botmode-fresh-current.log"
+          test -s .botmode-database-auth-initialized
+          test "$(stat -c '%a' .env)" = 600
+          sudo grep -Fq "BOTMODE_IMAGE=botmode-local-release:$BOTMODE_CANDIDATE_SHA" .env
+          echo 'BOTMODE_CURRENT_FRESH_LITE_INSTALL=PASS'
+      - name: Verify HTTP and Mongo readiness after true fresh installation
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=0
+          for _ in $(seq 1 90); do
+            if curl --fail --silent --show-error http://127.0.0.1:3080/api/config > "$RUNNER_TEMP/botmode-current-api.json" 2>/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = 1
+          # The installer correctly keeps .env mode 600 and UID-1000 owned.
+          # Use the same root privilege as the first install to inspect Compose.
+          sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps --status running
+          echo 'BOTMODE_CURRENT_FRESH_LITE_HTTP=PASS'
+          echo 'SCOPE=source-built exact HEAD, CLI first installation and HTTP; no registry publication, paid provider or external tool replay'
+      - name: Delete runner-only stack and generated credentials
+        if: always()
+        shell: bash
+        run: |
+          sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down -v --remove-orphans || true
+          sudo rm -f .env .botmode-database-auth-initialized
+
+  mongo-authenticated-restore:
+    name: Authenticated MongoDB backup/restore on disposable runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact HEAD
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BOTMODE_CANDIDATE_SHA }}
+          persist-credentials: false
+      - name: Exercise backup and restore on isolated MongoDB only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+          test ! -e .env
+          export COMPOSE_PROJECT_NAME="botmode-db-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          export BOTMODE_MONGO_PASSWORD
+          BOTMODE_MONGO_PASSWORD="$(openssl rand -hex 24)"
+          export POSTGRES_PASSWORD
+          POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+          touch .env
+          chmod 600 .env
+          compose=(docker compose -f docker-compose.botmode.yml)
+          actual_project="$("${compose[@]}" config --format json | python3 -c 'import json,sys;print(json.load(sys.stdin)["name"])')"
+          test "$actual_project" = "$COMPOSE_PROJECT_NAME" || {
+            echo 'Refusing to create MongoDB: Compose project is not isolated.' >&2
+            exit 1
+          }
+          cleanup() {
+            "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+            rm -f .env
+          }
+          trap cleanup EXIT
+          "${compose[@]}" up -d --no-deps mongodb
+          mongo_exec() {
+            "${compose[@]}" exec -T mongodb sh -ec '
+              test -n "$MONGO_INITDB_ROOT_USERNAME"
+              test -n "$MONGO_INITDB_ROOT_PASSWORD"
+              client="$(command -v mongosh || command -v mongo)"
+              "$client" --quiet --username "$MONGO_INITDB_ROOT_USERNAME" \
+                --password "$MONGO_INITDB_ROOT_PASSWORD" \
+                --authenticationDatabase admin LibreChat --eval "$1"
+            ' sh "$1"
+          }
+          ready=0
+          for i in $(seq 1 60); do
+            if mongo_exec 'db.adminCommand({ping:1}).ok' >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = 1 || {
+            echo 'Isolated MongoDB did not authenticate.' >&2
+            exit 1
+          }
+          mongo_exec 'db.botmode_ci_restore.insertOne({_id:"roundtrip", value:"before"}).acknowledged' |
+            grep -q 'true'
+          backup_dir="$(mktemp -d "$RUNNER_TEMP/botmode-real-restore.XXXXXX")"
+          bash scripts/botmode/backup.sh "$backup_dir" > "$RUNNER_TEMP/botmode-db-backup.log"
+          grep -q '^BOTMODE_BACKUP_DB=COMPLETE$' "$RUNNER_TEMP/botmode-db-backup.log"
+          test -s "$backup_dir/mongodb-LibreChat.archive"
+          test -s "$backup_dir/mongodb-LibreChat.archive.sha256"
+          mongo_exec 'db.botmode_ci_restore.updateOne({_id:"roundtrip"},{$set:{value:"after"}}).modifiedCount' |
+            grep -q '1'
+          # Corruption MUST be denied before any database write.
+          mkdir "$backup_dir/corrupt"
+          cp "$backup_dir/mongodb-LibreChat.archive" "$backup_dir/corrupt/"
+          cp "$backup_dir/mongodb-LibreChat.archive.sha256" "$backup_dir/corrupt/"
+          printf 'corrupt' >> "$backup_dir/corrupt/mongodb-LibreChat.archive"
+          set +e
+          BOTMODE_CONFIRM_RESTORE=YES bash scripts/botmode/restore.sh \
+            "$backup_dir/corrupt/mongodb-LibreChat.archive" > "$RUNNER_TEMP/restore-denied.log" 2>&1
+          denied_code=$?
+          set -e
+          test "$denied_code" = 2
+          test "$(mongo_exec 'db.botmode_ci_restore.findOne({_id:"roundtrip"}).value' | tail -1)" = 'after'
+          # The destructive restore is authorized ONLY for this isolated GitHub
+          # runner project, whose unique Compose name was verified above.
+          BOTMODE_CONFIRM_RESTORE=YES bash scripts/botmode/restore.sh \
+            "$backup_dir/mongodb-LibreChat.archive" > "$RUNNER_TEMP/restore-authorized.log"
+          grep -q '^BOTMODE_RESTORE=PASS$' "$RUNNER_TEMP/restore-authorized.log"
+          test "$(mongo_exec 'db.botmode_ci_restore.findOne({_id:"roundtrip"}).value' | tail -1)" = 'before'
+          echo 'BOTMODE_AUTHENTICATED_MONGO_BACKUP_RESTORE_ROUNDTRIP=PASS'
+          echo 'SCOPE=isolated exact HEAD MongoDB, no user volumes, no transversion migration'

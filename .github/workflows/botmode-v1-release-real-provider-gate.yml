@@ -1,7 +1,13 @@
-# Reference workflow deliberately manual: protected API key, no paid model, no automatic retries.
-name: BOTMODE V1 Release Real Provider Oracle Gate
+# Manual real-provider qualification: secret only on ephemeral runner, explicit OpenRouter/free, no paid models or GHCR publication.
+name: BOTMODE V1 Current HEAD Free Provider Oracle Gate
 on:
   workflow_dispatch:
+    inputs:
+      run_default_free_router:
+        description: Exercise the exact default free-only host router instead of isolating the primary model
+        type: boolean
+        required: true
+        default: false
 permissions:
   contents: read
 jobs:
@@ -9,13 +15,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
-      - name: Checkout exact release-fix candidate
+      - name: Checkout exact triggering source SHA
         uses: actions/checkout@v4
         with:
-          ref: d4e82dded5df49f17b97e20361c89796b8f1e068
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Prove checked-out revision
-        run: test "$(git rev-parse HEAD)" = 'd4e82dded5df49f17b97e20361c89796b8f1e068'
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - name: OpenRouter key and one minimal free-model inference preflight
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -76,18 +82,19 @@ jobs:
               raise SystemExit('CI_PROVIDER_BLOCKED=INFERENCE_ERROR')
           print('CI_OPENROUTER_FREE_PREFLIGHT=PASS_ONE_REQUEST_ONLY')
           PY_QUOTA
-      - name: Build unmodified release-fix branch image locally
+      - name: Build exact current HEAD image locally, no registry push
         run: |
           set -euo pipefail
-          docker build --target node --build-arg BUILD_COMMIT="$(git rev-parse HEAD)" -t botmode-pr14-exact:local -f Dockerfile .
+          docker build --target node --build-arg BUILD_COMMIT="$(git rev-parse HEAD)" -t botmode-current-free:ci -f Dockerfile .
       - name: Boot isolated candidate with disposable MongoDB
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CI_TEST_DEFAULT_FREE_ROUTER: ${{ inputs.run_default_free_router }}
         run: |
           set -euo pipefail
           cp .env.example .env
           # CI-only disposable Redis: durable Mission Oracle result readback.
-          # Modify the ephemeral checkout, never the pinned candidate.
+          # Modify only ephemeral CI Compose inputs; not source and not user volumes.
           sed -i '/      - SCHEDULES_SINGLE_PROCESS=true/a\      - USE_REDIS=true\n      - USE_REDIS_STREAMS=true\n      - REDIS_URI=redis://redis:6379\n      - STREAM_KEEP_COMPLETED_JOBS=true' docker-compose.botmode-lite.yml
           # Append a true service under the existing services: map.
           # Avoid a second 'services.depends_on' key, which Compose rejects.
@@ -118,22 +125,39 @@ jobs:
             echo 'BOTMODE_MONGO_PASSWORD=ci-isolated-only'
             echo 'POSTGRES_PASSWORD=ci-isolated-only'
           } >> .env
-          # Deterministic integration: only the already live-tested OpenRouter free route.
-          # Patch the ephemeral checkout, never the pinned PR14 source.
+          # Route isolation and default-router qualification are distinct:
+          # both paths allow only explicitly free provider models and never paid keys.
           python3 - <<'PY'
-          import json
+          import json,os
           from pathlib import Path
           path=Path('librechat.yaml')
           conf=json.loads(path.read_text())
-          # Native agent setup already stores OpenRouter/openrouter-free.
-          # Omit optional host router in this single-provider isolation test.
-          routes=conf['endpoints']['agents'].pop('hostModelRouting',[])
-          path.write_text(json.dumps(conf,ensure_ascii=False,indent=2)+'\n')
-          print('CI_HOST_MODEL_ROUTING_DISABLED_FOR_FREE_ROUTE_TEST='+str(len(routes)))
+          use_default=os.environ.get('CI_TEST_DEFAULT_FREE_ROUTER')=='true'
+          if use_default:
+              policies=conf['endpoints']['agents'].get('hostModelRouting',[])
+              expected={'BOT MODE Worker','RECHERCHE','ANALYSE','CODE','DOCUMENTS','RÉDACTION'}
+              if {p.get('agentName') for p in policies} != expected:
+                  raise SystemExit('CI_DEFAULT_FREE_ROUTER_INVENTORY_INVALID')
+              for policy in policies:
+                  if policy.get('routingConstraints',{}).get('spendingPolicy')!='free_only':
+                      raise SystemExit('CI_DEFAULT_ROUTER_NOT_FREE_ONLY')
+                  if not 2 <= len(policy.get('bindings',[])) <= 4:
+                      raise SystemExit('CI_DEFAULT_ROUTER_CANDIDATE_COUNT_INVALID')
+                  for candidate in policy['bindings']:
+                      model=candidate.get('model','')
+                      if (candidate.get('provider')!='OpenRouter' or
+                          candidate.get('signals',{}).get('pricingTier')!='free' or
+                          not (model=='openrouter/free' or model.endswith(':free'))):
+                          raise SystemExit('CI_DEFAULT_ROUTER_UNAUTHORIZED_OR_PAID_BINDING')
+              print('CI_DEFAULT_FREE_ONLY_ROUTER_GUARD=PASS')
+          else:
+              routes=conf['endpoints']['agents'].pop('hostModelRouting',[])
+              path.write_text(json.dumps(conf,ensure_ascii=False,indent=2)+'\n')
+              print('CI_HOST_MODEL_ROUTING_DISABLED_FOR_FREE_ROUTE_TEST='+str(len(routes)))
           PY
           export BOTMODE_MONGO_PASSWORD=ci-isolated-only
           export POSTGRES_PASSWORD=ci-isolated-only
-          export BOTMODE_IMAGE=botmode-pr14-exact:local
+          export BOTMODE_IMAGE=botmode-current-free:ci
           export BOTMODE_HOST_PORT=3090
           docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml up -d
           ready=0
@@ -145,7 +169,7 @@ jobs:
           done
           if [ "$ready" -ne 1 ]; then
             docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps
-            echo "::error::Exact PR14 API was not ready"
+            echo "::error::Exact current HEAD API was not ready"
             exit 1
           fi
           # Use a recognized browser UA for API requests; LibreChat blocks and scores curl clients.
@@ -167,7 +191,7 @@ jobs:
             echo "::error::Unauthenticated BOTMODE setup expected HTTP 401, got $unauth_status"
             exit 1
           fi
-          echo 'BOTMODE_PR14_UNAUTHENTICATED_SETUP=401_PASS'
+          echo 'BOTMODE_CURRENT_FREE_UNAUTHENTICATED_SETUP=401_PASS'
           # Create an isolated database-backed test principal and sign a real JWT
           # with the exact API runtime's secret. No production account or secret used.
           export CI_JWT_SECRET="$(sed -n 's/^JWT_SECRET=//p' .env)"
@@ -195,7 +219,8 @@ jobs:
             console.error('CI_PHASE=user_insert_pass');
             if (!signingSecret) throw new Error('JWT_SECRET unavailable in mounted .env');
             console.error('CI_PHASE=jwt_sign_begin');
-            process.stdout.write(jwt.sign({ id: String(id) }, signingSecret, { expiresIn: '2m' }));
+            // CI-only principal: bounded to this disposable job, not production authentication.
+            process.stdout.write(jwt.sign({ id: String(id) }, signingSecret, { expiresIn: '15m' }));
             console.error('CI_PHASE=jwt_sign_pass');
             await mongoose.disconnect();
           })().catch((error) => { console.error('CI principal creation:', JSON.stringify({name:error?.name,code:error?.code,codeName:error?.codeName,phase:error?.errorLabelSet ? 'mongo' : undefined,messageClass: /auth/i.test(error?.message || '') ? 'authentication' : /connect|network|server selection/i.test(error?.message || '') ? 'connection' : /module/i.test(error?.message || '') ? 'module' : 'other'})); process.exit(1); });
@@ -221,7 +246,7 @@ jobs:
             echo "::error::Authenticated BOT MODE setup-status expected HTTP 200; received $auth_status"
             exit 1
           fi
-          echo 'BOTMODE_PR14_AUTHENTICATED_STATUS=200_PASS'
+          echo 'BOTMODE_CURRENT_FREE_AUTHENTICATED_STATUS=200_PASS'
           # Real native provisioning; verification of persisted inventory and routing.
           setup_status=$(curl -sS -o /tmp/botmode-setup-result.json -w '%{http_code}' \
             -X POST -H 'Content-Type: application/json' -H "User-Agent: $browser_ua" \
@@ -267,7 +292,7 @@ jobs:
               if data.get(name) is not True:
                   raise SystemExit('Incomplete native agent setup: '+name)
           PY
-          echo 'BOTMODE_PR14_SIX_AGENT_PROVISIONING=PASS'
+          echo 'BOTMODE_CURRENT_FREE_SIX_AGENT_PROVISIONING=PASS'
           # HTTP/SSE mission admission is a separate gate from successful setup.
           # This is a real Worker turn, never a fabricated oracle/publication PASS.
           docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE' > /tmp/botmode-ci-worker-id
@@ -294,7 +319,7 @@ jobs:
               'messageId':str(uuid.uuid4()),
               'parentMessageId':'00000000-0000-0000-0000-000000000000',
               'isNewConvo':True,
-              'text':'Mission de vérification BOT MODE : délègue à RECHERCHE la recherche du titre du premier article de la Déclaration universelle des droits de l’homme, vérifie avec le spécialiste, puis réponds en français avec une preuve consultable.',
+              'text':'Qualification de la génération de base : réponds uniquement OK. Aucun outil, aucune délégation, aucun autre texte.',
           }
           with open('/tmp/botmode-ci-mission-request.json','w') as h: json.dump(payload,h)
           with open('/tmp/botmode-ci-mission-id','w') as h: h.write(payload['conversationId'])
@@ -359,7 +384,7 @@ jobs:
           print('CI_WORKER_ASYNC_STARTED=PASS')
           PY
           worker_stream_id=$(cat /tmp/botmode-ci-stream-id)
-          stream_http=$(curl -sS -N --max-time 180 -o /tmp/botmode-ci-real-sse.txt -w '%{http_code}' \
+          stream_http=$(curl -sS -N --max-time 120 -o /tmp/botmode-ci-real-sse.txt -w '%{http_code}' \
             -H 'Accept: text/event-stream' -H "User-Agent: $browser_ua" \
             -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" \
             "http://127.0.0.1:3090/api/agents/chat/stream/$worker_stream_id?resume=true") || stream_http=CURL_ERROR
@@ -381,43 +406,50 @@ jobs:
           })().catch(e=>{console.error('CI_AGENT_PROVIDER_PROBE='+e.name);process.exit(1)});
           NODE
           echo "CI_WORKER_STREAM_HTTP=$stream_http"
+          # Summarize every stream event without emitting model content or
+          # logging hundreds of duplicate events and token-bearing payloads.
           python3 - <<'PY'
+          import collections,json,re
           from pathlib import Path
-          p=Path('/tmp/botmode-ci-real-sse.txt')
-          data=p.read_text(errors='replace') if p.exists() else ''
-          print('CI_WORKER_STREAM_BYTES='+str(len(data)))
-          print('CI_WORKER_STREAM_EVENT_COUNT='+str(sum(x.startswith('data:') for x in data.splitlines())))
-          print('CI_WORKER_STREAM_FINAL='+str('"final":true' in data))
-          print('CI_WORKER_STREAM_ERROR='+str('event: error' in data))
-          for ln in data.splitlines():
-              if ln.startswith('data:'):
-                  try:
-                      obj=__import__('json').loads(ln[5:].strip())
-                      if isinstance(obj,dict):
-                          print('CI_SSE_FIELDS='+','.join(sorted(obj.keys()))[:180])
-                          print('CI_SSE_ERROR_CODE='+str(obj.get('code','none'))[:75])
-                          print('CI_SSE_ERROR_TYPE='+str(obj.get('type','none'))[:75])
-                          err=str(obj.get('error','')).lower()
-                          categories={'provider_auth':('401','api key','unauthorized','invalid key'),'provider_quota':('429','rate limit','quota'),'provider_model':('model not found','invalid model','model unavailable'),'server_config':('not configured','missing config','endpoint unavailable'),'runtime':('failed to initialize','generation failed','internal error')}
-                          detected=[k for k,words in categories.items() if any(word in err for word in words)]
-                          print('CI_SSE_ERROR_CATEGORY='+(','.join(detected) if detected else 'unclassified'))
-                          print('CI_SSE_ERROR_TEXT_LENGTH='+str(len(err)))
-                          # Only emit a fingerprint of the error, never its raw text.
-                          import hashlib
-                          print('CI_SSE_ERROR_FINGERPRINT='+hashlib.sha256(err.encode()).hexdigest()[:12])
-                          print('CI_SSE_ERROR_HTTP_401='+str('401' in err))
-                          print('CI_SSE_ERROR_HTTP_403='+str('403' in err))
-                          print('CI_SSE_ERROR_HTTP_429='+str('429' in err))
-                          print('CI_SSE_ERROR_INVALID_KEY='+str('invalid key' in err or 'invalid api key' in err))
-                          print('CI_SSE_ERROR_UNAUTHORIZED='+str('unauthorized' in err))
-                          # Match safe known phrases only; never expose arbitrary provider text.
-                          for tag,phrase in [('MISSING_API_KEY','api key'),('KEY_NOT_PROVIDED','not provided'),('KEY_REQUIRED','required'),('INVALID_CREDENTIALS','credentials'),('MISSING_PROVIDER','provider'),('INVALID_AUTHENTICATION','authentication'),('NO_TOKEN','no token'),('MODEL_ERROR','model'),('MISSING_AUTHORIZATION','authorization')]:
-                              print('CI_SSE_'+tag+'='+str(phrase in err))
-                  except Exception:
-                      print('CI_SSE_EVENT_FORMAT=non_json')
+          raw=Path('/tmp/botmode-ci-real-sse.txt').read_text(errors='replace')
+          events=[]
+          for line in raw.splitlines():
+              if not line.startswith('data:'):
+                  continue
+              try:
+                  obj=json.loads(line[5:].strip())
+              except Exception:
+                  continue
+              if isinstance(obj,dict):
+                  events.append(obj)
+          def bounded_label(value):
+              if not isinstance(value,str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,39}',value):
+                  return 'OTHER'
+              return value
+          kinds=collections.Counter(bounded_label(event.get('event') or event.get('type')) for event in events)
+          payload_types=collections.Counter(
+              bounded_label(event.get('data',{}).get('type'))
+              for event in events if isinstance(event.get('data'),dict)
+          )
+          finals=sum(event.get('final') is True for event in events)
+          print('CI_WORKER_STREAM_BYTES='+str(len(raw)))
+          print('CI_WORKER_STREAM_EVENT_COUNT='+str(len(events)))
+          print('CI_WORKER_STREAM_FINAL_COUNT='+str(finals))
+          print('CI_WORKER_STREAM_KIND_COUNTS='+','.join(f'{key}:{count}' for key,count in kinds.most_common(12)))
+          print('CI_WORKER_STREAM_PAYLOAD_TYPE_COUNTS='+','.join(f'{key}:{count}' for key,count in payload_types.most_common(12)))
+          print('CI_WORKER_STREAM_HAS_ERROR_FRAME='+str('event: error' in raw))
           PY
+          if [ "$stream_http" = 'CURL_ERROR' ]; then
+            # This is a bounded diagnostic read from disposable Redis, not
+            # evidence that the model completed or the job is published.
+            state=$(docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T redis redis-cli --raw HGET "::stream:{$worker_stream_id}:job" status 2>/dev/null || true)
+            case "$state" in
+              running|complete|error|aborted|paused|pending) echo "CI_WORKER_DURABLE_STATUS_AT_TIMEOUT=$state" ;;
+              *) echo 'CI_WORKER_DURABLE_STATUS_AT_TIMEOUT=unknown' ;;
+            esac
+          fi
           if [ "$stream_http" != "200" ] || ! grep -q '^data:' /tmp/botmode-ci-real-sse.txt; then
-            echo "::error::Authenticated Worker stream did not provide SSE generation events"
+            echo "::error::Worker generation did not finish within the bounded stream window; check event histogram and durable status"
             exit 1
           fi
           if grep -q '^event: error' /tmp/botmode-ci-real-sse.txt; then
@@ -507,18 +539,16 @@ jobs:
 
 
 
-          # The pinned candidate does not contain this main-branch CI harness.
-          # Pull the exact harness bytes from a reviewed main commit, not a
-          # mutable branch reference during the running job.
-          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/1bd8b1be29d0bf1b37778e1e209a2e13d445f1ba/scripts/botmode/ci-oracle-publication-gate.py -o /tmp/botmode-ci-oracle-publication-gate.py
-          python3 /tmp/botmode-ci-oracle-publication-gate.py
-          echo 'BOTMODE_PR14_RUNTIME_BOOT=PASS'
-          echo '### Release-fix branch Oracle/QA E2E (REAL free OpenRouter provider)' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Live provider checked; requires exact durable Oracle decision and publication checks. Fail closed on model quota/auth errors.' >> "$GITHUB_STEP_SUMMARY"
+          # Run the harness tracked in the exact same source revision, not a downloaded historical script.
+          test -s scripts/botmode/ci-oracle-publication-gate.py
+          python3 scripts/botmode/ci-oracle-publication-gate.py
+          echo 'BOTMODE_CURRENT_FREE_RUNTIME_BOOT=PASS'
+          echo '### Current HEAD Oracle/QA E2E (REAL free OpenRouter provider, isolated configuration)' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Free provider checked, durable Oracle decision and publication assertions required. The run_default_free_router input determines whether default free-only host routing was exercised; forced 429 fallback and actual specialists remain separate gates.' >> "$GITHUB_STEP_SUMMARY"
       - name: Always destroy disposable stack
         if: always()
         env:
           BOTMODE_MONGO_PASSWORD: ci-isolated-only
           POSTGRES_PASSWORD: ci-isolated-only
-          BOTMODE_IMAGE: botmode-pr14-exact:local
+          BOTMODE_IMAGE: botmode-current-free:ci
         run: docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true

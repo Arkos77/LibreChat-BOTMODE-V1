@@ -1,0 +1,267 @@
+const {
+  createNativeMissionDurablePublicationStage,
+} = require('./nativeMissionDurablePublicationStage');
+
+const INSPECTION_CLAIM_LEASE_MS = 15_000;
+const INSPECTION_CLAIM_HEARTBEAT_MS = 4_000;
+
+/**
+ * Host-side admission boundary for recovered native missions.
+ * All execution callbacks must originate from the real authenticated host
+ * reconstruction; this module never manufactures a user or a session.
+ * No production registration is permitted until graph/tools/Oracle callbacks
+ * are bound to the original durable mission, including private tool receipts.
+ */
+function createNativeMissionRecoveryCoordinator({
+  manager,
+  authorizeCandidate,
+  reconstruct,
+  execute,
+  continueColdGraph,
+  log,
+}) {
+  if (
+    !manager ||
+    typeof manager.claimCheckpointedOrphanForInspection !== 'function' ||
+    typeof manager.getJobStore !== 'function' ||
+    typeof authorizeCandidate !== 'function' ||
+    typeof reconstruct !== 'function' ||
+    typeof execute !== 'function' ||
+    typeof continueColdGraph !== 'function' ||
+    typeof log?.warn !== 'function'
+  ) {
+    throw new Error('Native recovery coordinator missing secure host dependencies');
+  }
+  return async (candidate) => {
+    const store = manager.getJobStore();
+    if (
+      typeof store?.getJob !== 'function' ||
+      typeof store.releaseDrainedMissionRecovery !== 'function' ||
+      typeof store.renewDrainedMissionRecovery !== 'function'
+    ) {
+      return false;
+    }
+    let claim;
+    let originalProviderExecutionId;
+    let promotionSeen = false;
+    const authorize = async () => {
+      if (manager.getJobStore() !== store) {
+        throw new Error('NATIVE_RECOVERY_HOST_AUTHORITY_DENIED');
+      }
+      const job = await store.getJob(candidate.streamId);
+      if (!claim && typeof job?.providerExecutionId === 'string') {
+        originalProviderExecutionId = job.providerExecutionId;
+      }
+      let promotedOwnerProof;
+      if (
+        claim &&
+        job?.createdAt === candidate.createdAt &&
+        typeof job?.providerExecutionId === 'string' &&
+        typeof store.inspectLiveRecoveredMissionOwner === 'function' &&
+        (await store.inspectLiveRecoveredMissionOwner(
+          candidate.streamId,
+          candidate.createdAt,
+          claim.ownerToken,
+          job.providerExecutionId,
+          candidate.checkpointNamespace,
+        )) === true
+      ) {
+        promotedOwnerProof = Object.freeze({
+          streamId: candidate.streamId,
+          createdAt: candidate.createdAt,
+          checkpointNamespace: candidate.checkpointNamespace,
+          ownerToken: claim.ownerToken,
+          providerExecutionId: job.providerExecutionId,
+        });
+      }
+      if (promotedOwnerProof) promotionSeen = true;
+      // Never misclassify a recovered provider with an expired owner lease as
+      // an ordinary provider simply because its started-id still matches.
+      // The initial owner identity was recorded before the inspection claim.
+      if (
+        claim &&
+        (promotionSeen || job?.providerExecutionId !== originalProviderExecutionId) &&
+        !promotedOwnerProof
+      ) {
+        throw new Error('NATIVE_RECOVERY_HOST_PROMOTED_LEASE_LOST');
+      }
+      if (
+        manager.getJobStore() !== store ||
+        (await authorizeCandidate({ candidate, job, promotedOwnerProof })) !== true
+      ) {
+        throw new Error('NATIVE_RECOVERY_HOST_AUTHORITY_DENIED');
+      }
+    };
+    await authorize();
+    claim = await manager.claimCheckpointedOrphanForInspection(
+      candidate.streamId,
+      candidate.createdAt,
+    );
+    if (!claim) return false;
+    // Once the executor starts, it or the manager owns the promotion decision.
+    // An exception can occur after promotion; never release that lease from
+    // the coordinator's preflight cleanup path.
+    let executorEntered = false;
+    // A real AbortSignal, tied to the inspection lease and invocation
+    // lifetime. The SDK supplies its own separately leased execution signal.
+    const recoveryAbort = new AbortController();
+    let renewalFailure = null;
+    let renewalInFlight = null;
+    const renewClaim = async () => {
+      if (renewalFailure) throw renewalFailure;
+      if (renewalInFlight) return renewalInFlight;
+      const attempt = (async () => {
+        try {
+          if (
+            manager.getJobStore() !== store ||
+            !(await store.renewDrainedMissionRecovery(
+              claim.streamId,
+              claim.createdAt,
+              claim.ownerToken,
+              INSPECTION_CLAIM_LEASE_MS,
+            ))
+          ) {
+            throw new Error('NATIVE_RECOVERY_HOST_INSPECTION_LEASE_LOST');
+          }
+        } catch (error) {
+          renewalFailure = error;
+          recoveryAbort.abort();
+          throw error;
+        }
+      })();
+      renewalInFlight = attempt;
+      void attempt
+        .finally(() => {
+          if (renewalInFlight === attempt) renewalInFlight = null;
+        })
+        .catch(() => {});
+      return attempt;
+    };
+    // The model/agent host can take longer than the original 15-second
+    // admission TTL. Keep the exact owner alive only during safe preflight.
+    // Stop this timer BEFORE the SDK takes over provider ownership.
+    const heartbeat = setInterval(() => {
+      void renewClaim().catch(() => {});
+    }, INSPECTION_CLAIM_HEARTBEAT_MS);
+    try {
+      if (
+        claim.streamId !== candidate.streamId ||
+        claim.createdAt !== candidate.createdAt ||
+        claim.checkpointNamespace !== candidate.checkpointNamespace ||
+        claim.checkpointId !== candidate.checkpointId ||
+        typeof claim.ownerToken !== 'string' ||
+        !claim.ownerToken
+      )
+        return false;
+      await authorize();
+      const runtime = await reconstruct({
+        candidate,
+        claim,
+        assertAuthorized: authorize,
+        signal: recoveryAbort.signal,
+      });
+      if (recoveryAbort.signal.aborted) {
+        throw new Error('NATIVE_RECOVERY_HOST_INSPECTION_LEASE_LOST');
+      }
+      if (
+        !runtime ||
+        typeof runtime.assertReplaySafe !== 'function' ||
+        typeof runtime.assertEffectFencesReady !== 'function' ||
+        typeof runtime.verifyOracle !== 'function' ||
+        typeof runtime.getPublicationCandidate !== 'function' ||
+        typeof runtime.publishTerminal !== 'function' ||
+        !runtime.graph ||
+        typeof runtime.graph.getState !== 'function'
+      )
+        return false;
+      const persistedJob = await store.getJob(candidate.streamId);
+      const plan = persistedJob?.orchestratorPlan?.tasks;
+      if (
+        persistedJob?.createdAt !== candidate.createdAt ||
+        persistedJob?.status !== 'running' ||
+        persistedJob?.pendingAction != null ||
+        persistedJob?.checkpointNamespace !== candidate.checkpointNamespace ||
+        !Array.isArray(plan) ||
+        plan.length === 0 ||
+        plan.some(
+          (task) =>
+            !task ||
+            typeof task.nodeId !== 'string' ||
+            !task.nodeId ||
+            typeof task.agentId !== 'string' ||
+            !task.agentId ||
+            typeof task.key !== 'string' ||
+            !task.key,
+        ) ||
+        new Set(plan.map((task) => task.nodeId)).size !== plan.length
+      )
+        return false;
+      const plannedNodeIds = plan.map((task) => task.nodeId);
+      await runtime.assertEffectFencesReady();
+      await authorize();
+      // Check the lease again at the handoff boundary after ALL potentially
+      // slow client/model reconstruction and receipt IO. The SDK independently
+      // checks owner identity before activating the recovered provider.
+      await renewClaim();
+      clearInterval(heartbeat);
+      // Only the supplied executor may hand the claim to the owner-fenced
+      // segment; it is responsible for Redis CAS and final publication.
+      // The SDK manager releases qualification refusals before promotion.
+      // Once execution begins, this coordinator must never release a claim:
+      // a throw or indeterminate result may have followed provider promotion.
+      executorEntered = true;
+      const outcome = await execute({
+        manager,
+        claim,
+        graph: runtime.graph,
+        assertAuthorized: authorize,
+        assertReplaySafeForPendingNodes: runtime.assertReplaySafe,
+        assertEffectFencesReady: runtime.assertEffectFencesReady,
+        continueGraph: (signal) =>
+          continueColdGraph({
+            graph: runtime.graph,
+            streamId: candidate.streamId,
+            checkpointNamespace: candidate.checkpointNamespace,
+            expectedCheckpointId: candidate.checkpointId,
+            plannedNodeIds,
+            signal,
+          }),
+        verifyOracle: runtime.verifyOracle,
+        stageDurablePublication: async (identity) => {
+          await authorize();
+          await createNativeMissionDurablePublicationStage({
+            store,
+            identity,
+            getCandidate: runtime.getPublicationCandidate,
+          })();
+          await authorize();
+        },
+        publishTerminal: runtime.publishTerminal,
+      });
+      // Only an explicit boolean acknowledgement can complete the handoff.
+      // An undefined return may mean the executor never activated its lease.
+      if (outcome !== true && outcome !== false) {
+        throw new Error('NATIVE_RECOVERY_HANDOFF_INDETERMINATE');
+      }
+      return outcome;
+    } finally {
+      clearInterval(heartbeat);
+      recoveryAbort.abort();
+      if (renewalInFlight) {
+        await renewalInFlight.catch(() => {});
+      }
+      if (!executorEntered) {
+        try {
+          await store.releaseDrainedMissionRecovery(
+            claim.streamId,
+            claim.createdAt,
+            claim.ownerToken,
+          );
+        } catch (error) {
+          log.warn('[NativeMissionRecovery] Failed to release pre-execution claim', error);
+        }
+      }
+    }
+  };
+}
+module.exports = { createNativeMissionRecoveryCoordinator };

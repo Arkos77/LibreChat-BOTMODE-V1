@@ -11,6 +11,15 @@ async function loadModels(req) {
   return { ...defaultModelsConfig, ...customModelsConfig };
 }
 
+async function loadModelsFromContext({ user, appConfig }) {
+  if (!user?.id || !appConfig) throw new Error('MODEL_CATALOG_AUTHENTICATED_CONFIG_REQUIRED');
+  const [defaultModelsConfig, customModelsConfig] = await Promise.all([
+    loadDefaultModels.fromContext({ user, appConfig }),
+    loadConfigModels.fromContext({ user, appConfig }),
+  ]);
+  return { ...defaultModelsConfig, ...customModelsConfig };
+}
+
 async function modelController(req, res) {
   try {
     const modelConfig = await loadModels(req);
@@ -21,4 +30,4 @@ async function modelController(req, res) {
   }
 }
 
-module.exports = { modelController, loadModels, getModelsConfig };
+module.exports = { modelController, loadModels, getModelsConfig, loadModelsFromContext };

@@ -173,6 +173,7 @@ const PUBLISH_SEQ_LUA =
   'if retainedEpoch ~= ARGV[5] then return -1 end ' +
   'end ' +
   'end ' +
+  'if redis.call("HGET", KEYS[2], "__missionRecoveryOwner") then return -1 end ' +
   'if ARGV[8] == "1" then ' +
   'local currentStatus = redis.call("HGET", KEYS[2], "status") ' +
   'if currentStatus ~= "running" and currentStatus ~= "requires_action" then return -1 end ' +

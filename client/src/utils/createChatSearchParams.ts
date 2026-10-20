@@ -127,3 +127,26 @@ export default function createChatSearchParams(
     return params;
   }, params);
 }
+
+/**
+ * Replace stale model/agent identity query parameters with the selection that
+ * is actually being opened. Keep unrelated URL options (for example prompt or
+ * project scope) unchanged. Otherwise selecting an agent can leave a previous
+ * ?endpoint=openAI&model=... in the address bar; cold ChatRoute then applies
+ * those stale settings instead of the selected agent.
+ */
+export function mergeChatSelectionParams(
+  currentParams: URLSearchParams,
+  conversation: TConversation,
+): URLSearchParams {
+  const nextParams = new URLSearchParams(currentParams);
+  const selectedParams = createChatSearchParams(conversation);
+  for (const key of ['spec', 'endpoint', 'model', 'agent_id', 'assistant_id']) {
+    nextParams.delete(key);
+    const value = selectedParams.get(key);
+    if (value != null) {
+      nextParams.set(key, value);
+    }
+  }
+  return nextParams;
+}

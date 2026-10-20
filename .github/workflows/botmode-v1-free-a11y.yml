@@ -1,0 +1,87 @@
+name: BOTMODE V1 Free Axe Accessibility Qualification
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-free-a11y.yml'
+      - 'e2e/specs/a11y.spec.ts'
+      - 'e2e/playwright.config.a11y.ts'
+      - 'client/src/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Independent local axe-core scans. No Deque SaaS token, no real model API key,
+# no project volumes, and no production deployment.
+concurrency:
+  group: botmode-free-a11y-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  axe-playwright:
+    name: Playwright + axe-core, isolated local application
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CI: 'true'
+      E2E_CHROMIUM_CHANNEL: chrome
+      E2E_USE_MEMORY_MONGO: 'true'
+      E2E_STREAM_STORE: memory
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      NODE_OPTIONS: '--max-old-space-size=6144'
+    steps:
+      - name: Checkout exact PR source
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.16.0'
+          cache: npm
+
+      - name: Install exact lockfile
+        run: npm ci --ignore-scripts=false
+
+      - name: Build application prerequisites and client
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:api
+          npm run build:client-package
+          npm run build:client
+
+      - name: Verify installed public Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v google-chrome
+          google-chrome --version
+
+      - name: Execute existing local axe-core Playwright suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx playwright test --config=e2e/playwright.config.a11y.ts --reporter=line
+
+      - name: Record evidence scope
+        if: success()
+        run: |
+          echo 'BOTMODE_FREE_AXE_PLAYWRIGHT=PASS'
+          echo 'SCOPE=seven browser-based axe-core scans including BOT MODE project workspace, isolated signup/Mongo, no SaaS key or paid inference'
+          echo 'LIMIT=automated axe WCAG scans only, not manual screen reader, focus/keyboard, mobile or all workflows'
+
+      - name: Retain failing snapshots and trace for diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: botmode-free-a11y-failures
+          path: |
+            e2e/specs/.test-results/**
+            e2e/playwright-report/**
+          retention-days: 7
+          if-no-files-found: ignore

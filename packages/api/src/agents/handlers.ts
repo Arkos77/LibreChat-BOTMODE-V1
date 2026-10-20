@@ -87,11 +87,11 @@ import {
 } from './intent';
 import { buildSkillPrimeMessage, isSkillFilePath, SKILL_FILE_PREFIX } from './skills';
 import { resolveCallerCapabilityProjectionSnapshot } from './callerCapabilities';
+import { guardPtcToolMap, instrumentPtcToolMap } from './ptc';
 import { createSkillContentDigest } from './compatibility';
 import { parseFrontmatter } from '../skills/import';
 import { cleanCodeToolOutput } from './cleanup';
 import { primeSkillFiles } from './skillFiles';
-import { instrumentPtcToolMap } from './ptc';
 import { markSandboxReady } from './prewarm';
 
 export interface ToolEndCallbackData {
@@ -240,7 +240,10 @@ export interface ToolExecuteOptions {
       claimId: string;
     }) => Promise<
       | { status: 'acquired' | 'not_found' | 'not_ready' }
-      | { status: 'claimed'; claim?: { kind: 'manual' | 'wakeup'; claimId: string } }
+      | {
+          status: 'claimed';
+          claim?: { kind: 'manual' | 'wakeup'; claimId: string };
+        }
     >;
     recoverDeadClaim?: BackgroundToolDeadClaimRecovery;
   };
@@ -253,6 +256,20 @@ export interface ToolExecuteOptions {
    * instrumentation.
    */
   emitPtcProgress?: (event: PtcToolCallEvent) => void;
+  /** Trusted execution seam for PTC inner calls, independent of SSE tracing.
+   * Must be supplied by a host with durable operation identity, current
+   * authorization, atomic receipt fencing and private result persistence.
+   * This optional injection is NOT itself a recovery guarantee.
+   */
+  guardPtcEffect?: (call: {
+    parentToolCallId: string;
+    name: string;
+    sequence: number;
+    input: unknown;
+    config: unknown;
+    invoke: () => Promise<unknown>;
+  }) => Promise<unknown>;
+
   /**
    * Loads a skill by name with ACL constraint (returns full body for injection).
    *
@@ -346,10 +363,18 @@ export interface ToolExecuteOptions {
   }) => Promise<
     | {
         status: 'updated';
-        skill: { _id: Types.ObjectId; name: string; body: string; version: number };
+        skill: {
+          _id: Types.ObjectId;
+          name: string;
+          body: string;
+          version: number;
+        };
         warnings: ValidationIssue[];
       }
-    | { status: 'conflict'; current: { _id: Types.ObjectId; name: string; version: number } }
+    | {
+        status: 'conflict';
+        current: { _id: Types.ObjectId; name: string; version: number };
+      }
     | { status: 'not_found' }
   >;
   /** Captures an exact skill create/update before mutation for governed child proposals. */
@@ -481,7 +506,12 @@ export interface ToolExecuteOptions {
   readSandboxFile?: (params: {
     file_path: string;
     session_id?: string;
-    files?: Array<{ id: string; name: string; session_id?: string; storage_session_id?: string }>;
+    files?: Array<{
+      id: string;
+      name: string;
+      session_id?: string;
+      storage_session_id?: string;
+    }>;
     /** Per-conversation stateful runtime-session hint (thread_id); forwarded so a
      *  host file op that is the first sandbox call joins the same runtime session
      *  as bash_tool instead of the Code API's default session. */
@@ -505,7 +535,12 @@ export interface ToolExecuteOptions {
   readSandboxImage?: (params: {
     file_path: string;
     session_id?: string;
-    files?: Array<{ id: string; name: string; session_id?: string; storage_session_id?: string }>;
+    files?: Array<{
+      id: string;
+      name: string;
+      session_id?: string;
+      storage_session_id?: string;
+    }>;
     /** @see readSandboxFile.runtime_session_hint */
     runtime_session_hint?: string;
     codeApiBaseUrl?: string;
@@ -520,7 +555,12 @@ export interface ToolExecuteOptions {
     /** `size`: over `maxBytes`. `round_trips`: within the byte cap, but more
      *  windowed `/exec` reads than one call may spend on the Code API's
      *  per-user execution limiter. */
-    | { tooLarge: true; reason?: 'size' | 'round_trips'; bytes: number; inlineCeiling?: number }
+    | {
+        tooLarge: true;
+        reason?: 'size' | 'round_trips';
+        bytes: number;
+        inlineCeiling?: number;
+      }
     | null
   >;
   /**
@@ -533,7 +573,12 @@ export interface ToolExecuteOptions {
     file_path: string;
     content: string;
     session_id?: string;
-    files?: Array<{ id: string; name: string; session_id?: string; storage_session_id?: string }>;
+    files?: Array<{
+      id: string;
+      name: string;
+      session_id?: string;
+      storage_session_id?: string;
+    }>;
     /** @see readSandboxFile.runtime_session_hint */
     runtime_session_hint?: string;
     codeApiBaseUrl?: string;
@@ -543,7 +588,12 @@ export interface ToolExecuteOptions {
     stdout?: string;
     stderr?: string;
     session_id?: string;
-    files?: Array<{ id: string; name: string; storage_session_id?: string; session_id?: string }>;
+    files?: Array<{
+      id: string;
+      name: string;
+      storage_session_id?: string;
+      session_id?: string;
+    }>;
   } | null>;
 }
 
@@ -823,7 +873,12 @@ type LoadedSandboxText = LoadedSkillText;
 
 type SandboxSessionContext = {
   session_id?: string;
-  files?: Array<{ id: string; name: string; session_id?: string; storage_session_id?: string }>;
+  files?: Array<{
+    id: string;
+    name: string;
+    session_id?: string;
+    storage_session_id?: string;
+  }>;
 };
 
 const MIME_MAP: Readonly<Record<string, string>> = Object.freeze({
@@ -996,8 +1051,14 @@ function filteredSkillResult(
     ...(selected('frontmatter') && { frontmatter: input?.frontmatter }),
     ...((selected('file_name') || selected('file_text')) && {
       files: input?.files?.map((file) => ({
-        ...(selected('file_name') && { name: file?.name, filename: file?.filename }),
-        ...(selected('file_text') && { text: file?.text, content: file?.content }),
+        ...(selected('file_name') && {
+          name: file?.name,
+          filename: file?.filename,
+        }),
+        ...(selected('file_text') && {
+          text: file?.text,
+          content: file?.content,
+        }),
       })),
     }),
   };
@@ -1013,7 +1074,10 @@ function isFilteredSkillProjection(
     return filteredSkillResult(tc, req, input) != null;
   } catch (error) {
     if (isContentTraversalLimitError(error)) {
-      return isContentTraversalProtected({ error, filters: req?.config?.filters });
+      return isContentTraversalProtected({
+        error,
+        filters: req?.config?.filters,
+      });
     }
     throw error;
   }
@@ -1446,7 +1510,12 @@ function countExactOccurrences(content: string, needle: string): number[] {
 function findExactMatch(content: string, needle: string): MatchStatus {
   const matches = countExactOccurrences(content, needle);
   if (matches.length === 1) {
-    return { status: 'matched', index: matches[0], length: needle.length, strategy: 'exact' };
+    return {
+      status: 'matched',
+      index: matches[0],
+      length: needle.length,
+      strategy: 'exact',
+    };
   }
   if (matches.length > 1) {
     return { status: 'ambiguous', strategy: 'exact', count: matches.length };
@@ -1545,10 +1614,18 @@ function findWhitespaceNormalizedMatch(content: string, needle: string): MatchSt
     }
   }
   if (matches.length === 1) {
-    return { status: 'matched', ...matches[0], strategy: 'whitespace-normalized' };
+    return {
+      status: 'matched',
+      ...matches[0],
+      strategy: 'whitespace-normalized',
+    };
   }
   if (matches.length > 1) {
-    return { status: 'ambiguous', strategy: 'whitespace-normalized', count: matches.length };
+    return {
+      status: 'ambiguous',
+      strategy: 'whitespace-normalized',
+      count: matches.length,
+    };
   }
   return { status: 'none' };
 }
@@ -1894,7 +1971,12 @@ function buildImageArtifactResult(
     status: 'success',
     content: `Image: ${displayPath} (${bytes} bytes, ${mimeType})`,
     artifact: {
-      content: [{ type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } }],
+      content: [
+        {
+          type: 'image_url',
+          image_url: { url: `data:${mimeType};base64,${base64}` },
+        },
+      ],
     },
   };
 }
@@ -1992,7 +2074,12 @@ async function handleSandboxImageRead(
   const ctx = tc.codeSessionContext as SandboxSessionContext | undefined;
   let read:
     | { base64: string; bytes: number }
-    | { tooLarge: true; reason?: 'size' | 'round_trips'; bytes: number; inlineCeiling?: number }
+    | {
+        tooLarge: true;
+        reason?: 'size' | 'round_trips';
+        bytes: number;
+        inlineCeiling?: number;
+      }
     | null;
   try {
     read = await readSandboxImage({
@@ -2432,7 +2519,9 @@ async function resolveSkillForAuthoring(
     return null;
   }
 
-  return await getSkillByName(skillName, accessibleIds, { preferModelInvocable: true });
+  return await getSkillByName(skillName, accessibleIds, {
+    preferModelInvocable: true,
+  });
 }
 
 async function resolveAuthorSkillForCurrentUser({
@@ -2458,7 +2547,9 @@ async function resolveAuthorSkillForCurrentUser({
   if (!skill) {
     return null;
   }
-  rememberAuthoredSkill([mergedConfigurable, sourceConfigurable], skill, { prime: false });
+  rememberAuthoredSkill([mergedConfigurable, sourceConfigurable], skill, {
+    prime: false,
+  });
   return skill;
 }
 
@@ -2595,8 +2686,13 @@ function mergeActiveSkillNames(
  */
 function toolRequiresEphemeralConnection(tool: StructuredToolInterface | undefined): boolean {
   return (
-    (tool as (StructuredToolInterface & { mcpRequiresEphemeralConnection?: boolean }) | undefined)
-      ?.mcpRequiresEphemeralConnection === true
+    (
+      tool as
+        | (StructuredToolInterface & {
+            mcpRequiresEphemeralConnection?: boolean;
+          })
+        | undefined
+    )?.mcpRequiresEphemeralConnection === true
   );
 }
 
@@ -2634,7 +2730,10 @@ function resolveBackgroundUserId(configurable: Record<string, unknown> | undefin
 function toolDeclaresRunInBackgroundParam(tool: StructuredToolInterface): boolean {
   const schema = (
     tool as StructuredToolInterface & {
-      schema?: { shape?: Record<string, unknown>; properties?: Record<string, unknown> };
+      schema?: {
+        shape?: Record<string, unknown>;
+        properties?: Record<string, unknown>;
+      };
     }
   ).schema;
   if (schema == null) {
@@ -2655,7 +2754,10 @@ function toolDeclaresRunInBackgroundParam(tool: StructuredToolInterface): boolea
 function toolDeclaresIntentParam(tool: StructuredToolInterface): boolean {
   const schema = (
     tool as StructuredToolInterface & {
-      schema?: { shape?: Record<string, unknown>; properties?: Record<string, unknown> };
+      schema?: {
+        shape?: Record<string, unknown>;
+        properties?: Record<string, unknown>;
+      };
     }
   ).schema;
   if (schema == null) {
@@ -2682,6 +2784,14 @@ function mergeToolConfigurables(
   loaded: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
   const merged = { ...base, ...loaded };
+  // This is a monotonic safety requirement: a deferred tool loader must not
+  // downgrade a recovery fence provided by the running graph (or vice versa).
+  if (
+    base?.nativeMissionEffectFenceRequired === true ||
+    loaded?.nativeMissionEffectFenceRequired === true
+  ) {
+    merged.nativeMissionEffectFenceRequired = true;
+  }
   const accessibleSkillIds = mergeAccessibleSkillIds(base, loaded);
   if (accessibleSkillIds) {
     merged.accessibleSkillIds = accessibleSkillIds;
@@ -2787,7 +2897,10 @@ async function loadSkillFileTextForAuthoring({
 
   const { getSkillFileByPath, getStrategyFunctions, updateSkillFileContent } = options;
   if (!getSkillFileByPath) {
-    return { status: 'error', message: 'Skill file reading is not configured.' };
+    return {
+      status: 'error',
+      message: 'Skill file reading is not configured.',
+    };
   }
 
   const file = await getSkillFileByPath(skill._id, relativePath);
@@ -2795,7 +2908,10 @@ async function loadSkillFileTextForAuthoring({
     return { status: 'missing' };
   }
   if (file.isBinary === true) {
-    return { status: 'error', message: `File "${relativePath}" is binary and cannot be edited.` };
+    return {
+      status: 'error',
+      message: `File "${relativePath}" is binary and cannot be edited.`,
+    };
   }
   if (file.content != null && file.content !== '') {
     return {
@@ -2816,7 +2932,10 @@ async function loadSkillFileTextForAuthoring({
 
   const strategy = getStrategyFunctions(file.source);
   if (!strategy.getDownloadStream) {
-    return { status: 'error', message: 'Download is not supported for this storage backend.' };
+    return {
+      status: 'error',
+      message: 'Download is not supported for this storage backend.',
+    };
   }
 
   const stream = await strategy.getDownloadStream(req, file.filepath);
@@ -2844,29 +2963,33 @@ async function loadSkillFileTextForAuthoring({
   for (let i = 0; i < checkLen; i++) {
     if (buffer[i] === 0) {
       if (updateSkillFileContent) {
-        updateSkillFileContent(skill._id, relativePath, { isBinary: true }).catch(
-          (err: unknown) => {
-            logAxiosError({
-              message: '[loadSkillFileTextForAuthoring] cache write failed',
-              error: err,
-            });
-          },
-        );
+        updateSkillFileContent(skill._id, relativePath, {
+          isBinary: true,
+        }).catch((err: unknown) => {
+          logAxiosError({
+            message: '[loadSkillFileTextForAuthoring] cache write failed',
+            error: err,
+          });
+        });
       }
-      return { status: 'error', message: `File "${relativePath}" is binary and cannot be edited.` };
+      return {
+        status: 'error',
+        message: `File "${relativePath}" is binary and cannot be edited.`,
+      };
     }
   }
 
   const text = buffer.toString('utf-8');
   if (updateSkillFileContent) {
-    updateSkillFileContent(skill._id, relativePath, { content: text, isBinary: false }).catch(
-      (err: unknown) => {
-        logAxiosError({
-          message: '[loadSkillFileTextForAuthoring] cache write failed',
-          error: err,
-        });
-      },
-    );
+    updateSkillFileContent(skill._id, relativePath, {
+      content: text,
+      isBinary: false,
+    }).catch((err: unknown) => {
+      logAxiosError({
+        message: '[loadSkillFileTextForAuthoring] cache write failed',
+        error: err,
+      });
+    });
   }
   return { status: 'loaded', content: text, bytes: buffer.length };
 }
@@ -2884,7 +3007,10 @@ async function inspectBundledSkillFileForCreate({
 }): Promise<ExistingSkillFile> {
   const { getSkillFileByPath } = options;
   if (!getSkillFileByPath) {
-    return { status: 'error', message: 'Skill file reading is not configured.' };
+    return {
+      status: 'error',
+      message: 'Skill file reading is not configured.',
+    };
   }
 
   const file = await getSkillFileByPath(skill._id, relativePath);
@@ -3134,7 +3260,11 @@ async function writeSkillMd({
         },
       );
   }
-  const result = await options.updateSkill({ id: skillId, expectedVersion: skill.version, update });
+  const result = await options.updateSkill({
+    id: skillId,
+    expectedVersion: skill.version,
+    update,
+  });
   if (result.status === 'conflict') {
     return errorResult(
       tc,
@@ -3372,7 +3502,11 @@ async function handleCreateFileCall(
   sourceConfigurable?: Record<string, unknown>,
   sandboxContext?: SandboxSessionContext,
 ): AuthoringResult {
-  const args = tc.args as { path?: unknown; content?: unknown; overwrite?: unknown };
+  const args = tc.args as {
+    path?: unknown;
+    content?: unknown;
+    overwrite?: unknown;
+  };
   if (typeof args.path !== 'string' || args.path.length === 0) {
     return errorResult(tc, 'path is required');
   }
@@ -3858,8 +3992,10 @@ async function handleReadFileCall(
      keeps the value correct for any future consumer that compares with
      `.equals()` or `===`. */
   const lookupAccessibleIds = primedIdString ? [new Types.ObjectId(primedIdString)] : accessibleIds;
-  const lookupOptions: { preferUserInvocable?: boolean; preferModelInvocable?: boolean } =
-    primedIdString ? {} : { preferModelInvocable: true };
+  const lookupOptions: {
+    preferUserInvocable?: boolean;
+    preferModelInvocable?: boolean;
+  } = primedIdString ? {} : { preferModelInvocable: true };
   let skill = await getSkillByName(skillName, lookupAccessibleIds, lookupOptions);
   if (!skill) {
     skill = await recoverAuthorSkill();
@@ -4067,14 +4203,14 @@ async function handleReadFileCall(
     if (isBinary) {
       // Cache the binary flag (first read only)
       if (file.isBinary == null && updateSkillFileContent) {
-        updateSkillFileContent(skill._id, relativePath, { isBinary: true }).catch(
-          (err: unknown) => {
-            logAxiosError({
-              message: '[handleReadFileCall] cache write failed',
-              error: err,
-            });
-          },
-        );
+        updateSkillFileContent(skill._id, relativePath, {
+          isBinary: true,
+        }).catch((err: unknown) => {
+          logAxiosError({
+            message: '[handleReadFileCall] cache write failed',
+            error: err,
+          });
+        });
       }
 
       // Return images/PDFs as artifacts
@@ -4113,14 +4249,15 @@ async function handleReadFileCall(
 
     // Cache text on first read (skill files are immutable)
     if (file.content == null && updateSkillFileContent && buffer.length <= MAX_CACHE_BYTES) {
-      updateSkillFileContent(skill._id, relativePath, { content: text, isBinary: false }).catch(
-        (err: unknown) => {
-          logAxiosError({
-            message: '[handleReadFileCall] cache write failed',
-            error: err,
-          });
-        },
-      );
+      updateSkillFileContent(skill._id, relativePath, {
+        content: text,
+        isBinary: false,
+      }).catch((err: unknown) => {
+        logAxiosError({
+          message: '[handleReadFileCall] cache write failed',
+          error: err,
+        });
+      });
     }
 
     if (buffer.length > MAX_READABLE_BYTES) {
@@ -4491,6 +4628,7 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
     backgroundToolCompletion,
     emitAttachment,
     emitPtcProgress,
+    guardPtcEffect,
     subagentTasks,
   } = options;
 
@@ -4570,6 +4708,16 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
               sourceConfigurable,
               loadedConfigurable,
             );
+            // Recovery fencing currently has a durable adapter only for inner
+            // PTC calls. A recovered direct or detached tool must NEVER fall
+            // through to the ordinary invoke path without its own receipt.
+            // Check the whole batch before any tool can start.
+            if (
+              mergedConfigurable?.nativeMissionEffectFenceRequired === true &&
+              allowedToolCalls.some((tc) => tc.name !== Constants.PROGRAMMATIC_TOOL_CALLING)
+            ) {
+              throw new Error('NATIVE_MISSION_DIRECT_EFFECT_GUARD_REQUIRED');
+            }
             const effectAuthorityRequired =
               data.effectAuthorityRequired === true ||
               mergedConfigurable?.effectAuthorityRequired === true;
@@ -5061,7 +5209,10 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                     );
                   }
                 };
-                let invokePromise: Promise<{ content?: unknown; artifact?: unknown }>;
+                let invokePromise: Promise<{
+                  content?: unknown;
+                  artifact?: unknown;
+                }>;
                 const backgroundAbortController = new AbortController();
                 try {
                   let backgroundInvokeArgs = normalizedArgs;
@@ -5319,7 +5470,11 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                       backgroundUserId,
                       backgroundConversationId,
                       task.id,
-                      { content, artifact: result.artifact, harvestStarted: harvestEnabled },
+                      {
+                        content,
+                        artifact: result.artifact,
+                        harvestStarted: harvestEnabled,
+                      },
                     );
                     await persistSettledBackgroundResult({
                       /** Use the registry's canonical bounded serialization so
@@ -5765,7 +5920,11 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                             {
                               input: tc.args,
                               outputFiltered: true,
-                              output: { name: tc.name, tool_call_id: tc.id, content: '' },
+                              output: {
+                                name: tc.name,
+                                tool_call_id: tc.id,
+                                content: '',
+                              },
                             },
                             {
                               ...(metadata ?? {}),
@@ -5959,9 +6118,21 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                          * must not put their values on the wire. */
                         const ptcReq = mergedConfigurable?.req as ServerRequest | undefined;
                         const ptcArgumentPii = ptcReq?.config?.filters?.toolArguments?.pii;
+                        // Apply the execution guard BEFORE optional telemetry so
+                        // excluded or untraced tools cannot bypass the guard.
+                        let guardedPtcToolMap = eligiblePtcToolMap;
+                        if (guardPtcEffect) {
+                          guardedPtcToolMap = guardPtcToolMap(eligiblePtcToolMap, (call) =>
+                            guardPtcEffect({ parentToolCallId: tc.id, ...call }),
+                          );
+                        } else if (mergedConfigurable?.nativeMissionEffectFenceRequired === true) {
+                          guardedPtcToolMap = guardPtcToolMap(eligiblePtcToolMap, async () => {
+                            throw new Error('NATIVE_MISSION_EFFECT_GUARD_REQUIRED');
+                          });
+                        }
                         toolCallConfig.toolMap = emitPtcProgress
                           ? instrumentPtcToolMap({
-                              toolMap: eligiblePtcToolMap,
+                              toolMap: guardedPtcToolMap,
                               toolCallId: tc.id,
                               runId: (metadata as Record<string, unknown>)?.run_id as
                                 | string
@@ -5977,7 +6148,7 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                               ),
                               emit: emitPtcProgress,
                             })
-                          : eligiblePtcToolMap;
+                          : guardedPtcToolMap;
                       }
                     }
 
@@ -6078,7 +6249,11 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                             {
                               input: tc.args,
                               outputFiltered: true,
-                              output: { name: tc.name, tool_call_id: tc.id, content: '' },
+                              output: {
+                                name: tc.name,
+                                tool_call_id: tc.id,
+                                content: '',
+                              },
                             },
                             {
                               ...(metadata ?? {}),

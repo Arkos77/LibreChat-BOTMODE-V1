@@ -24,13 +24,12 @@
           "bindings": [
             { "id": "99-or-free", "provider": "OpenRouter", "model": "openrouter/free", "signals": { "pricingTier": "free" } },
             { "id": "01-lightning", "provider": "OpenRouter", "model": "nvidia/nemotron-3.5-lightning:free", "signals": { "pricingTier": "free" } },
-            { "id": "02-gemini", "provider": "Gemini", "model": "models/gemini-3.5-flash" },
             { "id": "03-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free", "signals": { "pricingTier": "free" } }
           ],
           "preferredBindingId": "01-lightning",
           "routingMode": "adaptive",
           "requestTimeoutMs": 15000,
-          "routingConstraints": { "spendingPolicy": "free_first", "preferCached": true },
+          "routingConstraints": { "spendingPolicy": "free_only", "preferCached": true },
           "allowFailover": true
         },
         {
@@ -38,57 +37,56 @@
           "bindings": [
             { "id": "99-or-free", "provider": "OpenRouter", "model": "openrouter/free", "signals": { "pricingTier": "free" } },
             { "id": "01-lightning", "provider": "OpenRouter", "model": "nvidia/nemotron-3.5-lightning:free", "signals": { "pricingTier": "free" } },
-            { "id": "02-gemini", "provider": "Gemini", "model": "models/gemini-3.5-flash" },
             { "id": "03-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free", "signals": { "pricingTier": "free" } }
           ],
           "preferredBindingId": "01-lightning",
           "routingMode": "adaptive",
           "requestTimeoutMs": 15000,
-          "routingConstraints": { "spendingPolicy": "free_first", "preferCached": true },
+          "routingConstraints": { "spendingPolicy": "free_only", "preferCached": true },
           "allowFailover": true
         },
         {
           "agentName": "ANALYSE",
           "bindings": [
-            { "id": "or-free", "provider": "OpenRouter", "model": "openrouter/free" },
-            { "id": "or-ultra", "provider": "OpenRouter", "model": "nvidia/nemotron-3-ultra-550b-a55b:free" },
-            { "id": "or-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free" },
-            { "id": "gemini-flash", "provider": "Gemini", "model": "models/gemini-3.5-flash" }
+            { "id": "or-free", "provider": "OpenRouter", "model": "openrouter/free", "signals": { "pricingTier": "free" } },
+            { "id": "or-ultra", "provider": "OpenRouter", "model": "nvidia/nemotron-3-ultra-550b-a55b:free", "signals": { "pricingTier": "free" } },
+            { "id": "or-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free", "signals": { "pricingTier": "free" } }
           ],
           "preferredBindingId": "or-ultra",
+          "routingConstraints": { "spendingPolicy": "free_only" },
           "allowFailover": true
         },
         {
           "agentName": "CODE",
           "bindings": [
-            { "id": "or-free", "provider": "OpenRouter", "model": "openrouter/free" },
-            { "id": "or-laguna", "provider": "OpenRouter", "model": "poolside/laguna-s-2.1:free" },
-            { "id": "or-north-code", "provider": "OpenRouter", "model": "cohere/north-mini-code:free" },
-            { "id": "gemini-flash", "provider": "Gemini", "model": "models/gemini-3.5-flash" }
+            { "id": "or-free", "provider": "OpenRouter", "model": "openrouter/free", "signals": { "pricingTier": "free" } },
+            { "id": "or-laguna", "provider": "OpenRouter", "model": "poolside/laguna-s-2.1:free", "signals": { "pricingTier": "free" } },
+            { "id": "or-north-code", "provider": "OpenRouter", "model": "cohere/north-mini-code:free", "signals": { "pricingTier": "free" } }
           ],
           "preferredBindingId": "or-laguna",
+          "routingConstraints": { "spendingPolicy": "free_only" },
           "allowFailover": true
         },
         {
           "agentName": "DOCUMENTS",
           "bindings": [
-            { "id": "or-free", "provider": "OpenRouter", "model": "openrouter/free" },
-            { "id": "or-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free" },
-            { "id": "or-ultra", "provider": "OpenRouter", "model": "nvidia/nemotron-3-ultra-550b-a55b:free" },
-            { "id": "gemini-flash", "provider": "Gemini", "model": "models/gemini-3.5-flash" }
+            { "id": "or-free", "provider": "OpenRouter", "model": "openrouter/free", "signals": { "pricingTier": "free" } },
+            { "id": "or-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free", "signals": { "pricingTier": "free" } },
+            { "id": "or-ultra", "provider": "OpenRouter", "model": "nvidia/nemotron-3-ultra-550b-a55b:free", "signals": { "pricingTier": "free" } }
           ],
           "preferredBindingId": "or-super",
+          "routingConstraints": { "spendingPolicy": "free_only" },
           "allowFailover": true
         },
         {
           "agentName": "RÉDACTION",
           "bindings": [
-            { "id": "or-free", "provider": "OpenRouter", "model": "openrouter/free" },
-            { "id": "or-lightning", "provider": "OpenRouter", "model": "nvidia/nemotron-3.5-lightning:free" },
-            { "id": "or-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free" },
-            { "id": "gemini-flash", "provider": "Gemini", "model": "models/gemini-3.5-flash" }
+            { "id": "or-free", "provider": "OpenRouter", "model": "openrouter/free", "signals": { "pricingTier": "free" } },
+            { "id": "or-lightning", "provider": "OpenRouter", "model": "nvidia/nemotron-3.5-lightning:free", "signals": { "pricingTier": "free" } },
+            { "id": "or-super", "provider": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free", "signals": { "pricingTier": "free" } }
           ],
           "preferredBindingId": "or-lightning",
+          "routingConstraints": { "spendingPolicy": "free_only" },
           "allowFailover": true
         }
       ]

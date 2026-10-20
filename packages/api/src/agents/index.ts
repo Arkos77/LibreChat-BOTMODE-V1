@@ -6,6 +6,14 @@ export * from './callerCapabilities';
 export * from './client';
 export * from './config';
 export * from './checkpointer';
+// Explicit recovery runtime exports, available to the authenticated API host.
+// Importing these never registers or starts an orphan recovery handler.
+export { continueColdNativeMissionGraph } from './nativeMissionColdGraphContinuation';
+export {
+  executeRecoveredMissionSegment,
+  qualifyAndExecuteRecoveredMissionSegment,
+  RecoveredSegmentOwnershipLost,
+} from './nativeMissionRecoveredSegment';
 export * from './compatibility';
 export * from './compaction';
 export * from './contact';

@@ -1,3 +1,4 @@
+import type { MissionPlan } from '../agents/orchestrator/types';
 import { sanitizeJobMetadata } from './metadata';
 
 describe('sanitizeJobMetadata', () => {
@@ -7,8 +8,24 @@ describe('sanitizeJobMetadata', () => {
     });
   });
 
+  it('persists an isolated native mission capability fingerprint alongside its plan', () => {
+    const attestation = {
+      version: 1 as const,
+      planId: 'mission-plan',
+      agentIds: ['worker', 'specialist'],
+      mode: 'receipts_required' as const,
+      digest: 'a'.repeat(64),
+      hostEffectPathsPresent: false,
+    };
+    const sanitized = sanitizeJobMetadata({ nativeMissionCapabilityAttestation: attestation });
+    expect(sanitized.nativeMissionCapabilityAttestation).toEqual(attestation);
+    expect(sanitized.nativeMissionCapabilityAttestation).not.toBe(attestation);
+    attestation.agentIds[0] = 'attacker';
+    expect(sanitized.nativeMissionCapabilityAttestation?.agentIds[0]).toBe('worker');
+  });
+
   it('preserves an exact durable orchestrator plan without sharing caller mutation', () => {
-    const orchestratorPlan = {
+    const orchestratorPlan: MissionPlan = {
       planId: 'mission-p6:v1',
       planVersion: 1,
       mission: {

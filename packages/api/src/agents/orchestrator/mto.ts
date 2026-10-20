@@ -15,6 +15,7 @@ export type MtoEventType =
   | 'APPROVED'
   | 'REJECTED'
   | 'ASSIGNED'
+  | 'DISPATCHED'
   | 'LEASED'
   | 'STARTED'
   | 'OBSERVED'

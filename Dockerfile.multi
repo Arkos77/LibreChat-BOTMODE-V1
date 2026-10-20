@@ -110,12 +110,26 @@ RUN attempt=1; \
       npm cache clean --force || true; \
       sleep 10; \
     done
+# Alpine API keeps the Playwright client only; Chromium runs in the
+# isolated glibc-based Playwright service with a matching version.
+ARG BOTMODE_PLAYWRIGHT_VERSION=1.62.1
+RUN set -eu; \
+    mkdir -p /tmp/botmode-playwright-client; \
+    printf '{"name":"botmode-playwright-client","private":true,"version":"1.0.0"}\n' > /tmp/botmode-playwright-client/package.json; \
+    npm --prefix /tmp/botmode-playwright-client install --ignore-scripts --no-save --package-lock=false --omit=dev "playwright@${BOTMODE_PLAYWRIGHT_VERSION}"; \
+    cp -a /tmp/botmode-playwright-client/node_modules/playwright /app/node_modules/; \
+    cp -a /tmp/botmode-playwright-client/node_modules/playwright-core /app/node_modules/; \
+    rm -rf /tmp/botmode-playwright-client; \
+    node -e "if(typeof require('playwright').chromium.connect!=='function')process.exit(1)"; \
+    npm cache clean --force
 COPY api ./api
 COPY config ./config
 COPY skill ./skill
 COPY --from=data-provider-build /app/packages/data-provider/dist ./packages/data-provider/dist
 COPY --from=data-schemas-build /app/packages/data-schemas/dist ./packages/data-schemas/dist
 COPY --from=api-package-build /app/packages/api/dist ./packages/api/dist
+COPY scripts/botmode/ensure-singleton-agents-sdk.js ./scripts/botmode/ensure-singleton-agents-sdk.js
+RUN node /app/scripts/botmode/ensure-singleton-agents-sdk.js
 COPY --from=client-build /app/client/dist ./client/dist
 # Propagate build metadata into runtime env so /api/config can expose it.
 # Declared here (after the heavy install/copy steps) so that commit/date

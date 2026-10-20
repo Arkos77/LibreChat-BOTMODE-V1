@@ -133,7 +133,7 @@ describe('P12 governed YouTube production', () => {
     });
     const publisher = createYouTubeDataApiPublisher({
       accessToken: 'access-token-fixture',
-      fetchImpl,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
       assets: {
         resolve: jest.fn(async (artifactId) =>
           artifactId === 'thumb-1'

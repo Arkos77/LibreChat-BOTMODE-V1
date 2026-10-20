@@ -1,0 +1,94 @@
+name: BOTMODE V1 GHCR Candidate Rollback Rehearsal
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-ghcr-rollback-rehearsal.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  ghcr-candidate-rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact CI-qualified integrated candidate
+        uses: actions/checkout@v5
+        with:
+          ref: 54b30a342bf8f3480d7385b30cfa669b73c92878
+          persist-credentials: false
+
+      - name: Provision disposable Lite staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          chmod 600 .env
+          {
+            echo "BOTMODE_MONGO_PASSWORD=$(openssl rand -hex 24)"
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)"
+          } >> .env
+          echo "BOTMODE_HOST_PORT=3090" >> "$GITHUB_ENV"
+          echo "COMPOSE_PROJECT_NAME=botmode-rollback-ci" >> "$GITHUB_ENV"
+          echo "PREVIOUS_IMAGE=ghcr.io/arkos77/librechat-botmode-v1:sha-d4e82dded5df" >> "$GITHUB_ENV"
+          echo "CANDIDATE_IMAGE=ghcr.io/arkos77/librechat-botmode-v1@sha256:07185a44a89b06e4ca855a868d6eb557feb60065084fdde5b2183050d1427b95" >> "$GITHUB_ENV"
+
+      - name: Pull both immutable references
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          docker pull "$PREVIOUS_IMAGE"
+          docker pull "$CANDIDATE_IMAGE"
+          docker image inspect "$PREVIOUS_IMAGE" "$CANDIDATE_IMAGE" >/dev/null
+
+      - name: Baseline to candidate and back with persistent MongoDB marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose=(docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)
+          wait_ready() {
+            local ready=0
+            for _ in $(seq 1 90); do
+              if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then ready=1; break; fi
+              sleep 2
+            done
+            if [ "$ready" != 1 ]; then
+              "${compose[@]}" ps
+              "${compose[@]}" logs --tail 75 api mongodb | sed -E 's/(password|secret|token|api[_-]?key)([=: ]+)[^ ]+/\1\2[REDACTED]/Ig' || true
+              return 1
+            fi
+          }
+          check_marker() {
+            local value
+            value=$("${compose[@]}" exec -T mongodb sh -ec 'mongo --quiet --username botmode_admin --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''print(db.rollback_ghcr.countDocuments({_id:"candidate-rollback",state:"preserved"}))'\''' | tail -1 | tr -d '\r')
+            test "$value" = 1
+          }
+          export BOTMODE_IMAGE="$PREVIOUS_IMAGE"
+          "${compose[@]}" up -d mongodb api
+          wait_ready
+          "${compose[@]}" exec -T mongodb sh -ec 'mongo --quiet --username botmode_admin --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''db.rollback_ghcr.updateOne({_id:"candidate-rollback"},{$set:{state:"preserved"}},{upsert:true})'\'''
+          check_marker
+          echo 'BOTMODE_GHCR_BASELINE=PASS'
+
+          export BOTMODE_IMAGE="$CANDIDATE_IMAGE"
+          "${compose[@]}" up -d --no-deps --force-recreate api
+          wait_ready
+          check_marker
+          echo 'BOTMODE_GHCR_UPGRADE_DATA=PASS'
+
+          export BOTMODE_IMAGE="$PREVIOUS_IMAGE"
+          "${compose[@]}" up -d --no-deps --force-recreate api
+          wait_ready
+          check_marker
+          echo 'BOTMODE_GHCR_ROLLBACK_DATA=PASS'
+          echo 'SCOPE=disposable Lite HTTP readiness and Mongo marker across image transition; no production migrations, authentication or durable task recovery'
+
+      - name: Remove runner-only resources
+        if: always()
+        shell: bash
+        run: |
+          export BOTMODE_IMAGE="${PREVIOUS_IMAGE:-ghcr.io/arkos77/librechat-botmode-v1:sha-d4e82dded5df}"
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down -v --remove-orphans || true
+          rm -f .env

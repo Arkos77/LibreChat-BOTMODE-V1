@@ -35,6 +35,15 @@ export interface GenerationJobMetadata {
    * Persisted before execution and replayed verbatim on HITL resume; it is
    * planning/topology data only and grants no execution permission. */
   orchestratorPlan?: MissionPlan;
+  /** Original agent capability fingerprint. Never a tool replay authorization. */
+  nativeMissionCapabilityAttestation?: {
+    version: 1;
+    planId: string;
+    agentIds: string[];
+    mode: 'model_only' | 'receipts_required';
+    digest: string;
+    hostEffectPathsPresent: boolean;
+  };
   /** Durable Mission Oracle QA state for this exact generation. */
   missionOracleState?: MissionOracleState;
   /** Private, generation-fenced assistant candidate withheld from client-visible
@@ -172,7 +181,10 @@ export interface GenerationJob {
 }
 
 export type ContentPart = Agents.ContentPart;
-export type ResumeState = Agents.ResumeState;
+export type ResumeState = Agents.ResumeState & {
+  orchestratorPlan?: MissionPlan;
+  isRegenerate?: boolean;
+};
 
 export type ChunkHandler = (event: ServerSentEvent) => void;
 export type DoneHandler = (event: ServerSentEvent) => void;

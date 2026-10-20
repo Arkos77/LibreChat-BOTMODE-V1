@@ -1,0 +1,49 @@
+name: BOTMODE V1 Update Active Mission Fail-Closed Gate
+
+on:
+  pull_request:
+    paths:
+      - update.sh
+      - scripts/botmode/check-update-quiescence.sh
+      - scripts/botmode/tests/test_update_quiescence.py
+      - scripts/botmode/tests/test_update_quiescence_docker.sh
+      - .github/workflows/botmode-v1-update-active-mission-gate.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safe-update:
+    name: Offline matrix and real Redis/Docker refusal
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify source SHA and scripts syntax
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          bash -n update.sh scripts/botmode/check-update-quiescence.sh
+          python3 -m py_compile scripts/botmode/tests/test_update_quiescence.py
+          echo 'CI_UPDATE_SOURCE_AND_SYNTAX=PASS'
+      - name: Exercise fail-closed transitions without Docker or git mutations
+        run: python3 scripts/botmode/tests/test_update_quiescence.py
+      - name: Verify refusal with a real Docker API label and persistent Redis mission states
+        env:
+          CI: 'true'
+        run: bash scripts/botmode/tests/test_update_quiescence_docker.sh
+      - name: Record strict scope
+        if: always()
+        run: |
+          {
+            echo '### BOT MODE — update fail-closed gate'
+            echo 'An active API blocks an automated update before git pull, even if Redis is disabled.'
+            echo 'A stopped API does not make retained Redis running or requires_action jobs safe across versions.'
+            echo 'No provider, paid model, registry push, user volume, runtime deployment, or Redis migration was used.'
+            echo 'This test does not prove safe cross-version recovery; that remains a distinct release gate.'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,98 @@
+const {
+  createNativeMissionAuthenticatedRecoveryContext,
+} = require('./nativeMissionAuthenticatedRecoveryContext');
+
+/** Bridge verified host documents to a request-independent client initializer.
+ * Never construct a request/session or infer execution grants from Redis.
+ * The implementation must be the real host model/tool initializer; absence
+ * of that implementation is a hard refusal, not a synthetic fallback.
+ */
+function createNativeMissionAuthorizedClientInitializer({
+  manager,
+  authorizationDeps,
+  initializeClientFromDocuments,
+}) {
+  if (
+    typeof manager?.getJobStore !== 'function' ||
+    typeof initializeClientFromDocuments !== 'function'
+  ) {
+    throw new Error('NATIVE_MISSION_AUTHENTICATED_INITIALIZER_UNAVAILABLE');
+  }
+  const readContext = createNativeMissionAuthenticatedRecoveryContext(authorizationDeps);
+  return async ({ candidate, claim, assertAuthorized }) => {
+    if (
+      !claim ||
+      !candidate ||
+      candidate.streamId !== claim.streamId ||
+      candidate.createdAt !== claim.createdAt ||
+      candidate.checkpointNamespace !== claim.checkpointNamespace ||
+      candidate.checkpointId !== claim.checkpointId ||
+      typeof claim.ownerToken !== 'string' ||
+      !claim.ownerToken ||
+      typeof assertAuthorized !== 'function'
+    ) {
+      throw new Error('NATIVE_MISSION_AUTHENTICATED_INITIALIZER_CLAIM_DENIED');
+    }
+    await assertAuthorized();
+    const store = manager.getJobStore();
+    if (typeof store?.getJob !== 'function') {
+      throw new Error('NATIVE_MISSION_AUTHENTICATED_INITIALIZER_STORE_MISSING');
+    }
+    const job = await store.getJob(candidate.streamId);
+    const context = await readContext({ candidate, job });
+    await assertAuthorized();
+    const client = await initializeClientFromDocuments({
+      candidate,
+      claim,
+      job,
+      context,
+      assertAuthorized,
+    });
+    const clientRuntime = client?.options?.agentRuntime;
+    const request = client?.options?.req;
+    if (
+      manager.getJobStore() !== store ||
+      !client ||
+      client.conversationId !== candidate.streamId ||
+      client.options?.agent?.id !== job.agent_id ||
+      (clientRuntime?.user ?? request?.user) !== context.user ||
+      (clientRuntime?.requestBody ?? request?.body)?.conversationId !== candidate.streamId ||
+      (clientRuntime?.appConfig ?? request?.config) == null ||
+      (request != null &&
+        (request.user !== context.user ||
+          request.body?.conversationId !== candidate.streamId ||
+          request.config == null ||
+          (clientRuntime != null && request.config !== clientRuntime.appConfig))) ||
+      typeof client.createNativeMissionColdRunOptions !== 'function'
+    ) {
+      throw new Error('NATIVE_MISSION_AUTHENTICATED_INITIALIZER_CLIENT_DENIED');
+    }
+    // Model/tool initialization performs asynchronous host/provider IO. The
+    // generation may be replaced, stopped or reassigned while it runs; never
+    // expose that initialized client against a stale Redis job snapshot.
+    await assertAuthorized();
+    const currentJob = await store.getJob(candidate.streamId);
+    if (
+      manager.getJobStore() !== store ||
+      currentJob?.createdAt !== candidate.createdAt ||
+      currentJob?.checkpointNamespace !== candidate.checkpointNamespace ||
+      currentJob?.status !== 'running' ||
+      currentJob?.providerDrained !== false ||
+      currentJob?.providerExecutionId !== job.providerExecutionId ||
+      currentJob?.providerExecutionStartedId !== job.providerExecutionStartedId ||
+      currentJob?.pendingAction != null ||
+      currentJob?.userId !== job.userId ||
+      currentJob?.tenantId !== job.tenantId ||
+      currentJob?.agent_id !== job.agent_id ||
+      currentJob?.responseMessageId !== job.responseMessageId ||
+      currentJob?.userMessage?.messageId !== job.userMessage?.messageId ||
+      JSON.stringify(currentJob?.orchestratorPlan) !== JSON.stringify(job.orchestratorPlan)
+    ) {
+      throw new Error('NATIVE_MISSION_AUTHENTICATED_INITIALIZER_JOB_CHANGED');
+    }
+    await assertAuthorized();
+    return { client, job: currentJob };
+  };
+}
+
+module.exports = { createNativeMissionAuthorizedClientInitializer };

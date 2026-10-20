@@ -20,7 +20,10 @@ import type {
 } from './initialize';
 import type { ValidateAgentModelParams } from './validation';
 import type { ServerRequest } from '~/types';
-import { validateAgentModel as defaultValidateAgentModel } from './validation';
+import {
+  validateAgentModel as defaultValidateAgentModel,
+  validateAgentModelWithoutTransport,
+} from './validation';
 import { initializeAgent as defaultInitializeAgent } from './initialize';
 import { createEdgeCollector, filterOrphanedEdges } from './edges';
 import { isFatalAgentInitializationError } from './errors';
@@ -53,8 +56,10 @@ export type CheckAgentPermission = (params: {
 }) => Promise<boolean>;
 
 export interface DiscoverConnectedAgentsParams {
-  req: ServerRequest;
-  res: ServerResponse;
+  /** Shared principal and deployment state resolved at ingress, without transport handles. */
+  runtime?: InitializeAgentParams['runtime'];
+  req?: ServerRequest;
+  res?: ServerResponse;
   /** The already-initialized primary agent config (starting point for BFS). */
   primaryConfig: InitializedAgent;
   /**
@@ -189,7 +194,8 @@ async function initializeReferencedAgent(
     return null;
   }
 
-  const userId = params.req.user?.id;
+  const principal = params.runtime?.user ?? params.req?.user;
+  const userId = principal?.id;
   if (!userId) {
     logger.warn(`[initializeReferencedAgent] No authenticated user, skipping agent ${agentId}`);
     deps.onAgentSkipped?.(agentId);
@@ -198,7 +204,7 @@ async function initializeReferencedAgent(
 
   const hasAccess = await deps.checkPermission({
     userId,
-    role: params.req.user?.role,
+    role: principal?.role,
     resourceType: params.resourceType ?? ResourceType.AGENT,
     resourceId: agent._id,
     requiredPermission: PermissionBits.VIEW,
@@ -209,14 +215,20 @@ async function initializeReferencedAgent(
     return null;
   }
 
-  const validateAgentModel = deps.validateAgentModel ?? defaultValidateAgentModel;
-  const validation = await validateAgentModel({
-    req: params.req,
-    res: params.res,
-    agent,
-    modelsConfig: params.modelsConfig,
-    logViolation: deps.logViolation,
-  });
+  let validation;
+  if (params.req && params.res) {
+    validation = await (deps.validateAgentModel ?? defaultValidateAgentModel)({
+      req: params.req,
+      res: params.res,
+      agent,
+      modelsConfig: params.modelsConfig,
+      logViolation: deps.logViolation,
+    });
+  } else if (params.runtime?.user) {
+    validation = validateAgentModelWithoutTransport({ agent, modelsConfig: params.modelsConfig });
+  } else {
+    validation = { isValid: false, error: { message: 'Missing authenticated agent runtime' } };
+  }
   if (!validation.isValid) {
     throw new Error(validation.error?.message);
   }
@@ -225,8 +237,7 @@ async function initializeReferencedAgent(
   const initializeAgent = deps.initializeAgent ?? defaultInitializeAgent;
   const config = await initializeAgent(
     {
-      req: params.req,
-      res: params.res,
+      ...(params.runtime ? { runtime: params.runtime } : { req: params.req, res: params.res }),
       agent,
       loadTools: params.loadTools,
       requestFiles: params.requestFiles,
@@ -387,6 +398,17 @@ export async function discoverConnectedAgents(
   deps: DiscoverConnectedAgentsDeps,
 ): Promise<DiscoverConnectedAgentsResult> {
   const { primaryConfig, agent_ids } = params;
+  // A transport-backed caller may also supply an explicit context. Reject a
+  // mixed principal before BFS can skip the bad agent and continue on behalf
+  // of another user or tenant.
+  if (
+    params.runtime?.user &&
+    params.req?.user &&
+    (String(params.runtime.user.id ?? '') !== String(params.req.user.id ?? '') ||
+      (params.runtime.user.tenantId ?? undefined) !== (params.req.user.tenantId ?? undefined))
+  ) {
+    throw new Error('AGENT_DISCOVERY_PRINCIPAL_MISMATCH');
+  }
   const { onAgentSkipped } = deps;
 
   const agentConfigs = new Map<string, InitializedAgent>();

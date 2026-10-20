@@ -1,0 +1,31 @@
+name: BOTMODE V1 Public Release Secret Audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-public-release-audit.yml'
+      - 'scripts/botmode/audit-public-release.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tracked-secret-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Audit tracked files and release branch commits
+        env:
+          BOTMODE_PUBLIC_AUDIT_BASE: d4e82dded5df49f17b97e20361c89796b8f1e068
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f scripts/botmode/audit-public-release.sh
+          bash -n scripts/botmode/audit-public-release.sh
+          git cat-file -e "${BOTMODE_PUBLIC_AUDIT_BASE}^{commit}"
+          bash scripts/botmode/audit-public-release.sh
+          echo 'BOTMODE_PUBLIC_TRACKED_SECRET_SCAN=PASS'

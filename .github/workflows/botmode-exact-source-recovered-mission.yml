@@ -1,0 +1,49 @@
+name: BOTMODE Exact Source Recovered Mission SIGKILL
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-exact-source-recovered-mission.yml'
+      - 'scripts/botmode/run-recovered-mission-integration.sh'
+      - 'scripts/botmode/recovered-mission-redis-mongo-regression.cjs'
+
+permissions:
+  contents: read
+
+jobs:
+  exact-source-recovered-mission:
+    name: Locally built HEAD SDK Mongo Redis SIGKILL
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact triggering source
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          echo "BOTMODE_EXACT_SOURCE_SHA=$EXPECTED_SHA"
+      - name: Build isolated runtime image from exact source (no push)
+        run: |
+          set -euo pipefail
+          docker build --target node -f Dockerfile -t botmode-exact-sigkill:ci .
+          docker image inspect botmode-exact-sigkill:ci >/dev/null
+          echo 'BOTMODE_EXACT_SOURCE_IMAGE_BUILT=PASS'
+      - name: SIGKILL Mongo Redis SDK and confirm idempotent recovery
+        env:
+          BOTMODE_TEST_SDK_IMAGE: botmode-exact-sigkill:ci
+        run: |
+          set -euo pipefail
+          test "$BOTMODE_TEST_SDK_IMAGE" = botmode-exact-sigkill:ci
+          bash scripts/botmode/run-recovered-mission-integration.sh
+          echo 'BOTMODE_EXACT_SOURCE_SDK_RECOVERY=PASS'
+      - name: Evidence boundary
+        if: always()
+        run: |
+          echo 'The runtime image is built locally from the checked-out triggering SHA. No GHCR publish, no source drift.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'This qualifies SDK Mongo/Redis cold recovery. It does not prove mission-demand creation of a new temporary specialist through Oracle publication in one test.' >> "$GITHUB_STEP_SUMMARY"

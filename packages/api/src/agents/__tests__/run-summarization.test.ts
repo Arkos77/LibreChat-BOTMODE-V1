@@ -12,6 +12,7 @@ import type { SummarizationConfig, TEndpoint } from 'librechat-data-provider';
 import type { AppConfig, IUser } from '@librechat/data-schemas';
 import type { BaseMessage } from '@langchain/core/messages';
 import type { ModelBoundChatModelCallback } from '~/middleware/modelBoundContent';
+import type { ModelBindingCallbackFactory } from '~/agents/run';
 import { createRun, isAskUserQuestionAdminDisabled } from '~/agents/run';
 import { deterministicPlanner } from '~/agents/orchestrator/planner';
 
@@ -189,11 +190,7 @@ async function callAndCapture(
     compactionSemanticIndex?: CompactionSemanticIndex;
     subagentTasks?: SubagentTaskConfig;
     modelCallbacks?: readonly ModelBoundChatModelCallback[];
-    modelCallbackFactory?: (binding: {
-      agentId?: string;
-      provider?: string;
-      model?: string;
-    }) => readonly ModelBoundChatModelCallback[];
+    modelCallbackFactory?: ModelBindingCallbackFactory;
     user?: IUser;
     tenantId?: string;
   } = {},
@@ -212,7 +209,9 @@ async function callAndCapture(
     compactionSemanticIndex: opts.compactionSemanticIndex,
     subagentTasks: opts.subagentTasks,
     modelCallbacks: opts.modelCallbacks,
-    modelCallbackFactory: opts.modelCallbackFactory,
+    modelCallbackFactory: opts.modelCallbackFactory as unknown as Parameters<
+      typeof createRun
+    >[0]['modelCallbackFactory'],
     user: opts.user,
     tenantId: opts.tenantId,
     streaming: true,
@@ -472,14 +471,14 @@ describe('model-level callbacks', () => {
       raiseError: true,
       awaitHandlers: true,
       handleChatModelStart: jest.fn(),
-    } as ModelBoundChatModelCallback;
+    } satisfies ModelBoundChatModelCallback;
     const fallbackCallback = {
       name: 'librechat-model-bound-content-filter',
       raiseError: true,
       awaitHandlers: true,
       handleChatModelStart: jest.fn(),
-    } as ModelBoundChatModelCallback;
-    const factory = jest.fn((binding: { agentId?: string; provider?: string; model?: string }) =>
+    } satisfies ModelBoundChatModelCallback;
+    const factory = jest.fn((binding: Parameters<ModelBindingCallbackFactory>[0]) =>
       binding.provider === 'anthropic' ? [fallbackCallback] : [rootCallback],
     );
 
@@ -3414,7 +3413,11 @@ describe('createRun P6 orchestrator topology', () => {
 
     const runConfig = (Run.create as jest.Mock).mock.calls[0][0] as Record<string, unknown>;
     const hooks = runConfig.hooks as Parameters<typeof executeHooks>[0]['registry'];
+    if (!hooks) {
+      throw new Error('Expected registered HITL hooks for BYOM tool approval');
+    }
     const result = await executeHooks({
+      phase: 'admission',
       registry: hooks,
       matchQuery: 'bash_tool',
       input: {
@@ -3425,7 +3428,7 @@ describe('createRun P6 orchestrator topology', () => {
         toolUseId: 'tool-p6-byom',
         executingAgentId: plan.tasks[0].nodeId,
       },
-    });
+    } as Parameters<typeof executeHooks>[0]);
 
     expect(result.decision).toBe('ask');
   });

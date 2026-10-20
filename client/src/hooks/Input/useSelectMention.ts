@@ -221,6 +221,11 @@ export default function useSelectMention({
           chatProjectId: routeChatProjectId ?? conversation?.chatProjectId ?? null,
         },
         preset: { ...kwargs, spec: null, iconURL: null, modelLabel: null, endpoint: newEndpoint },
+        // An explicit agent pick is already a complete endpoint + agent_id
+        // decision. Re-parsing it through the default-model constructor can
+        // silently reapply the previous soft spec and drop the agent identity.
+        // Other endpoints keep the existing default schema initialization.
+        buildDefault: !(isAgentsEndpoint(newEndpoint) && Boolean(agent_id)),
         keepAddedConvos: isNewModular,
       });
     },

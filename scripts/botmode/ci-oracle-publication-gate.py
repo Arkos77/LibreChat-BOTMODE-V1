@@ -397,4 +397,4 @@ if __name__ == "__main__":
     verify("REVIEW", True, "HUMAN_REVIEW")
     if not reference_ok:
         fail("REFERENCE_TERMINAL_CONTAINS_ERROR_PART")
-    print("BOTMODE_PR14_ORACLE_PUBLICATION_E2E=PASS")
+    print("BOTMODE_CURRENT_HEAD_FREE_ORACLE_PUBLICATION_E2E=PASS")

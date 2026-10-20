@@ -26,6 +26,7 @@ import type {
 import type { AssistantListItem } from '~/common';
 import {
   updateLastSelectedModel,
+  mergeChatSelectionParams,
   getLocalStorageItems,
   getDefaultModelSpec,
   getDefaultEndpoint,
@@ -47,6 +48,7 @@ import {
   logger,
 } from '~/utils';
 import { useDeleteFilesMutation, useGetEndpointsQuery, useGetStartupConfig } from '~/data-provider';
+import { resolveNewConversationTemplate } from '~/utils/resolveNewConversationTemplate';
 import { supersedeNavigation } from './Conversations/useNavigateToConvo';
 import useGetConversation from './Conversations/useGetConversation';
 import useAssistantListMap from './Assistants/useAssistantListMap';
@@ -259,7 +261,9 @@ const useNewConvo = (index = 0) => {
         }
 
         const getParams = (nextConversation: TConversation) => {
-          const nextParams = new URLSearchParams(searchParams);
+          // Never navigate with the previous model/agent identity still in the URL.
+          // A cold reload interprets query settings as authoritative selection.
+          const nextParams = mergeChatSelectionParams(searchParams, nextConversation);
           nextParams.delete('projectId');
           if (
             nextConversation.conversationId === Constants.NEW_CONVO &&
@@ -341,14 +345,14 @@ const useNewConvo = (index = 0) => {
         resetBadges();
       }
 
-      const templateConvoId = _template.conversationId ?? '';
       const paramEndpoint =
         isParamEndpoint(_template.endpoint ?? '', _template.endpointType ?? '') === true ||
         isParamEndpoint(_preset?.endpoint ?? '', _preset?.endpointType ?? '');
-      const template =
-        paramEndpoint === true && templateConvoId && templateConvoId === Constants.NEW_CONVO
-          ? { endpoint: _template.endpoint, chatProjectId: _template.chatProjectId }
-          : _template;
+      const template = resolveNewConversationTemplate({
+        template: _template,
+        preset: _preset,
+        paramEndpoint,
+      });
 
       const conversation = {
         conversationId: Constants.NEW_CONVO as string,

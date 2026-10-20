@@ -40,8 +40,9 @@ describe('CapabilityResourceRegistry', () => {
     expect(stored).toEqual(original);
     expect(stored).not.toBe(original);
 
-    stored!.capabilities.push('mutated');
-    stored!.signals!.qualityScore = 0;
+    // Probe runtime copy independence despite the public readonly contract.
+    Array.prototype.push.call(stored!.capabilities, 'mutated');
+    Reflect.set(stored!.signals!, 'qualityScore', 0);
     expect(registry.get(original.id)).toEqual(original);
   });
 

@@ -11,6 +11,7 @@ import {
   mergeQuerySettingsWithSpec,
   processValidSettings,
   getDefaultModelSpec,
+  getStoredAgentSelectionPreset,
   getModelSpecPreset,
   hasModelSelection,
   isNotFoundError,
@@ -219,12 +220,16 @@ export default function ChatRoute() {
         ? undefined
         : getDefaultModelSpec(startupConfig, endpointsQuery.data, agentsMap);
       const spec = urlSpec ?? result?.default ?? result?.last ?? result?.softDefault;
-      const specPreset = spec ? getModelSpecPreset(spec) : undefined;
+      const storedPreset =
+        !spec && Object.keys(querySettings).length === 0
+          ? getStoredAgentSelectionPreset(startupConfig, endpointsQuery.data, agentsMap)
+          : undefined;
+      const resolvedPreset = spec ? getModelSpecPreset(spec) : storedPreset;
 
       if (Object.keys(querySettings).length > 0) {
-        return mergeQuerySettingsWithSpec(specPreset, querySettings);
+        return mergeQuerySettingsWithSpec(resolvedPreset, querySettings);
       }
-      return specPreset;
+      return resolvedPreset;
     };
 
     if (isNewConvo && endpointsQuery.data && modelsQuery.data) {

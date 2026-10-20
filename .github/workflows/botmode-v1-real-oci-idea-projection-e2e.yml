@@ -1,0 +1,62 @@
+name: BOTMODE V1 Real Runtime Oracle Project Idea Browser E2E
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-real-oci-idea-projection-e2e.yml'
+      - 'scripts/botmode/ci-projection-oci-idea-acceptance.py'
+      - 'scripts/botmode/ci-oracle-publication-project-gate.py'
+      - 'scripts/botmode/ci-idea-browser-e2e.cjs'
+      - 'scripts/botmode/ci-real-idea-runner.sh'
+      - 'scripts/botmode/ci-release-composition-source-guard.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  exact-candidate-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout exact integration test source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify exact source composition and preserve published OCI guard
+        shell: bash
+        env:
+          CI_EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 scripts/botmode/ci-release-composition-source-guard.py
+      - name: Set up Buildx (ephemeral source runtime, never push)
+        uses: docker/setup-buildx-action@v4
+      - name: Build exact tested source into the runner only
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          target: node
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: botmode-ci-projection:${{ github.sha }}
+          cache-from: type=gha,scope=botmode-amd64
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_BRANCH=${{ github.head_ref || github.ref_name }}
+      - name: Prove locally loaded source SHA and no registry push
+        run: |
+          set -euo pipefail
+          docker image inspect "botmode-ci-projection:${GITHUB_SHA}" >/dev/null
+          echo 'CI_REAL_IDEA_EPHEMERAL_SOURCE_IMAGE=PASS'
+      - name: Boot isolated runtime and qualify Oracle → Project API → Idea browser
+        env:
+          OPENROUTER_API_KEY: ci-local-fixture-no-real-key
+        shell: bash
+        run: bash scripts/botmode/ci-real-idea-runner.sh
+      - name: Always destroy disposable stack
+        if: always()
+        env:
+          BOTMODE_MONGO_PASSWORD: ci-isolated-only
+          POSTGRES_PASSWORD: ci-isolated-only
+          BOTMODE_IMAGE: botmode-ci-projection:${{ github.sha }}
+        run: sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
