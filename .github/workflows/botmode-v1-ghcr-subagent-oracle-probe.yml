@@ -113,6 +113,9 @@ jobs:
             '.github/workflows/botmode-v1-d04-full-restore.yml',
             '.github/workflows/botmode-v1-ghcr-subagent-oracle-probe.yml',
             'scripts/botmode/verify-d04-candidate-license.sh',
+            '.github/workflows/botmode-v1-lite-rollback-smoke.yml',
+            'scripts/botmode/ci-staging-digest-rollback.sh',
+            'scripts/botmode/ci-release-composition-source-guard.py',
           }
           changed = set(subprocess.check_output(
             ['git','diff','--name-only','59598c2f4e333c256296bbb8c6f45a024832745b','HEAD'],
