@@ -103,8 +103,16 @@ jobs:
           # The OCI image is built from the functional source SHA. Only workflow
           # metadata committed after that SHA may differ; fail closed on code drift.
           permitted = {
+            # Main integration adds audited workflow and test infrastructure only.
+            # Never whitelist api/, client/, packages/, Compose or runtime scripts.
+            '.github/scripts/retarget-prs.sh',
+            '.github/workflows/botmode-change-safety-gate.yml',
             '.github/workflows/botmode-v1-d03-candidate-manual.yml',
+            '.github/workflows/botmode-v1-d03-fresh-lite-acceptance.yml',
+            '.github/workflows/botmode-v1-d04-candidate-license.yml',
+            '.github/workflows/botmode-v1-d04-full-restore.yml',
             '.github/workflows/botmode-v1-ghcr-subagent-oracle-probe.yml',
+            'scripts/botmode/verify-d04-candidate-license.sh',
           }
           changed = set(subprocess.check_output(
             ['git','diff','--name-only','59598c2f4e333c256296bbb8c6f45a024832745b','HEAD'],
