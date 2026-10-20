@@ -18,27 +18,29 @@ Ce chemin exécute l'image BOTMODE publiée depuis le code de ce dépôt. Une ma
 
 Node.js 24 et npm restent nécessaires pour le développement source et les tests du dépôt, mais pas pour installer/exécuter l'image publiée.
 
-## Installation
+## Installation V1.0.0 — tag Git immuable
+
+La V1 a été fusionnée dans `main`, mais l'image d'installation a été construite depuis le **commit fonctionnel** `59598c2f4e333c256296bbb8c6f45a024832745b`. Le tag Git `v1.0.0` pointe exactement sur ce commit. **Ne pas cloner `main` puis lancer `./install.sh`** : le bootstrap recherche par défaut `sha-<commit Git courant>`, et aucun alias correspondant au commit de fusion CI n'a été promu.
+
+Sur une machine dédiée ou neuve :
 
 ```bash
-git clone --depth 1 https://github.com/Arkos77/LibreChat-BOTMODE-V1.git
+git clone --branch v1.0.0 --depth 1 https://github.com/Arkos77/LibreChat-BOTMODE-V1.git
 cd LibreChat-BOTMODE-V1
-# Installation stable : utiliser uniquement un commit ou tag dont l'image GHCR sha-<commit> est publiée.
-./install.sh
-```
-
-**Archive de qualification, PAS l'image du code actuel :** la candidate historique `sha-d4e82dded5df` est publiée et a passé des tests Lite. La PR #29 est toujours en qualification Draft (18/10/2026), sans image GHCR démontrée pour son dernier SHA. Ne pas utiliser la commande historique ci-dessous comme validation de la V1 actuelle. Pour reproduire l'ancienne candidate, utiliser une copie de travail jetable et **ne jamais effacer les volumes existants**.
-
-```bash
-git clone https://github.com/Arkos77/LibreChat-BOTMODE-V1.git botmode-v1-candidate
-cd botmode-v1-candidate
-git checkout --detach d4e82dded5df49f17b97e20361c89796b8f1e068
-test "$(git rev-parse HEAD)" = d4e82dded5df49f17b97e20361c89796b8f1e068
-docker pull ghcr.io/arkos77/librechat-botmode-v1:sha-d4e82dded5df
+test "$(git rev-parse HEAD)" = 59598c2f4e333c256296bbb8c6f45a024832745b
 ./install.sh --lite
 ```
 
-Ce test n'est autorisé que sur un environnement **jetable ou dédié**, sans données utilisateur. Le profil Full et le rollback restent à qualifier pour la V1. La candidate n'est pas encore une release stable.
+Pour laisser le bootstrap détecter le profil Lite/Full, utiliser `./install.sh` à la dernière ligne. Seules les clés fournisseur nécessaires sont à renseigner dans `.env` ; aucun secret ne doit être commité. La compatibilité Windows native et les installations macOS sur matériel réel ne sont pas démontrées par les tests Linux CI.
+
+**Identité de l'image qualifiée :**
+
+- Image : `ghcr.io/arkos77/librechat-botmode-v1:sha-59598c2f4e33`
+- Tag d'origine : `candidate-botmode-v1-59598c2f4e33`
+- Index OCI `linux/amd64` + `linux/arm64` : `sha256:20e921df9fda01dba00bc925fe1ae37ae24fbcc992f52f15aad60bfa5aae4c21`
+- Les alias `stable` et `latest` (lorsque publiés) doivent pointer **vers le même digest**, jamais vers une nouvelle compilation du code CI de `main`.
+
+Preuves : [publication candidate D03 multiarch](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39444671169), [installation Lite source/tag sans override](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39453514151), [tests post-fusion des agents](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39496465048).
 
 Le bootstrap :
 
@@ -142,7 +144,7 @@ Le premier test propre a mis en évidence quatre défauts de distribution désor
 - permissions de bind mounts sous Crostini/containerless ;
 - lancement d'une image LibreChat upstream au lieu du code BOTMODE cloné.
 
-Le prochain test Chromebook doit repartir de zéro uniquement après publication d'une image BOTMODE candidate.
+La publication candidate et les tests Linux Lite en environnement vierge sont effectués. Une qualification distincte sur le Chromebook matériel reste utile avant toute migration d'une installation existante.
 
 ## Provisionnement natif des agents BOT MODE
 
@@ -152,9 +154,10 @@ Sur une installation neuve, configurer la clé API du fournisseur dans `.env`, r
 
 **Ne pas provisionner des identifiants MongoDB manuellement** et ne pas exécuter `provision-worker.js` ou `seed-default-specialists.js` pour remplacer ce chemin API. Ne jamais afficher ni transmettre des tokens JWT ou des clés API dans les logs.
 
-Preuves sur la candidate `d4e82dd` :
-- [Installation publique GHCR + onboarding natif six agents et persistance](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/38307011447)
-- [Gate réel Gemini → Worker → spécialiste → Oracle → publication](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/38318687920)
+Preuves de la candidate D03 `59598c2f4e33` :
+- [Installation publique GHCR + premier utilisateur, six agents et persistance](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39445974153)
+- [Premier utilisateur post-fusion](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39496464590)
+- [Mission et verdict Oracle post-fusion](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39496464365)
 
 Le dernier gate a validé un spécialiste réellement exécuté, les verdicts Oracle durables `VERIFIED` et `HUMAN_REVIEW`, la publication acceptée et la rétention de la candidate rejetée. Il ne qualifie pas individuellement tous les spécialistes ni tous les systèmes d'exploitation.
 
@@ -162,4 +165,14 @@ Pour préparer une restauration sans perte de données, consulter [le plan de ro
 
 ## État de publication
 
-Ne créer aucun tag `v*`, ne fusionner aucune PR et ne promouvoir aucune image vers `latest` avant une décision explicite GO/no-go, la vérification des risques résiduels et la documentation du rollback. La candidate est disponible uniquement avec son tag `sha-<commit>`.
+Le tag Git `v1.0.0` est fixé au SHA fonctionnel D03. La promotion stable, autorisée séparément par le propriétaire, doit réutiliser son digest immuable et être contrôlée via le workflow D04. Distribution gratuite et non commerciale sous les conditions de la [décision de risque D02](BOTMODE_V1_NPM_RISK_DECISION_20261014.md), qui expire le **18 novembre 2026** sans nouvel accord. Aucun alias GHCR ne constitue une autorisation de migration des données utilisateur.
+
+
+## Sauvegarde, mise à jour et retour arrière
+
+1. Sur une installation existante, **sauvegarder MongoDB, les autres volumes Docker nommés, les fichiers utilisateur et la configuration `.env`** avant toute modification. Ne pas transmettre de secrets ni archiver `.env` dans Git.
+2. Vérifier le nouvel index OCI et la correspondance du tag Git avant de sélectionner une nouvelle release. Les tags `stable` et `latest` peuvent évoluer ; pour une installation reproductible, **rester sur `v1.0.0` et l'image `sha-59598c2f4e33`**.
+3. Après sauvegarde et vérification des migrations, arrêter via `./stop.sh` ; basculer vers le checkout de la version voulue et démarrer via `./start.sh`. `./update.sh` est volontairement interdit sur un tag détaché.
+4. En cas d'incident, revenir au couple **source Git + digest OCI** précédent et restaurer uniquement depuis une sauvegarde compatible. **Ne jamais supprimer des volumes pour forcer l'authentification ou simuler un rollback.**
+
+Les répétitions de rollback Full et de conservation Mongo ont été qualifiées sur runner isolé : [Full](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39450999831) et [Lite](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39476418040). Elles ne prouvent **pas** une migration arbitraire entre versions de schéma ni la reprise d'une mission Redis en vol à travers un downgrade. Voir [le plan complet](BOT_MODE_ROLLBACK.md).

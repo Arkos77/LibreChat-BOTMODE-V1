@@ -22,6 +22,9 @@ PERMITTED = {
     "scripts/botmode/verify-d04-candidate-license.sh",
     "scripts/botmode/ci-staging-digest-rollback.sh",
     "scripts/botmode/ci-release-composition-source-guard.py",
+    ".github/workflows/botmode-v1-d04-promote-stable.yml",
+    "README.md",
+    "docs/BOT_MODE_INSTALL.md",
 }
 
 def git(*args):

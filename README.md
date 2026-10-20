@@ -2,7 +2,7 @@
 
 **LibreChat BOTMODE V1** is a multi-agent orchestration layer built on top of [LibreChat](https://github.com/danny-avila/LibreChat). It turns LibreChat into a governed workspace for durable missions, specialist agents, background work, RAG/memory, model routing, media capabilities, MCP tools, evidence collection, QA and controlled publication.
 
-> Status (18 October 2026): **V1 qualification — NO-GO stable**. [PR #29](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/29) is still a **Draft** on `botmode-v1-final-integration-qualification-20261016`. Existing CI checks and previously published images do **not** certify this PR as a released installable image. Do not merge, publish or install over existing data without the separate release gates and approvals.
+> **V1 release source (20 October 2026):** The immutable Git tag `v1.0.0` points to functional source `59598c2f4e333c256296bbb8c6f45a024832745b`. Its public multi-architecture runtime image is `ghcr.io/arkos77/librechat-botmode-v1:sha-59598c2f4e33`, OCI index `sha256:20e921df9fda01dba00bc925fe1ae37ae24fbcc992f52f15aad60bfa5aae4c21`. Release promotion is tracked under [D-04](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/65); use **the immutable Git tag for installation**, not the moving `main` branch. Distribution is free/non-commercial, with the documented [time-limited dependency risk decision](docs/BOTMODE_V1_NPM_RISK_DECISION_20261014.md).
 
 ## What BOTMODE adds
 
@@ -61,13 +61,15 @@ Runtime hosts need:
 - Docker
 - Docker Compose v2
 
-Node.js/npm are required only for source development and local verification, not for running a published BOTMODE image. **The current PR #29 image has not been published**; use the install command below only with a verified commit whose matching immutable GHCR image exists.
+Node.js/npm are needed only for source development and local verification. Docker-based installation uses the already published image for the checked-out release source.
 
 ### Install
 
 ```bash
-git clone --depth 1 https://github.com/Arkos77/LibreChat-BOTMODE-V1.git
+git clone --branch v1.0.0 --depth 1 https://github.com/Arkos77/LibreChat-BOTMODE-V1.git
 cd LibreChat-BOTMODE-V1
+# Expect the exact published runtime source; stop if a different checkout is selected.
+test "$(git rev-parse HEAD)" = 59598c2f4e333c256296bbb8c6f45a024832745b
 ./install.sh
 ```
 
@@ -94,7 +96,7 @@ Day-to-day lifecycle commands:
 ./doctor.sh
 ```
 
-After `.env` is created, add only the provider/API credentials you actually use. Never commit `.env`. On a fresh account, **Project → Initialiser BOT MODE** still allows explicit model selection and native setup. Work is in qualification to initialize automatically upon an explicit **Ideas** mission request when a unique OpenRouter free model is available; paid or ambiguous model selection is **never automatic**. This does not yet cover every Chat/Work entry point. The source-matched first-user HTTP onboarding is exercised on disposable CI, but no published PR #29 image or live-provider mission is certified yet.
+After `.env` is created, configure only your chosen provider/API credentials; never commit `.env`. First-user registration, native setup of six agents and owner permissions, and stop/restart persistence passed the public GHCR Lite acceptance checks ([D-03 candidate installation](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39445974153), [installation without image override](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39453514151)). FAST/DEEP triage is conservative, and ephemeral specialist agents remain subject to authorization and budget checks. Paid or ambiguous model selection is not automatically authorized.
 
 Full installation details: [docs/BOT_MODE_INSTALL.md](docs/BOT_MODE_INSTALL.md)
 
@@ -102,11 +104,11 @@ Full installation details: [docs/BOT_MODE_INSTALL.md](docs/BOT_MODE_INSTALL.md)
 
 | Platform | Intended V1 path / qualification |
 | --- | --- |
-| Linux x86_64 | Docker Compose, Lite source-built smoke validated; GHCR release image pending |
+| Linux x86_64 | Public GHCR Lite first-user onboarding and restart verified; AMD64 OCI verified |
 | ChromeOS | Crostini / Linux, profile Lite (hardware-limited validation) |
 | macOS | Docker Desktop or compatible Docker runtime; final candidate smoke pending |
 | Windows | WSL2; final candidate smoke pending |
-| ARM64 Linux/macOS | OCI image/platform manifest and install smoke pending |
+| ARM64 Linux/macOS | Native Linux ARM64 OCI manifest, public pull, licence and pre-push image smoke verified; macOS host still needs local validation |
 | Native Windows | Not declared supported for V1 |
 
 ## BOTMODE specialists
@@ -166,14 +168,7 @@ No API key is shipped in this repository.
 
 ## Project status
 
-The V1 release path is:
-
-1. final Git / secrets / dependency / licence audit
-2. BOTMODE README and public documentation
-3. reproducible installation validation
-4. stable BOTMODE `main`
-5. GitHub repository security/rules
-6. clean-machine validation and `v1.0.0` release
+V1 integration is merged into protected `main` via [PR #65](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/65). Git `v1.0.0` intentionally points at the **functional source**, not the later CI-only merge commit. The same D-03 source/runtime image is used for stable promotion without rebuilding. The [installation guide](docs/BOT_MODE_INSTALL.md) covers reproducibility and rollback; the [risk decision](docs/BOTMODE_V1_NPM_RISK_DECISION_20261014.md) is time-limited and does not authorize commercial redistribution.
 
 ## Relationship to LibreChat
 
