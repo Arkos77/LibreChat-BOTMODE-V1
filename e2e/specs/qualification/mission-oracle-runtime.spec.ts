@@ -293,6 +293,11 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       const taskIds = [`${mission.taskId}/worker`, `${mission.taskId}/specialist`];
       const job = await waitForOracle(redis, run.streamId, taskIds, 'VERIFIED');
       expect(job.plan?.mission?.missionId).toBe(mission.missionId);
+      expect(
+        job.plan?.tasks?.map((task) => task.taskId),
+        'durably stored worker and specialist task identities must match Oracle task keys',
+      ).toEqual(taskIds);
+      expect(new Set(job.plan?.tasks?.map((task) => task.taskId)).size).toBe(taskIds.length);
       expect(job.plan?.tasks?.map((task) => [task.key, task.agentId, task.dependsOn])).toEqual([
         ['worker', worker.id, []],
         ['specialist', specialist.id, ['worker']],
