@@ -612,13 +612,6 @@ export default function useChatFunctions({
             ['DOCUMENTS', 'botmode-documents', 'documents', ['file_search']],
             ['RÉDACTION', 'botmode-r-daction', 'writing', ['writing']],
           ];
-          const specialists = specialistDefinitions.map(([id, agentId, role, capabilities]) => ({
-            id,
-            agentId,
-            role,
-            capabilities,
-            constraints: [],
-          }));
           const mode = botModeMode;
           const analyzeObjectives = [
             {
@@ -710,6 +703,18 @@ export default function useChatFunctions({
           let objectives = analyzeObjectives;
           if (mode === 'develop') objectives = developObjectives;
           else if (mode === 'watch') objectives = watchObjectives;
+          const required = new Set(objectives.flatMap((objective) => objective.requiredCapabilities));
+          const specialists = specialistDefinitions
+            .filter(([, , , capabilities]) =>
+              capabilities.some((capability) => required.has(capability)),
+            )
+            .map(([id, agentId, role, capabilities]) => ({
+              id,
+              agentId,
+              role,
+              capabilities,
+              constraints: [],
+            }));
           return {
             mission: {
               missionId: `botmode-${clientRequestId}`,
