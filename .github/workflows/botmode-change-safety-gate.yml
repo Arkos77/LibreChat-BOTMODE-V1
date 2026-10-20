@@ -25,7 +25,30 @@ jobs:
               test -f "$file" && bash -n "$file"
             fi
           done < /tmp/changed.txt
-          if grep -Eq '^(Dockerfile($|[./])|\.dockerignore$|docker-compose[^/]*\.ya?ml$|api/|client/|config/|packages/|package(-lock)?\.json$)' /tmp/changed.txt; then
-            docker build --target node --file Dockerfile --tag botmode-safety:${HEAD_SHA:0:12} .
-          fi
           echo 'CHANGE_SAFETY_GATE=PASS'
+  image-smoke:
+    name: Change safety image (${{ matrix.arch }})
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Build when Docker runtime changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > /tmp/changed.txt
+          if grep -Eq '^(Dockerfile($|[./])|\.dockerignore$|docker-compose[^/]*\.ya?ml$|api/|client/|config/|packages/|package(-lock)?\.json$)' /tmp/changed.txt; then
+            docker build --target node --file Dockerfile --tag "botmode-safety:${HEAD_SHA:0:12}" .
+          else
+            echo 'No Docker runtime changes; architecture build not applicable.'
+          fi
+          echo 'CHANGE_SAFETY_IMAGE=PASS'
