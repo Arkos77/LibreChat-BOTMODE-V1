@@ -26,7 +26,7 @@ permissions:
 # only in an explicitly triggered manual free-only follow-up step.
 env:
   BOTMODE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  BOTMODE_PUBLISHED_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0
+  BOTMODE_PUBLISHED_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:20e921df9fda01dba00bc925fe1ae37ae24fbcc992f52f15aad60bfa5aae4c21
   COMPOSE_PROJECT_NAME: botmode-oci-child-${{ github.run_id }}-${{ github.run_attempt }}
 
 jobs:
@@ -95,31 +95,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          published_sha=5fb904d375bffd6c54b5830cb1536088a9e77211
+          published_sha=59598c2f4e333c256296bbb8c6f45a024832745b
           git fetch --no-tags origin "$published_sha"
           test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
           python3 - <<'PY_SOURCE'
           import subprocess
+          # The OCI image is built from the functional source SHA. Only workflow
+          # metadata committed after that SHA may differ; fail closed on code drift.
           permitted = {
-            '.github/workflows/botmode-v1-integrated-first-user-acceptance.yml',
-            '.github/workflows/botmode-v1-lite-rollback-smoke.yml',
-            '.github/workflows/botmode-v1-published-mission-rehearsal.yml',
+            '.github/workflows/botmode-v1-d03-candidate-manual.yml',
             '.github/workflows/botmode-v1-ghcr-subagent-oracle-probe.yml',
-            '.github/workflows/botmode-v1-published-arm64-image.yml',
-            'docs/BOTMODE_V1_GHCR_RELEASE_GATE.md',
-            'docs/BOTMODE_V1_NPM_RISK_DECISION_20261014.md',
-            'docs/BOTMODE_V1_INVENTAIRE_MAITRE_20261018.md',
-            'docs/BOTMODE_V1_MEMO_CHECKPOINT_20261018.md',
-            'docs/BOTMODE_V1_RELEASE_TRAIN_20261019.md',
-            'scripts/botmode/ci-staging-digest-rollback.sh',
-            'scripts/botmode/ci-live-free-child-oracle-gate.py',
-            'scripts/botmode/tests/test_ci_live_free_sse_resume.py',
-            'scripts/botmode/ci-live-free-child-preflight.sh',
-            'client/src/components/Ideas/IdeasView.test.tsx',
-            'e2e/specs/mock/ideas-botmode-results.spec.ts',
           }
           changed = set(subprocess.check_output(
-            ['git','diff','--name-only','5fb904d375bffd6c54b5830cb1536088a9e77211','HEAD'],
+            ['git','diff','--name-only','59598c2f4e333c256296bbb8c6f45a024832745b','HEAD'],
             text=True).splitlines())
           unexpected = sorted(changed - permitted)
           print('CI_PUBLISHED_OCI_RUNTIME_UNMODIFIED=' + str(not unexpected).upper())
