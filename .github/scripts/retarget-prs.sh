@@ -124,6 +124,13 @@ for number in "$@"; do
     continue
   fi
 
+  # Do not retarget against a nonexistent destination branch.
+  if ! gh api "repos/$REPO/branches/$TARGET_BASE" >/dev/null 2>&1; then
+    echo "#$number: skipped — target branch $TARGET_BASE unavailable"
+    skipped=$((skipped + 1))
+    continue
+  fi
+
   if [ "$DRY_RUN" = "true" ]; then
     echo "#$number: would retarget $RELEASE_BASE -> $TARGET_BASE ($head_repo:$head_ref)"
     matched=$((matched + 1))
