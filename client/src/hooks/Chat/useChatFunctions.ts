@@ -703,7 +703,9 @@ export default function useChatFunctions({
           let objectives = analyzeObjectives;
           if (mode === 'develop') objectives = developObjectives;
           else if (mode === 'watch') objectives = watchObjectives;
-          const required = new Set(objectives.flatMap((objective) => objective.requiredCapabilities));
+          const required = new Set(
+            objectives.flatMap((objective) => objective.requiredCapabilities),
+          );
           const specialists = specialistDefinitions
             .filter(([, , , capabilities]) =>
               capabilities.some((capability) => required.has(capability)),
