@@ -267,7 +267,7 @@ jobs:
           {
             echo '### BOT MODE V1 — First-user native agent onboarding'
             echo 'Pinned head: 59598c2f4e333c256296bbb8c6f45a024832745b'
-            echo 'Pulls immutable D03 public GHCR candidate without auth, runs actual ./install.sh --lite with normal default image pin and verifies first-user native onboarding, JWT and persistence.'
+            echo 'Pulls immutable D03 public GHCR candidate without auth, runs actual ./install.sh --lite with the exact candidate image pin and verifies first-user native onboarding, JWT and persistence.'
             echo 'Checks real first-user HTTP onboarding (6 agents, owner ACL, Worker delegation, idempotence, and restart durability).'
             echo 'Validates public GHCR anonymous pull. Does not validate externally hosted LLM.'
           } >> "$GITHUB_STEP_SUMMARY"
