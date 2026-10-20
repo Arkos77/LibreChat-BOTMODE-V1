@@ -116,6 +116,9 @@ jobs:
             '.github/workflows/botmode-v1-lite-rollback-smoke.yml',
             'scripts/botmode/ci-staging-digest-rollback.sh',
             'scripts/botmode/ci-release-composition-source-guard.py',
+            '.github/workflows/botmode-v1-d04-promote-stable.yml',
+            'README.md',
+            'docs/BOT_MODE_INSTALL.md',
           }
           changed = set(subprocess.check_output(
             ['git','diff','--name-only','59598c2f4e333c256296bbb8c6f45a024832745b','HEAD'],
