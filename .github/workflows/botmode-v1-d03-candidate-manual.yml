@@ -30,12 +30,9 @@ jobs:
       - name: Verify immutable candidate tag availability
         env:
           GH_TOKEN: ${{ github.token }}
-          GITHUB_SHA: ${{ env.SOURCE_SHA }}
-          GITHUB_REF_TYPE: branch
-          GITHUB_REPOSITORY_OWNER: Arkos77
         run: |
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          bash scripts/botmode/guard-candidate-ghcr.sh
+          env GITHUB_SHA="$SOURCE_SHA" GITHUB_REF_TYPE=branch bash scripts/botmode/guard-candidate-ghcr.sh
   build:
     needs: preflight
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
@@ -101,10 +98,9 @@ jobs:
       - name: Recheck tags immediately before manifest
         env:
           GH_TOKEN: ${{ github.token }}
-          GITHUB_SHA: ${{ env.SOURCE_SHA }}
-          GITHUB_REF_TYPE: branch
-          GITHUB_REPOSITORY_OWNER: Arkos77
-        run: bash scripts/botmode/guard-candidate-ghcr.sh
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          env GITHUB_SHA="$SOURCE_SHA" GITHUB_REF_TYPE=branch bash scripts/botmode/guard-candidate-ghcr.sh
       - name: Publish immutable candidate without stable or latest
         working-directory: /tmp/digests
         run: |
