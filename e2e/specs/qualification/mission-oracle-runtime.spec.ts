@@ -416,12 +416,12 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       // A mission requiring no specialist must not require unrelated default specialists.
       const mission = makeMission(worker.id, undefined, false);
       const run = await startMission(page, token, worker.id, mission);
-      const job = await waitForOracle(redis, run.streamId, [`${mission.taskId}/worker`], 'VERIFIED');
+      const job = await waitForOracle(redis, run.streamId, [`${mission.taskId}/main`], 'VERIFIED');
       expect(job.plan?.tasks).toHaveLength(1);
       expect(job.plan?.tasks?.[0]).toMatchObject({
-        key: 'worker',
+        key: 'main',
         agentId: worker.id,
-        taskId: `${mission.taskId}/worker`,
+        taskId: `${mission.taskId}/main`,
       });
       expect(job.plan?.mission?.missionId).toBe(mission.missionId);
       expect(
