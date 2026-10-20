@@ -41,6 +41,7 @@ jobs:
             '.github/workflows/botmode-v1-lite-rollback-smoke.yml',
             'scripts/botmode/verify-d04-candidate-license.sh',
             'scripts/botmode/ci-staging-digest-rollback.sh',
+            'scripts/botmode/ci-release-composition-source-guard.py',
           }
           changed=set(subprocess.check_output(['git','diff','--name-only',source,'HEAD'],text=True).splitlines())
           unexpected=sorted(changed-permitted)
