@@ -2,7 +2,7 @@
 
 **LibreChat BOTMODE V1** is a multi-agent orchestration layer built on top of [LibreChat](https://github.com/danny-avila/LibreChat). It turns LibreChat into a governed workspace for durable missions, specialist agents, background work, RAG/memory, model routing, media capabilities, MCP tools, evidence collection, QA and controlled publication.
 
-> Status (18 October 2026): **V1 qualification — NO-GO stable**. [PR #29](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/29) is still a **Draft** on `botmode-v1-final-integration-qualification-20261016`. Existing CI checks and previously published images do **not** certify this PR as a released installable image. Do not merge, publish or install over existing data without the separate release gates and approvals.
+> Status (19 October 2026): **V1 qualification — NO-GO stable**. [PR #29](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/29) and the [source composition PR #49](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/49) remain **Draft / unmerged**. The complete source-integrated changes have **no matching qualified, published immutable GHCR digest**. Historical OCI images do not contain the current source; the strict provenance gate must reject them. Do not merge, publish `stable`/`latest`, or upgrade an existing installation before all release checks and explicit owner approval.
 
 ## What BOTMODE adds
 
@@ -94,7 +94,7 @@ Day-to-day lifecycle commands:
 ./doctor.sh
 ```
 
-After `.env` is created, add only the provider/API credentials you actually use. Never commit `.env`. On a fresh account, **Project → Initialiser BOT MODE** still allows explicit model selection and native setup. Work is in qualification to initialize automatically upon an explicit **Ideas** mission request when a unique OpenRouter free model is available; paid or ambiguous model selection is **never automatic**. This does not yet cover every Chat/Work entry point. The source-matched first-user HTTP onboarding is exercised on disposable CI, but no published PR #29 image or live-provider mission is certified yet.
+After `.env` is created, add only the provider/API credentials you actually use. Never commit `.env`. **Full/RAG requires separate explicit consent for an embeddings provider**: the Chat provider key must not be reused for RAG charges. Source-qualified settings and safe Redis update restrictions are documented in [the install guide](docs/BOT_MODE_INSTALL.md). On a fresh account, **Project → Initialiser BOT MODE** still allows explicit model selection and native setup. Work is in qualification to initialize automatically upon an explicit **Ideas** mission request when a unique OpenRouter free model is available; paid or ambiguous model selection is **never automatic**. This does not yet cover every Chat/Work entry point. The source-matched first-user HTTP onboarding is exercised on disposable CI, but no published PR #29 image or live-provider mission is certified yet.
 
 Full installation details: [docs/BOT_MODE_INSTALL.md](docs/BOT_MODE_INSTALL.md)
 

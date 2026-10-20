@@ -80,6 +80,8 @@ Préparer sans démarrer :
 
 `start.sh` ne relance ni `npm ci`, ni build, ni tests. `update.sh` refuse un checkout détaché (tag/commit), des modifications locales ou une branche sans upstream. Sur une branche propre suivie, il effectue `git pull --ff-only`, puis tire l'image du nouveau commit et redémarre la stack. Pour une release candidate figée, sélectionner explicitement la version suivante après validation de son image GHCR et sauvegarde des données : ne pas exécuter `update.sh` depuis un tag.
 
+**Protection V1 (PR #43, qualification sur PR #49) :** avant toute mutation Git, `update.sh` refuse la mise à jour si le service API Compose fonctionne encore. Si Redis est configuré, le changement de version automatisé est toujours **bloqué**, même API arrêtée : la reprise d'une mission Redis active **entre versions** n'est pas qualifiée. Il faut achever les missions, sauvegarder, puis suivre une procédure de migration validée pour le profil concerné. Ne jamais forcer des commandes Docker sur les volumes pour contourner ce refus. Les installations existantes doivent rester sur leur image déjà validée tant que la nouvelle image immuable n'est pas qualifiée.
+
 ## Image runtime BOTMODE
 
 La stack BOTMODE utilise :
@@ -101,6 +103,16 @@ Les données MongoDB et les répertoires runtime de LibreChat utilisent des volu
 ## Configuration
 
 Après création de `.env`, renseigner uniquement les credentials réellement utilisés. Ne jamais committer `.env`.
+
+### Embeddings et contrôle des coûts Full/RAG
+
+Le profil **Full** ajoute RAG Lite et PostgreSQL/pgvector. RAG Lite exige un fournisseur d'embeddings configuré : **aucune clé Chat générale (`OPENAI_API_KEY`, OpenRouter, Gemini, etc.) ne doit être automatiquement reprise par ce sidecar**. Sur la source de qualification [PR #48](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/48), seule la clé dédiée `BOTMODE_RAG_APPROVED_EMBEDDINGS_API_KEY`, renseignée volontairement, est transmise comme `RAG_OPENAI_API_KEY`. Les variables dédiées `BOTMODE_RAG_EMBEDDINGS_PROVIDER`, `BOTMODE_RAG_EMBEDDINGS_MODEL` et `BOTMODE_RAG_EMBEDDINGS_BASEURL` configurent le moteur et son endpoint. **Un fournisseur tiers peut facturer chaque embedding : ne fournir cette clé qu'après autorisation explicite des dépenses.** Sans fournisseur RAG, la recherche documentaire peut être indisponible, mais aucune facturation implicite ne doit survenir.
+
+Un endpoint local compatible, par exemple Ollama lorsqu'il est installé et configuré avec un modèle d'embeddings adapté, peut constituer une option sans coût fournisseur, **non qualifiée par les tests RAG actuels**. Les CI de [PR #45](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/45) et PR #48 vérifient vrai RAG/pgvector avec **embeddings simulés sur runner jetable**, pas la qualité d'un modèle externe.
+
+### JWT partagé, première installation et upgrade
+
+Sur **installation neuve uniquement**, le bootstrap de la PR #48 crée `JWT_SECRET` et `JWT_REFRESH_SECRET` si absents de `.env`, afin que l'API LibreChat et le service RAG utilisent la même signature. **Une installation existante ne doit jamais voir ses JWT changés automatiquement.** Si un ancien `.env` est dépourvu de `JWT_SECRET`, le mode Full/RAG n'est pas réputé opérationnel : une migration vérifiée est nécessaire pour maintenir les sessions existantes. Ne pas générer un JWT divergent ni supprimer les volumes pour débloquer la situation. Les tests CI conservent les JWT existants, mais ne démontrent pas toute migration réelle depuis les versions historiques.
 
 ### Bases de données et migration
 
