@@ -1,0 +1,60 @@
+name: BOTMODE V1 Long Mission Provider Heartbeat Fences
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-mission-provider-heartbeat-ttl.yml'
+      - 'packages/api/src/stream/implementations/RedisJobStore.ts'
+      - 'scripts/botmode/tests/check_provider_heartbeat_redis.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  long-mission-provider-ttl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      CI: 'true'
+      HEARTBEAT_CI_REDIS_CONTAINER: ci-heartbeat-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Validate exact source and test syntax
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          python3 -m py_compile scripts/botmode/tests/check_provider_heartbeat_redis.py
+          echo 'CI_LONG_MISSION_CHECKOUT_SHA=PASS'
+      - name: Start disposable Redis
+        run: |
+          set -euo pipefail
+          docker run -d --name "$HEARTBEAT_CI_REDIS_CONTAINER" redis:7-alpine redis-server --save '' --appendonly no
+          for i in $(seq 1 30); do
+            if docker exec "$HEARTBEAT_CI_REDIS_CONTAINER" redis-cli ping | grep -q PONG; then
+              echo 'CI_LONG_MISSION_REAL_REDIS_UP=PASS'
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+      - name: Verify original and recovered owner CAS renewal and stale denials
+        run: python3 scripts/botmode/tests/check_provider_heartbeat_redis.py
+      - name: Remove disposable Redis only
+        if: always()
+        run: docker rm -f "$HEARTBEAT_CI_REDIS_CONTAINER" >/dev/null 2>&1 || true
+      - name: Record scope
+        if: always()
+        run: |
+          {
+            echo '### Real Redis heartbeat Lua correctness'
+            echo "Exact source SHA: $(git rev-parse HEAD)"
+            echo 'Valid live original and recovered owners advance lastActiveAt and keep bounded 20-minute job TTL from expiring.'
+            echo 'Wrong epoch, wrong execution, expired lease, terminal status, displaced owner and missing recovery claim must not renew state.'
+            echo 'No real user volume, model/provider credits, GHCR push or live 180-minute proof. Full 180-minute soak still separate.'
+          } >> "$GITHUB_STEP_SUMMARY"

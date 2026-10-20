@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, request as playwrightRequest, test } from '@playwright/test';
 import Redis from 'ioredis';
 import { MongoClient } from 'mongodb';
 import type { Page } from '@playwright/test';
+import { getE2EUser } from '../../setup/user';
 import { cleanupAgent } from '../mock/agents.helpers';
 import { getAccessToken, MOCK_ENDPOINTS, requestJson } from '../mock/helpers';
 
@@ -292,6 +293,11 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       const taskIds = [`${mission.taskId}/worker`, `${mission.taskId}/specialist`];
       const job = await waitForOracle(redis, run.streamId, taskIds, 'VERIFIED');
       expect(job.plan?.mission?.missionId).toBe(mission.missionId);
+      expect(
+        job.plan?.tasks?.map((task) => task.taskId),
+        'durably stored worker and specialist task identities must match Oracle task keys',
+      ).toEqual(taskIds);
+      expect(new Set(job.plan?.tasks?.map((task) => task.taskId)).size).toBe(taskIds.length);
       expect(job.plan?.tasks?.map((task) => [task.key, task.agentId, task.dependsOn])).toEqual([
         ['worker', worker.id, []],
         ['specialist', specialist.id, ['worker']],
@@ -393,6 +399,240 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       if (workerId) await cleanupAgent(page, workerId);
       if (specialistId) await cleanupAgent(page, specialistId);
       await redis.quit();
+    }
+  });
+
+  test('minimal DEEP mission uses only the authorized Worker and publishes once', async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.goto('/c/new');
+    const token = await getAccessToken(page);
+    const redis = new Redis(process.env.REDIS_URI || 'redis://127.0.0.1:6379', {
+      maxRetriesPerRequest: 1,
+    });
+    let workerId: string | undefined;
+    try {
+      const worker = await createSavedAgent(page, token, 'Worker');
+      workerId = worker.id;
+      // A mission requiring no specialist must not require unrelated default specialists.
+      const mission = makeMission(worker.id, undefined, false);
+      const run = await startMission(page, token, worker.id, mission);
+      const job = await waitForOracle(redis, run.streamId, [`${mission.taskId}/main`], 'VERIFIED');
+      expect(job.plan?.tasks).toHaveLength(1);
+      expect(job.plan?.tasks?.[0]).toMatchObject({
+        key: 'main',
+        agentId: worker.id,
+        taskId: `${mission.taskId}/main`,
+      });
+      expect(job.plan?.mission?.missionId).toBe(mission.missionId);
+      expect(
+        run.events.some(
+          (event) => event.final === true && responseText(event.responseMessage).includes('{"ok":true}'),
+        ),
+      ).toBe(true);
+      const messages = await requestJson<
+        Array<{ isCreatedByUser?: boolean; text?: string; content?: unknown }>
+      >(page, {
+        path: `/api/messages/${encodeURIComponent(run.conversationId)}`,
+        token,
+      });
+      expect(
+        messages.filter(
+          (message) =>
+            message.isCreatedByUser === false && responseText(message).includes('{"ok":true}'),
+        ),
+      ).toHaveLength(1);
+      console.log('BOTMODE_MINIMAL_AUTHORIZED_MISSION_ORACLE=PASS');
+    } finally {
+      if (workerId) await cleanupAgent(page, workerId);
+      await redis.quit();
+    }
+  });
+
+  test('durable model-only mission soak: heartbeat, Oracle and unique publication', async ({
+    page,
+  }) => {
+    test.skip(process.env.E2E_MISSION_SOAK !== 'true', 'Explicit CI soak only');
+    const minutes = Number(process.env.E2E_SOAK_MINUTES ?? '3');
+    expect(Number.isInteger(minutes) && minutes >= 1 && minutes <= 180).toBe(true);
+    const duration = minutes * 60_000;
+    test.setTimeout(duration + 240_000);
+    await page.goto('/c/new');
+    const token = await getAccessToken(page);
+    const redis = new Redis(process.env.REDIS_URI || 'redis://127.0.0.1:6379', {
+      maxRetriesPerRequest: 1,
+    });
+    let workerId: string | undefined;
+    let loginTokenAfterSoak: string | undefined;
+    try {
+      const worker = await createSavedAgent(page, token, 'Worker');
+      workerId = worker.id;
+      const mission = makeMission(worker.id, undefined, false);
+      const conversationId = randomUUID();
+      const startedAt = Date.now();
+      const admitted = await page.request.post('/api/agents/chat/agents', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'x-librechat-generation-protocol': '2',
+        },
+        data: {
+          generationProtocolVersion: 2,
+          endpoint: 'agents',
+          agent_id: worker.id,
+          conversationId,
+          messageId: randomUUID(),
+          parentMessageId: '00000000-0000-0000-0000-000000000000',
+          isNewConvo: true,
+          text: `E2E_MISSION_ORACLE_SOAK_JSON:${mission.missionId}`,
+          orchestratorMission: { mission: mission.mission, plannerContext: mission.plannerContext },
+        },
+        timeout: 60_000,
+      });
+      expect(admitted.status()).toBe(200);
+      const started = (await admitted.json()) as MissionRun;
+      expect(started.status).toBe('started');
+      const streamId = started.streamId!;
+      expect(streamId).toBeTruthy();
+      // The CI Redis adapter may prefix all keys with an isolated namespace.
+      // Reuse the exact suffix-based lookup used by loadDurableJob above.
+      let jobKey = '';
+      await expect.poll(async () => {
+        const keys = await redis.keys(`*stream:{${streamId}}:job`);
+        if (keys.length !== 1) return null;
+        jobKey = keys[0];
+        return redis.hget(jobKey, 'status');
+      }, { timeout: 30_000, intervals: [500, 1000] }).toBe('running');
+      let firstCheckpoint = '';
+      await expect.poll(async () => {
+        firstCheckpoint = (await redis.hget(jobKey, 'checkpointNamespace')) ?? '';
+        return /^[0-9]+$/.test(firstCheckpoint);
+      }, { timeout: 30_000, intervals: [250, 500, 1000] }).toBe(true);
+      // Generation checkpoint and plan writes are asynchronous after admission.
+      // A running Redis hash alone is not sufficient to assert these barriers.
+      await expect.poll(async () =>
+        (await getPersistedCheckpointCounts(conversationId, firstCheckpoint)).generationRows,
+      { timeout: 30_000, intervals: [500, 1000] }).toBeGreaterThan(0);
+      let initialPlan: JobSnapshot['plan'] = null;
+      try {
+        await expect.poll(async () => {
+          initialPlan = (await loadDurableJob(redis, streamId)).plan;
+          return initialPlan?.tasks?.some(
+            (task) => task.taskId === `${mission.taskId}/main`,
+          ) === true;
+        }, { timeout: 30_000, intervals: [500, 1000, 2000] }).toBe(true);
+      } catch (error) {
+        // Safe to expose field names only; never log identity-bearing plan data.
+        console.log('CI_SOAK_PLAN_FIELD_NAMES=' + Object.keys(initialPlan ?? {}).sort().join(','));
+        throw error;
+      }
+
+      const heartbeatSamples: number[] = [];
+      const checkpointCounts: number[] = [];
+      // Wall-clock observations rather than fake timers; the first
+      // 20-30s must still be pre-Oracle for each duration variant.
+      for (let i = 0; i < 3; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 8_000));
+        const state = await loadDurableJob(redis, streamId);
+        expect(state.status).toBe('running');
+        expect(state.plan).toEqual(initialPlan);
+        const stamp = Number(await redis.hget(jobKey, 'lastActiveAt'));
+        expect(Number.isFinite(stamp) && stamp > 0).toBe(true);
+        heartbeatSamples.push(stamp);
+        expect((await redis.ttl(jobKey)) > 0).toBe(true);
+        checkpointCounts.push(
+          (await getPersistedCheckpointCounts(conversationId, firstCheckpoint!)).generationRows,
+        );
+        const before = await requestJson<
+          Array<{ messageId?: string; isCreatedByUser?: boolean; text?: string; content?: unknown }>
+        >(page, { path: `/api/messages/${encodeURIComponent(conversationId)}`, token });
+        expect(
+          before.filter(
+            (message) => message.isCreatedByUser === false && /"ok"\s*:\s*true/.test(responseText(message)),
+          ),
+        ).toHaveLength(0);
+      }
+      expect(heartbeatSamples[2]).toBeGreaterThanOrEqual(heartbeatSamples[0]);
+      expect(checkpointCounts[2]).toBeGreaterThanOrEqual(checkpointCounts[0]);
+      console.log('CI_MISSION_SOAK_RUNNING_HEARTBEATS_AND_NO_EARLY_PUBLICATION=PASS');
+
+      const taskIds = [`${mission.taskId}/main`];
+      const observedLongMilestones = new Set<number>();
+      await expect.poll(async () => {
+        const state = await loadDurableJob(redis, streamId);
+        if (minutes === 180 && state.status === 'running') {
+          const elapsedMinutes = (Date.now() - startedAt) / 60_000;
+          for (const threshold of [30, 90, 150]) {
+            if (elapsedMinutes < threshold || observedLongMilestones.has(threshold)) continue;
+            const activeAt = Number(await redis.hget(jobKey, 'lastActiveAt'));
+            expect(activeAt, 'live provider must refresh Redis activity during long missions').toBeGreaterThan(
+              Date.now() - 10 * 60_000,
+            );
+            expect(await redis.ttl(jobKey), 'long mission Redis state must remain retained').toBeGreaterThan(0);
+            observedLongMilestones.add(threshold);
+            console.log(`CI_MISSION_SOAK_RUNNING_AT_${threshold}_MIN=PASS`);
+          }
+        }
+        return taskIds.every((taskId) =>
+          state.state?.results?.[taskId]?.verdicts?.some((v) => v.status === 'VERIFIED') === true);
+      }, {
+        timeout: duration + 130_000,
+        intervals: minutes === 180 ? [5000, 10000, 15000] : [1000, 2500, 4000],
+      }).toBe(true);
+      console.log('CI_MISSION_SOAK_REDIS_ORACLE_VERIFIED=PASS');
+
+      const elapsed = Date.now() - startedAt;
+      // Never claim a three-hour soak if the fake provider returned early.
+      expect(elapsed).toBeGreaterThanOrEqual(duration * 0.90);
+
+      // The browser's initial JWT/refresh cookie can expire during 180min.
+      // Reauthenticate the CI fixture via the same public login API before
+      // checking final persisted messages. Never bypass user ACL or use DB reads
+      // to substitute for an authenticated publication.
+      const user = getE2EUser();
+      const relogin = await page.request.post('/api/auth/login', {
+        data: { email: user.email, password: user.password },
+        timeout: 30_000,
+      });
+      expect(relogin.status(), 'test user login after a 3-hour mission').toBe(200);
+      const credentials = (await relogin.json()) as { token?: string };
+      expect(credentials.token, 'fresh owner auth token after three hours').toBeTruthy();
+      loginTokenAfterSoak = credentials.token!;
+      console.log('CI_MISSION_SOAK_OWNER_REAUTH_AFTER_180_MIN=PASS');
+
+      let messages: Array<{
+        messageId?: string; isCreatedByUser?: boolean; text?: string; content?: unknown;
+      }> = [];
+      await expect.poll(async () => {
+        messages = await requestJson<typeof messages>(page, {
+          path: `/api/messages/${encodeURIComponent(conversationId)}`, token: loginTokenAfterSoak!,
+        });
+        return messages.filter(
+          (m) => m.isCreatedByUser === false && /"ok"\s*:\s*true/.test(responseText(m)),
+        ).length;
+      }, { timeout: 45_000, intervals: [500, 1000, 2500] }).toBe(1);
+      expect(new Set(messages.map((m) => m.messageId)).size).toBe(messages.length);
+      expect((await loadDurableJob(redis, streamId)).plan).toEqual(initialPlan);
+      console.log('CI_MISSION_SOAK_ORACLE_VERIFIED_AND_MONGO_UNIQUE=PASS');
+      console.log('CI_MISSION_SOAK_WALL_MINUTES=' + (elapsed / 60000).toFixed(2));
+      console.log('CI_MISSION_SOAK_SCOPE=single_model_only_task_fixture_no_live_provider_no_real_tools');
+    } finally {
+      // Never replace a real Oracle/TTL failure with an unrelated expired
+      // browser refresh-cookie error during cleanup. Global teardown removes
+      // this test user and its agents if the explicit deletion is unavailable.
+      try {
+        if (workerId && loginTokenAfterSoak) {
+          await requestJson(page, {
+            path: `/api/agents/${encodeURIComponent(workerId)}`,
+            token: loginTokenAfterSoak,
+            method: 'DELETE',
+          });
+        } else if (workerId) {
+          console.log('CI_MISSION_SOAK_EXPLICIT_CLEANUP_DEFERRED_TO_GLOBAL_TEARDOWN');
+        }
+      } catch (_error) {
+        console.log('CI_MISSION_SOAK_EXPLICIT_CLEANUP_DEFERRED_TO_GLOBAL_TEARDOWN');
+      } finally {
+        await redis.quit();
+      }
     }
   });
 
@@ -808,6 +1048,244 @@ test.describe('PR28 native mission Oracle runtime with authenticated host', () =
       if (workerId) await cleanupAgent(page, workerId);
       if (specialistId) await cleanupAgent(page, specialistId);
       await redis.quit();
+    }
+  });
+
+  test('foreign-owner specialist cannot be used for Oracle publication', async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.goto('/c/new');
+    const firstToken = await getAccessToken(page);
+    const external = {
+      email: `oracle-owner-${randomUUID()}@example.com`,
+      name: 'Oracle Foreign Owner',
+      password: 'securepassword123',
+    };
+    let workerId: string | undefined;
+    let foreignAgentId: string | undefined;
+    const foreignApi = await playwrightRequest.newContext({
+      baseURL: new URL(page.url()).origin,
+      storageState: { cookies: [], origins: [] },
+    });
+    let secondToken: string | undefined;
+    try {
+      const registered = await foreignApi.post('/api/auth/register', {
+        data: { ...external, confirm_password: external.password },
+      });
+      expect(registered.ok(), 'isolated second principal registration').toBe(true);
+      const loggedIn = await foreignApi.post('/api/auth/login', {
+        data: { email: external.email, password: external.password },
+      });
+      expect(loggedIn.ok(), 'isolated second principal login').toBe(true);
+      secondToken = ((await loggedIn.json()) as { token?: string }).token;
+      expect(secondToken).toBeTruthy();
+      const foreignResponse = await foreignApi.post('/api/agents', {
+        headers: { Authorization: `Bearer ${secondToken}` },
+        data: {
+          name: `Foreign specialist ${randomUUID().slice(0, 8)}`,
+          description: 'Cross-owner Oracle isolation fixture',
+          instructions: 'Return strict JSON',
+          provider: MOCK_ENDPOINTS[0].label,
+          model: MOCK_ENDPOINTS[0].model,
+        },
+      });
+      expect(foreignResponse.ok()).toBe(true);
+      const foreign = (await foreignResponse.json()) as SavedAgent;
+      foreignAgentId = foreign.id;
+      const worker = await createSavedAgent(page, firstToken, 'Worker');
+      workerId = worker.id;
+      const mission = makeMission(worker.id, foreign.id, false);
+      const conversationId = randomUUID();
+      const admitted = await page.request.post('/api/agents/chat/agents', {
+        headers: { Authorization: `Bearer ${firstToken}` },
+        data: {
+          endpoint: 'agents',
+          agent_id: worker.id,
+          conversationId,
+          messageId: randomUUID(),
+          parentMessageId: '00000000-0000-0000-0000-000000000000',
+          isNewConvo: true,
+          text: `E2E_MISSION_ORACLE_JSON:${mission.missionId}`,
+          orchestratorMission: { mission: mission.mission, plannerContext: mission.plannerContext },
+        },
+        timeout: 60_000,
+      });
+      expect([200, 400, 403, 404, 422]).toContain(admitted.status());
+      if (admitted.status() === 200) {
+        const run = (await admitted.json()) as MissionRun;
+        expect(run.streamId).toBeTruthy();
+        const stream = await page.request.get(
+          `/api/agents/chat/stream/${encodeURIComponent(run.streamId!)}?resume=true`,
+          { headers: { Authorization: `Bearer ${firstToken}` }, timeout: 150_000 },
+        );
+        expect(stream.status()).toBe(200);
+        expect(
+          (await stream.text()).split(/\\r?\\n/).some(
+            (line) => line.startsWith('data:') && /"final"\\s*:\\s*true/.test(line),
+          ),
+          'foreign-owner specialist must never finalize publication',
+        ).toBe(false);
+      }
+      const readback = await page.request.get(
+        `/api/messages/${encodeURIComponent(conversationId)}`,
+        { headers: { Authorization: `Bearer ${firstToken}` } },
+      );
+      expect([200, 404]).toContain(readback.status());
+      const messages = readback.status() === 200
+        ? ((await readback.json()) as Array<{
+            isCreatedByUser?: boolean;
+            text?: string;
+            content?: unknown;
+          }>)
+        : [];
+      expect(
+        messages.some((message) =>
+          message.isCreatedByUser === false && responseText(message).includes('{"ok":true}'),
+        ),
+        'foreign-owner specialist cannot publish an approved saved answer',
+      ).toBe(false);
+      console.log('PR28_ORACLE_RUNTIME_FOREIGN_OWNER_NO_PUBLICATION=PASS');
+    } finally {
+      if (workerId) await cleanupAgent(page, workerId);
+      if (foreignAgentId && secondToken) {
+        await foreignApi.delete(`/api/agents/${encodeURIComponent(foreignAgentId)}`, {
+          headers: { Authorization: `Bearer ${secondToken}` },
+        });
+      }
+      await foreignApi.dispose();
+    }
+  });
+
+  test('unlinked saved specialist cannot be delegated to or published', async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.goto('/c/new');
+    const token = await getAccessToken(page);
+    let workerId: string | undefined;
+    let specialistId: string | undefined;
+    try {
+      const specialist = await createSavedAgent(page, token, 'Specialist');
+      specialistId = specialist.id;
+      // Neither the legacy agent_ids graph nor the subagents allowlist delegates this agent.
+      const worker = await createSavedAgent(page, token, 'Worker');
+      workerId = worker.id;
+      const mission = makeMission(worker.id, specialist.id, false);
+      const conversationId = randomUUID();
+      const response = await page.request.post('/api/agents/chat/agents', {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          endpoint: 'agents',
+          agent_id: worker.id,
+          conversationId,
+          messageId: randomUUID(),
+          parentMessageId: '00000000-0000-0000-0000-000000000000',
+          isNewConvo: true,
+          text: `E2E_MISSION_ORACLE_JSON:${mission.missionId}`,
+          orchestratorMission: { mission: mission.mission, plannerContext: mission.plannerContext },
+        },
+        timeout: 60_000,
+      });
+      expect([200, 400, 403, 404, 422]).toContain(response.status());
+      if (response.status() === 200) {
+        const admitted = (await response.json()) as MissionRun;
+        expect(admitted.streamId).toBeTruthy();
+        const stream = await page.request.get(
+          `/api/agents/chat/stream/${encodeURIComponent(admitted.streamId!)}?resume=true`,
+          { headers: { Authorization: `Bearer ${token}` }, timeout: 150_000 },
+        );
+        expect(stream.status()).toBe(200);
+        expect(
+          (await stream.text()).split(/\\r?\\n/).some(
+            (line) => line.startsWith('data:') && /"final"\\s*:\\s*true/.test(line),
+          ),
+          'an unlinked specialist must not produce a published final',
+        ).toBe(false);
+      }
+      const savedResponse = await page.request.get(
+        `/api/messages/${encodeURIComponent(conversationId)}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      expect([200, 404]).toContain(savedResponse.status());
+      const saved = savedResponse.status() === 200
+        ? ((await savedResponse.json()) as Array<{
+            isCreatedByUser?: boolean;
+            text?: string;
+            content?: unknown;
+          }>)
+        : [];
+      expect(
+        saved.some((message) =>
+          message.isCreatedByUser === false && responseText(message).includes('{"ok":true}'),
+        ),
+        'an unlinked specialist cannot yield an Oracle-approved saved publication',
+      ).toBe(false);
+      console.log('PR28_ORACLE_RUNTIME_UNLINKED_SPECIALIST_NO_PUBLICATION=PASS');
+    } finally {
+      if (workerId) await cleanupAgent(page, workerId);
+      if (specialistId) await cleanupAgent(page, specialistId);
+    }
+  });
+
+  test('unknown specialist cannot produce a published answer', async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.goto('/c/new');
+    const token = await getAccessToken(page);
+    let workerId: string | undefined;
+    try {
+      const worker = await createSavedAgent(page, token, 'Worker');
+      workerId = worker.id;
+      const mission = makeMission(worker.id, `absent-specialist-${randomUUID()}`, false);
+      const conversationId = randomUUID();
+      const response = await page.request.post('/api/agents/chat/agents', {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          endpoint: 'agents',
+          agent_id: worker.id,
+          conversationId,
+          messageId: randomUUID(),
+          parentMessageId: '00000000-0000-0000-0000-000000000000',
+          isNewConvo: true,
+          text: `E2E_MISSION_ORACLE_JSON:${mission.missionId}`,
+          orchestratorMission: { mission: mission.mission, plannerContext: mission.plannerContext },
+        },
+        timeout: 60_000,
+      });
+      expect([200, 400, 403, 404, 422]).toContain(response.status());
+      if (response.status() === 200) {
+        const admitted = (await response.json()) as MissionRun;
+        expect(admitted.streamId).toBeTruthy();
+        const stream = await page.request.get(
+          `/api/agents/chat/stream/${encodeURIComponent(admitted.streamId!)}?resume=true`,
+          { headers: { Authorization: `Bearer ${token}` }, timeout: 150_000 },
+        );
+        expect(stream.status()).toBe(200);
+        const lines = (await stream.text()).split(/\\r?\\n/);
+        expect(
+          lines.some((line) => line.startsWith('data:') && /"final"\\s*:\\s*true/.test(line)),
+          'a missing specialist must not reach final publication',
+        ).toBe(false);
+      }
+      const savedResponse = await page.request.get(
+        `/api/messages/${encodeURIComponent(conversationId)}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      // A rejected pre-admission mission may not have a conversation yet.
+      expect([200, 404]).toContain(savedResponse.status());
+      const saved = savedResponse.status() === 200
+        ? ((await savedResponse.json()) as Array<{
+            isCreatedByUser?: boolean;
+            text?: string;
+            content?: unknown;
+          }>)
+        : [];
+      expect(
+        saved.some(
+          (message) =>
+            message.isCreatedByUser === false && responseText(message).includes('{"ok":true}'),
+        ),
+        'a missing specialist must not publish an Oracle-approved answer',
+      ).toBe(false);
+      console.log('PR28_ORACLE_RUNTIME_MISSING_SPECIALIST_NO_PUBLICATION=PASS');
+    } finally {
+      if (workerId) await cleanupAgent(page, workerId);
     }
   });
 

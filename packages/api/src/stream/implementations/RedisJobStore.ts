@@ -852,6 +852,23 @@ const INSPECT_LIVE_RECOVERED_OWNER_LUA =
   'if not untilMs or untilMs <= nowMs then return 0 end ' +
   'return 1';
 
+/**
+ * A valid, exact-owner provider heartbeat proves the generation is not stale.
+ * Persist this fact using Redis server time and refresh only an already-live
+ * job hash. Never extend a missing key or a key with no TTL. These statements
+ * are inserted only AFTER the complete epoch, owner, lease and status fences
+ * in the original/recovered provider heartbeat Lua scripts.
+ *
+ * ARGV last element is the configured running-job TTL, distinct from the
+ * 15-second provider lease. No heartbeat may revive an expired provider lease.
+ */
+const LIVE_PROVIDER_ACTIVITY_RENEWAL_LUA =
+  'redis.call("HSET", KEYS[1], "lastActiveAt", tostring(nowMs)) ' +
+  'local runningTtl = tonumber(ARGV[#ARGV]) ' +
+  'local remainingTtl = redis.call("TTL", KEYS[1]) ' +
+  'if remainingTtl >= 0 and remainingTtl < runningTtl then ' +
+  'redis.call("EXPIRE", KEYS[1], runningTtl) end ';
+
 /** Extends a recovered provider lease only if BOTH the owner token and
  * execution identity remain current and neither lease has expired.
  * Original-owner heartbeat continues to fail closed under recovery ownership. */
@@ -869,7 +886,9 @@ const HEARTBEAT_RECOVERED_MISSION_PROVIDER_LUA =
   'local untilMs = tonumber(redis.call("HGET", KEYS[1], "__missionProviderLeaseUntil") or "") ' +
   'if not untilMs or untilMs <= nowMs then return 0 end ' +
   'redis.call("PEXPIRE", KEYS[2], ARGV[5]) ' +
-  'redis.call("HSET", KEYS[1], "__missionProviderLeaseUntil", tostring(nowMs + tonumber(ARGV[5]))) return 1';
+  'redis.call("HSET", KEYS[1], "__missionProviderLeaseUntil", tostring(nowMs + tonumber(ARGV[5]))) ' +
+  LIVE_PROVIDER_ACTIVITY_RENEWAL_LUA +
+  'return 1';
 
 /** A provider lease can be refreshed ONLY by its exact execution identity.
  * The Redis server clock avoids skew between replicas. This heartbeat itself
@@ -887,7 +906,9 @@ const HEARTBEAT_MISSION_PROVIDER_LUA =
   // another replica is preparing a recovery claim.
   'local untilMs = tonumber(redis.call("HGET", KEYS[1], "__missionProviderLeaseUntil") or "") ' +
   'if not untilMs or untilMs <= nowMs then return 0 end ' +
-  'redis.call("HSET", KEYS[1], "__missionProviderLeaseUntil", tostring(nowMs + tonumber(ARGV[3]))) return 1';
+  'redis.call("HSET", KEYS[1], "__missionProviderLeaseUntil", tostring(nowMs + tonumber(ARGV[3]))) ' +
+  LIVE_PROVIDER_ACTIVITY_RENEWAL_LUA +
+  'return 1';
 
 /** Single-winner promotion from abort-persistence pending to a consumable
  * terminal payload. Owner success/failure and stale-owner recovery share this
@@ -2665,6 +2686,7 @@ export class RedisJobStore implements IJobStoreV2 {
         String(expectedCreatedAt),
         providerExecutionId,
         String(MISSION_PROVIDER_LEASE_MS),
+        String(this.ttl.running),
       )) === 1
     );
   }
@@ -3680,6 +3702,7 @@ export class RedisJobStore implements IJobStoreV2 {
         providerExecutionId,
         checkpointNamespace,
         String(leaseMs),
+        String(this.ttl.running),
       )) === 1
     );
   }

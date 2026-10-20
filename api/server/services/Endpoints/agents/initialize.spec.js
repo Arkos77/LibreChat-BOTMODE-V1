@@ -3595,6 +3595,227 @@ describe('initializeClient — subagent loading', () => {
     expect(agentClientArgs.agentConfigs.get(sharedId)).toBe(sharedConfig);
   });
 
+  it('allows an isolated self-spawn only for the effective free BOT MODE model', async () => {
+    mockInitializeAgent.mockResolvedValue({
+      ...makePrimaryConfig({
+        subagents: { enabled: true, allowSelf: true, agent_ids: [] },
+      }),
+      model: 'openrouter/free',
+      provider: 'openAI',
+      model_parameters: { model: 'openrouter/free' },
+    });
+    const endpointOption = makeEndpointOption();
+    endpointOption.agent = Promise.resolve({
+      id: PRIMARY_ID,
+      name: 'BOT MODE Worker',
+      provider: 'openrouter',
+      model: 'openrouter/free',
+      tools: [],
+    });
+    endpointOption.model_parameters = { model: 'openrouter/free' };
+    await initializeClient({
+      req: makeSubagentReq(),
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption,
+    });
+    expect(agentClientArgs.agent.subagents).toMatchObject({
+      enabled: true,
+      allowSelf: true,
+    });
+  });
+
+  it.each([
+    ['paid model selected', 'paid-model', undefined],
+    [
+      'free model with hidden fallback',
+      'openrouter/free',
+      [{ provider: 'openAI', clientOptions: { model: 'paid-model' } }],
+    ],
+  ])(
+    'removes BOT MODE self-spawn at runtime for %s without changing saved permissions',
+    async (_label, model, fallbacks) => {
+      const persistedSubagents = { enabled: true, allowSelf: true, agent_ids: [] };
+      mockInitializeAgent.mockResolvedValue({
+        ...makePrimaryConfig({ subagents: persistedSubagents }),
+        model,
+        provider: 'openAI',
+        model_parameters: { model, ...(fallbacks ? { fallbacks } : {}) },
+      });
+      const endpointOption = makeEndpointOption();
+      endpointOption.agent = Promise.resolve({
+        id: PRIMARY_ID,
+        name: 'BOT MODE Worker',
+        provider: 'openrouter',
+        model,
+        tools: [],
+      });
+      endpointOption.model_parameters = { model };
+      await initializeClient({
+        req: makeSubagentReq(),
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption,
+      });
+      expect(agentClientArgs.agent.subagents).toMatchObject({
+        enabled: true,
+        allowSelf: false,
+      });
+      expect(persistedSubagents.allowSelf).toBe(true);
+    },
+  );
+
+  it('keeps native self-spawn enabled after free_only routing chooses an alternate free model', async () => {
+    mockInitializeAgent.mockResolvedValue({
+      ...makePrimaryConfig({
+        subagents: { enabled: true, allowSelf: true, agent_ids: [] },
+      }),
+      model: 'nvidia/nemotron-3.5-lightning:free',
+      provider: 'openAI',
+      model_parameters: {
+        model: 'nvidia/nemotron-3.5-lightning:free',
+        fallbacks: [
+          {
+            provider: 'openAI',
+            clientOptions: { model: 'openrouter/free' },
+            retryOn: 'MODEL_RETRYABLE_ZERO_CHUNK',
+          },
+        ],
+      },
+      hostModelDecision: {
+        selectedProvider: 'OpenRouter',
+        selectedModel: 'nvidia/nemotron-3.5-lightning:free',
+        spendingPolicy: 'free_only',
+        authorizedBindings: [
+          { provider: 'OpenRouter', model: 'openrouter/free' },
+          { provider: 'OpenRouter', model: 'nvidia/nemotron-3.5-lightning:free' },
+        ],
+      },
+    });
+    const endpointOption = makeEndpointOption();
+    endpointOption.agent = Promise.resolve({
+      id: PRIMARY_ID,
+      name: 'BOT MODE Worker',
+      provider: 'openrouter',
+      model: 'openrouter/free',
+      tools: [],
+    });
+    endpointOption.model_parameters = { model: 'openrouter/free' };
+    await initializeClient({
+      req: makeSubagentReq(),
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption,
+    });
+    expect(agentClientArgs.agent.subagents).toMatchObject({
+      enabled: true,
+      allowSelf: true,
+    });
+  });
+
+  it.each([false, true])(
+    'rejects a paid alternate under free_only with a DEEP mission payload=%s',
+    async (deepMission) => {
+      mockInitializeAgent.mockResolvedValue({
+        ...makePrimaryConfig({
+          subagents: { enabled: true, allowSelf: true, agent_ids: [] },
+        }),
+        model: 'openrouter/free',
+        provider: 'openAI',
+        model_parameters: { model: 'openrouter/free' },
+        hostModelDecision: {
+          selectedProvider: 'OpenRouter',
+          selectedModel: 'openrouter/free',
+          spendingPolicy: 'free_only',
+          authorizedBindings: [
+            { provider: 'OpenRouter', model: 'openrouter/free' },
+            { provider: 'OpenRouter', model: 'nvidia/paid-model' },
+          ],
+        },
+      });
+      const endpointOption = makeEndpointOption();
+      endpointOption.agent = Promise.resolve({
+        id: PRIMARY_ID,
+        name: 'BOT MODE Worker',
+        provider: 'openrouter',
+        model: 'openrouter/free',
+        tools: [],
+      });
+      endpointOption.model_parameters = { model: 'openrouter/free' };
+      await initializeClient({
+        req: deepMission
+          ? {
+              ...makeSubagentReq(),
+              body: {
+                ...makeSubagentReq().body,
+                orchestratorMission: {
+                  mission: {
+                    missionId: 'automatic-deep-budget-test',
+                    taskId: 'automatic-deep-task',
+                    objective: 'Développer une application et tester le code',
+                    requiredCapabilities: ['execute_code'],
+                    constraints: [],
+                  },
+                  plannerContext: {
+                    worker: {
+                      id: 'worker',
+                      agentId: PRIMARY_ID,
+                      role: 'worker',
+                      capabilities: ['basic'],
+                      constraints: [],
+                    },
+                    specialists: [],
+                  },
+                },
+              },
+            }
+          : makeSubagentReq(),
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption,
+      });
+      expect(agentClientArgs.agent.subagents).toMatchObject({
+        enabled: true,
+        allowSelf: false,
+      });
+    },
+  );
+
+  it('blocks a cross-provider routing decision even when the returned model is named openrouter/free', async () => {
+    mockInitializeAgent.mockResolvedValue({
+      ...makePrimaryConfig({
+        subagents: { enabled: true, allowSelf: true, agent_ids: [] },
+      }),
+      model: 'openrouter/free',
+      provider: 'openAI',
+      model_parameters: { model: 'openrouter/free' },
+      hostModelDecision: {
+        selectedProvider: 'Gemini',
+        selectedModel: 'openrouter/free',
+        spendingPolicy: 'free_only',
+      },
+    });
+    const endpointOption = makeEndpointOption();
+    endpointOption.agent = Promise.resolve({
+      id: PRIMARY_ID,
+      name: 'BOT MODE Worker',
+      provider: 'openrouter',
+      model: 'openrouter/free',
+      tools: [],
+    });
+    endpointOption.model_parameters = { model: 'openrouter/free' };
+    await initializeClient({
+      req: makeSubagentReq(),
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption,
+    });
+    expect(agentClientArgs.agent.subagents).toMatchObject({
+      enabled: true,
+      allowSelf: false,
+    });
+  });
+
   it('clears subagents config on primary when the capability is disabled', async () => {
     /** Admin can turn subagents off at the endpoint level even if an agent was
      *  configured for them. The primary's `subagents` field should be

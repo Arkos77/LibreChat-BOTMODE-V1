@@ -30,6 +30,27 @@ describe('BOT MODE model budget', () => {
     expect(state.utilizationRatio).toBeCloseTo(0.96);
   });
 
+  it('scopes spending to the authenticated principal before enforcing free-only', async () => {
+    const aggregate = jest.fn(async (pipeline) => {
+      expect(pipeline[0].$match.user).toBe('authenticated-user');
+      expect(pipeline[0].$match.isCreatedByUser).toBe(false);
+      expect(pipeline[0].$match['metadata.usage.cost']).toEqual({ $type: 'number' });
+      return [{ dailyUsd: 0.97, monthlyUsd: 4 }];
+    });
+    const state = await readModelBudgetState({
+      userId: 'authenticated-user',
+      config: { dailyUsd: 1, monthlyUsd: 20, freeOnlyRatio: 0.95 },
+      now: new Date('2026-10-19T12:00:00.000Z'),
+      aggregate,
+    });
+    expect(state.spendingPolicy).toBe('free_only');
+    expect(mergeBudgetRoutingConstraints({ maxLatencyMs: 200 }, state)).toEqual({
+      maxLatencyMs: 200,
+      spendingPolicy: 'free_only',
+    });
+    expect(aggregate).toHaveBeenCalledTimes(1);
+  });
+
   it('still exposes observed spend without enforcing a configured limit', async () => {
     const aggregate = jest.fn(async () => [{ dailyUsd: 0.12, monthlyUsd: 1.5 }]);
     const state = await readModelBudgetState({
