@@ -34,12 +34,12 @@ jobs:
       - name: Install Lite using the published installer contract
         run: |
           set -euo pipefail
-          sudo env BOTMODE_HOST_PORT=3093 ./install.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1:candidate-botmode-v1-59598c2f4e33 > /tmp/botmode-fresh-install.log 2>&1 || {
+          sudo env BOTMODE_HOST_PORT=3093 ./install.sh --lite > /tmp/botmode-fresh-install.log 2>&1 || {
             echo 'CI_FRESH_INSTALL=FAIL'
             tail -80 /tmp/botmode-fresh-install.log | sed -E 's/(PASSWORD|SECRET|KEY)=([^[:space:]]+)/\1=[REDACTED]/g'
             exit 1
           }
-          grep -q '^BOTMODE_BOOTSTRAP=PASS$' /tmp/botmode-fresh-install.log
+          grep -q '^BOTMODE_BOOTSTRAP=PASS
           test -f .botmode-database-auth-initialized
           test "$(stat -c %a .env)" = 600
           for i in $(seq 1 90); do
@@ -193,7 +193,243 @@ jobs:
           test -n "$before"
           sudo env BOTMODE_HOST_PORT=3093 ./stop.sh >/tmp/botmode-stop.log 2>&1
           test -n "$(docker volume inspect librechat-botmode_botmode-mongo-data -f '{{.Name}}')"
-          sudo env BOTMODE_HOST_PORT=3093 ./start.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1:candidate-botmode-v1-59598c2f4e33 >/tmp/botmode-start.log 2>&1 || {
+          sudo env BOTMODE_HOST_PORT=3093 ./start.sh --lite >/tmp/botmode-start.log 2>&1 || {
+            echo 'CI_FRESH_RESTART=FAIL'
+            tail -80 /tmp/botmode-start.log | sed -E 's/(PASSWORD|SECRET|KEY)=([^[:space:]]+)/\1=[REDACTED]/g'
+            exit 1
+          }
+          grep -q '^BOTMODE_BOOTSTRAP=PASS$' /tmp/botmode-start.log
+          for i in $(seq 1 90); do
+            if curl -fsS --max-time 5 http://127.0.0.1:3093/api/config -o /tmp/botmode-after-restart.json >/dev/null 2>&1; then
+              echo 'CI_FRESH_RESTART_API_READY=PASS'
+              break
+            fi
+            sleep 2
+          done
+          test -s /tmp/botmode-after-restart.json
+          # Prove the actual user persists and can log in after container restart.
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+          credentials=json.loads(Path('/tmp/botmode-ci-credentials.json').read_text())
+          req=Request('http://127.0.0.1:3093/api/auth/login',
+              data=json.dumps(credentials).encode(),
+              headers={'Content-Type':'application/json',
+                       'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36'},
+              method='POST')
+          with urlopen(req, timeout=25) as res:
+              response=json.load(res)
+              if res.status!=200 or not isinstance(response.get('token'),str):
+                  raise SystemExit('CI_FIRST_USER_LOGIN_AFTER_RESTART_FAILED')
+          print('CI_FIRST_USER_LOGIN_AFTER_RESTART=PASS')
+          old_token=credentials['previous_token']
+          req=Request('http://127.0.0.1:3093/api/user',
+              headers={'Authorization':'Bearer '+old_token,
+                       'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36'})
+          try:
+              with urlopen(req,timeout=25) as res:
+                  previous=json.load(res)
+                  if res.status!=200:
+                      raise SystemExit('CI_JWT_BECAME_INVALID_AFTER_RESTART')
+          except Exception as exc:
+              print('CI_PREVIOUS_JWT_AFTER_RESTART=FAIL_'+exc.__class__.__name__)
+              raise
+          print('CI_PREVIOUS_JWT_AFTER_RESTART=PASS')
+          # Preserve the same browser-compatible request headers used in
+          # onboarding. Report only status/type, never tokens or response body.
+          request=Request('http://127.0.0.1:3093/api/agents/botmode/setup-status',
+              headers={'Authorization':'Bearer '+old_token,
+                       'Accept':'application/json',
+                       'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36'})
+          with urlopen(request,timeout=25) as res:
+              print('CI_BOTMODE_STATUS_RESTART_HTTP='+str(res.status))
+              ctype=res.headers.get('Content-Type','').split(';')[0].strip().lower()
+              print('CI_BOTMODE_STATUS_RESTART_JSON='+str(ctype=='application/json'))
+              if res.status!=200 or ctype!='application/json':
+                  raise SystemExit('CI_BOTMODE_ONBOARDING_STATUS_NOT_JSON')
+              inventory=json.load(res)
+              if not (inventory.get('inventoryComplete') and
+                      inventory.get('permissionsComplete') and
+                      inventory.get('delegationConfigured')):
+                  raise SystemExit('CI_BOTMODE_ONBOARDING_NOT_DURABLE')
+          print('CI_BOTMODE_NATIVE_SETUP_DURABLE=PASS')
+          PY
+          echo 'CI_FRESH_INSTALL_RESTART_PRESERVES_DATA=PASS'
+      - name: Cleanup disposable runner volumes
+        if: always()
+        run: |
+          sudo env BOTMODE_HOST_PORT=3093 docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
+          rm -f /tmp/botmode-fresh-install.log /tmp/botmode-start.log /tmp/botmode-stop.log /tmp/botmode-ci-credentials.json
+      - name: Explain coverage boundaries
+        if: always()
+        run: |
+          {
+            echo '### BOT MODE V1 — First-user native agent onboarding'
+            echo 'Pinned head: 59598c2f4e333c256296bbb8c6f45a024832745b'
+            echo 'Pulls immutable D03 public GHCR candidate without auth, runs actual ./install.sh --lite with the exact candidate image pin and verifies first-user native onboarding, JWT and persistence.'
+            echo 'Checks real first-user HTTP onboarding (6 agents, owner ACL, Worker delegation, idempotence, and restart durability).'
+            echo 'Validates public GHCR anonymous pull. Does not validate externally hosted LLM.'
+          } >> "$GITHUB_STEP_SUMMARY"
+ /tmp/botmode-fresh-install.log
+          # Default image must match the immutable build SHA from this exact source tag.
+          grep -Fxq 'BOTMODE_IMAGE=ghcr.io/arkos77/librechat-botmode-v1:sha-59598c2f4e33' .env
+          docker image inspect 'ghcr.io/arkos77/librechat-botmode-v1:sha-59598c2f4e33' >/dev/null
+          echo 'CI_LITE_DEFAULT_IMAGE_EXACT_SHA=PASS'
+          test -f .botmode-database-auth-initialized
+          test "$(stat -c %a .env)" = 600
+          for i in $(seq 1 90); do
+            if curl -fsS --max-time 5 http://127.0.0.1:3093/api/config -o /tmp/botmode-fresh-config.json >/dev/null 2>&1; then
+              echo 'CI_FRESH_INSTALL_API_READY=PASS'
+              break
+            fi
+            sleep 2
+          done
+          test -s /tmp/botmode-fresh-config.json
+          echo 'CI_FRESH_INSTALL=PASS'
+      - name: Emulate adding a configured provider API key after installation
+        run: |
+          set -euo pipefail
+          # This fixture is intentionally NOT a live credential or inference.
+          # It exercises the real native onboarding/ACL endpoints without costs.
+          sudo sh -c "printf '\\nOPENROUTER_KEY=ci-fixture-no-external-inference\\n' >> .env"
+          sudo env BOTMODE_HOST_PORT=3093 docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml restart api
+          for i in $(seq 1 70); do
+            if curl -fsS --max-time 4 http://127.0.0.1:3093/api/config -o /tmp/botmode-reconfigured-config.json >/dev/null 2>&1; then
+              echo 'CI_MODEL_CONFIG_RUNTIME_RELOADED=PASS'
+              break
+            fi
+            sleep 2
+          done
+          test -s /tmp/botmode-reconfigured-config.json
+      - name: Register and authenticate a real first user through public API
+        run: |
+          python3 - <<'PY'
+          import json, secrets, pathlib
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError
+          base='http://127.0.0.1:3093'
+          password=secrets.token_urlsafe(28)+'Ab3!'
+          registration={
+              'name':'BOTMODE CI First User',
+              'username':'botmode-ci-first-user',
+              'email':'botmode-ci@example.invalid',
+              'password':password,
+              'confirm_password':password,
+          }
+          def post(path, body):
+              req=Request(base+path,
+                  data=json.dumps(body).encode(),
+                  headers={'Content-Type':'application/json',
+                           'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36'},
+                  method='POST')
+              try:
+                  with urlopen(req, timeout=35) as res:
+                      return res.status,json.load(res)
+              except HTTPError as exc:
+                  print('CI_FIRST_USER_'+path.replace('/','_').upper()+'_HTTP='+str(exc.code))
+                  raise SystemExit('CI_FIRST_USER_AUTH_FLOW_FAILED')
+          status,_=post('/api/auth/register',registration)
+          if status!=200:
+              raise SystemExit('CI_FIRST_USER_REGISTRATION_NOT_OK')
+          print('CI_FIRST_USER_REGISTER=PASS')
+          status,data=post('/api/auth/login',{'email':registration['email'],'password':password})
+          if status!=200 or not isinstance(data.get('token'),str) or len(data['token'])<50:
+              raise SystemExit('CI_FIRST_USER_LOGIN_JWT_MISSING')
+          token=data['token']
+          req=Request(base+'/api/user',
+                headers={'Authorization':'Bearer '+token,
+                         'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36'})
+          with urlopen(req,timeout=20) as res:
+              user=json.load(res)
+              if res.status!=200:
+                  raise SystemExit('CI_FIRST_USER_PROTECTED_ENDPOINT_FAILED')
+          print('CI_FIRST_USER_JWT_AND_PROTECTED_API=PASS')
+          # Persist only synthetic credentials on the disposable runner; never print them.
+          path=pathlib.Path('/tmp/botmode-ci-credentials.json')
+          path.write_text(json.dumps({'email':registration['email'],'password':password,'previous_token':token}))
+          path.chmod(0o600)
+          # Read-only check: does first-user onboarding produce a usable BOT MODE
+          # worker/specialist set without a manual seed script?
+          PY
+          sudo env BOTMODE_HOST_PORT=3093 docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE_BOOT'
+          (async () => {
+            const { MongoClient } = require('mongodb');
+            const client = await MongoClient.connect(process.env.MONGO_URI);
+            try {
+              const db = client.db();
+              const owner = await db.collection('users').findOne(
+                {email: 'botmode-ci@example.invalid'}, {projection: {_id: 1}});
+              if (!owner) throw new Error('CI_FIRST_USER_MISSING_FROM_DB');
+              const names=['BOT MODE Worker','RECHERCHE','ANALYSE','CODE','DOCUMENTS','RÉDACTION'];
+              const agents=await db.collection('agents').find(
+                {author:owner._id,name:{$in:names}},
+                {projection:{name:1}}).toArray();
+              const found=new Set(agents.map(x=>x.name));
+              const ready=names.every(x=>found.has(x));
+              console.log('CI_FIRST_USER_AGENTS_PRESENT='+agents.length);
+              console.log('CI_FIRST_USER_AGENT_ONBOARDING='+ (ready?'READY':'INCOMPLETE'));
+            } finally { await client.close(); }
+          })().catch(e=>{console.error('CI_AGENT_ONBOARDING_READ_FAILED='+e.name);process.exit(1)});
+          NODE_BOOT
+      - name: Provision six BOT MODE agents with native authenticated HTTP setup
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError
+          base='http://127.0.0.1:3093'
+          credentials=json.loads(Path('/tmp/botmode-ci-credentials.json').read_text())
+          token=credentials['previous_token']
+          headers={'Authorization':'Bearer '+token,
+            'Content-Type':'application/json',
+            'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36'}
+          def read(path):
+              with urlopen(Request(base+path,headers=headers),timeout=45) as res:
+                  return res.status,json.load(res)
+          status,before=read('/api/agents/botmode/setup-status')
+          if status!=200 or before.get('inventoryComplete') is not False:
+              raise SystemExit('CI_BOTMODE_INITIAL_INVENTORY_UNEXPECTED')
+          print('CI_BOTMODE_BEFORE_ONBOARDING=EMPTY')
+          status,models=read('/api/models')
+          configured=models.get('OpenRouter') or models.get('openrouter') or []
+          if 'openrouter/free' not in configured:
+              print('CI_BOTMODE_CONFIGURED_OPENROUTER_MODEL_PRESENT=false')
+              raise SystemExit('CI_BOTMODE_CONFIGURED_MODEL_NOT_AVAILABLE')
+          provider='OpenRouter' if 'OpenRouter' in models else 'openrouter'
+          print('CI_BOTMODE_CONFIGURED_OPENROUTER_MODEL_PRESENT=true')
+          def setup():
+              request=Request(base+'/api/agents/botmode/setup',
+                  headers=headers,method='POST',
+                  data=json.dumps({'provider':provider,'model':'openrouter/free'}).encode())
+              try:
+                  with urlopen(request,timeout=90) as res:
+                      return res.status,json.load(res)
+              except HTTPError as e:
+                  print('CI_BOTMODE_SETUP_HTTP_STATUS='+str(e.code))
+                  raise
+          status,result=setup()
+          if status!=200 or len(result.get('created',[]))!=6:
+              raise SystemExit('CI_BOTMODE_SIX_AGENT_CREATION_FAILED')
+          print('CI_BOTMODE_NATIVE_SIX_AGENTS_CREATED=PASS')
+          status,after=read('/api/agents/botmode/setup-status')
+          if not (after.get('inventoryComplete') and after.get('permissionsComplete') and after.get('delegationConfigured')):
+              raise SystemExit('CI_BOTMODE_OWNER_ACL_OR_DELEGATION_FAILED')
+          print('CI_BOTMODE_NATIVE_ACL_DELEGATION=PASS')
+          status,again=setup()
+          if status!=200 or again.get('created')!=[]:
+              raise SystemExit('CI_BOTMODE_ONBOARDING_NOT_IDEMPOTENT')
+          print('CI_BOTMODE_NATIVE_SETUP_IDEMPOTENT=PASS')
+          PY
+      - name: Stop and restart using lifecycle scripts, verify durable database volume
+        run: |
+          set -euo pipefail
+          before="$(docker volume inspect librechat-botmode_botmode-mongo-data -f '{{.Name}}')"
+          test -n "$before"
+          sudo env BOTMODE_HOST_PORT=3093 ./stop.sh >/tmp/botmode-stop.log 2>&1
+          test -n "$(docker volume inspect librechat-botmode_botmode-mongo-data -f '{{.Name}}')"
+          sudo env BOTMODE_HOST_PORT=3093 ./start.sh --lite >/tmp/botmode-start.log 2>&1 || {
             echo 'CI_FRESH_RESTART=FAIL'
             tail -80 /tmp/botmode-start.log | sed -E 's/(PASSWORD|SECRET|KEY)=([^[:space:]]+)/\1=[REDACTED]/g'
             exit 1
