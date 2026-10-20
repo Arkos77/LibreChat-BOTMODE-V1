@@ -24,14 +24,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source_sha=5fb904d375bffd6c54b5830cb1536088a9e77211
+          source_sha=59598c2f4e333c256296bbb8c6f45a024832745b
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
           git fetch --no-tags origin "$source_sha"
-          unexpected="$(git diff --name-only "$source_sha" HEAD | grep -Ev '^(\.github/workflows/botmode-v1-lite-rollback-smoke\.yml|\.github/workflows/botmode-v1-integrated-first-user-acceptance\.yml|\.github/workflows/botmode-v1-published-mission-rehearsal\.yml|\.github/workflows/botmode-v1-ghcr-subagent-oracle-probe\.yml|\.github/workflows/botmode-v1-published-arm64-image\.yml|scripts/botmode/ci-staging-digest-rollback\.sh|scripts/botmode/ci-live-free-child-oracle-gate\.py|scripts/botmode/ci-live-free-child-preflight\.sh|docs/BOTMODE_V1_(INVENTAIRE_MAITRE|MEMO_CHECKPOINT)_20261018\.md|docs/BOTMODE_V1_GHCR_RELEASE_GATE\.md|docs/BOTMODE_V1_NPM_RISK_DECISION_20261014\.md)$' || true)"
-          test -z "$unexpected" || { echo "Unexpected runtime source drift: $unexpected" >&2; exit 1; }
+          python3 - <<'PY_SOURCE'
+          import subprocess
+          source='59598c2f4e333c256296bbb8c6f45a024832745b'
+          permitted={
+            '.github/scripts/retarget-prs.sh',
+            '.github/workflows/botmode-change-safety-gate.yml',
+            '.github/workflows/botmode-v1-d03-candidate-manual.yml',
+            '.github/workflows/botmode-v1-d03-fresh-lite-acceptance.yml',
+            '.github/workflows/botmode-v1-d04-candidate-license.yml',
+            '.github/workflows/botmode-v1-d04-full-restore.yml',
+            '.github/workflows/botmode-v1-ghcr-subagent-oracle-probe.yml',
+            '.github/workflows/botmode-v1-lite-rollback-smoke.yml',
+            'scripts/botmode/verify-d04-candidate-license.sh',
+            'scripts/botmode/ci-staging-digest-rollback.sh',
+          }
+          changed=set(subprocess.check_output(['git','diff','--name-only',source,'HEAD'],text=True).splitlines())
+          unexpected=sorted(changed-permitted)
+          print('CI_LITE_D03_SOURCE_RUNTIME_UNMODIFIED='+str(not unexpected).upper())
+          if unexpected: raise SystemExit('CI_LITE_D03_RUNTIME_DRIFT_REFUSED='+','.join(unexpected))
+          PY_SOURCE
           test ! -e .env
           docker logout ghcr.io >/dev/null 2>&1 || true
-          docker pull ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0
+          docker pull ghcr.io/arkos77/librechat-botmode-v1@sha256:20e921df9fda01dba00bc925fe1ae37ae24fbcc992f52f15aad60bfa5aae4c21
           echo 'BOTMODE_PUBLISHED_DIGEST_ANONYMOUS_PULL=PASS'
       - name: Start disposable Lite installation
         shell: bash
@@ -63,7 +81,7 @@ jobs:
           test "$(grep 'BOTMODE_MONGO_PASSWORD=' .env | tail -1 | cut -d= -f2-)" = "$BOTMODE_MONGO_PASSWORD"
           test "$(grep 'POSTGRES_PASSWORD=' .env | tail -1 | cut -d= -f2-)" = "$POSTGRES_PASSWORD"
           echo "BOTMODE_STAGING_DOTENV_AND_COMPOSE_CREDENTIALS_MATCH=PASS"
-          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT,COMPOSE_PROJECT_NAME ./install.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0
+          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT,COMPOSE_PROJECT_NAME ./install.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1@sha256:20e921df9fda01dba00bc925fe1ae37ae24fbcc992f52f15aad60bfa5aae4c21
           compose=(sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT,COMPOSE_PROJECT_NAME docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)
           ready=0
           for n in $(seq 1 90); do
@@ -84,7 +102,7 @@ jobs:
           test "$before" = 1
           sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT,COMPOSE_PROJECT_NAME ./stop.sh
           # Stop never uses --volumes. Re-open the exact published OCI digest.
-          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT,COMPOSE_PROJECT_NAME ./start.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0
+          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT,COMPOSE_PROJECT_NAME ./start.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1@sha256:20e921df9fda01dba00bc925fe1ae37ae24fbcc992f52f15aad60bfa5aae4c21
           ready=0
           for n in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then ready=1; break; fi
