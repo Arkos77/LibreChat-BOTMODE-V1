@@ -649,6 +649,19 @@ jobs:
           anchor='        print("CI_ORACLE_ACCEPT_DURABLE_CHILD_LINEAGE=NOT_PROVEN", flush=True)'
           assert source.count(anchor)==1
           source=source.replace(anchor, '        if not (len(runs) == 1 and linked and completed):\n            fail("STRICT_ACCEPT_CHILD_SSE_CORRELATION_MISSING")\n        print("CI_ORACLE_ACCEPT_CHILD_SSE_STRICT=PASS", flush=True)\n'+anchor)
+          # Show only an allowlisted HTTP error code from the admission response.
+          probe = '    if status != 200:\n        print("CI_ORACLE_" + label + "_START_HTTP=" + str(status))'
+          assert source.count(probe)==1
+          replacement = ('    if status != 200:\n'
+                         '        try:\n'
+                         '            parsed_error = json.loads(raw_start)\n'
+                         '            error_code = parsed_error.get("code") if isinstance(parsed_error, dict) else None\n'
+                         '        except (ValueError, TypeError):\n'
+                         '            error_code = None\n'
+                         '        approved_codes = ("SERVER_NOT_READY", "AGENT_EXPECTED_MCP_TOOLS_UNAVAILABLE")\n'
+                         '        print("CI_STRICT_ADMISSION_ERROR_CODE=" + (error_code if error_code in approved_codes else "OTHER_OR_MISSING"), flush=True)\n'
+                         '        print("CI_ORACLE_" + label + "_START_HTTP=" + str(status))')
+          source=source.replace(probe,replacement)
           p.write_text(source)
           PY_STRICT
           # The previous acceptance deliberately restarts API to verify durable
