@@ -20,7 +20,7 @@ describe('information source adapters', () => {
       fetchImpl: (async () =>
         new Response('<rss><channel><item/><item/></channel></rss>', {
           status: 200,
-        })) as typeof fetch,
+        })) as unknown as typeof fetch,
     });
     await expect(adapter.check()).resolves.toMatchObject({
       sourceId: 'fmhy',
@@ -33,7 +33,7 @@ describe('information source adapters', () => {
     const adapter = new RssInformationWatchAdapter({
       descriptor: FMHY_INFORMATION_SOURCE,
       feedUrl: 'https://example.com/feed.xml',
-      fetchImpl: (async () => new Response('', { status: 503 })) as typeof fetch,
+      fetchImpl: (async () => new Response('', { status: 503 })) as unknown as typeof fetch,
     });
     await expect(adapter.check()).rejects.toThrow('HTTP 503');
   });
@@ -50,13 +50,13 @@ describe('information source adapters', () => {
     const adapter = new YouTubeInformationWatchAdapter({
       apiKey: 'test-key',
       query: 'BOT MODE',
-      fetchImpl: (async (input) => {
+      fetchImpl: (async (input: Parameters<typeof fetch>[0]) => {
         expect(String(input)).toContain('q=BOT+MODE');
         return new Response(JSON.stringify({ items: [{ id: 1 }, { id: 2 }] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
-      }) as typeof fetch,
+      }) as unknown as typeof fetch,
     });
     await expect(adapter.check()).resolves.toMatchObject({
       sourceId: 'youtube',
@@ -77,14 +77,14 @@ describe('information source adapters', () => {
       token: 'test-token',
       query: 'BOT MODE',
       limit: 10,
-      fetchImpl: (async (input) => {
+      fetchImpl: (async (input: Parameters<typeof fetch>[0]) => {
         expect(String(input)).toContain('q=BOT+MODE');
         expect(String(input)).toContain('limit=10');
         return new Response(JSON.stringify({ status: 'ok', response: { count: 7, items: [{}] } }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
-      }) as typeof fetch,
+      }) as unknown as typeof fetch,
     });
     await expect(adapter.check()).resolves.toMatchObject({
       sourceId: 'tgstat',
@@ -106,7 +106,7 @@ describe('information source adapters', () => {
       query: 'BOT MODE',
       subreddit: 'opensource',
       limit: 10,
-      fetchImpl: (async (input, init) => {
+      fetchImpl: (async (input: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]) => {
         const url = String(input);
         expect(url).toContain('/r/opensource/search');
         expect(url).toContain('q=BOT+MODE');
@@ -119,7 +119,7 @@ describe('information source adapters', () => {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
-      }) as typeof fetch,
+      }) as unknown as typeof fetch,
     });
     await expect(adapter.check()).resolves.toMatchObject({
       sourceId: 'reddit',
@@ -141,7 +141,7 @@ describe('information source adapters', () => {
       channelId: '123456789012345678',
       requireMessageContent: false,
       limit: 2,
-      fetchImpl: (async (input, init) => {
+      fetchImpl: (async (input: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]) => {
         expect(String(input)).toContain('/api/v10/channels/123456789012345678/messages?limit=2');
         expect(init?.headers).toEqual(
           expect.objectContaining({ authorization: 'Bot test-bot-token' }),
@@ -150,7 +150,7 @@ describe('information source adapters', () => {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
-      }) as typeof fetch,
+      }) as unknown as typeof fetch,
     });
     await expect(adapter.check()).resolves.toMatchObject({
       sourceId: 'discord',

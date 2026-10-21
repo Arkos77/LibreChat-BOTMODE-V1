@@ -40,6 +40,34 @@ describe('createLoadConfigModels – user-provided baseURL header guard', () => 
     mockValidateEndpointURL.mockReset().mockResolvedValue(undefined);
   });
 
+  it('loads tenant-owned custom models without an HTTP request', async () => {
+    const getAppConfig = jest.fn();
+    const loadConfigModels = createLoadConfigModels({
+      getAppConfig,
+      getUserKeyValues: jest.fn().mockResolvedValue(null),
+      fetchModels,
+    });
+    const user = { id: 'owner', tenantId: 'tenant' } as ServerRequest['user'];
+    const appConfig = {
+      endpoints: {
+        [EModelEndpoint.custom]: [
+          {
+            name: 'TrustedModels',
+            baseURL: 'https://models.example.invalid/v1',
+            apiKey: 'sk-configured',
+            models: { default: ['model-a'], fetch: false },
+          },
+        ],
+      },
+    } as NonNullable<ServerRequest['config']>;
+    const catalog = await loadConfigModels.fromContext({ user, appConfig });
+    expect(catalog.TrustedModels).toEqual(['model-a']);
+    expect(getAppConfig).not.toHaveBeenCalled();
+    await expect(
+      loadConfigModels.fromContext({ user: {} as ServerRequest['user'], appConfig }),
+    ).rejects.toThrow('MODEL_CATALOG_USER_REQUIRED');
+  });
+
   it('does NOT forward configured headers when baseURL is user-provided', async () => {
     const headers = {
       Authorization: 'Bearer {{LIBRECHAT_OPENID_ID_TOKEN}}',

@@ -1,0 +1,68 @@
+name: BOTMODE PR28 Mission Sync Checkpoint Integration
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-pr28-mission-checkpoint-integration.yml'
+      - 'packages/api/src/agents/checkpointer.ts'
+      - 'packages/api/src/agents/checkpointer.integration.spec.ts'
+      - 'packages/api/src/agents/run.ts'
+      - 'api/server/controllers/agents/client.js'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: botmode-pr28-mission-checkpoint-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  mongo-sync-recovery:
+    name: Persist each graph superstep and recover without duplicate preceding work
+    if: contains(fromJSON('[28,29,53]'), github.event.pull_request.number)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CI: 'true'
+      NODE_ENV: test
+      NODE_OPTIONS: '--max-old-space-size=6144'
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Verify revision
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          echo "PR28_MISSION_SYNC_SOURCE_SHA=$EXPECTED_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - name: Reproduce dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build source packages
+        run: |
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:api
+      - name: Run real Mongo checkpoint integration and HITL nonregression
+        working-directory: packages/api
+        run: |
+          npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            src/agents/checkpointer.integration.spec.ts
+          echo "PR28_MISSION_SYNC_MONGO_INTEGRATION=PASS"
+      - name: Evidence and limitations
+        if: always()
+        run: |
+          {
+            echo '### PR28 durable checkpoint integration'
+            echo "Source revision: $(git rev-parse HEAD)"
+            echo 'Tests real MongoDB checkpoints for sync mission supersteps and existing exit-mode HITL behavior.'
+            echo 'This does NOT qualify lost-process lease takeover or full automatic mission recovery.'
+            echo 'No production database access, paid models, GHCR publication, or merge.'
+          } >> "$GITHUB_STEP_SUMMARY"

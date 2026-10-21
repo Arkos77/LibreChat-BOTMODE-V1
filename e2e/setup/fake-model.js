@@ -56,6 +56,7 @@ const TOOL_APPROVAL_REWRITE_MARKER = 'E2E_TOOL_APPROVAL_REWRITE:';
 const DEFERRED_HITL_MARKER = 'E2E_DEFERRED_HITL:';
 const HANDOFF_MARKER = 'E2E_HANDOFF:';
 const SUBAGENT_RESULT_MARKER = 'E2E_SUBAGENT_RESULT:';
+const MISSION_ORACLE_JSON_MARKER = 'E2E_MISSION_ORACLE_JSON:';
 const SUBAGENT_CHILD_MARKER = 'E2E_SUBAGENT_CHILD:';
 const SUBAGENT_ACTIVITY_MARKER = 'E2E_SUBAGENT_ACTIVITY:';
 const SUBAGENT_ACTIVITY_CHILD_MARKER = 'E2E_SUBAGENT_ACTIVITY_CHILD:';
@@ -485,6 +486,36 @@ function replyResponses(text) {
       responses: [`E2E forced error prelude ${errorName}`],
       thrownError: `E2E forced stream error ${errorName}`,
     };
+  }
+
+  // Intentionally delayed *valid* JSON: an in-flight crash/recovery probe must
+  // be able to distinguish a resumed model from a replay that rejects invalid text.
+  if (text.includes('E2E_MISSION_ORACLE_DELAYED_JSON:')) {
+    return { responses: ['{"ok":true}'], sleep: 10_000 };
+  }
+
+  // Bounded CI mission-soak fixture. JSON remains valid for the actual
+  // Oracle verifier, but incremental whitespace-separated tokens keep the
+  // provider segment active for the configured real wall-clock duration.
+  // Every token traverses the production graph/Redis stream; no fake Oracle.
+  if (text.includes('E2E_MISSION_ORACLE_SOAK_JSON:')) {
+    const delay = Number(process.env.E2E_SOAK_CHUNK_DELAY_MS || '3000');
+    const minutes = Number(process.env.E2E_SOAK_MINUTES || '3');
+    if (!Number.isFinite(delay) || delay < 100 || delay > 20000 ||
+        !Number.isInteger(minutes) || minutes < 1 || minutes > 180) {
+      throw new Error('Invalid bounded mission soak configuration');
+    }
+    const words = Math.max(1, Math.ceil((minutes * 60000 / delay - 1) / 2));
+    return {
+      responses: ['{"ok":true,"soak":"' + 'progress '.repeat(words) + 'done"}'],
+      sleep: delay,
+    };
+  }
+
+  // Deterministic, strict JSON for a real mission graph's Oracle validators.
+  // The model is a CI fixture; it cannot grant authorization or fake persisted verdicts.
+  if (getMarkerValue(text, MISSION_ORACLE_JSON_MARKER)) {
+    return { responses: ['{"ok":true}'] };
   }
 
   const replyName = getMarkerValue(text, REPLY_MARKER);
@@ -2522,10 +2553,26 @@ module.exports = function fakeModelHook(run, context) {
       }) ??
       resolveInvocation?.(streamMessages, streamOptions, runManager) ??
       null,
-    resolveOnStream: (streamMessages, streamOptions, runManager) =>
-      approvalOutcomeResponses(streamMessages) ??
-      resolveOnStream?.(streamMessages, streamOptions, runManager) ??
-      null,
+    resolveOnStream: (streamMessages, streamOptions, runManager) => {
+      // Cold LangGraph reconstruction intentionally passes `messages: []` to
+      // createRun: the real conversation is restored from the Mongo checkpoint
+      // only when the node invokes its model. The E2E fake provider must route
+      // on those ACTUAL invocation messages, not on empty hook-time history.
+      // Keep the same deterministic JSON marker and strictly require it in
+      // a restored human turn. Do not fabricate a successful Oracle response
+      // when the checkpoint lacks the original user prompt.
+      const restoredUserText = getLatestUserText(streamMessages);
+      const coldOracleResponse =
+        text === '' && restoredUserText.includes('E2E_MISSION_ORACLE_DELAYED_JSON:')
+          ? { responses: ['{"ok":true}'] }
+          : null;
+      return (
+        approvalOutcomeResponses(streamMessages) ??
+        resolveOnStream?.(streamMessages, streamOptions, runManager) ??
+        coldOracleResponse ??
+        null
+      );
+    },
     modelCallbacks: context?.modelCallbacks,
   });
 };

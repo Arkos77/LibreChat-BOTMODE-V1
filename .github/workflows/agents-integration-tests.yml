@@ -5,6 +5,10 @@ name: Agents Integration Tests
 # are `*.integration.spec.ts`, which `test:ci` deliberately excludes — without this
 # job they run nowhere and their regressions guard nothing.
 on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/agents-integration-tests.yml']
+  workflow_dispatch:
   pull_request:
     branches:
       - main
@@ -49,8 +53,13 @@ jobs:
           --health-retries 5
 
     steps:
-      - name: Checkout repository
+      - name: Checkout PR14 candidate
         uses: actions/checkout@v5
+        with:
+          ref: ea24f476164153735b5f5c95fe9c7861d4f97a1f
+          persist-credentials: false
+      - name: Verify candidate commit
+        run: test "$(git rev-parse HEAD)" = 'ea24f476164153735b5f5c95fe9c7861d4f97a1f'
 
       - name: Use Node.js 24.16.0
         uses: actions/setup-node@v5
@@ -105,6 +114,18 @@ jobs:
       - name: Build api
         if: steps.cache-api.outputs.cache-hit != 'true'
         run: npm run build:api
+
+      - name: Verify completion wakeup and mission Oracle gates
+        working-directory: packages/api
+        env:
+          NODE_ENV: test
+        run: npx jest src/agents/subagentCompletionWakeup.spec.ts src/agents/orchestrator/missionOracle.spec.ts --runInBand --coverage=false
+
+      - name: Verify Oracle runtime and synthesis readiness
+        working-directory: packages/api
+        env:
+          NODE_ENV: test
+        run: npx jest src/agents/oracle/runtime.spec.ts src/agents/oracle/deterministic.spec.ts src/agents/orchestrator/synthesisReadiness.spec.ts --runInBand --coverage=false
 
       - name: Run agents integration tests
         working-directory: packages/api

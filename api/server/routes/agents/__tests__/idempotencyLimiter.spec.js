@@ -19,6 +19,7 @@ jest.mock('@librechat/data-schemas', () => ({
 }));
 
 jest.mock('@librechat/api', () => ({
+  ...jest.requireActual('@librechat/api'),
   isEnabled: jest.fn(() => true),
   detectGenerationRetry: async (req, _res, next) => {
     req._isConfirmedGenerationRetry = await mockHasGenerationClaim(
@@ -60,6 +61,7 @@ jest.mock('~/server/routes/agents/v1', () => ({
 }));
 jest.mock('~/server/routes/agents/openai', () => require('express').Router());
 jest.mock('~/server/routes/agents/responses', () => require('express').Router());
+jest.mock('~/server/routes/agents/a2a', () => require('express').Router());
 jest.mock('~/server/controllers/agents/steer', () => {
   const controller = (_req, _res, next) => next();
   controller.SteerDeliveryController = (_req, _res, next) => next();

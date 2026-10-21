@@ -67,7 +67,7 @@ describe('host P11 model decision', () => {
       selectedProvider: 'anthropic',
       selectedModel: 'shared-model',
     });
-    expect(result.event.payload.selectedOption).toBe('alternate');
+    expect(result.event.payload).toMatchObject({ selectedOption: 'alternate' });
     expect(JSON.stringify(result.event)).not.toContain('secret');
     expect(JSON.stringify(result.record)).not.toContain('secret');
   });
@@ -118,7 +118,7 @@ describe('host P11 model decision', () => {
         ],
       },
     });
-    expect(result.event.payload.selectedOption).toBe('openrouter-primary');
+    expect(result.event.payload).toMatchObject({ selectedOption: 'openrouter-primary' });
     expect(JSON.stringify(result.event)).not.toContain('gemini-secret');
   });
 
@@ -146,7 +146,7 @@ describe('host P11 model decision', () => {
     });
 
     expect(result.selectedModel).toBe('model-b:free');
-    expect(result.event.payload.selectedOption).toBe('model-b:free');
+    expect(result.event.payload).toMatchObject({ selectedOption: 'model-b:free' });
   });
 
   it('keeps static preference semantics by default', async () => {
@@ -198,7 +198,7 @@ describe('host P11 model decision', () => {
 
     expect(result.selectedModel).toBe('model-a:free');
     expect(result.record.provider).toBe('deterministic');
-    expect(result.event.payload.provider).toBe('deterministic');
+    expect(result.event.payload).toMatchObject({ provider: 'deterministic' });
   });
 
   it('uses retryable zero-chunk fallbacks and a bounded timeout only in adaptive mode', async () => {
@@ -248,7 +248,55 @@ describe('host P11 model decision', () => {
         retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
       }),
     ]);
-    expect(result.modelParameters.fallbacks[0].clientOptions.timeout).toBeUndefined();
+    const fallbacks = result.modelParameters.fallbacks;
+    if (!Array.isArray(fallbacks)) throw new Error('Expected authorized fallbacks array');
+    expect(fallbacks[0].clientOptions.timeout).toBeUndefined();
+  });
+
+  it.each([
+    ['paid', 'paid'],
+    ['unknown', undefined],
+  ])(
+    'never installs a %s candidate as an implicit free_only fallback',
+    async (_label, pricingTier) => {
+      const result = await decideHostModel({
+        ...input,
+        preferredModel: 'model-a:free',
+        allowFailover: true,
+        routingMode: 'adaptive',
+        routingSignals: {
+          'model-a:free': { pricingTier: 'free' },
+          'model-b:free': pricingTier == null ? {} : { pricingTier: 'paid' },
+        },
+        routingConstraints: { spendingPolicy: 'free_only' },
+      });
+
+      expect(result.selectedModel).toBe('model-a:free');
+      expect(result.modelParameters.fallbacks).toEqual([]);
+      expect(result.record.selectedOption).toBe('model-a:free');
+      expect(JSON.stringify(result.event)).not.toContain('secret');
+    },
+  );
+
+  it('allows only the explicitly authorized free fallback under free_only', async () => {
+    const result = await decideHostModel({
+      ...input,
+      preferredModel: 'model-a:free',
+      allowFailover: true,
+      routingSignals: {
+        'model-a:free': { pricingTier: 'free' },
+        'model-b:free': { pricingTier: 'free' },
+      },
+      routingConstraints: { spendingPolicy: 'free_only' },
+    });
+    expect(result.selectedModel).toBe('model-a:free');
+    expect(result.modelParameters.fallbacks).toEqual([
+      expect.objectContaining({
+        provider: 'OpenRouter',
+        retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
+        clientOptions: expect.objectContaining({ model: 'model-b:free' }),
+      }),
+    ]);
   });
 
   it('fails closed when free_only has no free admissible model', async () => {

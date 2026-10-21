@@ -105,6 +105,96 @@ describe('RedisJobStore', () => {
     ]);
   });
 
+  test('renews a claimed crashed-provider preflight only after its prior lease expires', async () => {
+    const evalRenew = jest.fn().mockResolvedValue(1);
+    const redis = { isCluster: true, eval: evalRenew } as unknown as Cluster;
+    const store = new RedisJobStore(redis);
+    const owner = 'recovery-owner-123456789';
+
+    await expect(
+      store.renewDrainedMissionRecovery('stream-recovery-renew', 123456, owner, 15000),
+    ).resolves.toBe(true);
+
+    const [script, keys, jobKey, claimKey, epoch, suppliedOwner, ttl] = evalRenew.mock.calls[0];
+    expect(script).toContain('GET", KEYS[2]) ~= ARGV[2]');
+    expect(script).toContain('__missionRecoveryOwner');
+    expect(script).toContain('providerExecutionStartedId');
+    expect(script).toContain('providerExecutionId');
+    expect(script).toContain('__missionProviderLeaseUntil');
+    expect(script).toContain('redis.call("TIME")');
+    expect(script).toContain('if untilMs > nowMs then return 0');
+    expect([keys, jobKey, claimKey, epoch, suppliedOwner, ttl]).toEqual([
+      2,
+      'stream:{stream-recovery-renew}:job',
+      'stream:{stream-recovery-renew}:mission-recovery-claim',
+      '123456',
+      owner,
+      '15000',
+    ]);
+  });
+
+  test('inspects all promoted recovery phases without extending the owner lease', async () => {
+    const evalOwner = jest.fn().mockResolvedValue(1);
+    const redis = { isCluster: true, eval: evalOwner } as unknown as Cluster;
+    const store = new RedisJobStore(redis);
+    const owner = 'recovered-owner-123456789';
+    const provider = 'recovered-provider-123456789';
+    await expect(
+      store.inspectLiveRecoveredMissionOwner(
+        'recovered-stream',
+        123456,
+        owner,
+        provider,
+        'epoch-123456',
+      ),
+    ).resolves.toBe(true);
+    const [script, keyCount, jobKey, claimKey, epoch, token, execution, ns] =
+      evalOwner.mock.calls[0];
+    expect(script).toContain('terminalPersistencePending');
+    expect(script).toContain('__missionRecoveryOwner');
+    expect(script).toContain('providerExecutionStartedId');
+    expect(script).toContain('redis.call("TIME")');
+    expect(script).not.toContain('HSET');
+    expect(script).not.toContain('PEXPIRE');
+    expect([keyCount, jobKey, claimKey, epoch, token, execution, ns]).toEqual([
+      2,
+      'stream:{recovered-stream}:job',
+      'stream:{recovered-stream}:mission-recovery-claim',
+      '123456',
+      owner,
+      provider,
+      'epoch-123456',
+    ]);
+  });
+
+  test('never releases a recovery claim after its owner is promoted', async () => {
+    const evalRelease = jest.fn().mockResolvedValue(0);
+    const redis = { isCluster: true, eval: evalRelease } as unknown as Cluster;
+    const store = new RedisJobStore(redis);
+    const owner = 'recovered-owner-token-123456789';
+
+    await expect(
+      store.releaseDrainedMissionRecovery('stream-promoted', 123456, owner),
+    ).resolves.toBe(false);
+
+    const [script, keyCount, jobKey, claimKey, epoch, suppliedOwner] = evalRelease.mock.calls[0];
+    expect(script).toContain('HGET", KEYS[1], "createdAt"');
+    expect(script).toContain('GET", KEYS[2]) ~= ARGV[2]');
+    // The promoted owner is persisted in the job hash by the activation CAS.
+    // Its same-token release must NOT delete the still-live inspection claim.
+    expect(script).toContain('HGET", KEYS[1], "__missionRecoveryOwner") == ARGV[2] then return 0');
+    expect(script.indexOf('__missionRecoveryOwner')).toBeLessThan(
+      script.indexOf('redis.call("DEL", KEYS[2])'),
+    );
+    expect([keyCount, jobKey, claimKey, epoch, suppliedOwner]).toEqual([
+      2,
+      'stream:{stream-promoted}:job',
+      'stream:{stream-promoted}:mission-recovery-claim',
+      '123456',
+      owner,
+    ]);
+  });
+
   test('starts only the exact still-running initial provider segment', async () => {
     const evalBegin = jest.fn().mockResolvedValue(1);
     const redis = {
@@ -240,6 +330,105 @@ describe('RedisJobStore', () => {
     expect(evalTransition.mock.calls[0][16]).toBe('300');
   });
 
+  test('recovered terminal CAS leaves a durable persistence barrier for crash reconciliation', async () => {
+    const evalTransition = jest.fn().mockResolvedValue(0);
+    const redis = {
+      isCluster: true,
+      eval: evalTransition,
+      hgetall: jest.fn().mockResolvedValue({
+        streamId: 'recovered-stream',
+        userId: 'user',
+        status: 'running',
+        createdAt: '123456',
+        syncSent: '0',
+      }),
+    } as unknown as Cluster;
+    const store = new RedisJobStore(redis, { completedTtl: 0 });
+    await expect(
+      store.transitionRecoveredMissionToComplete(
+        'recovered-stream',
+        123456,
+        'recovered-owner-123456789',
+        'recovered-provider-123456789',
+        'epoch-123456',
+      ),
+    ).resolves.toBe(false);
+    expect(evalTransition).toHaveBeenCalledTimes(1);
+    const args = evalTransition.mock.calls[0].map(String);
+    expect(args).toContain('terminalPersistencePending');
+    expect(args[args.indexOf('terminalPersistencePending') + 1]).toBe('1');
+    expect(args).toContain('terminalPersistenceStartedAt');
+    expect(args).toContain('completedAt');
+    expect(args[args.indexOf('terminalPersistenceStartedAt') + 1]).toBe(
+      args[args.indexOf('completedAt') + 1],
+    );
+    // Retention must survive a zero completed-job TTL until the same-epoch
+    // terminal publisher or the existing stale-terminal recovery takes over.
+    expect(args).toContain('300');
+  });
+
+  test('finalizes a recovered terminal payload only through the owner-aware CAS', async () => {
+    const evalFinalize = jest.fn().mockResolvedValue(1);
+    const redis = { isCluster: true, eval: evalFinalize } as unknown as Cluster;
+    const store = new RedisJobStore(redis);
+    const frame = JSON.stringify({
+      final: true,
+      conversation: { conversationId: 'recovered-stream' },
+      requestMessage: { conversationId: 'recovered-stream', isCreatedByUser: true },
+      responseMessage: {
+        messageId: 'message-1',
+        conversationId: 'recovered-stream',
+        isCreatedByUser: false,
+      },
+    });
+    await expect(
+      store.finalizeRecoveredMissionTerminal(
+        'recovered-stream',
+        123456,
+        'recovery-owner-123456789',
+        'recovered-provider-123456789',
+        'namespace-123456',
+        'message-1',
+        frame,
+      ),
+    ).resolves.toBe(true);
+    expect(evalFinalize).toHaveBeenCalledWith(
+      expect.stringContaining('terminalPersistencePending'),
+      2,
+      'stream:{recovered-stream}:job',
+      'stream:{recovered-stream}:mission-recovery-claim',
+      '123456',
+      'recovery-owner-123456789',
+      'recovered-provider-123456789',
+      'namespace-123456',
+      'message-1',
+      frame,
+    );
+    await expect(
+      store.finalizeRecoveredMissionTerminal(
+        'recovered-stream',
+        123456,
+        'recovery-owner-123456789',
+        'recovered-provider-123456789',
+        'namespace-123456',
+        'message-1',
+        '',
+      ),
+    ).rejects.toThrow('Invalid recovered terminal publication payload');
+    await expect(
+      store.finalizeRecoveredMissionTerminal(
+        'recovered-stream',
+        123456,
+        'recovery-owner-123456789',
+        'recovered-provider-123456789',
+        'namespace-123456',
+        'message-1',
+        JSON.stringify({ ...JSON.parse(frame), responseMessage: { messageId: 'foreign-message' } }),
+      ),
+    ).rejects.toThrow('Invalid recovered terminal publication payload');
+    expect(evalFinalize).toHaveBeenCalledTimes(1);
+  });
+
   test('retains the generation epoch beyond the paused job TTL', async () => {
     const evalTransition = jest.fn().mockResolvedValue(0);
     const redis = {
@@ -293,7 +482,7 @@ describe('RedisJobStore', () => {
     const reapCall = evalCommand.mock.calls[0];
     expect(reapCall[0]).toContain('redis.call("SET", KEYS[7], ARGV[1], "EX", tonumber(ARGV[5]))');
     expect(reapCall.slice(1)).toEqual([
-      9,
+      10,
       'stream:{legacy-reap}:job',
       'stream:{legacy-reap}:chunks',
       'stream:{legacy-reap}:runsteps',
@@ -303,6 +492,7 @@ describe('RedisJobStore', () => {
       'stream:{legacy-reap}:generation-epoch',
       'stream:{legacy-reap}:steer-receipts',
       'stream:{legacy-reap}:steer-receipt-order',
+      'stream:{legacy-reap}:mission-recovery-claim',
       '1',
       '100000',
       '60000',

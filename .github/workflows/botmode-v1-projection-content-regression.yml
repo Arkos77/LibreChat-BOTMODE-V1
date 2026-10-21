@@ -1,0 +1,32 @@
+name: BOTMODE V1 Project Result Mongo Selection Regression
+on:
+  pull_request:
+    paths:
+      - 'api/server/services/Projects/botModeProjectProjection.js'
+      - 'api/server/services/Projects/__tests__/botModeProjectProjection.spec.js'
+      - 'scripts/botmode/ci-projection-content-mongo-select.cjs'
+      - '.github/workflows/botmode-v1-projection-content-regression.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  projection-selection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact PR revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check selected message content, public-only projection and ownership
+        run: |
+          set -euo pipefail
+          node --check scripts/botmode/ci-projection-content-mongo-select.cjs
+          node --check api/server/services/Projects/botModeProjectProjection.js
+          node scripts/botmode/ci-projection-content-mongo-select.cjs
+      - name: Enforce minimal scope
+        run: |
+          set -euo pipefail
+          git diff --check
+          test -f api/server/services/Projects/__tests__/botModeProjectProjection.spec.js
+          echo 'BOTMODE_PROJECT_RESULT_REGRESSION_SOURCE=PASS'

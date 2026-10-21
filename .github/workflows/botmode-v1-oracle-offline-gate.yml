@@ -1,0 +1,123 @@
+name: BOTMODE V1 Oracle and Publication Offline Gate
+
+# Independent of the exhausted OpenRouter free quota. Validates existing
+# Oracle/QA and publication tests on the immutable PR14 candidate.
+# Not a substitute for the real provider end-to-end release gate.
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/botmode-v1-oracle-offline-gate.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: botmode-v1-oracle-offline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  oracle-publication-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NODE_ENV: test
+      NODE_OPTIONS: '--max-old-space-size=6144'
+    steps:
+      - name: Checkout immutable PR14 candidate
+        uses: actions/checkout@v5
+        with:
+          ref: ea24f476164153735b5f5c95fe9c7861d4f97a1f
+          persist-credentials: false
+
+      - name: Assert exact candidate
+        run: |
+          test "$(git rev-parse HEAD)" = "ea24f476164153735b5f5c95fe9c7861d4f97a1f"
+          echo "CI_EXACT_PR14_CANDIDATE=PASS"
+
+      - name: Node 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.16.0'
+          cache: npm
+
+      - name: Install dependencies from lockfile
+        run: npm ci --no-audit --no-fund
+
+      - name: Assert SDK Oracle output API compatibility
+        run: |
+          node - <<'NODE'
+          const { Run } = require('@librechat/agents');
+          const method = typeof Run.prototype.getAgentOutputs;
+          const runMessages = typeof Run.prototype.getRunMessages;
+          console.log('CI_PINNED_SDK_GET_AGENT_OUTPUTS=' + method);
+          console.log('CI_PINNED_SDK_GET_RUN_MESSAGES=' + runMessages);
+          if (method !== 'function') {
+            console.error('CI_ORACLE_SDK_API_BLOCKED=getAgentOutputs_absent');
+            process.exit(1);
+          }
+          NODE
+
+      - name: Build pinned internal packages
+        run: |
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:api
+
+      - name: Assert one SDK implementation across package boundaries
+        run: |
+          node - <<'NODE'
+          const {createRequire} = require('node:module');
+          const {resolve} = require('node:path');
+          const fromApi = createRequire(resolve('api/server/index.js'));
+          const fromShared = createRequire(resolve('packages/api/dist/index.cjs'));
+          const apiRun = fromApi('@librechat/agents').Run;
+          const sharedRun = fromShared('@librechat/agents').Run;
+          const apiLocation = fromApi.resolve('@librechat/agents');
+          const sharedLocation = fromShared.resolve('@librechat/agents');
+          console.log('CI_SDK_MODULE_SAME_PATH=' + String(apiLocation === sharedLocation));
+          console.log('CI_SDK_CONSTRUCTOR_SAME=' + String(apiRun === sharedRun));
+          console.log('CI_SDK_HOST_METHOD=' + typeof apiRun.prototype.getAgentOutputs);
+          console.log('CI_SDK_SHARED_METHOD=' + typeof sharedRun.prototype.getAgentOutputs);
+          if (apiRun !== sharedRun) {
+            console.error('CI_SDK_RUNTIME_IDENTITY_MISMATCH=true');
+            process.exit(1);
+          }
+          NODE
+
+      - name: Verify mission planning and deterministic Oracle
+        working-directory: packages/api
+        run: |
+          npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            src/agents/orchestrator/planner.spec.ts \
+            src/agents/orchestrator/missionOracle.spec.ts \
+            src/agents/orchestrator/native.spec.ts \
+            src/agents/orchestrator/synthesisReadiness.spec.ts \
+            src/agents/oracle/runtime.spec.ts \
+            src/stream/metadata.spec.ts
+          echo "CI_ORACLE_STRUCTURED_TESTS=PASS"
+
+      - name: Verify native SDK output identity through Oracle
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/Arkos77/LibreChat-BOTMODE-V1/d629bfcfe76970e26d518f37203265cb431c3333/scripts/botmode/oracle-sdk-output-probe.spec.ts -o packages/api/src/agents/orchestrator/oracle-sdk-output-probe.spec.ts
+          cd packages/api
+          npx jest --ci --runInBand --coverage=false --runTestsByPath src/agents/orchestrator/oracle-sdk-output-probe.spec.ts
+
+      - name: Verify agent publication and durable resume regressions
+        working-directory: api
+        run: |
+          npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            server/controllers/agents/__tests__/callbacks.spec.js \
+            server/controllers/agents/__tests__/request.resumeMetadata.spec.js \
+            server/controllers/agents/__tests__/resume.spec.js
+          echo "CI_PUBLICATION_RESUME_TESTS=PASS"
+
+      - name: Publish bounded test summary
+        if: always()
+        run: |
+          {
+            echo '### BOTMODE V1: isolated Oracle/publication regression gate'
+            echo 'Pinned candidate: ea24f476164153735b5f5c95fe9c7861d4f97a1f'
+            echo 'No provider API keys or external model requests.'
+            echo 'This gate does not establish real model E2E readiness or authorize PR14 merge.'
+          } >> "$GITHUB_STEP_SUMMARY"

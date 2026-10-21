@@ -323,7 +323,9 @@ describe('createToolExecuteHandler', () => {
                 setTimeout(() => reject(new Error('never aborted')), 50);
                 return;
               }
-              signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+              signal.addEventListener('abort', () => reject(signal.reason), {
+                once: true,
+              });
             }),
         ),
       };
@@ -821,7 +823,11 @@ describe('createToolExecuteHandler', () => {
       const handler = createToolExecuteHandler({ loadTools, toolEndCallback });
 
       const [result] = await invokeHandler(handler, [
-        { id: 'call_submit_move', name: 'submit_move', args: { gameId: 'game-1', expectedPly: 8 } },
+        {
+          id: 'call_submit_move',
+          name: 'submit_move',
+          args: { gameId: 'game-1', expectedPly: 8 },
+        },
       ]);
 
       expect(result.content).toBe('{"ok":true}');
@@ -890,7 +896,11 @@ describe('createToolExecuteHandler', () => {
 
         output = blocked.errorMessage ?? '';
         const [reinspected] = await invokeHandler(handler, [
-          { id: `call_${starterPattern}_reinspected`, name: tool.name, args: {} },
+          {
+            id: `call_${starterPattern}_reinspected`,
+            name: tool.name,
+            args: {},
+          },
         ]);
 
         expect(reinspected).toEqual(
@@ -904,7 +914,9 @@ describe('createToolExecuteHandler', () => {
 
     it('blocks protected string leaves in cyclic tool output', async () => {
       const protectedValue = 'PROTECTED-CYCLIC-OUTPUT';
-      const artifact: { label: string; self?: unknown } = { label: protectedValue };
+      const artifact: { label: string; self?: unknown } = {
+        label: protectedValue,
+      };
       artifact.self = artifact;
       const toolEndCallback = jest.fn();
       const tool = {
@@ -968,7 +980,10 @@ describe('createToolExecuteHandler', () => {
       const toolEndCallback = jest.fn();
       const tool = {
         name: 'opaque_output_tool',
-        invoke: jest.fn(async () => ({ content: 'safe result', artifact: opaqueArtifact })),
+        invoke: jest.fn(async () => ({
+          content: 'safe result',
+          artifact: opaqueArtifact,
+        })),
       };
       const handler = createToolExecuteHandler({
         loadTools: async () => ({
@@ -1027,7 +1042,10 @@ describe('createToolExecuteHandler', () => {
       const toolEndCallback = jest.fn();
       const tool = {
         name: 'opaque_output_tool',
-        invoke: jest.fn(async () => ({ content: 'safe result', artifact: opaqueArtifact })),
+        invoke: jest.fn(async () => ({
+          content: 'safe result',
+          artifact: opaqueArtifact,
+        })),
       };
       const handler = createToolExecuteHandler({
         loadTools: async () => ({
@@ -1059,7 +1077,11 @@ describe('createToolExecuteHandler', () => {
       });
 
       const [result] = await invokeHandler(handler, [
-        { id: 'call_opaque_audit_output', name: 'opaque_output_tool', args: {} },
+        {
+          id: 'call_opaque_audit_output',
+          name: 'opaque_output_tool',
+          args: {},
+        },
       ]);
 
       expect(result.status).toBe('success');
@@ -1127,7 +1149,10 @@ describe('createToolExecuteHandler', () => {
           toolRegistry: new Map([
             [
               'active_programmatic_tool',
-              { name: 'active_programmatic_tool', allowed_callers: ['code_execution'] },
+              {
+                name: 'active_programmatic_tool',
+                allowed_callers: ['code_execution'],
+              },
             ],
             [
               'deferred_programmatic_tool',
@@ -1174,7 +1199,10 @@ describe('createToolExecuteHandler', () => {
         callerCapabilityProjection,
       );
       expect(capturedConfigs[0].toolDefs).toEqual([
-        { name: 'active_programmatic_tool', allowed_callers: ['code_execution'] },
+        {
+          name: 'active_programmatic_tool',
+          allowed_callers: ['code_execution'],
+        },
       ]);
       expect(capturedConfigs[0].disallowedToolDefs).toEqual([{ name: 'active_direct_tool' }]);
       expect(capturedConfigs[0].toolMap).toEqual(
@@ -1191,7 +1219,10 @@ describe('createToolExecuteHandler', () => {
           toolRegistry: new Map([
             [
               'deferred_programmatic_tool',
-              { name: 'deferred_programmatic_tool', allowed_callers: ['code_execution'] },
+              {
+                name: 'deferred_programmatic_tool',
+                allowed_callers: ['code_execution'],
+              },
             ],
             ['deferred_direct_tool', { name: 'deferred_direct_tool' }],
           ]),
@@ -1225,6 +1256,115 @@ describe('createToolExecuteHandler', () => {
       expect(capturedConfigs[0].toolMap).toEqual(new Map());
     });
 
+    it('rejects direct and detached tools before invocation in a recovered mission', async () => {
+      const actual = jest.fn(async () => ({ content: 'unsafe' }));
+      const loadTools: ToolExecuteOptions['loadTools'] = jest.fn(async () => ({
+        loadedTools: [{ name: 'write_tool', invoke: actual }] as never[],
+      }));
+      const handler = createToolExecuteHandler({ loadTools });
+      await expect(
+        invokeHandlerWithConfig(
+          handler,
+          [{ id: 'direct-effect', name: 'write_tool', args: { value: 'x' } }],
+          { nativeMissionEffectFenceRequired: true, backgroundToolNames: ['write_tool'] },
+        ),
+      ).rejects.toThrow('NATIVE_MISSION_DIRECT_EFFECT_GUARD_REQUIRED');
+      expect(actual).not.toHaveBeenCalled();
+    });
+
+    it('does not allow the tool loader to disable a recovery effect fence', async () => {
+      const actual = jest.fn(async () => ({ content: 'unsafe' }));
+      const loadTools: ToolExecuteOptions['loadTools'] = jest.fn(async () => ({
+        loadedTools: [{ name: 'write_tool', invoke: actual }] as never[],
+        configurable: { nativeMissionEffectFenceRequired: false },
+      }));
+      const handler = createToolExecuteHandler({ loadTools });
+      await expect(
+        invokeHandlerWithConfig(handler, [{ id: 'downgrade', name: 'write_tool', args: {} }], {
+          nativeMissionEffectFenceRequired: true,
+        }),
+      ).rejects.toThrow('NATIVE_MISSION_DIRECT_EFFECT_GUARD_REQUIRED');
+      expect(actual).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when a PTC effect needs authority but no durable guard is injected', async () => {
+      const capturedConfigs: Record<string, unknown>[] = [];
+      const ptcTool = createMockTool(Constants.PROGRAMMATIC_TOOL_CALLING, capturedConfigs);
+      const actual = jest.fn(async () => ({ content: 'unsafe' }));
+      const loadTools: ToolExecuteOptions['loadTools'] = jest.fn(async () => ({
+        loadedTools: [ptcTool] as never[],
+        configurable: {
+          nativeMissionEffectFenceRequired: true,
+          toolRegistry: new Map([
+            ['write_tool', { name: 'write_tool', allowed_callers: ['code_execution'] }],
+          ]),
+          ptcToolMap: new Map([['write_tool', { name: 'write_tool', invoke: actual }]]),
+        },
+      }));
+      const handler = createToolExecuteHandler({ loadTools });
+      await invokeHandler(handler, [
+        {
+          id: 'protected_parent',
+          name: Constants.PROGRAMMATIC_TOOL_CALLING,
+          args: { code: 'write_tool "{}"' },
+        },
+      ]);
+      const injected = capturedConfigs[0].toolMap as Map<
+        string,
+        {
+          invoke: (input: unknown) => Promise<unknown>;
+        }
+      >;
+      await expect(injected.get('write_tool')?.invoke({ value: 'x' })).rejects.toThrow(
+        'NATIVE_MISSION_EFFECT_GUARD_REQUIRED',
+      );
+      expect(actual).not.toHaveBeenCalled();
+    });
+
+    it('enforces the injected PTC effect guard without SSE telemetry', async () => {
+      const capturedConfigs: Record<string, unknown>[] = [];
+      const ptcTool = createMockTool(Constants.PROGRAMMATIC_TOOL_CALLING, capturedConfigs);
+      const actual = jest.fn(async () => ({ content: 'executed' }));
+      const ptcToolMap = new Map([['write_tool', { name: 'write_tool', invoke: actual }]]);
+      const loadTools: ToolExecuteOptions['loadTools'] = jest.fn(async () => ({
+        loadedTools: [ptcTool] as never[],
+        configurable: {
+          toolRegistry: new Map([
+            ['write_tool', { name: 'write_tool', allowed_callers: ['code_execution'] }],
+          ]),
+          ptcToolMap,
+        },
+      }));
+      const guardPtcEffect = jest.fn(async () => {
+        throw new Error('DURABLE_EFFECT_DENIED');
+      });
+      const handler = createToolExecuteHandler({ loadTools, guardPtcEffect });
+      await invokeHandler(handler, [
+        {
+          id: 'parent_ptc',
+          name: Constants.PROGRAMMATIC_TOOL_CALLING,
+          args: { code: 'write_tool "{}"' },
+        },
+      ]);
+      const injected = capturedConfigs[0].toolMap as Map<
+        string,
+        {
+          invoke: (input: unknown) => Promise<unknown>;
+        }
+      >;
+      await expect(injected.get('write_tool')?.invoke({ value: 'x' })).rejects.toThrow(
+        'DURABLE_EFFECT_DENIED',
+      );
+      expect(guardPtcEffect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parentToolCallId: 'parent_ptc',
+          name: 'write_tool',
+          sequence: 0,
+        }),
+      );
+      expect(actual).not.toHaveBeenCalled();
+    });
+
     it('instruments the PTC tool map so inner calls report progress', async () => {
       const capturedConfigs: Record<string, unknown>[] = [];
       const ptcTool = createMockTool(Constants.PROGRAMMATIC_TOOL_CALLING, capturedConfigs);
@@ -1254,7 +1394,10 @@ describe('createToolExecuteHandler', () => {
 
       const injectedMap = capturedConfigs[0].toolMap as Map<
         string,
-        { name: string; invoke: (input: unknown, config?: unknown) => Promise<unknown> }
+        {
+          name: string;
+          invoke: (input: unknown, config?: unknown) => Promise<unknown>;
+        }
       >;
       expect(injectedMap).not.toBe(ptcToolMap);
       expect(injectedMap.get('custom_tool')?.name).toBe('custom_tool');
@@ -1309,7 +1452,9 @@ describe('createToolExecuteHandler', () => {
     it('invokes a loaded user tool named create_file when host file authoring is not active', async () => {
       const capturedArgs: unknown[] = [];
       const capturedConfigs: Record<string, unknown>[] = [];
-      const tool = createMockTool('create_file', capturedConfigs, { capturedArgs });
+      const tool = createMockTool('create_file', capturedConfigs, {
+        capturedArgs,
+      });
       const loadTools: ToolExecuteOptions['loadTools'] = jest.fn(async () => ({
         loadedTools: [tool] as never[],
         configurable: { fileAuthoringToolNames: new Set<string>() },
@@ -1374,7 +1519,11 @@ describe('createToolExecuteHandler', () => {
         });
 
         const [result] = await invokeHandler(handler, [
-          { id: `call_thrown_${ruleId}`, name: 'policy_rejected_tool', args: {} },
+          {
+            id: `call_thrown_${ruleId}`,
+            name: 'policy_rejected_tool',
+            args: {},
+          },
         ]);
 
         expect(result.status).toBe('error');
@@ -1399,7 +1548,13 @@ describe('createToolExecuteHandler', () => {
         const handler = createToolExecuteHandler({ loadTools });
         const [result] = await invokeHandlerWithConfig(
           handler,
-          [{ id: 'call_filtered_missing_output', name: protectedName, args: {} }],
+          [
+            {
+              id: 'call_filtered_missing_output',
+              name: protectedName,
+              args: {},
+            },
+          ],
           {
             req: {
               config: {
@@ -1620,7 +1775,11 @@ describe('createToolExecuteHandler', () => {
           ...(filters != null ? { req: { config: { filters } } } : {}),
         },
       }));
-      return createToolExecuteHandler({ loadTools, getSkillByName, onSkillResolved });
+      return createToolExecuteHandler({
+        loadTools,
+        getSkillByName,
+        onSkillResolved,
+      });
     }
 
     /** Skill with one bundled file plus every dep the priming gate requires,
@@ -1981,7 +2140,10 @@ describe('createToolExecuteHandler', () => {
       const batchUploadCodeEnvFiles = jest.fn(async () => ({
         storage_session_id: 'session-ok',
         files: [
-          { fileId: 'file-ok', filename: 'skills/note-ok-skill/references/style.md' },
+          {
+            fileId: 'file-ok',
+            filename: 'skills/note-ok-skill/references/style.md',
+          },
           { fileId: 'file-skillmd', filename: 'skills/note-ok-skill/SKILL.md' },
         ],
       }));
@@ -2148,7 +2310,9 @@ describe('createToolExecuteHandler', () => {
           loadedTools: [],
           configurable: {
             accessibleSkillIds: skillsInScope(),
-            skillPrimedIdsByName: { 'manual-only-skill': '507f1f77bcf86cd799439020' },
+            skillPrimedIdsByName: {
+              'manual-only-skill': '507f1f77bcf86cd799439020',
+            },
           },
         })),
         getSkillByName,
@@ -2184,7 +2348,9 @@ describe('createToolExecuteHandler', () => {
           loadedTools: [],
           configurable: {
             accessibleSkillIds: skillsInScope(),
-            skillPrimedIdsByName: { 'something-else': '507f1f77bcf86cd799439030' },
+            skillPrimedIdsByName: {
+              'something-else': '507f1f77bcf86cd799439030',
+            },
           },
         })),
         getSkillByName,
@@ -2359,7 +2525,11 @@ describe('createToolExecuteHandler', () => {
       });
 
       await invokeHandler(handler, [
-        { id: 'call_gate_on', name: Constants.SKILL_TOOL, args: { skillName: 'brand-guidelines' } },
+        {
+          id: 'call_gate_on',
+          name: Constants.SKILL_TOOL,
+          args: { skillName: 'brand-guidelines' },
+        },
       ]);
 
       expect(listSkillFiles).toHaveBeenCalledWith(SKILL_ID);
@@ -3013,7 +3183,10 @@ describe('createToolExecuteHandler', () => {
         },
       ]);
 
-      expect(getAuthorSkillByName).toHaveBeenCalledWith({ req, name: 'stale-skill' });
+      expect(getAuthorSkillByName).toHaveBeenCalledWith({
+        req,
+        name: 'stale-skill',
+      });
       expect(result.status).toBe('error');
       expect(result.errorMessage).toContain('already exists');
       expect(result.errorMessage).toContain('edit_file');
@@ -3269,7 +3442,10 @@ describe('createToolExecuteHandler', () => {
         strategies: ['exact'],
       });
       expect(saveSkillFileContent).toHaveBeenCalledWith(
-        expect.objectContaining({ relativePath: 'references/a.md', content: 'hello new\n' }),
+        expect.objectContaining({
+          relativePath: 'references/a.md',
+          content: 'hello new\n',
+        }),
       );
     });
 
@@ -3308,7 +3484,10 @@ describe('createToolExecuteHandler', () => {
 
       expect(result.status).toBe('success');
       expect(saveSkillFileContent).toHaveBeenCalledWith(
-        expect.objectContaining({ relativePath: 'references/a.md', content: 'hello new\n' }),
+        expect.objectContaining({
+          relativePath: 'references/a.md',
+          content: 'hello new\n',
+        }),
       );
     });
 
@@ -3434,7 +3613,9 @@ describe('createToolExecuteHandler', () => {
           toolCallId: 'call_propose_skill',
           skillId: SKILL_ID.toString(),
           expectedVersion: 3,
-          update: expect.objectContaining({ body: expect.stringContaining('# Improved skill') }),
+          update: expect.objectContaining({
+            body: expect.stringContaining('# Improved skill'),
+          }),
           diff: expect.stringContaining('Improved skill'),
         }),
       );
@@ -3449,7 +3630,12 @@ describe('createToolExecuteHandler', () => {
     it('continues native skill editing when the proposal hook opts out', async () => {
       const updateSkill = jest.fn(async () => ({
         status: 'updated',
-        skill: { _id: SKILL_ID, name: 'runtime-skill', body: '# Improved skill', version: 4 },
+        skill: {
+          _id: SKILL_ID,
+          name: 'runtime-skill',
+          body: '# Improved skill',
+          version: 4,
+        },
         warnings: [],
       }));
       const handler = makeAuthoringHandler({
@@ -4083,7 +4269,13 @@ describe('createToolExecuteHandler', () => {
         return {
           stdout: `WROTE file to ${path}\n`,
           session_id: `sess-${filename}`,
-          files: [{ id: `file-${filename}`, name: filename, storage_session_id: 'store-1' }],
+          files: [
+            {
+              id: `file-${filename}`,
+              name: filename,
+              storage_session_id: 'store-1',
+            },
+          ],
         };
       });
       const toolEndCallback = jest.fn(async (data: { output?: { tool_call_id?: string } }) => {
@@ -4456,7 +4648,13 @@ describe('createToolExecuteHandler', () => {
       const writeSandboxFile = jest.fn(async () => ({
         stdout: 'WROTE 10 bytes to /mnt/data/edit.txt\n',
         session_id: 'sess-edit',
-        files: [{ id: 'file-edit', name: 'edit.txt', storage_session_id: 'sess-edit' }],
+        files: [
+          {
+            id: 'file-edit',
+            name: 'edit.txt',
+            storage_session_id: 'sess-edit',
+          },
+        ],
       }));
       const handler = makeSandboxAuthoringHandler({
         readSandboxFile: jest.fn(async () => ({ content: 'alpha old\n' })),
@@ -4498,7 +4696,13 @@ describe('createToolExecuteHandler', () => {
       const writeSandboxFile = jest.fn(async () => ({
         stdout: 'WROTE file\n',
         session_id: 'sess-repair',
-        files: [{ id: 'file-repair', name: 'repair.txt', storage_session_id: 'sess-repair' }],
+        files: [
+          {
+            id: 'file-repair',
+            name: 'repair.txt',
+            storage_session_id: 'sess-repair',
+          },
+        ],
       }));
       const filteredReq = {
         user: { id: 'user-1' },
@@ -4554,7 +4758,11 @@ describe('createToolExecuteHandler', () => {
       let readCount = 0;
       let writeCount = 0;
       const sandboxFiles = [
-        { id: 'file-queued', name: 'queued.txt', storage_session_id: 'sess-new' },
+        {
+          id: 'file-queued',
+          name: 'queued.txt',
+          storage_session_id: 'sess-new',
+        },
       ];
       const readSandboxFile = jest.fn(
         async ({
@@ -4562,7 +4770,11 @@ describe('createToolExecuteHandler', () => {
           files,
         }: {
           session_id?: string;
-          files?: Array<{ id: string; name: string; storage_session_id?: string }>;
+          files?: Array<{
+            id: string;
+            name: string;
+            storage_session_id?: string;
+          }>;
         }) => {
           readCount++;
           if (readCount === 1) {
@@ -4581,7 +4793,11 @@ describe('createToolExecuteHandler', () => {
           content,
         }: {
           session_id?: string;
-          files?: Array<{ id: string; name: string; storage_session_id?: string }>;
+          files?: Array<{
+            id: string;
+            name: string;
+            storage_session_id?: string;
+          }>;
           content: string;
         }) => {
           writeCount++;
@@ -4756,7 +4972,9 @@ describe('createToolExecuteHandler', () => {
     });
 
     it('routes host file reads with the executing agent profile instead of a graph hint', async () => {
-      const readSandboxFile = jest.fn(async () => ({ content: 'stateful-data' }));
+      const readSandboxFile = jest.fn(async () => ({
+        content: 'stateful-data',
+      }));
       const handler = makeReadFileHandler({
         codeEnvAvailable: true,
         accessibleSkillIds: skillsInScope(),
@@ -4796,7 +5014,9 @@ describe('createToolExecuteHandler', () => {
     });
 
     it('marks an actual sandbox read warm without marking skill-backed reads', async () => {
-      const readSandboxFile = jest.fn(async () => ({ content: 'stateful-data' }));
+      const readSandboxFile = jest.fn(async () => ({
+        content: 'stateful-data',
+      }));
       const context: CodeExecutionContext = {
         baseUrl: 'https://stateful-code.example.com',
         codeSessionKey: 'execute_code:stateful:v2:user:abc',
@@ -4877,7 +5097,9 @@ describe('createToolExecuteHandler', () => {
     });
 
     it('falls back to sandbox when first segment is not a known skill name', async () => {
-      const readSandboxFile = jest.fn(async () => ({ content: 'sandbox-data' }));
+      const readSandboxFile = jest.fn(async () => ({
+        content: 'sandbox-data',
+      }));
       const handler = makeReadFileHandler({
         codeEnvAvailable: true,
         accessibleSkillIds: skillsInScope(),
@@ -4895,7 +5117,10 @@ describe('createToolExecuteHandler', () => {
       ]);
 
       expect(readSandboxFile).toHaveBeenCalledWith(
-        expect.objectContaining({ file_path: 'not-a-skill/foo.md', session_id: 'sess-Y' }),
+        expect.objectContaining({
+          file_path: 'not-a-skill/foo.md',
+          session_id: 'sess-Y',
+        }),
       );
       expect(result.status).toBe('success');
       expect(result.content).toContain('sandbox-data');
@@ -5008,7 +5233,10 @@ describe('createToolExecuteHandler', () => {
         },
       ]);
 
-      expect(getAuthorSkillByName).toHaveBeenCalledWith({ req, name: 'stale-catalog-skill' });
+      expect(getAuthorSkillByName).toHaveBeenCalledWith({
+        req,
+        name: 'stale-catalog-skill',
+      });
       expect(readSandboxFile).not.toHaveBeenCalled();
       expect(getSkillByName).toHaveBeenCalledWith(
         'stale-catalog-skill',
@@ -5190,7 +5418,9 @@ describe('createToolExecuteHandler', () => {
        * off, or the persisted agent has `skills_enabled !== true`. Skip
        * the skill resolver entirely.
        */
-      const readSandboxFile = jest.fn(async () => ({ content: 'sandbox-content' }));
+      const readSandboxFile = jest.fn(async () => ({
+        content: 'sandbox-content',
+      }));
       const getSkillByName = jest.fn();
       const handler = makeReadFileHandler({
         codeEnvAvailable: true,
@@ -5299,7 +5529,9 @@ describe('createToolExecuteHandler', () => {
     });
 
     it('does not route explicit skills/ paths to the sandbox when skills are unavailable', async () => {
-      const readSandboxFile = jest.fn(async () => ({ content: 'sandbox-content' }));
+      const readSandboxFile = jest.fn(async () => ({
+        content: 'sandbox-content',
+      }));
       const getSkillByName = jest.fn();
       const handler = makeReadFileHandler({
         codeEnvAvailable: true,
@@ -5429,7 +5661,9 @@ describe('createToolExecuteHandler', () => {
     });
 
     it('does not truncate when sandbox content is within MAX_READABLE_BYTES', async () => {
-      const readSandboxFile = jest.fn(async () => ({ content: 'sentinel-XYZ-1234\n' }));
+      const readSandboxFile = jest.fn(async () => ({
+        content: 'sentinel-XYZ-1234\n',
+      }));
       const handler = makeReadFileHandler({
         codeEnvAvailable: true,
         accessibleSkillIds: skillsInScope(),
@@ -5496,7 +5730,9 @@ describe('createToolExecuteHandler', () => {
 
     it('filters sandbox text selected as extracted_text before returning it to the model', async () => {
       const protectedValue = 'PROTECTED-EXTRACTED-READ';
-      const readSandboxFile = jest.fn(async () => ({ content: protectedValue }));
+      const readSandboxFile = jest.fn(async () => ({
+        content: protectedValue,
+      }));
       const handler = makeReadFileHandler({
         req: {
           user: { id: 'user-1' },
@@ -5627,7 +5863,9 @@ describe('createToolExecuteHandler', () => {
       );
 
       const imageUrlOf = (result: { artifact?: unknown }): string => {
-        const artifact = result.artifact as { content?: Array<{ image_url?: { url?: string } }> };
+        const artifact = result.artifact as {
+          content?: Array<{ image_url?: { url?: string } }>;
+        };
         return artifact?.content?.[0]?.image_url?.url ?? '';
       };
 
@@ -5641,7 +5879,10 @@ describe('createToolExecuteHandler', () => {
        */
       it('returns a sandbox image as an image_url artifact the model can see', async () => {
         const readSandboxFile = jest.fn();
-        const readSandboxImage = jest.fn(async () => ({ base64: PNG_B64, bytes: pngBytes }));
+        const readSandboxImage = jest.fn(async () => ({
+          base64: PNG_B64,
+          bytes: pngBytes,
+        }));
         const handler = makeReadFileHandler({
           codeEnvAvailable: true,
           accessibleSkillIds: skillsInScope(),
@@ -5670,13 +5911,21 @@ describe('createToolExecuteHandler', () => {
         expect(result.content).toContain('Image:');
         expect(result.content).toContain('image/png');
         expect(result.artifact).toMatchObject({
-          content: [{ type: 'image_url', image_url: { url: `data:image/png;base64,${PNG_B64}` } }],
+          content: [
+            {
+              type: 'image_url',
+              image_url: { url: `data:image/png;base64,${PNG_B64}` },
+            },
+          ],
         });
       });
 
       it('filters a sandbox image name before reading or returning its bytes', async () => {
         const protectedValue = 'PROTECTED-CHART';
-        const readSandboxImage = jest.fn(async () => ({ base64: PNG_B64, bytes: pngBytes }));
+        const readSandboxImage = jest.fn(async () => ({
+          base64: PNG_B64,
+          bytes: pngBytes,
+        }));
         const handler = makeReadFileHandler({
           req: {
             user: { id: 'user-1' },
@@ -5719,7 +5968,10 @@ describe('createToolExecuteHandler', () => {
       });
 
       it('blocks sandbox image bytes when the file policy is fail-close', async () => {
-        const readSandboxImage = jest.fn(async () => ({ base64: PNG_B64, bytes: pngBytes }));
+        const readSandboxImage = jest.fn(async () => ({
+          base64: PNG_B64,
+          bytes: pngBytes,
+        }));
         const handler = makeReadFileHandler({
           req: {
             user: { id: 'user-1' },
@@ -5792,7 +6044,10 @@ describe('createToolExecuteHandler', () => {
          * filename suggests. The declared type must match the bytes or the
          * provider rejects the image. */
         const bytes = Buffer.from(JPEG_B64, 'base64').length;
-        const readSandboxImage = jest.fn(async () => ({ base64: JPEG_B64, bytes }));
+        const readSandboxImage = jest.fn(async () => ({
+          base64: JPEG_B64,
+          bytes,
+        }));
         const handler = makeReadFileHandler({
           codeEnvAvailable: true,
           accessibleSkillIds: skillsInScope(),
@@ -5816,7 +6071,10 @@ describe('createToolExecuteHandler', () => {
          * no supported image header, so we must NOT ship them declared as an
          * image (the provider would reject) — return the bash hint instead. */
         const bytes = Buffer.from(NOT_IMAGE_B64, 'base64').length;
-        const readSandboxImage = jest.fn(async () => ({ base64: NOT_IMAGE_B64, bytes }));
+        const readSandboxImage = jest.fn(async () => ({
+          base64: NOT_IMAGE_B64,
+          bytes,
+        }));
         const handler = makeReadFileHandler({
           codeEnvAvailable: true,
           accessibleSkillIds: skillsInScope(),
@@ -5842,7 +6100,10 @@ describe('createToolExecuteHandler', () => {
          * the IEND trailer; shipping it would fail saveBase64Image / the next
          * provider request, so it must degrade to the bash hint. */
         const bytes = Buffer.from(TRUNCATED_PNG_B64, 'base64').length;
-        const readSandboxImage = jest.fn(async () => ({ base64: TRUNCATED_PNG_B64, bytes }));
+        const readSandboxImage = jest.fn(async () => ({
+          base64: TRUNCATED_PNG_B64,
+          bytes,
+        }));
         const handler = makeReadFileHandler({
           codeEnvAvailable: true,
           accessibleSkillIds: skillsInScope(),
@@ -5865,7 +6126,10 @@ describe('createToolExecuteHandler', () => {
 
       it('routes to the image reader case-insensitively (.PNG)', async () => {
         const readSandboxFile = jest.fn();
-        const readSandboxImage = jest.fn(async () => ({ base64: PNG_B64, bytes: pngBytes }));
+        const readSandboxImage = jest.fn(async () => ({
+          base64: PNG_B64,
+          bytes: pngBytes,
+        }));
         const handler = makeReadFileHandler({
           codeEnvAvailable: true,
           accessibleSkillIds: skillsInScope(),
@@ -5976,7 +6240,10 @@ describe('createToolExecuteHandler', () => {
          * size does not match the decoded base64 length. The bytes are
          * unsafe to forward, but the read is retryable — saying the file
          * "cannot be read as text" would report a permanent limit. */
-        const readSandboxImage = jest.fn(async () => ({ base64: PNG_B64, bytes: pngBytes + 100 }));
+        const readSandboxImage = jest.fn(async () => ({
+          base64: PNG_B64,
+          bytes: pngBytes + 100,
+        }));
         const handler = makeReadFileHandler({
           codeEnvAvailable: true,
           accessibleSkillIds: skillsInScope(),
@@ -6136,7 +6403,9 @@ describe('createToolExecuteHandler', () => {
          * string LibreChat builds, and the NUL terminator from the binary
          * header survives that. */
         const binaryWithNul = '\x00\x00\x00\rIHDR\x00\x00\x04';
-        const readSandboxFile = jest.fn(async () => ({ content: binaryWithNul }));
+        const readSandboxFile = jest.fn(async () => ({
+          content: binaryWithNul,
+        }));
         const handler = makeReadFileHandler({
           codeEnvAvailable: true,
           accessibleSkillIds: skillsInScope(),
@@ -6160,7 +6429,9 @@ describe('createToolExecuteHandler', () => {
       });
 
       it('still allows text files with binary-adjacent extensions (e.g. log.txt → readable)', async () => {
-        const readSandboxFile = jest.fn(async () => ({ content: 'plain text\nline 2' }));
+        const readSandboxFile = jest.fn(async () => ({
+          content: 'plain text\nline 2',
+        }));
         const handler = makeReadFileHandler({
           codeEnvAvailable: true,
           accessibleSkillIds: skillsInScope(),
@@ -6184,7 +6455,9 @@ describe('createToolExecuteHandler', () => {
         /* `lowercaseExtension` must use the basename, not the path —
          * `proj.v1/notes` should yield `''` (no extension), not `.v1/notes`,
          * so the file goes through the normal read path. */
-        const readSandboxFile = jest.fn(async () => ({ content: 'text from a dotted-dir path' }));
+        const readSandboxFile = jest.fn(async () => ({
+          content: 'text from a dotted-dir path',
+        }));
         const handler = makeReadFileHandler({
           codeEnvAvailable: true,
           accessibleSkillIds: skillsInScope(),
@@ -6333,7 +6606,11 @@ describe('per-call onResult reporting', () => {
     const handler = createHandler(capturedConfigs);
 
     const results = await invokeHandler(handler, [
-      { id: 'call_1', name: Constants.EXECUTE_CODE, args: { lang: 'py', code: '1' } },
+      {
+        id: 'call_1',
+        name: Constants.EXECUTE_CODE,
+        args: { lang: 'py', code: '1' },
+      },
     ]);
 
     expect(results).toHaveLength(1);

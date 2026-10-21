@@ -49,12 +49,58 @@ import { useAuthContext } from '~/hooks';
  * refetch so a send can't fork from an outdated tail. */
 const STALE_SEND_REVALIDATION_MS = 5_000;
 
-export function getBotModeExecutionMode(searchParams: URLSearchParams): string {
-  return searchParams.get('botmode_mode') ?? 'fast';
+/**
+ * Conservative, deterministic triage for BOT MODE chat. Explicit project/Ideas
+ * actions always win. Ambiguous requests remain FAST; the mission planner and
+ * authorization/cost checks remain the only executors of DEEP work.
+ */
+export function getBotModeExecutionMode(searchParams: URLSearchParams, text = ''): string {
+  const explicit = searchParams.get('botmode_mode');
+  // Never allow an arbitrary query parameter to opt into an expensive mission.
+  if (
+    explicit === 'fast' ||
+    explicit === 'analyze' ||
+    explicit === 'develop' ||
+    explicit === 'watch'
+  ) {
+    return explicit;
+  }
+  if (explicit != null) return 'fast';
+  if (searchParams.get('botmode') !== '1') return 'fast';
+
+  const prompt = text.normalize('NFKC').toLowerCase();
+  const engineering =
+    /\b(?:cod(?:e|er|ing)|développ(?:e|er|ement)|develop|implement|implément|program|script|application)\b/u.test(
+      prompt,
+    );
+  const testing =
+    /\b(?:test(?:er|s|ing)?|vérifi(?:er|cation)|verify|debug|débog|correcti(?:on|f)|déploy|deploy)\b/u.test(
+      prompt,
+    );
+  if (engineering && testing) return 'develop';
+
+  const monitoring = /\b(?:veille|surveill(?:er|ance)|monitor|suivi|track)\b/u.test(prompt);
+  const sources = /\b(?:sources?|actualités|news|tendances|trends|évolutions|changes)\b/u.test(
+    prompt,
+  );
+  if (monitoring && sources) return 'watch';
+
+  const investigation =
+    /\b(?:analys(?:e|er|is)|étud(?:e|ier)|research|recherch(?:e|er)|compar(?:e|er|aison)|investigat)\b/u.test(
+      prompt,
+    );
+  const evidence =
+    /\b(?:sources?|preuves?|risques?|faisabilité|feasibility|options?|scénarios?|synthès(?:e|es)|rapport|report)\b/u.test(
+      prompt,
+    );
+  if (investigation && evidence) return 'analyze';
+  return 'fast';
 }
 
-export function shouldUseBotModeMission(searchParams: URLSearchParams): boolean {
-  return searchParams.get('botmode') === '1' && getBotModeExecutionMode(searchParams) !== 'fast';
+export function shouldUseBotModeMission(searchParams: URLSearchParams, text = ''): boolean {
+  return (
+    searchParams.get('botmode') === '1' && getBotModeExecutionMode(searchParams, text) !== 'fast'
+  );
 }
 
 const logChatRequest = (request: Record<string, unknown>) => {
@@ -550,8 +596,8 @@ export default function useChatFunctions({
       quotes: quotes.length > 0 ? quotes : undefined,
     };
 
-    const botModeMode = getBotModeExecutionMode(searchParams);
-    if (shouldUseBotModeMission(searchParams) && isAgentsEndpoint(endpoint)) {
+    const botModeMode = getBotModeExecutionMode(searchParams, text);
+    if (shouldUseBotModeMission(searchParams, text) && isAgentsEndpoint(endpoint)) {
       const botModeAgentId = conversation?.agent_id;
       if (typeof botModeAgentId !== 'string' || botModeAgentId.length === 0) {
         console.error('BOT MODE mission requires a selected agent');
@@ -680,6 +726,22 @@ export default function useChatFunctions({
               objective: `Exécuter la partie ${index + 1} de la mission avec le spécialiste sélectionné (${id}, ${role}).`,
               requiredCapabilities: [capabilities[0] ?? `selected_agent_${index + 1}`],
               dependsOn: [],
+            }));
+          }
+          else {
+          const required = new Set(
+            objectives.flatMap((objective) => objective.requiredCapabilities),
+          );
+          const specialists = specialistDefinitions
+            .filter(([, , , capabilities]) =>
+              capabilities.some((capability) => required.has(capability)),
+            )
+            .map(([id, agentId, role, capabilities]) => ({
+              id,
+              agentId,
+              role,
+              capabilities,
+              constraints: [],
             }));
           }
           return {

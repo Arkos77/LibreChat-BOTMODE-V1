@@ -52,14 +52,37 @@ export const JOB_STORE_V2_REQUIRED_METHODS: readonly [
   'claimParkedSteersDetailed',
   'consumeParkedSteer',
   'discardSteerLeftover',
-] satisfies ReadonlyArray<keyof IJobStoreV2>;
+] as const satisfies ReadonlyArray<keyof IJobStoreV2>;
 
 export type JobStoreV2RequiredMethod = (typeof JOB_STORE_V2_REQUIRED_METHODS)[number];
 
+/** Only required v2 methods belong to the runtime capability assertion.
+ * Redis-only optional extensions must not make legacy-compatible stores fail. */
 type MethodKeys<T> = {
   [Key in keyof T]-?: NonNullable<T[Key]> extends (...args: never[]) => unknown ? Key : never;
 }[keyof T];
-type V2OnlyMethod = Exclude<MethodKeys<IJobStoreV2>, keyof IJobStore>;
+/** Recovery methods remain Redis-only, and are intentionally NOT required
+ * of the public in-memory/external v2 store contract. Other optional v2
+ * declarations (notably acknowledgeReplacedJobs) still have mandatory runtime
+ * capability checks, so excluding all optional keys would silently weaken
+ * the release's v2 contract.
+ *
+ * Keep this explicit, reviewable list in sync with the Redis recovery adapter.
+ */
+type RedisOnlyOptionalMethod =
+  | 'claimDrainedMissionRecovery'
+  | 'activateDrainedMissionRecovery'
+  | 'beginRecoveredMissionProviderExecution'
+  | 'heartbeatRecoveredMissionProvider'
+  | 'inspectLiveRecoveredMissionOwner'
+  | 'transitionRecoveredMissionToComplete'
+  | 'finalizeRecoveredMissionTerminal'
+  | 'releaseDrainedMissionRecovery'
+  | 'heartbeatMissionProvider'
+  | 'reserveNativeMissionEffect'
+  | 'commitNativeMissionEffect'
+  | 'readNativeMissionEffect';
+type V2OnlyMethod = Exclude<MethodKeys<IJobStoreV2>, keyof IJobStore | RedisOnlyOptionalMethod>;
 type SameUnion<Left, Right> = [Left] extends [Right]
   ? [Right] extends [Left]
     ? true

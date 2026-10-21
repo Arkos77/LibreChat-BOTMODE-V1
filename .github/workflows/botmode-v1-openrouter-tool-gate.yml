@@ -1,0 +1,68 @@
+name: BOTMODE V1 Current HEAD Free Tool Calling Gate
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  live-tool-capability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Checkout exact triggering source revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Assert candidate revision
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Verify real tool calling with free OpenRouter routing
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENROUTER_API_KEY:-}" ]; then
+            echo "::error::Missing OPENROUTER_API_KEY Actions secret"
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json,os,urllib.request,urllib.error
+          payload={
+            "model":"openrouter/free",
+            "messages":[{"role":"user","content":"Call the record_evidence tool with status=ready and no other commentary."}],
+            "tools":[{"type":"function","function":{"name":"record_evidence",
+              "description":"Record evidence for the BOTMODE tool-calling test.",
+              "parameters":{"type":"object","properties":{"status":{"type":"string","enum":["ready"]}},
+                            "required":["status"],"additionalProperties":False}}}],
+            "tool_choice":"required",
+            "max_tokens":128
+          }
+          req=urllib.request.Request("https://openrouter.ai/api/v1/chat/completions",
+            data=json.dumps(payload).encode(),method="POST",
+            headers={"Content-Type":"application/json","Authorization":"Bearer "+os.environ["OPENROUTER_API_KEY"]})
+          try:
+            with urllib.request.urlopen(req,timeout=55) as resp:
+              result=json.load(resp)
+          except urllib.error.HTTPError as exc:
+            raise SystemExit("OpenRouter tool-calling probe HTTP "+str(exc.code)+" (body suppressed)")
+          except Exception as exc:
+            raise SystemExit("OpenRouter probe transport failure: "+type(exc).__name__)
+          choices=result.get("choices") or []
+          calls=(choices[0].get("message") or {}).get("tool_calls") or [] if choices else []
+          valid=False
+          for call in calls:
+            fn=call.get("function") or {}
+            if fn.get("name") != "record_evidence": continue
+            try:
+              args=json.loads(fn.get("arguments") or "{}")
+            except (ValueError,TypeError):
+              continue
+            if args.get("status")=="ready": valid=True
+          if not valid:
+            raise SystemExit("Tool-calling not demonstrated by selected free model (no valid tool_calls)")
+          print("OPENROUTER_FREE_TOOL_CALLING=PASS (response and token redacted)")
+          PY
+      - name: Clarify evidence boundary
+        if: always()
+        run: |
+          echo '### OpenRouter free tool-calling gate' >> "$GITHUB_STEP_SUMMARY"
+          echo 'A successful single tool call is one sample of the configured OpenRouter/free route; it does not prove specialist delegation, Oracle, long missions, or fallback availability.' >> "$GITHUB_STEP_SUMMARY"

@@ -25,5 +25,10 @@ module.exports = () => () => async (input) => {
     };
   }
 
-  return {};
+  // The SDK requires an explicit authorization decision from every matching
+  // PreToolUse hook. Returning {} causes AUTHORIZATION_DECISION_REQUIRED and
+  // converts the intended HITL pause into a blocked tool result. This 'allow'
+  // is only the fixture hook's vote: the static policy still returns 'ask'
+  // for approval_probe, and the SDK's deny > ask > allow fold preserves it.
+  return { decision: 'allow' };
 };

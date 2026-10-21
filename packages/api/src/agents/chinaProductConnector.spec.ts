@@ -3,7 +3,10 @@ import { TaobaoProductMarketConnector } from './chinaProductConnector';
 describe('China product connector', () => {
   it('maps the public Taobao product-market response without inventing supplier verification', async () => {
     const connector = new TaobaoProductMarketConnector({
-      fetchImpl: (async (_input, init) => {
+      fetchImpl: (async (
+        _input: Parameters<typeof fetch>[0],
+        init: Parameters<typeof fetch>[1],
+      ) => {
         expect(init?.method).toBe('POST');
         const body = String(init?.body);
         expect(body).toContain('method=taobao.itemmarket.item.searching');
@@ -22,7 +25,7 @@ describe('China product connector', () => {
           }),
           { status: 200 },
         );
-      }) as typeof fetch,
+      }) as unknown as typeof fetch,
     });
 
     await expect(connector.search({ query: 'wireless mouse', limit: 1 })).resolves.toEqual([
@@ -42,7 +45,7 @@ describe('China product connector', () => {
 
   it('fails closed on invalid limits and HTTP errors', async () => {
     const connector = new TaobaoProductMarketConnector({
-      fetchImpl: (async () => new Response('', { status: 503 })) as typeof fetch,
+      fetchImpl: (async () => new Response('', { status: 503 })) as unknown as typeof fetch,
     });
     await expect(connector.search({ query: 'mouse', limit: 0 })).rejects.toThrow(
       /between 1 and 20/,

@@ -1,0 +1,728 @@
+name: BOTMODE V1 Published OCI Digest Subagent Oracle Probe
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      live_free_provider:
+        description: 'Real free-model structured Worker-to-specialist Oracle; nested child checked separately'
+        type: boolean
+        required: true
+        default: false
+      quota_only:
+        description: 'Read OpenRouter free daily quota, strictly no inference or paid model'
+        type: boolean
+        required: true
+        default: false
+permissions:
+  contents: read
+
+# The old probe repeatedly tested PR14 SHA 54b30a3 and an immutable, unrelated
+# GHCR image. It could not validate ANY fix on PR29. Keep its previous run
+# evidence in GitHub history, but make the release gate test its own exact SHA.
+# Qualify the already published immutable experimental digest. No additional
+# publication or user volumes are used. Real provider credentials are read
+# only in an explicitly triggered manual free-only follow-up step.
+env:
+  BOTMODE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  BOTMODE_PUBLISHED_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:20e921df9fda01dba00bc925fe1ae37ae24fbcc992f52f15aad60bfa5aae4c21
+  COMPOSE_PROJECT_NAME: botmode-oci-child-${{ github.run_id }}-${{ github.run_attempt }}
+
+jobs:
+  openrouter-free-quota-only:
+    if: github.event_name == 'workflow_dispatch' && inputs.quota_only == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Query only key quota metadata without inference
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_QUOTA'
+          import json, os
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError, URLError
+          secret=os.environ.get('OPENROUTER_API_KEY', '')
+          if len(secret)<17:
+              raise SystemExit('CI_OPENROUTER_FREE_QUOTA=KEY_UNAVAILABLE')
+          request=Request('https://openrouter.ai/api/v1/key',
+              headers={'Authorization':'Bearer '+secret,'Accept':'application/json'}, method='GET')
+          try:
+              with urlopen(request,timeout=25) as response:
+                  result=json.load(response)
+          except HTTPError as exc:
+              print('CI_OPENROUTER_KEY_METADATA_HTTP='+str(exc.code))
+              raise SystemExit('CI_OPENROUTER_FREE_QUOTA=METADATA_HTTP_FAIL')
+          except (URLError,TimeoutError,ValueError):
+              raise SystemExit('CI_OPENROUTER_FREE_QUOTA=METADATA_UNAVAILABLE')
+          key=result.get('data',{}) if isinstance(result,dict) else {}
+          if not isinstance(key,dict):
+              raise SystemExit('CI_OPENROUTER_FREE_QUOTA=SCHEMA_UNEXPECTED')
+          if key.get('is_management_key') is True:
+              raise SystemExit('CI_OPENROUTER_FREE_QUOTA=MANAGEMENT_KEY')
+          quota=key.get('free_model_daily_requests')
+          if not isinstance(quota,dict):
+              print('CI_OPENROUTER_FREE_DAILY_STATUS=UNKNOWN_SCHEMA')
+          else:
+              used,limit,remaining=(quota.get(k) for k in ('used','limit','remaining'))
+              if all(type(v) is int and 0<=v<=1000000 for v in (used,limit,remaining)):
+                  # Positive daily headroom is not a promise of provider capacity
+                  # or available per-minute tokens; never trigger inference here.
+                  print('CI_OPENROUTER_FREE_DAILY_STATUS='+('REMAINING_POSITIVE' if remaining>0 else 'DAILY_EXHAUSTED'))
+              else:
+                  print('CI_OPENROUTER_FREE_DAILY_STATUS=UNKNOWN_SCHEMA')
+          print('CI_OPENROUTER_FREE_QUOTA_METADATA_ONLY=PASS')
+          print('CI_OPENROUTER_MODEL_GENERATION_REQUESTS=0')
+          PY_QUOTA
+  current-candidate-runtime:
+    if: github.event_name != 'workflow_dispatch' || inputs.quota_only != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact current candidate
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BOTMODE_CANDIDATE_SHA }}
+          persist-credentials: false
+      - name: Prove checked-out revision
+        run: test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+      - name: Verify bounded free-only SSE resume static safeguards offline
+        run: python3 scripts/botmode/tests/test_ci_live_free_sse_resume.py
+      - name: Verify runtime source unchanged since the published image
+        shell: bash
+        run: |
+          set -euo pipefail
+          published_sha=59598c2f4e333c256296bbb8c6f45a024832745b
+          git fetch --no-tags origin "$published_sha"
+          test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+          python3 - <<'PY_SOURCE'
+          import subprocess
+          # The OCI image is built from the functional source SHA. Only workflow
+          # metadata committed after that SHA may differ; fail closed on code drift.
+          permitted = {
+            # Main integration adds audited workflow and test infrastructure only.
+            # Never whitelist api/, client/, packages/, Compose or runtime scripts.
+            '.github/scripts/retarget-prs.sh',
+            '.github/workflows/botmode-change-safety-gate.yml',
+            '.github/workflows/botmode-v1-d03-candidate-manual.yml',
+            '.github/workflows/botmode-v1-d03-fresh-lite-acceptance.yml',
+            '.github/workflows/botmode-v1-d04-candidate-license.yml',
+            '.github/workflows/botmode-v1-d04-full-restore.yml',
+            '.github/workflows/botmode-v1-ghcr-subagent-oracle-probe.yml',
+            'scripts/botmode/verify-d04-candidate-license.sh',
+            '.github/workflows/botmode-v1-lite-rollback-smoke.yml',
+            'scripts/botmode/ci-staging-digest-rollback.sh',
+            'scripts/botmode/ci-release-composition-source-guard.py',
+            '.github/workflows/botmode-v1-d04-promote-stable.yml',
+            'README.md',
+            'docs/BOT_MODE_INSTALL.md',
+          }
+          changed = set(subprocess.check_output(
+            ['git','diff','--name-only','59598c2f4e333c256296bbb8c6f45a024832745b','HEAD'],
+            text=True).splitlines())
+          unexpected = sorted(changed - permitted)
+          print('CI_PUBLISHED_OCI_RUNTIME_UNMODIFIED=' + str(not unexpected).upper())
+          print('CI_PUBLISHED_OCI_CHANGE_COUNT=' + str(len(changed)))
+          if unexpected:
+            raise SystemExit('CI_PUBLISHED_OCI_RUNTIME_DRIFT_NOT_ALLOWED')
+          PY_SOURCE
+      - name: Pull exact public OCI image without GHCR credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          docker pull "$BOTMODE_PUBLISHED_IMAGE"
+          docker image inspect "$BOTMODE_PUBLISHED_IMAGE" >/dev/null
+          echo 'CI_PUBLISHED_OCI_SUBAGENT_ANONYMOUS_PULL=PASS'
+      - name: Boot current candidate with disposable MongoDB
+        env:
+          OPENROUTER_API_KEY: ci-local-fixture-no-real-key
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          # CI-only disposable Redis: durable Mission Oracle result readback.
+          # Modify the ephemeral checkout, never the checked-out candidate.
+          sed -i '/      - SCHEDULES_SINGLE_PROCESS=true/a\      - USE_REDIS=true\n      - USE_REDIS_STREAMS=true\n      - REDIS_URI=redis://redis:6379\n      - STREAM_KEEP_COMPLETED_JOBS=true' docker-compose.botmode-lite.yml
+          # Append a true service under the existing services: map.
+          # Avoid a second 'services.depends_on' key, which Compose rejects.
+          cat >> docker-compose.botmode-lite.yml <<'YAML'
+            redis:
+              image: redis:7-alpine
+              command: ["redis-server", "--save", "", "--appendonly", "no"]
+          YAML
+          # Fixture comes from the exact same Git checkout as the runtime image.
+          # No network-fetched harness can silently test a different revision.
+          cp scripts/botmode/ci-openai-subagent-fixture.py /tmp/botmode-ci-model-fixture.py
+          python3 /tmp/botmode-ci-model-fixture.py >/tmp/botmode-ci-fixture.log 2>&1 &
+          fixture_pid=$!
+          echo "$fixture_pid" > /tmp/botmode-ci-fixture.pid
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8088/health >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8088/health >/dev/null
+          echo 'CI_SYNTHETIC_FIXTURE_HEALTH=PASS'
+          # Disposable GitHub runner: the non-root LibreChat API must read this bind-mounted file.
+          # Isolated, runtime-only signing material. Never reuse in production.
+          ci_jwt_secret=$(openssl rand -hex 48)
+          ci_jwt_refresh_secret=$(openssl rand -hex 48)
+          {
+            :
+          } >/dev/null
+          sed -i "s/^JWT_SECRET=.*/JWT_SECRET=$ci_jwt_secret/" .env
+          sed -i "s/^JWT_REFRESH_SECRET=.*/JWT_REFRESH_SECRET=$ci_jwt_refresh_secret/" .env
+          unset ci_jwt_secret ci_jwt_refresh_secret
+          # The candidate LibreChat YAML resolves OpenRouter through OPENROUTER_KEY.
+          test -n "${OPENROUTER_API_KEY:-}" || { echo "::error::OPENROUTER_API_KEY secret missing"; exit 1; }
+          printf '\nOPENROUTER_KEY=%s\n' "$OPENROUTER_API_KEY" >> .env
+          # CI-only Compose patch: explicitly pass provider key into the API environment.
+          # Mounted .env is used for Compose interpolation, not automatic container injection.
+          export OPENROUTER_KEY="$OPENROUTER_API_KEY"
+          sed -i '/      - HOST=0.0.0.0/a\      - OPENROUTER_KEY=${OPENROUTER_KEY:?Missing CI OpenRouter key}' docker-compose.botmode.yml
+          {
+            echo 'BOTMODE_MONGO_PASSWORD=ci-isolated-only'
+            echo 'POSTGRES_PASSWORD=ci-isolated-only'
+          } >> .env
+          # Deterministic integration: only the already live-tested OpenRouter free route.
+          # Patch the ephemeral checkout, never the checked-out source.
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path('librechat.yaml')
+          conf=json.loads(path.read_text())
+          # Native agent setup already stores OpenRouter/openrouter-free.
+          # Omit optional host router in this single-provider isolation test.
+          routes=conf['endpoints']['agents'].pop('hostModelRouting',[])
+          # Point ONLY this disposable checkout's OpenRouter adapter at the
+          # runner-local fixture, retaining the real provider adapter and SDK.
+          for endpoint in conf['endpoints']['custom']:
+              if endpoint.get('name') == 'OpenRouter':
+                  endpoint['baseURL'] = 'http://host.docker.internal:8088/v1'
+                  endpoint['models'] = {'fetch': False, 'default': ['openrouter/free']}
+          path.write_text(json.dumps(conf,ensure_ascii=False,indent=2)+'\n')
+          print('CI_HOST_MODEL_ROUTING_DISABLED_FOR_ISOLATED_TEST='+str(len(routes)))
+          PY
+          sudo chown 1000:$(id -g) .env
+          sudo chmod 640 .env
+          export BOTMODE_MONGO_PASSWORD=ci-isolated-only
+          export POSTGRES_PASSWORD=ci-isolated-only
+          export BOTMODE_IMAGE=${BOTMODE_PUBLISHED_IMAGE}
+          export BOTMODE_HOST_PORT=3090
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml up -d
+          ready=0
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:3090/api/config -o /tmp/botmode-e2e-api-config.json >/dev/null 2>&1; then
+              ready=1; break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps
+            echo "::error::Current candidate API was not ready"
+            exit 1
+          fi
+          api_id="$(docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps -q api)"
+          test -n "$api_id"
+          test "$(docker inspect "$api_id" --format '{{.Config.Image}}')" = "$BOTMODE_PUBLISHED_IMAGE"
+          echo 'CI_PUBLISHED_OCI_SUBAGENT_EXACT_IMAGE_RUNNING=PASS'
+          # Use a recognized browser UA for API requests; LibreChat blocks and scores curl clients.
+          browser_ua='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+          # Compare exact runtime SDK with the offline pinned SDK check.
+          # No prompt/model/credential data is emitted.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T -w /app/api api node - <<'NODE_SDK'
+          const { Run } = require('@librechat/agents');
+          const output = typeof Run?.prototype?.getAgentOutputs;
+          const messages = typeof Run?.prototype?.getRunMessages;
+          console.log('CI_DOCKER_SDK_GET_AGENT_OUTPUTS=' + output);
+          console.log('CI_DOCKER_SDK_GET_RUN_MESSAGES=' + messages);
+          NODE_SDK
+          # Test the real mounted route without a token, not a simulated router.
+          unauth_status=$(curl -sS -o /tmp/botmode-unauth.json -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' -H "User-Agent: $browser_ua" \
+            -d '{}' http://127.0.0.1:3090/api/agents/botmode/setup)
+          if [ "$unauth_status" != "401" ]; then
+            echo "::error::Unauthenticated BOTMODE setup expected HTTP 401, got $unauth_status"
+            exit 1
+          fi
+          echo 'BOTMODE_CURRENT_UNAUTHENTICATED_SETUP=401_PASS'
+          # Create an isolated database-backed test principal and sign a real JWT
+          # with the exact API runtime's secret. No production account or secret used.
+          export CI_JWT_SECRET="$(sed -n 's/^JWT_SECRET=//p' .env)"
+          test -n "$CI_JWT_SECRET"
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T -e CI_JWT_SECRET api node - <<'NODE' > /tmp/botmode-e2e-test-token
+          const signingSecret = process.env.CI_JWT_SECRET;
+          const mongoose = require('mongoose');
+          const jwt = require('jsonwebtoken');
+          (async () => {
+            console.error('CI_PHASE=mongo_connect_begin');
+            await mongoose.connect(process.env.MONGO_URI);
+            console.error('CI_PHASE=mongo_connect_pass');
+            const id = new mongoose.Types.ObjectId();
+            console.error('CI_PHASE=user_insert_begin');
+            await mongoose.connection.db.collection('users').insertOne({
+              _id: id,
+              name: 'BOT MODE CI Agent',
+              username: 'botmode-ci-agent',
+              email: 'botmode-ci-agent@example.invalid',
+              role: 'ADMIN',
+              provider: 'local',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+            console.error('CI_PHASE=user_insert_pass');
+            if (!signingSecret) throw new Error('JWT_SECRET unavailable in mounted .env');
+            console.error('CI_PHASE=jwt_sign_begin');
+            process.stdout.write(jwt.sign({ id: String(id) }, signingSecret, { expiresIn: '15m' }));
+            console.error('CI_PHASE=jwt_sign_pass');
+            await mongoose.disconnect();
+          })().catch((error) => { console.error('CI principal creation:', JSON.stringify({name:error?.name,code:error?.code,codeName:error?.codeName,phase:error?.errorLabelSet ? 'mongo' : undefined,messageClass: /auth/i.test(error?.message || '') ? 'authentication' : /connect|network|server selection/i.test(error?.message || '') ? 'connection' : /module/i.test(error?.message || '') ? 'module' : 'other'})); process.exit(1); });
+          NODE
+          unset CI_JWT_SECRET
+          chmod 600 /tmp/botmode-e2e-test-token
+          test -s /tmp/botmode-e2e-test-token
+          auth_status=$(curl -sS -o /tmp/botmode-auth-status.json -w '%{http_code}' \
+            -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" -H "User-Agent: $browser_ua" \
+            http://127.0.0.1:3090/api/agents/botmode/setup-status)
+          if [ "$auth_status" != "200" ]; then
+            echo "CI_AUTH_RESPONSE_STATUS=$auth_status"
+            python3 - <<'PY'
+          import json
+          try:
+           d=json.load(open("/tmp/botmode-auth-status.json"))
+           print("CI_AUTH_RESPONSE_FIELDS="+",".join(sorted(d.keys())))
+           print("CI_AUTH_ERROR_CODE="+str(d.get("code","absent"))[:60])
+          except Exception:
+           print("CI_AUTH_RESPONSE_FORMAT=non_json")
+          PY
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node -e "const crypto=require('crypto'); const fs=require('fs'); const x=(fs.readFileSync('/app/.env','utf8').match(/^JWT_SECRET=(.*)$/m)||[])[1]; console.log('CI_RUNTIME_JWT_SECRET_PRESENT='+Boolean(process.env.JWT_SECRET)); console.log('CI_ENV_FILE_JWT_SECRET_PRESENT='+Boolean(x)); console.log('CI_RUNTIME_JWT_MATCH='+Boolean(x && process.env.JWT_SECRET === x));"
+            echo "::error::Authenticated BOT MODE setup-status expected HTTP 200; received $auth_status"
+            exit 1
+          fi
+          echo 'BOTMODE_CURRENT_AUTHENTICATED_STATUS=200_PASS'
+          # Real native provisioning; verification of persisted inventory and routing.
+          setup_status=$(curl -sS -o /tmp/botmode-setup-result.json -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' -H "User-Agent: $browser_ua" \
+            -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" \
+            --data '{"provider":"OpenRouter","model":"openrouter/free"}' \
+            http://127.0.0.1:3090/api/agents/botmode/setup)
+          echo "CI_BOTMODE_SETUP_HTTP=$setup_status"
+          if [ "$setup_status" != "200" ] && [ "$setup_status" != "201" ]; then
+            echo "::error::Native six-agent setup rejected; status $setup_status"
+            python3 - <<'PY'
+          import json
+          try:
+              data=json.load(open('/tmp/botmode-setup-result.json'))
+              print('CI_SETUP_RESPONSE_KEYS='+','.join(sorted(data.keys())))
+              print('CI_SETUP_FAILED_AGENT='+str(data.get('failedAgent','none'))[:60])
+              print('CI_SETUP_ERROR='+str(data.get('error','none'))[:150])
+              print('CI_SETUP_MESSAGE='+str(data.get('message','none'))[:160])
+          except Exception:
+              print('CI_SETUP_RESPONSE_NON_JSON')
+          PY
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE'
+          const mongoose=require('mongoose');
+          (async()=>{
+            await mongoose.connect(process.env.MONGO_URI);
+            const roles=await mongoose.connection.db.collection('roles').find({}, {projection:{name:1,permissions:1}}).limit(12).toArray();
+            for (const role of roles) {
+              console.log('CI_ROLE='+String(role.name)+' AGENTS_PERMISSIONS='+JSON.stringify(role.permissions?.AGENTS??role.permissions?.agents??null));
+            }
+            await mongoose.disconnect();
+          })().catch(e=>{console.error('CI_ROLE_DIAGNOSTIC='+String(e.name));process.exitCode=1});
+          NODE
+            exit 1
+          fi
+          inventory_status=$(curl -sS -o /tmp/botmode-inventory.json -w '%{http_code}' \
+            -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" -H "User-Agent: $browser_ua" \
+            http://127.0.0.1:3090/api/agents/botmode/setup-status)
+          test "$inventory_status" = "200"
+          python3 - <<'PY'
+          import json
+          data=json.load(open('/tmp/botmode-inventory.json'))
+          for name in ('inventoryComplete','permissionsComplete','delegationConfigured'):
+              print('CI_'+name+'='+str(data.get(name)))
+              if data.get(name) is not True:
+                  raise SystemExit('Incomplete native agent setup: '+name)
+          PY
+          echo 'BOTMODE_CURRENT_SIX_AGENT_PROVISIONING=PASS'
+          # HTTP/SSE mission admission is a separate gate from successful setup.
+          # This is a real Worker turn, never a fabricated oracle/publication PASS.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE' > /tmp/botmode-ci-worker-id
+          const mongoose = require('mongoose');
+          (async () => {
+            await mongoose.connect(process.env.MONGO_URI);
+            const worker = await mongoose.connection.db.collection('agents').findOne(
+              {name:'BOT MODE Worker'},
+              {projection:{id:1,name:1}}
+            );
+            if (!worker?.id) throw new Error('Native Worker ID not found');
+            process.stdout.write(worker.id);
+            await mongoose.disconnect();
+          })().catch((e)=>{console.error('CI_WORKER_LOOKUP='+String(e.name));process.exit(1)});
+          NODE
+          test -s /tmp/botmode-ci-worker-id
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE_CHILD' > /tmp/botmode-ci-child-id
+          const mongoose=require('mongoose');
+          (async()=>{
+            await mongoose.connect(process.env.MONGO_URI);
+            const worker=await mongoose.connection.db.collection('agents').findOne({name:'BOT MODE Worker'},{projection:{subagents:1}});
+            const ids=worker?.subagents?.agent_ids;
+            if(!worker?.subagents?.enabled || !Array.isArray(ids) || !ids.length) throw new Error('Worker lacks authorized subagent');
+            process.stdout.write(ids[0]);
+            await mongoose.disconnect();
+          })().catch(e=>{console.error('CI_CHILD_SETUP='+e.name);process.exit(1)});
+          NODE_CHILD
+          test -s /tmp/botmode-ci-child-id
+          python3 - <<'PY_CFG'
+          import json,urllib.request
+          child=open('/tmp/botmode-ci-child-id').read().strip()
+          req=urllib.request.Request('http://127.0.0.1:8088/configure',data=json.dumps({'childId':child}).encode(),headers={'Content-Type':'application/json'},method='POST')
+          with urllib.request.urlopen(req,timeout=5) as r: assert json.load(r)['ok']
+          print('CI_NATIVE_CHILD_FIXTURE_CONFIGURED=PASS')
+          PY_CFG
+          python3 - <<'PY'
+          import json,uuid
+          worker=open('/tmp/botmode-ci-worker-id').read().strip()
+          payload={
+              'endpoint':'agents',
+              'agent_id':worker,
+              'conversationId':str(uuid.uuid4()),
+              'messageId':str(uuid.uuid4()),
+              'parentMessageId':'00000000-0000-0000-0000-000000000000',
+              'isNewConvo':True,
+              'text':'Mission de vérification BOT MODE : délègue à RECHERCHE la recherche du titre du premier article de la Déclaration universelle des droits de l’homme, vérifie avec le spécialiste, puis réponds en français avec une preuve consultable.',
+          }
+          with open('/tmp/botmode-ci-mission-request.json','w') as h: json.dump(payload,h)
+          with open('/tmp/botmode-ci-mission-id','w') as h: h.write(payload['conversationId'])
+          PY
+          # API config readiness precedes durable generation readiness; retry only explicit startup 503.
+          for mission_attempt in 1 2 3 4 5 6 7 8 9 10; do
+          mission_http=$(curl -sS --max-time 210 -o /tmp/botmode-ci-mission-stream.txt \
+            -w '%{http_code}' -X POST \
+            -H 'Content-Type: application/json' -H 'Accept: text/event-stream' \
+            -H "User-Agent: $browser_ua" \
+            -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" \
+            --data-binary @/tmp/botmode-ci-mission-request.json \
+            http://127.0.0.1:3090/api/agents/chat/agents) || mission_http=CURL_ERROR
+          if [ "$mission_http" = "503" ] && grep -q '"code":"SERVER_NOT_READY"' /tmp/botmode-ci-mission-stream.txt && grep -q 'Server is still starting' /tmp/botmode-ci-mission-stream.txt; then
+            echo "CI_MISSION_RUNTIME_STARTING_ATTEMPT=$mission_attempt"
+            sleep 12
+            continue
+          fi
+          break
+          done
+          echo "CI_WORKER_MISSION_HTTP=$mission_http"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/botmode-ci-mission-stream.txt')
+          data=p.read_text(errors='replace') if p.exists() else ''
+          print('CI_MISSION_STREAM_BYTES='+str(len(data)))
+          print('CI_MISSION_HAS_SSE='+str('data:' in data))
+          print('CI_MISSION_HAS_ERROR_EVENT='+str('event: error' in data.lower()))
+          if len(data) < 2000:
+              try:
+                  response=json.loads(data)
+                  print('CI_MISSION_RESPONSE_FIELDS='+','.join(sorted(response.keys())) if isinstance(response,dict) else 'CI_MISSION_RESPONSE_KIND='+type(response).__name__)
+                  if isinstance(response,dict):
+                      for k in ('code','error','message','status','generationProtocolVersion'):
+                          if k in response:
+                              val=response[k]
+                              print('CI_MISSION_'+k.upper()+'='+str(val)[:130])
+              except Exception:
+                  print('CI_MISSION_BODY_FORMAT=non_json')
+
+          if len(data) < 1000:
+              try:
+                  obj=json.loads(data)
+                  print('CI_MISSION_ERROR_CODE='+str(obj.get('code','none'))[:90])
+                  print('CI_MISSION_ERROR='+str(obj.get('error','none'))[:160])
+              except Exception:
+                  print('CI_MISSION_ERROR_FORMAT=non_json')
+          PY
+          if [ "$mission_http" != "200" ]; then
+            echo "::error::Real Worker mission HTTP admission did not return 200"
+            exit 1
+          fi
+          # The start route returns JSON status=started and streamId.
+          # A separate authorized GET subscribes to the actual SSE channel.
+          python3 - <<'PY'
+          import json
+          obj=json.load(open('/tmp/botmode-ci-mission-stream.txt'))
+          if obj.get('status') != 'started' or not obj.get('streamId'):
+              raise SystemExit('Worker did not return a valid started/streamId envelope')
+          with open('/tmp/botmode-ci-stream-id','w') as f: f.write(obj['streamId'])
+          print('CI_WORKER_ASYNC_STARTED=PASS')
+          PY
+          worker_stream_id=$(cat /tmp/botmode-ci-stream-id)
+          stream_http=$(curl -sS -N --max-time 180 -o /tmp/botmode-ci-real-sse.txt -w '%{http_code}' \
+            -H 'Accept: text/event-stream' -H "User-Agent: $browser_ua" \
+            -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" \
+            "http://127.0.0.1:3090/api/agents/chat/stream/$worker_stream_id?resume=true") || stream_http=CURL_ERROR
+          # Provider credential presence only: never print its value or hashes.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node -e "console.log('CI_PROVIDER_KEY_IN_RUNTIME='+Boolean(process.env.OPENROUTER_KEY)); console.log('CI_PROVIDER_KEY_ALIAS_IN_RUNTIME='+Boolean(process.env.OPENROUTER_API_KEY));"
+          # Compare stored Worker provider identity with server endpoint configuration.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE'
+          const mongoose=require('mongoose');
+          (async()=>{
+            await mongoose.connect(process.env.MONGO_URI);
+            const db=mongoose.connection.db;
+            const worker=await db.collection('agents').findOne({name:'BOT MODE Worker'},{projection:{provider:1,model:1,author:1}});
+            console.log('CI_WORKER_STORED_PROVIDER='+String(worker?.provider||'missing'));
+            console.log('CI_WORKER_STORED_MODEL='+String(worker?.model||'missing'));
+            console.log('CI_OPENROUTER_RUNTIME_KEY_PRESENT='+Boolean(process.env.OPENROUTER_KEY));
+            const userKeys=await db.listCollections({name:'userkeys'}).toArray();
+            console.log('CI_USERKEYS_COLLECTION_EXISTS='+Boolean(userKeys.length));
+            await mongoose.disconnect();
+          })().catch(e=>{console.error('CI_AGENT_PROVIDER_PROBE='+e.name);process.exit(1)});
+          NODE
+          echo "CI_WORKER_STREAM_HTTP=$stream_http"
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/botmode-ci-real-sse.txt')
+          data=p.read_text(errors='replace') if p.exists() else ''
+          print('CI_WORKER_STREAM_BYTES='+str(len(data)))
+          print('CI_WORKER_STREAM_EVENT_COUNT='+str(sum(x.startswith('data:') for x in data.splitlines())))
+          print('CI_WORKER_STREAM_FINAL='+str('"final":true' in data))
+          print('CI_WORKER_STREAM_ERROR='+str('event: error' in data))
+          for ln in data.splitlines():
+              if ln.startswith('data:'):
+                  try:
+                      obj=__import__('json').loads(ln[5:].strip())
+                      if isinstance(obj,dict):
+                          print('CI_SSE_FIELDS='+','.join(sorted(obj.keys()))[:180])
+                          print('CI_SSE_ERROR_CODE='+str(obj.get('code','none'))[:75])
+                          print('CI_SSE_ERROR_TYPE='+str(obj.get('type','none'))[:75])
+                          err=str(obj.get('error','')).lower()
+                          categories={'provider_auth':('401','api key','unauthorized','invalid key'),'provider_quota':('429','rate limit','quota'),'provider_model':('model not found','invalid model','model unavailable'),'server_config':('not configured','missing config','endpoint unavailable'),'runtime':('failed to initialize','generation failed','internal error')}
+                          detected=[k for k,words in categories.items() if any(word in err for word in words)]
+                          print('CI_SSE_ERROR_CATEGORY='+(','.join(detected) if detected else 'unclassified'))
+                          print('CI_SSE_ERROR_TEXT_LENGTH='+str(len(err)))
+                          # Only emit a fingerprint of the error, never its raw text.
+                          import hashlib
+                          print('CI_SSE_ERROR_FINGERPRINT='+hashlib.sha256(err.encode()).hexdigest()[:12])
+                          print('CI_SSE_ERROR_HTTP_401='+str('401' in err))
+                          print('CI_SSE_ERROR_HTTP_403='+str('403' in err))
+                          print('CI_SSE_ERROR_HTTP_429='+str('429' in err))
+                          print('CI_SSE_ERROR_INVALID_KEY='+str('invalid key' in err or 'invalid api key' in err))
+                          print('CI_SSE_ERROR_UNAUTHORIZED='+str('unauthorized' in err))
+                          # Match safe known phrases only; never expose arbitrary provider text.
+                          for tag,phrase in [('MISSING_API_KEY','api key'),('KEY_NOT_PROVIDED','not provided'),('KEY_REQUIRED','required'),('INVALID_CREDENTIALS','credentials'),('MISSING_PROVIDER','provider'),('INVALID_AUTHENTICATION','authentication'),('NO_TOKEN','no token'),('MODEL_ERROR','model'),('MISSING_AUTHORIZATION','authorization')]:
+                              print('CI_SSE_'+tag+'='+str(phrase in err))
+                  except Exception:
+                      print('CI_SSE_EVENT_FORMAT=non_json')
+          PY
+          if [ "$stream_http" != "200" ] || ! grep -q '^data:' /tmp/botmode-ci-real-sse.txt; then
+            echo "::error::Authenticated Worker stream did not provide SSE generation events"
+            exit 1
+          fi
+          if grep -q '^event: error' /tmp/botmode-ci-real-sse.txt; then
+            echo "::error::Worker produced SSE error; generation gate remains RED"
+            exit 1
+          fi
+          # A transport handshake is insufficient: require a terminal event.
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          events=[]
+          for line in Path('/tmp/botmode-ci-real-sse.txt').read_text(errors='replace').splitlines():
+              if not line.startswith('data:'): continue
+              try:
+                  value=json.loads(line[5:].strip())
+              except Exception:
+                  continue
+              if isinstance(value,dict): events.append(value)
+          print('CI_SSE_PARSED_EVENTS='+str(len(events)))
+          print('CI_SSE_FINAL_COUNT='+str(sum(v.get('final') is True for v in events)))
+          print('CI_SSE_EVENT_TYPES='+','.join(sorted({str(v.get('type') or v.get('event') or 'unspecified')[:45] for v in events})))
+          if not any(v.get('final') is True for v in events):
+              raise SystemExit('CI_GATE_MISSING_TERMINAL_EVENT')
+          PY
+          # Inspect actual subagent events and terminal response without logging content.
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          values=[]
+          for line in Path('/tmp/botmode-ci-real-sse.txt').read_text(errors='replace').splitlines():
+              if not line.startswith('data:'): continue
+              try: v=json.loads(line[5:].strip())
+              except Exception: continue
+              if isinstance(v,dict): values.append(v)
+          updates=[v for v in values if v.get('event')=='on_subagent_update' or v.get('type')=='on_subagent_update']
+          print('CI_SUBAGENT_UPDATE_COUNT='+str(len(updates)))
+          print('CI_SUBAGENT_UPDATE_FIELDS='+','.join(sorted(set(k for v in updates for k in v.keys())))[:220])
+          payloads=[v.get('data') for v in updates if isinstance(v.get('data'),dict)]
+          print('CI_SUBAGENT_PAYLOAD_COUNT='+str(len(payloads)))
+          print('CI_SUBAGENT_PAYLOAD_FIELDS='+','.join(sorted({k for p in payloads for k in p.keys()}))[:250])
+          phases={str(p.get('phase')) for p in payloads}
+          ids={str(p.get('subagentRunId')) for p in payloads if p.get('subagentRunId')}
+          print('CI_SUBAGENT_UNIQUE_RUNS='+str(len(ids)))
+          print('CI_SUBAGENT_HAS_START_STOP='+str({'start','stop'}.issubset(phases)))
+          # Legacy SSE activity is not an Oracle verdict, and a completed
+          # generation can be replayed from a terminal snapshot with no child events.
+          print('CI_SUBAGENT_EVENT_PROBE=' + ('observed' if ids else 'not_in_replayed_stream'))
+          print('CI_SUBAGENT_EVENT_ASSERTION_SCOPE=informational_only')
+          for field in ('status','state','phase','taskId','agentId'):
+              present=[str(p[field])[:30] for p in payloads if p.get(field) is not None]
+              print('CI_SUBAGENT_DATA_'+field.upper()+'_COUNT='+str(len(present)))
+              if field in ('status','state','phase'):
+                  print('CI_SUBAGENT_DATA_'+field.upper()+'_VALUES='+','.join(sorted(set(present)))[:140])
+          for field in ('status','state','phase'):
+              print('CI_SUBAGENT_'+field.upper()+'_VALUES='+','.join(sorted({str(v.get(field))[:35] for v in updates if v.get(field) is not None}))[:120])
+          finals=[v for v in values if v.get('final') is True]
+          responses=[v.get('responseMessage') for v in finals if isinstance(v.get('responseMessage'),dict)]
+          print('CI_TERMINAL_RESPONSE_PRESENT='+str(bool(responses)))
+          print('CI_TERMINAL_RESPONSE_HAS_TEXT='+str(any(bool(m.get('text')) for m in responses)))
+          print('CI_TERMINAL_RESPONSE_FIELDS='+','.join(sorted({k for m in responses for k in m.keys()}))[:200])
+          print('CI_TERMINAL_RESPONSE_CONTENT_PRESENT='+str(any(bool(m.get('content')) for m in responses)))
+          print('CI_TERMINAL_RESPONSE_TEXT_LENGTH='+str(max((len(str(m.get('text') or '')) for m in responses),default=0)))
+          print('CI_TERMINAL_PUBLICATION_SIGNAL='+str(any(bool(v.get('final')) and isinstance(v.get('responseMessage'),dict) for v in values)))
+          PY
+          # SSE final alone is not a successful response: the pinned Oracle
+          # harness checks the exact final content and fails on error parts.
+          echo 'CI_WORKER_TERMINAL_EVENT_OBSERVED=true'
+          # Capture narrow durable evidence without dumping response bodies or secrets.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T \
+            -e CI_CONVERSATION_ID="$(cat /tmp/botmode-ci-mission-id)" api node - <<'NODE'
+          const mongoose=require('mongoose');
+          (async()=>{
+            await mongoose.connect(process.env.MONGO_URI);
+            const db=mongoose.connection.db;
+            for(const name of ['messages','conversations']){
+              const count=await db.collection(name).countDocuments({conversationId:process.env.CI_CONVERSATION_ID});
+              console.log('CI_PERSISTED_'+name.toUpperCase()+'='+count);
+            }
+            const collections=(await db.listCollections({}, {nameOnly:true}).toArray()).map(x=>x.name);
+            console.log('CI_EVIDENCE_COLLECTION_CANDIDATES='+collections.filter(x=>/subagent|oracle|mission|evidence|task/i.test(x)).join(',').slice(0,260));
+            await mongoose.disconnect();
+          })().catch(e=>{console.error('CI_EVIDENCE_INSPECTION_FAILED='+e.name);process.exit(1)});
+          NODE
+
+          python3 - <<'PY_METRICS'
+          import json,urllib.request
+          import time
+          # Detached child execution is asynchronous to the parent's SSE terminal.
+          # Wait for actual child model activity; never classify the initial
+          # parent terminal as proof of child completion.
+          deadline=time.monotonic()+45
+          while True:
+              with urllib.request.urlopen('http://127.0.0.1:8088/metrics',timeout=5) as r: data=json.load(r)
+              if data.get('child_responses',0)>=1 and data.get('parent_tool_requests',0)>=1:
+                  break
+              if time.monotonic()>=deadline:
+                  break
+              time.sleep(2)
+          for key in ('completion_calls','parent_tool_requests','child_responses','parent_final','missing_tool'):
+              print('CI_SUBAGENT_'+key.upper()+'='+str(data.get(key,0)))
+          # Capture persisted task status before enforcing child activity. A parent
+          # tool reply may contain a rejected detached invocation, not a child run.
+          if data.get('child_responses',0)<1:
+              print('CI_SUBAGENT_CHILD_MODEL_NOT_INVOKED=True')
+              import subprocess
+              subprocess.run(['docker','compose','-f','docker-compose.botmode.yml',
+                  '-f','docker-compose.botmode-lite.yml','exec','-T','api','node','-e',
+                  """const mongoose=require('mongoose');(async()=>{await mongoose.connect(process.env.MONGO_URI);const d=mongoose.connection.db;const c=await d.collection('conversations').find({'subagentThread.parentConversationId':{$exists:true}},{projection:{conversationId:1,'subagentThread.depth':1}}).toArray();console.log('CI_CHILD_PERSISTED_COUNT='+c.length);for(const child of c){const messages=await d.collection('messages').find({conversationId:child.conversationId},{projection:{'subagentTask.status':1,'subagentTask.parentRunId':1,isCreatedByUser:1,text:1,error:1}}).limit(30).toArray();console.log('CI_CHILD_MESSAGE_COUNT='+messages.length);console.log('CI_CHILD_TASK_STATUSES='+JSON.stringify(messages.map(m=>m.subagentTask?.status||'none')));console.log('CI_CHILD_USER_MESSAGE_COUNT='+messages.filter(m=>m.isCreatedByUser===true).length);for(const m of messages.filter(m=>m.subagentTask?.status==='error')){const t=String(m.text||'');const categories=['MODEL','PROVIDER','AUTH','ROUT','CONFIG','TOKEN','THREAD','CHECKPOINT','NETWORK','TIMEOUT'];console.log('CI_CHILD_FAILURE_CLASSES='+categories.filter(k=>t.toUpperCase().includes(k)).join(',')+';length='+t.length);const scrubbed=t.replace(/(?:sk|pk|ghp|ghs|github_pat|Bearer)[-_A-Za-z0-9.]{8,}/g,'[REDACTED]').replace(/https?:\/\/\S+/g,'[URL]').replace(/[A-Za-z0-9+/_=-]{32,}/g,'[REDACTED]').slice(0,140);console.log('CI_CHILD_FAILURE_SANITIZED='+scrubbed)}}await mongoose.disconnect()})().catch(e=>{console.log('CI_CHILD_DIAG_ERROR='+e.name)})"""],check=False)
+          for key in ('parent_tool_requests','child_responses'):
+              value=data.get(key,0)
+              if not isinstance(value,int) or value<1: raise SystemExit('CI_SUBAGENT_MODEL_CYCLE_MISSING='+key)
+          PY_METRICS
+          # Oracle/QA acceptance, child execution and publication require separate
+          # durable evidence assertions; do not mark the release E2E gate green here.
+
+
+
+          # Distinguish configured capability from effective child-thread persistence.
+          # Log only booleans/counts; never IDs, credentials or message contents.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE_LINEAGE'
+          const fs=require('fs');
+          const mongoose=require('mongoose');
+          (async()=>{
+            const cfg=JSON.parse(fs.readFileSync('/app/librechat.yaml','utf8'));
+            const caps=cfg?.endpoints?.agents?.capabilities||[];
+            console.log('CI_CHILD_RUNTIME_BACKGROUND_CAPABILITY='+caps.includes('run_in_background'));
+            console.log('CI_CHILD_RUNTIME_SUBAGENT_CAPABILITY='+caps.includes('subagents'));
+            await mongoose.connect(process.env.MONGO_URI);
+            const db=mongoose.connection.db;
+            const worker=await db.collection('agents').findOne({name:'BOT MODE Worker'}, {projection:{subagents:1}});
+            console.log('CI_CHILD_WORKER_SUBAGENTS_ENABLED='+Boolean(worker?.subagents?.enabled));
+            console.log('CI_CHILD_WORKER_SUBAGENT_COUNT='+(worker?.subagents?.agent_ids?.length||0));
+            const total=await db.collection('conversations').countDocuments({'subagentThread.parentConversationId':{$exists:true}});
+            console.log('CI_CHILD_ANY_DURABLE_THREAD_COUNT='+total);
+            await mongoose.disconnect();
+          })().catch(e=>{console.error('CI_CHILD_DIAGNOSTIC_CLASS='+e.name);process.exitCode=1});
+          NODE_LINEAGE
+
+          # Use the harness checked out from the identical candidate SHA.
+          cp scripts/botmode/ci-oracle-delegated-mission-gate.py /tmp/botmode-ci-oracle-publication-gate.py
+          python3 /tmp/botmode-ci-oracle-publication-gate.py
+          echo 'BOTMODE_CURRENT_IMAGE_SUBAGENT_ORACLE_PROBE=PASS'
+          echo '### Release-fix branch Oracle/QA E2E (local synthetic provider)' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Published immutable OCI digest tested with local synthetic subagent model; no real-provider inference.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Optional real OpenRouter free-only delegated child and Oracle
+        if: github.event_name == 'workflow_dispatch' && inputs.live_free_provider == true
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CI_EXTERNAL_FREE_PROVIDER: 'true'
+        run: |
+          bash scripts/botmode/ci-live-free-child-preflight.sh
+      - name: Classify child execution exception from API logs
+        if: failure()
+        env:
+          BOTMODE_MONGO_PASSWORD: ci-isolated-only
+          POSTGRES_PASSWORD: ci-isolated-only
+          BOTMODE_IMAGE: ${{ env.BOTMODE_PUBLISHED_IMAGE }}
+        shell: bash
+        run: |
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs --no-color api > /tmp/botmode-api-failure.log 2>/dev/null || true
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          lines=Path('/tmp/botmode-api-failure.log').read_text(errors='replace').splitlines()
+          hits=[i for i,line in enumerate(lines) if '[subagentThreads] Child-thread execution failed' in line]
+          print('CI_CHILD_EXCEPTION_LOG_ENTRIES='+str(len(hits)))
+          # The process logger can serialize structured fields across lines.
+          # Inspect only narrowly scoped exception class and stack frame tokens;
+          # never print full log records, raw arguments, or credentials.
+          for i in hits[-2:]:
+              window=' '.join(lines[max(0,i-2):i+24])
+              for marker in ('errorName','stack','detail'):
+                  print('CI_CHILD_LOG_FIELD_'+marker.upper()+'='+str(marker in window))
+              for kind in ('TypeError','ReferenceError','Error','SyntaxError','RangeError'):
+                  if re.search(r'(?<![A-Za-z])'+kind+r'(?![A-Za-z])',window):
+                      print('CI_CHILD_LOG_ERROR_KIND='+kind)
+                      break
+              for match in re.finditer(r'at\s+([A-Za-z0-9_$.<>]+)\s*\(',window):
+                  print('CI_CHILD_LOG_FRAME_FUNCTION='+match.group(1)[:100])
+                  break
+          for i in hits[-3:]:
+              block='\n'.join(lines[i:i+14])
+              names=re.findall(r'errorName[^A-Za-z]+([A-Za-z][A-Za-z0-9]*)',block)
+              print('CI_CHILD_EXCEPTION_NAME='+(','.join(names[:2]) or 'unknown'))
+              # Winston may serialize the exception as a one-line JSON string;
+              # report only field names and bounded, non-sensitive stack locations.
+              try:
+                  payload=lines[i].split(' | ',1)[-1]
+                  obj=__import__('json').loads(payload)
+                  if isinstance(obj,dict):
+                      print('CI_CHILD_EXCEPTION_FIELDS='+','.join(sorted(obj.keys()))[:150])
+                      value=obj.get('errorName') or obj.get('name')
+                      if isinstance(value,str) and re.fullmatch(r'[A-Za-z][A-Za-z0-9]{0,63}',value):
+                          print('CI_CHILD_EXCEPTION_JSON_NAME='+value)
+              except (ValueError,TypeError):
+                  pass
+              for candidate in ('TypeError','ReferenceError','ValidationError','AbortError','MongoServerError','SubagentThreadPublicError'):
+                  if candidate in block:
+                      print('CI_CHILD_EXCEPTION_CLASS='+candidate)
+              print('CI_CHILD_EXCEPTION_HAS_STACK='+str('stack:' in block))
+          PY
+      - name: Always destroy disposable stack
+        if: always()
+        env:
+          BOTMODE_MONGO_PASSWORD: ci-isolated-only
+          POSTGRES_PASSWORD: ci-isolated-only
+          BOTMODE_IMAGE: ${{ env.BOTMODE_PUBLISHED_IMAGE }}
+        run: sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true

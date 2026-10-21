@@ -1,0 +1,105 @@
+name: BOTMODE V1 D04 Promote Exact Candidate to Stable
+
+on:
+  workflow_dispatch:
+    inputs:
+      approval:
+        description: Explicit D04 approval for stable/latest aliases of exact immutable D03 digest
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: botmode-v1-d04-promote-immutable-v1
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Verify Git source and retag OCI index without build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      APPROVAL: ${{ inputs.approval }}
+      SOURCE_SHA: 59598c2f4e333c256296bbb8c6f45a024832745b
+      EXPECTED_DIGEST: sha256:20e921df9fda01dba00bc925fe1ae37ae24fbcc992f52f15aad60bfa5aae4c21
+      IMAGE: ghcr.io/arkos77/librechat-botmode-v1
+      CANDIDATE_TAG: candidate-botmode-v1-59598c2f4e33
+      SHA_TAG: sha-59598c2f4e33
+    steps:
+      - name: Enforce manual D04 approval and immutable Git tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$APPROVAL" = 'AUTHORIZE_D04_STABLE_LATEST_SOURCE_59598c2f4e33'
+          test "$GITHUB_REPOSITORY" = 'Arkos77/LibreChat-BOTMODE-V1'
+          test "$GITHUB_REF" = 'refs/heads/main'
+          git_target="$(gh api repos/Arkos77/LibreChat-BOTMODE-V1/git/ref/tags/v1.0.0 --jq .object.sha)"
+          test "$git_target" = "$SOURCE_SHA"
+          echo "D04_GIT_TAG_SOURCE_PIN=PASS"
+
+      - name: Install pinned OCI manifest client
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.24.x'
+          check-latest: false
+
+      - name: Compile pinned crane (manifest-only tool)
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install github.com/google/go-containerregistry/cmd/crane@v0.20.6
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+
+      - name: Verify source digest and refuse drift of any existing alias
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf "%s\\n" "$GH_TOKEN" | crane auth login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          test "$(crane digest "$IMAGE:$CANDIDATE_TAG")" = "$EXPECTED_DIGEST"
+          test "$(crane digest "$IMAGE:$SHA_TAG")" = "$EXPECTED_DIGEST"
+          for alias in stable latest; do
+            found="$(crane digest "$IMAGE:$alias" 2>/dev/null || true)"
+            if [ -n "$found" ] && [ "$found" != "$EXPECTED_DIGEST" ]; then
+              echo "D04_REFUSED_EXISTING_ALIAS_DRIFT=$alias" >&2
+              exit 1
+            fi
+          done
+          echo "D04_CANDIDATE_PROVENANCE_AND_EXISTING_ALIAS_GUARD=PASS"
+
+      - name: Promote exact OCI index bytes, without image rebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          for alias in stable latest; do
+            if [ "$(crane digest "$IMAGE:$alias" 2>/dev/null || true)" != "$EXPECTED_DIGEST" ]; then
+              crane tag "$IMAGE@$EXPECTED_DIGEST" "$alias"
+            fi
+            test "$(crane digest "$IMAGE:$alias")" = "$EXPECTED_DIGEST"
+            echo "D04_ALIAS_${alias^^}_EXACT_DIGEST=PASS"
+          done
+
+      - name: Verify both aliases anonymously from a clean credential store
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DOCKER_CONFIG="$(mktemp -d)"
+          export HOME="$(mktemp -d)"
+          for alias in stable latest; do
+            test "$(crane digest "$IMAGE:$alias")" = "$EXPECTED_DIGEST"
+            echo "D04_PUBLIC_ANONYMOUS_${alias^^}_EXACT_DIGEST=PASS"
+          done
+          # Query original OCI index unchanged, including both requested platforms.
+          crane manifest "$IMAGE:stable" > /tmp/botmode-v1-stable-index.json
+          python3 - <<'PYOCI'
+          import json
+          data=json.load(open('/tmp/botmode-v1-stable-index.json'))
+          platforms={(x.get('platform',{}).get('os'), x.get('platform',{}).get('architecture')) for x in data.get('manifests',[])}
+          expected={('linux','amd64'),('linux','arm64')}
+          assert expected.issubset(platforms), ('D04_PLATFORMS_MISSING', platforms)
+          print('D04_PUBLIC_AMD64_ARM64_MANIFEST=PASS')
+          PYOCI

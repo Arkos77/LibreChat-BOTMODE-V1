@@ -4,12 +4,16 @@ const {
   getDetachedSubagentProducerAgentId,
 } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
+const { resolveAuthorizedAgentConversation } = require('./resolveAuthorizedAgentConversation');
 const { createContentAggregator, GraphNodeKeys } = require('@librechat/agents');
 const {
   resolveSender,
   createConcurrencyLimiter,
   loadSkillStates,
   initializeAgent,
+  createAgentExecutionContext,
+  validateAgentModelWithoutTransport,
+  createRequestAgentExecutionContext,
   primeInvokedSkillsForProfiles,
   validateAgentModel,
   extractManualSkills,
@@ -74,9 +78,21 @@ const {
   createObservedSkillEditCheck,
   createObservedSkillCreateCheck,
 } = require('./skillAuthorizationObservation');
-const { getModelsConfig } = require('~/server/controllers/ModelController');
+const { getModelsConfig, loadModelsFromContext } = require('~/server/controllers/ModelController');
+const { getAppConfig } = require('~/server/services/Config');
+const { getAppConfigOptionsFromUser } = require('@librechat/api');
 const { checkPermission, findAccessibleResources } = require('~/server/services/PermissionService');
 const AgentClient = require('~/server/controllers/agents/client');
+const {
+  normalizeMissionOracleState,
+  areMissionOracleResultsEquivalent,
+} = require('@librechat/api');
+const {
+  createNativeMissionRecoveredOraclePersister,
+} = require('./nativeMissionRecoveredOraclePersister');
+const {
+  assertNativeMissionCapabilityAttestation,
+} = require('./nativeMissionCapabilityAttestation');
 const { processAddedConvo } = require('./addedConvo');
 const subagentThreadTaskStore = require('./subagentThreadStore');
 const {
@@ -275,7 +291,12 @@ const initializeClient = async ({
   if (Object.prototype.hasOwnProperty.call(req, 'resolvedConversation')) {
     requestConversationPromise = Promise.resolve(req.resolvedConversation);
   } else if (typeof conversationId === 'string' && conversationId !== '') {
-    requestConversationPromise = db.getConvo(req.user.id, conversationId);
+    requestConversationPromise = resolveAuthorizedAgentConversation({
+      userId: req.user.id,
+      conversationId,
+      getConvo: db.getConvo,
+      allowMissing: true,
+    });
   }
   const startupTelemetry = getAgentStartupTelemetry(req);
 
@@ -736,10 +757,16 @@ const initializeClient = async ({
     requestConversationCandidate[Symbol.for('librechat.resolvedConversation.partial')] === true;
   let requestConversation = requestConversationCandidate;
   if (requestConversationIsPartial && typeof conversationId === 'string' && conversationId !== '') {
-    requestConversation = await db.getConvo(req.user.id, conversationId);
-    if (requestConversation == null) {
+    try {
+      requestConversation = await resolveAuthorizedAgentConversation({
+        userId: req.user.id,
+        conversationId,
+        getConvo: db.getConvo,
+      });
+    } catch (cause) {
       const error = new Error('Conversation could not be resolved for continuation');
       error.status = 404;
+      error.cause = cause;
       throw error;
     }
   }
@@ -760,6 +787,13 @@ const initializeClient = async ({
     error.status = 409;
     throw error;
   }
+
+  // Resolve AFTER the owner-scoped conversation read and project gate. A
+  // partially resolved continuation must not enter agent/tool initialization
+  // with the stale pre-authorization conversation snapshot.
+  // Keep the original body (timezone, turn policy and file context) in the
+  // SDK runtime; the normalized MCP requestBody is passed separately below.
+  const agentRuntime = createRequestAgentExecutionContext(req);
 
   delete endpointOption.agent;
 
@@ -842,8 +876,7 @@ const initializeClient = async ({
     : primaryAgent;
   let primaryConfig = await initializeAgent(
     {
-      req,
-      res,
+      runtime: agentRuntime,
       loadTools,
       requestFiles,
       conversationId,
@@ -914,8 +947,7 @@ const initializeClient = async ({
     initialize: (agent) =>
       initializeAgent(
         {
-          req,
-          res,
+          runtime: agentRuntime,
           loadTools,
           requestFiles,
           conversationId,
@@ -1001,6 +1033,7 @@ const initializeClient = async ({
     skippedAgentIds: discoveredSkippedIds,
   } = await discoverConnectedAgents(
     {
+      runtime: agentRuntime,
       req,
       res,
       primaryConfig,
@@ -1465,8 +1498,7 @@ const initializeClient = async ({
     const config = await waitForAbort(
       initializeAgent(
         {
-          req,
-          res,
+          runtime: agentRuntime,
           agent,
           loadTools: createToolLoader(req, res, context.signal, streamId, true, jobCreatedAt),
           requestFiles,
@@ -1646,6 +1678,60 @@ const initializeClient = async ({
       }),
     );
   };
+
+  /**
+   * BOT MODE free-pool self-spawn is a mission-scoped convenience, never a
+   * second source of permissions or permission to spend. A saved Worker may
+   * have been edited after onboarding, or host routing may have switched its
+   * effective model. Re-evaluate the effective model EVERY generation.
+   *
+   * Do not allow a hidden paid/other-provider fallback within spawned children.
+   * Explicit authorized saved specialists remain available independently.
+   * Never mutate the persisted Worker or its user-configured delegation graph.
+   */
+  if (
+    originalPrimaryAgent.name === 'BOT MODE Worker' &&
+    primaryConfig.subagents?.enabled === true &&
+    primaryConfig.subagents.allowSelf === true
+  ) {
+    const fallbackBindings = primaryConfig.model_parameters?.fallbacks;
+    const hostDecision = primaryConfig.hostModelDecision;
+    const isExplicitFreeModel = (model) =>
+      typeof model === 'string' && (model === 'openrouter/free' || model.endsWith(':free'));
+    const authorizedPool = hostDecision?.authorizedBindings;
+    const freeOnlyHostRoute =
+      hostDecision == null ||
+      (hostDecision.spendingPolicy === 'free_only' &&
+        hostDecision.selectedProvider?.toLowerCase() === 'openrouter' &&
+        hostDecision.selectedModel === primaryConfig.model &&
+        Array.isArray(authorizedPool) &&
+        authorizedPool.length >= 2 &&
+        authorizedPool.every(
+          (binding) =>
+            binding.provider?.toLowerCase() === 'openrouter' && isExplicitFreeModel(binding.model),
+        ));
+    const onlyFreeFallbacks =
+      fallbackBindings == null ||
+      (Array.isArray(fallbackBindings) &&
+        fallbackBindings.every(
+          (fallback) =>
+            isExplicitFreeModel(fallback?.clientOptions?.model) &&
+            authorizedPool?.some(
+              (binding) =>
+                binding.provider?.toLowerCase() === 'openrouter' &&
+                binding.model === fallback.clientOptions.model,
+            ),
+        ));
+    const freeEphemeralChildPermitted =
+      originalPrimaryAgent.provider?.toLowerCase() === 'openrouter' &&
+      isExplicitFreeModel(originalPrimaryAgent.model) &&
+      isExplicitFreeModel(primaryConfig.model) &&
+      freeOnlyHostRoute &&
+      onlyFreeFallbacks;
+    if (!freeEphemeralChildPermitted) {
+      primaryConfig.subagents = { ...primaryConfig.subagents, allowSelf: false };
+    }
+  }
 
   const rootSubagentConfigs = [primaryConfig, ...agentConfigs.values()];
   await resolveSubagentTrees(rootSubagentConfigs);
@@ -2021,6 +2107,7 @@ const initializeClient = async ({
     contentParts,
     stepMap,
     agentConfigs,
+    agentRuntime,
     eventHandlers,
     collectedUsage,
     collectedThoughtSignatures,
@@ -2072,4 +2159,200 @@ const initializeClient = async ({
   return { client, userMCPAuthMap, transientEvidenceBuffer, missionEvidenceContext };
 };
 
-module.exports = { initializeClient };
+/** Authenticated cold initialization for model-only missions. Uses the same
+ * SDK initializeAgent() as live requests, with current user-scoped model
+ * catalog and secrets. Any tool, skill, file or paid-balance pathway which
+ * has no request-independent authorization adapter is denied BEFORE SDK IO.
+ * No graph is started and no publication/receipt capability is inferred.
+ */
+async function initializeClientFromDocuments({ candidate, claim, job, context, assertAuthorized }) {
+  const user = context?.user;
+  const conversation = context?.conversation;
+  const documents = context?.agents;
+  const userId = String(user?.id ?? user?._id ?? '');
+  const expectedAgentIds = new Set([
+    job?.agent_id,
+    ...(job?.orchestratorPlan?.tasks ?? []).map((task) => task?.agentId),
+  ]);
+  if (
+    typeof assertAuthorized !== 'function' ||
+    !candidate ||
+    !claim ||
+    !job ||
+    !user?.id ||
+    !userId ||
+    job.userId !== userId ||
+    candidate.streamId !== claim.streamId ||
+    candidate.createdAt !== claim.createdAt ||
+    candidate.checkpointId !== claim.checkpointId ||
+    candidate.checkpointNamespace !== claim.checkpointNamespace ||
+    candidate.streamId !== job.streamId ||
+    (job.tenantId ?? undefined) !== (user.tenantId ?? undefined) ||
+    candidate.createdAt !== job.createdAt ||
+    candidate.checkpointNamespace !== job.checkpointNamespace ||
+    job.status !== 'running' ||
+    !Array.isArray(job.orchestratorPlan?.tasks) ||
+    job.orchestratorPlan.tasks.length === 0 ||
+    job.pendingAction != null ||
+    conversation?.conversationId !== candidate.streamId ||
+    conversation?.agent_id !== job.agent_id ||
+    (conversation.tenantId ?? undefined) !== (user.tenantId ?? undefined) ||
+    !Array.isArray(documents) ||
+    expectedAgentIds.has(undefined) ||
+    expectedAgentIds.size !== documents.length ||
+    documents[0]?.id !== job.agent_id ||
+    documents.some((agent) => !agent?.id || !expectedAgentIds.has(agent.id)) ||
+    new Set(documents.map((agent) => agent.id)).size !== documents.length ||
+    typeof job.userMessage?.messageId !== 'string' ||
+    typeof job.responseMessageId !== 'string' ||
+    !job.userMessage.messageId ||
+    !job.responseMessageId
+  )
+    throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_AUTHORITY_DENIED');
+
+  // For an incomplete host integration these paths must not silently lose
+  // tools, skill permissions or uploaded files during graph reconstruction.
+  const containsUnsupportedResources =
+    (conversation.files?.length ?? 0) > 0 ||
+    (conversation.attachments?.length ?? 0) > 0 ||
+    documents.some(
+      (agent) =>
+        (agent.tools?.length ?? 0) > 0 ||
+        Object.keys(agent.tool_options ?? {}).length > 0 ||
+        // Delegation is an implicit SDK tool, even when `tools` is empty.
+        // The request-free cold initializer has no durable child-run binding
+        // or original grant receipt; silently reconstituting an agent without
+        // those capabilities would change the checkpoint's execution graph.
+        agent.subagents?.enabled === true ||
+        (agent.subagents?.agent_ids?.length ?? 0) > 0 ||
+        (agent.subagentAgentConfigs?.length ?? 0) > 0 ||
+        (agent.lazySubagentConfigs?.length ?? 0) > 0 ||
+        (agent.subagentGraphConfigs?.length ?? 0) > 0 ||
+        (agent.skills?.length ?? 0) > 0 ||
+        agent.skills_enabled === true ||
+        (agent.attachments?.length ?? 0) > 0 ||
+        (agent.files?.length ?? 0) > 0 ||
+        Object.keys(agent.tool_resources ?? {}).length > 0,
+    );
+  if (containsUnsupportedResources) {
+    throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_TOOL_RUNTIME_UNAVAILABLE');
+  }
+  await assertAuthorized();
+  // Check the authoritative conversation files, even if the resolved document
+  // omits the projection. Rehydrating files could mutate usage during recovery.
+  const existingFileIds = await db.getConvoFiles(candidate.streamId);
+  if (existingFileIds != null && (!Array.isArray(existingFileIds) || existingFileIds.length > 0)) {
+    throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_FILES_UNAVAILABLE');
+  }
+  await assertAuthorized();
+  const appConfig = await getAppConfig(getAppConfigOptionsFromUser(user));
+  if (!appConfig || appConfig.balance?.enabled === true) {
+    throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_CONFIG_UNAVAILABLE');
+  }
+  const catalog = await loadModelsFromContext({ user, appConfig });
+  const requestBody = {
+    conversationId: candidate.streamId,
+    messageId: job.userMessage.messageId,
+    parentMessageId: job.userMessage.messageId,
+  };
+  const runtime = createAgentExecutionContext({
+    user,
+    appConfig,
+    requestBody,
+    turnStartedAt: candidate.createdAt,
+    resolvedConversation: conversation,
+    hasResolvedConversation: true,
+  });
+  const allowedProviders = new Set(appConfig.endpoints?.agents?.allowedProviders ?? []);
+  const configs = new Map();
+  for (const definition of documents) {
+    await assertAuthorized();
+    const validation = validateAgentModelWithoutTransport({
+      agent: definition,
+      modelsConfig: catalog,
+    });
+    if (validation.isValid !== true) {
+      throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_MODEL_NOT_ALLOWED');
+    }
+    const config = await initializeAgent(
+      {
+        runtime,
+        agent: { ...definition },
+        conversationId: candidate.streamId,
+        parentMessageId: job.userMessage.messageId,
+        requestBody,
+        allowedProviders,
+        endpointOption: { endpoint: EModelEndpoint.agents },
+        isInitialAgent: definition.id === job.agent_id,
+        loadTools: async ({ tools }) => {
+          if (tools.length) throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_TOOLS_DENIED');
+          return { toolDefinitions: [], tools: [] };
+        },
+      },
+      { ...db, filterFilesByAgentAccess },
+    );
+    if (
+      config?.id !== definition.id ||
+      (config.toolDefinitions?.length ?? 0) > 0 ||
+      (config.tools?.length ?? 0) > 0 ||
+      (config.toolRegistry?.size ?? 0) > 0
+    ) {
+      throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_RUNTIME_MISMATCH');
+    }
+    configs.set(definition.id, config);
+  }
+  await assertAuthorized();
+  let barrierActive = false;
+  const client = new AgentClient({
+    agent: configs.get(job.agent_id),
+    agentConfigs: new Map([...configs].filter(([id]) => id !== job.agent_id)),
+    agentRuntime: runtime,
+    jobCreatedAt: candidate.createdAt,
+    checkpointNamespace: candidate.checkpointNamespace,
+    orchestratorPlan: job.orchestratorPlan,
+    executionGrantJobId: candidate.streamId,
+    executionGrantResolver: async () => {
+      throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_EXTERNAL_EFFECTS_DENIED');
+    },
+  });
+  // This is the EXACT original admission fingerprint persisted alongside the
+  // durable plan, not a current-configuration guess. Older jobs without it are
+  // intentionally ineligible for automatic cold execution. Matching the digest
+  // still grants no tool replay permission or publication authority.
+  const originalCapabilityAttestation = assertNativeMissionCapabilityAttestation({
+    recorded: job.nativeMissionCapabilityAttestation,
+    plan: job.orchestratorPlan,
+    agents: client.getReachableMissionAgents(),
+    subagentTasks: client.options.subagentTasks,
+  });
+  if (originalCapabilityAttestation.mode !== 'model_only') {
+    throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_EFFECT_RECEIPTS_REQUIRED');
+  }
+  client.user = userId;
+  client.conversationId = candidate.streamId;
+  // Only the recovered provider's exact Redis owner can write Oracle results.
+  // The publisher still needs separate replay and terminal barriers.
+  const recoveryStore = GenerationJobManager.getJobStore();
+  if (typeof recoveryStore?.updateRecoveredMissionEvidence === 'function') {
+    client.options.nativeMissionRecoveredOraclePersister =
+      createNativeMissionRecoveredOraclePersister({
+        store: recoveryStore,
+        candidate,
+        claim,
+        assertAuthorized,
+        normalizeOracleState: normalizeMissionOracleState,
+        areMissionOracleResultsEquivalent,
+      });
+  }
+  client.publicationBarrier = {
+    activate: () => {
+      barrierActive = true;
+    },
+    hold: () => barrierActive,
+  };
+  // The caller still MUST install a real owner-cancellable signal and a
+  // complete checkpoint receipt proof; neither is synthesized here.
+  return client;
+}
+
+module.exports = { initializeClient, initializeClientFromDocuments };

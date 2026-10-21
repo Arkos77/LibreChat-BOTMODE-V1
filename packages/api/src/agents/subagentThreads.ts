@@ -1517,6 +1517,12 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
                 }
                 throw error;
               }
+              // Emit a separate bounded, non-sensitive classifier for CI log parsers.
+              // Never expose the exception message, stack or tool arguments here.
+              const failureClass = error instanceof Error ? error.name : typeof error;
+              logger.error(
+                `[subagentThreads] Child-thread failure class: ${/^[A-Za-z][A-Za-z0-9]{0,63}$/.test(failureClass) ? failureClass : 'unknown'}`,
+              );
               logger.error('[subagentThreads] Child-thread execution failed', {
                 detail: publicFailureDetail(error),
                 errorName: error instanceof Error ? error.name : typeof error,
@@ -3715,14 +3721,16 @@ export function buildSubagentThreadTaskConfig(
       : {
           supportsThreadContinuation: baseStore.supportsThreadContinuation,
           supportsDurableCheckpointRecovery: baseStore.supportsDurableCheckpointRecovery,
-          start: (request) =>
-            store.start({
+          start: (request) => {
+            const hostRequest: HostSubagentTaskStartRequest = {
               ...request,
               ...(options.completionWakeups === true
                 ? { completionDelivery: SUBAGENT_COMPLETION_DELIVERY }
                 : {}),
               verifyDurableRecovery: options.verifyDurableRecovery,
-            }),
+            };
+            return store.start(hostRequest);
+          },
           get: (scopeId, taskId) => baseStore.get(scopeId, taskId),
           list: (scopeId) => baseStore.list(scopeId),
           claim: (scopeId, taskId) => baseStore.claim(scopeId, taskId),

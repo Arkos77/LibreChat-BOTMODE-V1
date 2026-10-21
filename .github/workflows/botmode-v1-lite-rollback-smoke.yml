@@ -1,0 +1,129 @@
+name: BOTMODE V1 Published Digest Lite Restart and Staging Rollback
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-lite-rollback-smoke.yml'
+      - 'scripts/botmode/ci-staging-digest-rollback.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preserve-mongo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify published candidate source and immutable digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha=59598c2f4e333c256296bbb8c6f45a024832745b
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          git fetch --no-tags origin "$source_sha"
+          python3 - <<'PY_SOURCE'
+          import subprocess
+          source='59598c2f4e333c256296bbb8c6f45a024832745b'
+          permitted={
+            '.github/scripts/retarget-prs.sh',
+            '.github/workflows/botmode-change-safety-gate.yml',
+            '.github/workflows/botmode-v1-d03-candidate-manual.yml',
+            '.github/workflows/botmode-v1-d03-fresh-lite-acceptance.yml',
+            '.github/workflows/botmode-v1-d04-candidate-license.yml',
+            '.github/workflows/botmode-v1-d04-full-restore.yml',
+            '.github/workflows/botmode-v1-ghcr-subagent-oracle-probe.yml',
+            '.github/workflows/botmode-v1-lite-rollback-smoke.yml',
+            'scripts/botmode/verify-d04-candidate-license.sh',
+            'scripts/botmode/ci-staging-digest-rollback.sh',
+            'scripts/botmode/ci-release-composition-source-guard.py',
+            '.github/workflows/botmode-v1-d04-promote-stable.yml',
+            'README.md',
+            'docs/BOT_MODE_INSTALL.md',
+          }
+          changed=set(subprocess.check_output(['git','diff','--name-only',source,'HEAD'],text=True).splitlines())
+          unexpected=sorted(changed-permitted)
+          print('CI_LITE_D03_SOURCE_RUNTIME_UNMODIFIED='+str(not unexpected).upper())
+          if unexpected: raise SystemExit('CI_LITE_D03_RUNTIME_DRIFT_REFUSED='+','.join(unexpected))
+          PY_SOURCE
+          test ! -e .env
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          docker pull ghcr.io/arkos77/librechat-botmode-v1@sha256:20e921df9fda01dba00bc925fe1ae37ae24fbcc992f52f15aad60bfa5aae4c21
+          echo 'BOTMODE_PUBLISHED_DIGEST_ANONYMOUS_PULL=PASS'
+      - name: Start disposable Lite installation
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Create exactly one pair of credentials shared by Compose and the
+          # read-only /app/.env mount. Separate generated values break rollback.
+          test ! -e .env
+          cp .env.example .env
+          chmod 600 .env
+          mongo_pass="$(openssl rand -hex 24)"
+          pg_pass="$(openssl rand -hex 24)"
+          echo "::add-mask::$mongo_pass"
+          echo "::add-mask::$pg_pass"
+          {
+            printf 'BOTMODE_MONGO_PASSWORD=%s\n' "$mongo_pass"
+            printf 'POSTGRES_PASSWORD=%s\n' "$pg_pass"
+          } >> .env
+          echo "BOTMODE_MONGO_PASSWORD=$mongo_pass" >> "$GITHUB_ENV"
+          echo "POSTGRES_PASSWORD=$pg_pass" >> "$GITHUB_ENV"
+          echo "BOTMODE_HOST_PORT=3090" >> "$GITHUB_ENV"
+          echo "COMPOSE_PROJECT_NAME=botmode-ci-digest-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+      - name: Install immutable digest and prove Mongo persists across stop/start
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Installer en root sur ce runner jetable : .env reste privé, UID 1000.
+          sudo git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          test "$(grep 'BOTMODE_MONGO_PASSWORD=' .env | tail -1 | cut -d= -f2-)" = "$BOTMODE_MONGO_PASSWORD"
+          test "$(grep 'POSTGRES_PASSWORD=' .env | tail -1 | cut -d= -f2-)" = "$POSTGRES_PASSWORD"
+          echo "BOTMODE_STAGING_DOTENV_AND_COMPOSE_CREDENTIALS_MATCH=PASS"
+          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT,COMPOSE_PROJECT_NAME ./install.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1@sha256:20e921df9fda01dba00bc925fe1ae37ae24fbcc992f52f15aad60bfa5aae4c21
+          compose=(sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT,COMPOSE_PROJECT_NAME docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)
+          ready=0
+          for n in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then ready=1; break; fi
+            sleep 2
+          done
+          if [ "$ready" != 1 ]; then
+            echo 'CI_LITE_HTTP_READY=FAIL'
+            "${compose[@]}" ps || true
+            "${compose[@]}" logs --tail 75 api mongodb 2>&1 | sed -E 's/(password|secret|token|api[_-]?key)([=: ]+)[^ ]+/\\1\\2[REDACTED]/Ig' || true
+            exit 1
+          fi
+          echo 'CI_LITE_HTTP_READY=PASS'
+          "${compose[@]}" exec -T mongodb sh -ec '
+            mongo --quiet --username botmode_admin --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''db.rollback_ci.insertOne({_id:"rollback-smoke", payload:"preserved"}); print("CI_MARKER_INSERTED")'\''
+          '
+          before=$("${compose[@]}" exec -T mongodb sh -ec 'mongo --quiet --username botmode_admin --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''print(db.rollback_ci.countDocuments({_id:"rollback-smoke",payload:"preserved"}))'\''' | tail -1 | tr -d '\r')
+          test "$before" = 1
+          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT,COMPOSE_PROJECT_NAME ./stop.sh
+          # Stop never uses --volumes. Re-open the exact published OCI digest.
+          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT,COMPOSE_PROJECT_NAME ./start.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1@sha256:20e921df9fda01dba00bc925fe1ae37ae24fbcc992f52f15aad60bfa5aae4c21
+          ready=0
+          for n in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          after=$("${compose[@]}" exec -T mongodb sh -ec 'mongo --quiet --username botmode_admin --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin LibreChat --eval '\''print(db.rollback_ci.countDocuments({_id:"rollback-smoke",payload:"preserved"}))'\''' | tail -1 | tr -d '\r')
+          test "$after" = 1
+          echo 'BOTMODE_LITE_RESTART_PRESERVES_MONGO=PASS'
+          echo 'SCOPE=stop/start persistence only; NOT upgrade downgrade migration rollback'
+      - name: Rehearse API downgrade and return on the same isolated project
+        shell: bash
+        run: bash scripts/botmode/ci-staging-digest-rollback.sh
+      - name: Destroy runner-only resources
+        if: always()
+        shell: bash
+        run: |
+          if [[ "${COMPOSE_PROJECT_NAME:-}" =~ ^botmode-ci-digest-[0-9]+-[0-9]+$ ]]; then
+            sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,BOTMODE_HOST_PORT,COMPOSE_PROJECT_NAME docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
+          fi

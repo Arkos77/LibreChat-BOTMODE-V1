@@ -26,13 +26,13 @@ describe('Opportunity HTTP adapter', () => {
     const adapter = new OpportunityHttpAdapter({
       descriptor,
       endpoint: 'https://example.com/jobs',
-      fetchImpl: (async (input, init) => {
+      fetchImpl: (async (input: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]) => {
         request = { url: String(input), headers: init?.headers };
         return new Response('payload', {
           status: 200,
           headers: { 'content-type': 'text/plain' },
         });
-      }) as typeof fetch,
+      }) as unknown as typeof fetch,
       parse: (body, responseUrl, capturedAt) => {
         expect(body).toBe('payload');
         expect(responseUrl).toBe('https://example.com/jobs?q=jobs&limit=2');
@@ -43,20 +43,24 @@ describe('Opportunity HTTP adapter', () => {
 
     await expect(adapter.discover({ query: ' jobs ', limit: 2 })).resolves.toEqual([signal]);
     expect(request?.url).toBe('https://example.com/jobs?q=jobs&limit=2');
-    expect(request?.headers).toEqual(expect.objectContaining({
-      accept: expect.stringContaining('application/rss+xml'),
-      'user-agent': 'BOT-MODE-opportunity-reader/1.0',
-    }));
+    expect(request?.headers).toEqual(
+      expect.objectContaining({
+        accept: expect.stringContaining('application/rss+xml'),
+        'user-agent': 'BOT-MODE-opportunity-reader/1.0',
+      }),
+    );
   });
 
   it('fails closed on non-2xx sources', async () => {
     const adapter = new OpportunityHttpAdapter({
       descriptor,
       endpoint: 'https://example.com/jobs',
-      fetchImpl: (async () => new Response('', { status: 403 })) as typeof fetch,
+      fetchImpl: (async () => new Response('', { status: 403 })) as unknown as typeof fetch,
       parse: () => [signal],
     });
-    await expect(adapter.discover({ query: 'jobs' })).rejects.toThrow('Opportunity source HTTP 403');
+    await expect(adapter.discover({ query: 'jobs' })).rejects.toThrow(
+      'Opportunity source HTTP 403',
+    );
   });
 
   it('caps request timeout configuration', async () => {
@@ -64,7 +68,7 @@ describe('Opportunity HTTP adapter', () => {
       descriptor,
       endpoint: 'https://example.com/jobs',
       timeoutMs: 999999,
-      fetchImpl: (async () => new Response('', { status: 200 })) as typeof fetch,
+      fetchImpl: (async () => new Response('', { status: 200 })) as unknown as typeof fetch,
       parse: () => [signal],
     });
     await expect(adapter.discover({ query: 'jobs', limit: 100 })).resolves.toEqual([signal]);

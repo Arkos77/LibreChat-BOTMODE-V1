@@ -13,6 +13,8 @@ const {
 const { MongoMemoryServer } = require('mongodb-memory-server');
 
 const mockInitializeAgent = jest.fn();
+const mockGetAppConfig = jest.fn();
+const mockLoadModelsFromContext = jest.fn();
 const mockValidateAgentModel = jest.fn();
 const mockGetGenerationJob = jest.fn();
 const mockHasDurableSubagentRecoveryCheckpoint = jest.fn();
@@ -93,13 +95,21 @@ jest.mock('~/server/services/ToolService', () => ({
 
 jest.mock('~/server/controllers/ModelController', () => ({
   getModelsConfig: jest.fn().mockResolvedValue({}),
+  loadModelsFromContext: (...args) => mockLoadModelsFromContext(...args),
+}));
+jest.mock('~/server/services/Config', () => ({
+  ...jest.requireActual('~/server/services/Config'),
+  getAppConfig: (...args) => mockGetAppConfig(...args),
 }));
 
 let agentClientArgs;
 jest.mock('~/server/controllers/agents/client', () => {
   return jest.fn().mockImplementation((args) => {
     agentClientArgs = args;
-    return {};
+    return {
+      options: {},
+      getReachableMissionAgents: () => [args.agent, ...(args.agentConfigs?.values?.() ?? [])],
+    };
   });
 });
 
@@ -111,7 +121,10 @@ jest.mock('~/cache', () => ({
   logViolation: jest.fn(),
 }));
 
-const { initializeClient } = require('./initialize');
+const { initializeClient, initializeClientFromDocuments } = require('./initialize');
+const {
+  createNativeMissionCapabilityAttestation,
+} = require('./nativeMissionCapabilityAttestation');
 const { observeRequiredToolApproval } = require('./approvalAuthorizationObservation');
 const { processAddedConvo } = require('./addedConvo');
 const { getSkillDbMethods, getSkillToolDeps } = require('./skillDeps');
@@ -156,13 +169,32 @@ describe('initializeClient — processAgent ACL gate', () => {
     });
 
     mockValidateAgentModel.mockResolvedValue({ isValid: true });
+    mockGetAppConfig.mockResolvedValue({ endpoints: { agents: { allowedProviders: ['openai'] } } });
+    mockLoadModelsFromContext.mockResolvedValue({ openai: ['gpt-4'] });
   });
 
   const makeReq = () => ({
     user: { id: testUser._id.toString(), role: 'USER' },
     body: { conversationId: 'conv_1', files: [] },
     resolvedConversation: null,
-    config: { endpoints: {} },
+    config: {
+      endpoints: {
+        custom: [
+          {
+            name: 'OpenRouter',
+            baseURL: 'https://openrouter.ai/api/v1',
+            apiKey: 'fixture-key',
+            models: { default: ['a:free', 'b:free'] },
+          },
+          {
+            name: 'openai',
+            baseURL: 'https://example.invalid/v1',
+            apiKey: 'fixture-key',
+            models: { default: ['gpt-4', 'b:free'] },
+          },
+        ],
+      },
+    },
     _resumableStreamId: null,
   });
 
@@ -195,6 +227,196 @@ describe('initializeClient — processAgent ACL gate', () => {
       statefulSessions: false,
     },
   });
+
+  it('reconstructs an authenticated model-only mission without Express req/res', async () => {
+    const user = testUser;
+    const owner = String(user._id);
+    const documents = [
+      { id: PRIMARY_ID, _id: 'mongo-primary', provider: 'openai', model: 'gpt-4', tools: [] },
+      { id: TARGET_ID, _id: 'mongo-target', provider: 'openai', model: 'gpt-4', tools: [] },
+    ];
+    const candidate = {
+      streamId: 'conv-model-only',
+      createdAt: 1700000000000,
+      checkpointNamespace: 'epoch',
+      checkpointId: 'head',
+    };
+    const job = {
+      ...candidate,
+      userId: owner,
+      agent_id: PRIMARY_ID,
+      status: 'running',
+      userMessage: { messageId: 'user-message' },
+      responseMessageId: 'response-message',
+      orchestratorPlan: {
+        planId: 'model-only-plan-1',
+        tasks: [{ key: 'task', nodeId: 'worker', agentId: TARGET_ID }],
+      },
+    };
+    const conversation = { conversationId: candidate.streamId, agent_id: PRIMARY_ID };
+    job.nativeMissionCapabilityAttestation = createNativeMissionCapabilityAttestation({
+      plan: job.orchestratorPlan,
+      agents: documents.map((agent) => ({
+        ...makePrimaryConfig([]),
+        id: agent.id,
+        provider: agent.provider,
+        model: agent.model,
+        tools: [],
+      })),
+    });
+    mockInitializeAgent.mockImplementation(async ({ agent }) => ({
+      ...makePrimaryConfig([]),
+      id: agent.id,
+      model_parameters: { model: 'gpt-4' },
+      provider: agent.provider,
+      model: agent.model,
+      toolDefinitions: [],
+      tools: [],
+    }));
+    let checks = 0;
+    const client = await initializeClientFromDocuments({
+      candidate,
+      claim: { ...candidate, ownerToken: 'owner-token' },
+      job,
+      context: { user, conversation, agents: documents },
+      assertAuthorized: async () => {
+        checks++;
+      },
+    });
+    expect(checks).toBe(5);
+    expect(mockInitializeAgent).toHaveBeenCalledTimes(2);
+    for (const call of mockInitializeAgent.mock.calls) {
+      expect(call[0]).not.toHaveProperty('req');
+      expect(call[0]).not.toHaveProperty('res');
+      expect(call[0].runtime.user).toBe(user);
+      expect(call[0].runtime.resolvedConversation).toBe(conversation);
+    }
+    expect(agentClientArgs).not.toHaveProperty('req');
+    expect(agentClientArgs.agentRuntime.user).toBe(user);
+    expect(agentClientArgs.agentConfigs.has(TARGET_ID)).toBe(true);
+    expect(client.conversationId).toBe(candidate.streamId);
+    expect(client.publicationBarrier.hold()).toBe(false);
+    client.publicationBarrier.activate();
+    expect(client.publicationBarrier.hold()).toBe(true);
+    expect(mockLoadModelsFromContext).toHaveBeenCalledWith(expect.objectContaining({ user }));
+  });
+
+  it('denies recovery if persisted conversation files would be rehydrated', async () => {
+    const user = testUser;
+    const candidate = {
+      streamId: 'conv-with-files',
+      createdAt: 1700000000000,
+      checkpointNamespace: 'epoch',
+      checkpointId: 'head',
+    };
+    const job = {
+      ...candidate,
+      userId: String(user._id),
+      agent_id: PRIMARY_ID,
+      status: 'running',
+      userMessage: { messageId: 'user-message' },
+      responseMessageId: 'response-message',
+      orchestratorPlan: { tasks: [{ key: 'task', nodeId: 'worker', agentId: PRIMARY_ID }] },
+    };
+    const getFiles = jest.spyOn(db, 'getConvoFiles').mockResolvedValueOnce(['file-1']);
+    try {
+      await expect(
+        initializeClientFromDocuments({
+          candidate,
+          claim: { ...candidate, ownerToken: 'owner-token' },
+          job,
+          context: {
+            user,
+            conversation: { conversationId: candidate.streamId, agent_id: PRIMARY_ID },
+            agents: [{ id: PRIMARY_ID, provider: 'openai', model: 'gpt-4', tools: [] }],
+          },
+          assertAuthorized: async () => {},
+        }),
+      ).rejects.toThrow('FILES_UNAVAILABLE');
+      expect(mockInitializeAgent).not.toHaveBeenCalled();
+      expect(mockGetAppConfig).not.toHaveBeenCalled();
+    } finally {
+      getFiles.mockRestore();
+    }
+  });
+
+  it('refuses to strip durable tools during request-free cold recovery', async () => {
+    const user = testUser;
+    const candidate = {
+      streamId: 'conv-model-only',
+      createdAt: 1700000000000,
+      checkpointNamespace: 'epoch',
+      checkpointId: 'head',
+    };
+    const job = {
+      ...candidate,
+      userId: String(user._id),
+      agent_id: PRIMARY_ID,
+      status: 'running',
+      userMessage: { messageId: 'user-message' },
+      responseMessageId: 'response-message',
+      orchestratorPlan: { tasks: [{ key: 'task', nodeId: 'worker', agentId: PRIMARY_ID }] },
+    };
+    await expect(
+      initializeClientFromDocuments({
+        candidate,
+        claim: { ...candidate, ownerToken: 'owner-token' },
+        job,
+        context: {
+          user,
+          conversation: { conversationId: candidate.streamId, agent_id: PRIMARY_ID },
+          agents: [{ id: PRIMARY_ID, provider: 'openai', model: 'gpt-4', tools: ['web_search'] }],
+        },
+        assertAuthorized: async () => {},
+      }),
+    ).rejects.toThrow('TOOL_RUNTIME_UNAVAILABLE');
+    expect(mockInitializeAgent).not.toHaveBeenCalled();
+    expect(mockGetAppConfig).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { subagents: { enabled: true, agent_ids: [TARGET_ID] } },
+    { subagentAgentConfigs: [{ id: TARGET_ID }] },
+    { lazySubagentConfigs: [{ id: TARGET_ID }] },
+    { subagentGraphConfigs: [{ id: TARGET_ID }] },
+  ])(
+    'refuses implicit delegated SDK tools without a durable child binding: %j',
+    async (capability) => {
+      const user = testUser;
+      const candidate = {
+        streamId: 'conv-with-delegation',
+        createdAt: 1700000000000,
+        checkpointNamespace: 'epoch',
+        checkpointId: 'head',
+      };
+      const job = {
+        ...candidate,
+        userId: String(user._id),
+        agent_id: PRIMARY_ID,
+        status: 'running',
+        userMessage: { messageId: 'user-message' },
+        responseMessageId: 'response-message',
+        orchestratorPlan: { tasks: [{ key: 'task', nodeId: 'worker', agentId: PRIMARY_ID }] },
+      };
+      await expect(
+        initializeClientFromDocuments({
+          candidate,
+          claim: { ...candidate, ownerToken: 'owner-token' },
+          job,
+          context: {
+            user,
+            conversation: { conversationId: candidate.streamId, agent_id: PRIMARY_ID },
+            agents: [
+              { id: PRIMARY_ID, provider: 'openai', model: 'gpt-4', tools: [], ...capability },
+            ],
+          },
+          assertAuthorized: async () => {},
+        }),
+      ).rejects.toThrow('TOOL_RUNTIME_UNAVAILABLE');
+      expect(mockInitializeAgent).not.toHaveBeenCalled();
+      expect(mockGetAppConfig).not.toHaveBeenCalled();
+    },
+  );
 
   it('blocks cross-project source reuse for an existing conversation', async () => {
     const req = makeReq();
@@ -279,6 +501,49 @@ describe('initializeClient — processAgent ACL gate', () => {
     expect(mockInitializeAgent).toHaveBeenCalled();
   });
 
+  it('uses one transport-free SDK agent context from primary initialization', async () => {
+    mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+    const req = makeReq();
+    const result = await initializeClient({
+      req,
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption: makeEndpointOption(),
+    });
+    expect(result.client).toBeDefined();
+    const initialized = mockInitializeAgent.mock.calls[0][0];
+    expect(initialized).not.toHaveProperty('req');
+    expect(initialized).not.toHaveProperty('res');
+    expect(initialized.runtime).toEqual(
+      expect.objectContaining({
+        user: req.user,
+        appConfig: req.config,
+        requestBody: req.body,
+        turnStartedAt: req.turnStartedAt,
+        resolvedConversation: null,
+      }),
+    );
+    expect(Number.isSafeInteger(req.turnStartedAt)).toBe(true);
+  });
+
+  it('keeps the HTTP turn context separate from normalized MCP metadata', async () => {
+    mockInitializeAgent.mockResolvedValue(makePrimaryConfig([]));
+    const req = makeReq();
+    req.body.timezone = 'Europe/Paris';
+    const mcpRequestBody = { conversationId: 'conv_1', messageId: 'mcp-msg' };
+    await initializeClient({
+      req,
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption: makeEndpointOption(),
+      requestBody: mcpRequestBody,
+    });
+    const initialized = mockInitializeAgent.mock.calls[0][0];
+    expect(initialized.runtime.requestBody).toBe(req.body);
+    expect(initialized.runtime.requestBody.timezone).toBe('Europe/Paris');
+    expect(initialized.requestBody).toBe(mcpRequestBody);
+  });
+
   it('fails closed when a partial continuation cannot resolve its conversation', async () => {
     const req = makeReq();
     req.resolvedConversation = {
@@ -330,6 +595,9 @@ describe('initializeClient — processAgent ACL gate', () => {
     expect(getConvoSpy).toHaveBeenCalledWith(testUser._id.toString(), 'conv_1');
     expect(req.resolvedConversation).toBe(fullConversation);
     expect(mockInitializeAgent).toHaveBeenCalled();
+    expect(mockInitializeAgent.mock.calls[0][0].runtime.resolvedConversation).toBe(
+      fullConversation,
+    );
   });
 
   it('returns an isolated dormant transient evidence buffer for the request', async () => {
@@ -557,7 +825,7 @@ describe('initializeClient — processAgent ACL gate', () => {
     mockValidateAgentModel.mockResolvedValue({ isValid: true });
     mockInitializeAgent.mockImplementation(async ({ agent }) => ({
       ...makePrimaryConfig([]),
-      provider: 'openai',
+      provider: 'openAI',
       model: agent.model,
       model_parameters: { model: agent.model, apiKey: 'fixture-secret' },
       endpointTokenConfig: { selectedFor: agent.model },
@@ -571,13 +839,13 @@ describe('initializeClient — processAgent ACL gate', () => {
           bindings: [
             {
               id: 'primary',
-              provider: 'openai',
+              provider: 'openAI',
               model: 'gpt-4',
               signals: { qualityScore: 0.3, estimatedCost: 1.5, latencyMs: 200 },
             },
             {
               id: 'alternate',
-              provider: 'openai',
+              provider: 'openAI',
               model: 'b:free',
               signals: { qualityScore: 0.9, estimatedCost: 2, latencyMs: 100 },
             },
@@ -601,7 +869,7 @@ describe('initializeClient — processAgent ACL gate', () => {
       model: 'b:free',
       fallbacks: [
         {
-          provider: 'openai',
+          provider: 'openAI',
           clientOptions: { model: 'gpt-4' },
         },
       ],
@@ -3325,6 +3593,227 @@ describe('initializeClient — subagent loading', () => {
     expect(leftShared.subagentAgentConfigs.map((child) => child.id)).toEqual([leftId]);
     expect(rightShared.subagentAgentConfigs.map((child) => child.id)).toEqual([leftId]);
     expect(agentClientArgs.agentConfigs.get(sharedId)).toBe(sharedConfig);
+  });
+
+  it('allows an isolated self-spawn only for the effective free BOT MODE model', async () => {
+    mockInitializeAgent.mockResolvedValue({
+      ...makePrimaryConfig({
+        subagents: { enabled: true, allowSelf: true, agent_ids: [] },
+      }),
+      model: 'openrouter/free',
+      provider: 'openAI',
+      model_parameters: { model: 'openrouter/free' },
+    });
+    const endpointOption = makeEndpointOption();
+    endpointOption.agent = Promise.resolve({
+      id: PRIMARY_ID,
+      name: 'BOT MODE Worker',
+      provider: 'openrouter',
+      model: 'openrouter/free',
+      tools: [],
+    });
+    endpointOption.model_parameters = { model: 'openrouter/free' };
+    await initializeClient({
+      req: makeSubagentReq(),
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption,
+    });
+    expect(agentClientArgs.agent.subagents).toMatchObject({
+      enabled: true,
+      allowSelf: true,
+    });
+  });
+
+  it.each([
+    ['paid model selected', 'paid-model', undefined],
+    [
+      'free model with hidden fallback',
+      'openrouter/free',
+      [{ provider: 'openAI', clientOptions: { model: 'paid-model' } }],
+    ],
+  ])(
+    'removes BOT MODE self-spawn at runtime for %s without changing saved permissions',
+    async (_label, model, fallbacks) => {
+      const persistedSubagents = { enabled: true, allowSelf: true, agent_ids: [] };
+      mockInitializeAgent.mockResolvedValue({
+        ...makePrimaryConfig({ subagents: persistedSubagents }),
+        model,
+        provider: 'openAI',
+        model_parameters: { model, ...(fallbacks ? { fallbacks } : {}) },
+      });
+      const endpointOption = makeEndpointOption();
+      endpointOption.agent = Promise.resolve({
+        id: PRIMARY_ID,
+        name: 'BOT MODE Worker',
+        provider: 'openrouter',
+        model,
+        tools: [],
+      });
+      endpointOption.model_parameters = { model };
+      await initializeClient({
+        req: makeSubagentReq(),
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption,
+      });
+      expect(agentClientArgs.agent.subagents).toMatchObject({
+        enabled: true,
+        allowSelf: false,
+      });
+      expect(persistedSubagents.allowSelf).toBe(true);
+    },
+  );
+
+  it('keeps native self-spawn enabled after free_only routing chooses an alternate free model', async () => {
+    mockInitializeAgent.mockResolvedValue({
+      ...makePrimaryConfig({
+        subagents: { enabled: true, allowSelf: true, agent_ids: [] },
+      }),
+      model: 'nvidia/nemotron-3.5-lightning:free',
+      provider: 'openAI',
+      model_parameters: {
+        model: 'nvidia/nemotron-3.5-lightning:free',
+        fallbacks: [
+          {
+            provider: 'openAI',
+            clientOptions: { model: 'openrouter/free' },
+            retryOn: 'MODEL_RETRYABLE_ZERO_CHUNK',
+          },
+        ],
+      },
+      hostModelDecision: {
+        selectedProvider: 'OpenRouter',
+        selectedModel: 'nvidia/nemotron-3.5-lightning:free',
+        spendingPolicy: 'free_only',
+        authorizedBindings: [
+          { provider: 'OpenRouter', model: 'openrouter/free' },
+          { provider: 'OpenRouter', model: 'nvidia/nemotron-3.5-lightning:free' },
+        ],
+      },
+    });
+    const endpointOption = makeEndpointOption();
+    endpointOption.agent = Promise.resolve({
+      id: PRIMARY_ID,
+      name: 'BOT MODE Worker',
+      provider: 'openrouter',
+      model: 'openrouter/free',
+      tools: [],
+    });
+    endpointOption.model_parameters = { model: 'openrouter/free' };
+    await initializeClient({
+      req: makeSubagentReq(),
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption,
+    });
+    expect(agentClientArgs.agent.subagents).toMatchObject({
+      enabled: true,
+      allowSelf: true,
+    });
+  });
+
+  it.each([false, true])(
+    'rejects a paid alternate under free_only with a DEEP mission payload=%s',
+    async (deepMission) => {
+      mockInitializeAgent.mockResolvedValue({
+        ...makePrimaryConfig({
+          subagents: { enabled: true, allowSelf: true, agent_ids: [] },
+        }),
+        model: 'openrouter/free',
+        provider: 'openAI',
+        model_parameters: { model: 'openrouter/free' },
+        hostModelDecision: {
+          selectedProvider: 'OpenRouter',
+          selectedModel: 'openrouter/free',
+          spendingPolicy: 'free_only',
+          authorizedBindings: [
+            { provider: 'OpenRouter', model: 'openrouter/free' },
+            { provider: 'OpenRouter', model: 'nvidia/paid-model' },
+          ],
+        },
+      });
+      const endpointOption = makeEndpointOption();
+      endpointOption.agent = Promise.resolve({
+        id: PRIMARY_ID,
+        name: 'BOT MODE Worker',
+        provider: 'openrouter',
+        model: 'openrouter/free',
+        tools: [],
+      });
+      endpointOption.model_parameters = { model: 'openrouter/free' };
+      await initializeClient({
+        req: deepMission
+          ? {
+              ...makeSubagentReq(),
+              body: {
+                ...makeSubagentReq().body,
+                orchestratorMission: {
+                  mission: {
+                    missionId: 'automatic-deep-budget-test',
+                    taskId: 'automatic-deep-task',
+                    objective: 'Développer une application et tester le code',
+                    requiredCapabilities: ['execute_code'],
+                    constraints: [],
+                  },
+                  plannerContext: {
+                    worker: {
+                      id: 'worker',
+                      agentId: PRIMARY_ID,
+                      role: 'worker',
+                      capabilities: ['basic'],
+                      constraints: [],
+                    },
+                    specialists: [],
+                  },
+                },
+              },
+            }
+          : makeSubagentReq(),
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption,
+      });
+      expect(agentClientArgs.agent.subagents).toMatchObject({
+        enabled: true,
+        allowSelf: false,
+      });
+    },
+  );
+
+  it('blocks a cross-provider routing decision even when the returned model is named openrouter/free', async () => {
+    mockInitializeAgent.mockResolvedValue({
+      ...makePrimaryConfig({
+        subagents: { enabled: true, allowSelf: true, agent_ids: [] },
+      }),
+      model: 'openrouter/free',
+      provider: 'openAI',
+      model_parameters: { model: 'openrouter/free' },
+      hostModelDecision: {
+        selectedProvider: 'Gemini',
+        selectedModel: 'openrouter/free',
+        spendingPolicy: 'free_only',
+      },
+    });
+    const endpointOption = makeEndpointOption();
+    endpointOption.agent = Promise.resolve({
+      id: PRIMARY_ID,
+      name: 'BOT MODE Worker',
+      provider: 'openrouter',
+      model: 'openrouter/free',
+      tools: [],
+    });
+    endpointOption.model_parameters = { model: 'openrouter/free' };
+    await initializeClient({
+      req: makeSubagentReq(),
+      res: {},
+      signal: new AbortController().signal,
+      endpointOption,
+    });
+    expect(agentClientArgs.agent.subagents).toMatchObject({
+      enabled: true,
+      allowSelf: false,
+    });
   });
 
   it('clears subagents config on primary when the capability is disabled', async () => {

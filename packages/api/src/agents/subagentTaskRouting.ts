@@ -485,6 +485,9 @@ function controlContent(command: SubagentTaskControlCommand): string {
   if (command.action === 'cancel_message') {
     return `cancel_message\u0000${command.controlId}`;
   }
+  if (command.action === 'pause' || command.action === 'resume') {
+    return command.action;
+  }
   return `${command.action}\u0000${command.message}`;
 }
 

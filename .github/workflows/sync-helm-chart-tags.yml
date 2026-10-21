@@ -4,8 +4,12 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - '**.md'
+    # Helm publishing is triggered only by chart or tag-synchronizer changes.
+    # BOTMODE runtime/CI pushes must not repeatedly attempt a legacy tag
+    # backfill that requires separate workflow-file authorization.
+    paths:
+      - 'helm/librechat/**'
+      - '.github/scripts/sync-helm-chart-tags.sh'
   workflow_dispatch:
     inputs:
       release_existing_tag:

@@ -1,0 +1,54 @@
+name: BOTMODE Native Agent Controller Integration
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/botmode-native-agents-integration.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-agent-controller-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout immutable PR14 candidate
+        uses: actions/checkout@v5
+        with:
+          ref: ea24f476164153735b5f5c95fe9c7861d4f97a1f
+          persist-credentials: false
+      - name: Check revision
+        run: test "$(git rev-parse HEAD)" = "ea24f476164153735b5f5c95fe9c7861d4f97a1f"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - run: npm ci
+      - name: Build dependency packages
+        run: |
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:api
+      - name: Run actual native agent controller tests against temporary MongoDB
+        working-directory: api
+        env:
+          NODE_ENV: test
+        run: npx jest server/controllers/agents/v1.spec.js server/routes/agents/botmodeSetupValidation.spec.js server/services/PermissionService.spec.js --runInBand --coverage=false
+      - name: Test actual generateCheckAccess permission middleware
+        working-directory: packages/api
+        env:
+          NODE_ENV: test
+        run: npx jest src/middleware/access.spec.ts --runInBand --coverage=false
+      - name: Verify native authentication middleware and JWT strategy contracts
+        working-directory: api
+        env:
+          NODE_ENV: test
+        run: npx jest server/middleware/__tests__/requireJwtAuth.spec.js strategies/jwtStrategy.spec.js server/middleware/__tests__/botmodeSignedJwtHttp.spec.js --runInBand --coverage=false
+      - name: Mark actual tested boundary
+        if: always()
+        run: |
+          echo '### Scope: real MongoMemoryServer in native controller tests' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Includes a six-agent persistence fixture with real MongoMemoryServer documents and ACL entries; it does NOT yet exercise the full onboarding route.' >> "$GITHUB_STEP_SUMMARY"
+          echo '**Still required:** authenticated POST /agents/botmode/setup end-to-end, six records and actual ACL, repeated initialization, and live mission.' >> "$GITHUB_STEP_SUMMARY"

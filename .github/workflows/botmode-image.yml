@@ -1,0 +1,340 @@
+name: BOTMODE Runtime Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Explicitly authorize pushing a candidate to GHCR after preflight
+        type: boolean
+        required: true
+        default: false
+      tag:
+        description: Exact candidate-botmode-v1-<12-char-source-sha> (required when publishing or testing the guard)
+        required: false
+        default: ''
+      verify_guard_only:
+        description: Validate candidate tag and GHCR permissions without any image build or push
+        type: boolean
+        required: true
+        default: false
+  pull_request:
+  push:
+    branches:
+      - main
+      - botmode-v1-runtime-fix
+    tags:
+      - 'v*'
+      - 'candidate-botmode-v1-*'
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  # Read-only PR preflights cannot cancel a dispatched candidate publication.
+  # Manual guard checks and publication attempts serialize by identical source SHA.
+  group: botmode-runtime-image-${{ github.event_name == 'workflow_dispatch' && 'manual' || 'preflight' }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: github.event_name != 'workflow_dispatch' || inputs.verify_guard_only != true
+    name: Pre-push image smoke (${{ matrix.arch }})
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v4
+      - name: Build without registry publication
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          target: node
+          platforms: linux/${{ matrix.arch }}
+          push: false
+          load: true
+          tags: botmode-preflight:${{ github.sha }}
+          cache-from: type=gha,scope=botmode-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=botmode-${{ matrix.arch }}
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_BRANCH=${{ github.ref_name }}
+      - name: Inspect and exercise exact candidate image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="botmode-preflight:${GITHUB_SHA}"
+          docker image inspect "$image" >/dev/null
+          docker run --rm --entrypoint node "$image" -e "const { chromium } = require('playwright'); const fs = require('fs'); const {createRequire} = require('module'); if (!fs.existsSync(chromium.executablePath())) throw Error('BOTMODE_BROWSER_MISSING'); const api = createRequire('/app/api/package.json'); const shared = createRequire('/app/packages/api/dist/index.cjs'); if (fs.realpathSync(api.resolve('@librechat/agents')) !== fs.realpathSync(shared.resolve('@librechat/agents')) || api('@librechat/agents').Run !== shared('@librechat/agents').Run) throw Error('BOTMODE_AGENTS_SDK_IDENTITY_MISMATCH'); console.log('BOTMODE_PREPUSH_SMOKE=PASS')"
+
+  publication-guard:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      (inputs.publish == true || inputs.verify_guard_only == true)
+    name: Fail-closed immutable candidate tag guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CANDIDATE_TAG: ${{ inputs.tag }}
+      GUARD_ONLY: ${{ inputs.verify_guard_only }}
+      PUBLISH_REQUESTED: ${{ inputs.publish }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Refuse ambiguous tags and existing GHCR tags
+        shell: bash
+        run: |
+          if [ "$GUARD_ONLY" = 'true' ] && [ "$PUBLISH_REQUESTED" = 'true' ]; then
+            echo 'Cannot request publication and guard-only mode together.' >&2
+            exit 1
+          fi
+          bash scripts/botmode/guard-candidate-ghcr.sh
+
+  build:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish == true
+    needs: [preflight, publication-guard]
+    permissions:
+      contents: read
+      packages: write
+    name: Build (${{ matrix.arch }})
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set image name
+        shell: bash
+        run: |
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/librechat-botmode-v1" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          target: node
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=botmode-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=botmode-${{ matrix.arch }}
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_BRANCH=${{ github.ref_name }}
+
+      - name: Export digest
+        shell: bash
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          test -n "$DIGEST"
+          touch "/tmp/digests/${DIGEST#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: botmode-digest-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    permissions:
+      contents: read
+      packages: write
+    name: Publish multi-arch manifest
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 15
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v7
+        with:
+          pattern: botmode-digest-*
+          merge-multiple: true
+          path: /tmp/digests
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Resolve image tags
+        id: meta
+        shell: bash
+        env:
+          CANDIDATE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/librechat-botmode-v1"
+          sha_tag="sha-${GITHUB_SHA::12}"
+
+          # Only the explicitly approved candidate and matching SHA alias.
+          # The publication-guard job checks both for pre-existence.
+          primary="$CANDIDATE_TAG"
+          expected="candidate-botmode-v1-${GITHUB_SHA::12}"
+          if [ "$primary" != "$expected" ]; then
+            echo 'Refusing unapproved candidate tag' >&2
+            exit 1
+          fi
+          latest=""
+
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "primary=$primary" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=$sha_tag" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push manifest
+        working-directory: /tmp/digests
+        shell: bash
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          PRIMARY: ${{ steps.meta.outputs.primary }}
+          SHA_TAG: ${{ steps.meta.outputs.sha_tag }}
+          LATEST: ${{ steps.meta.outputs.latest }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          digests=(*)
+          if [ "${#digests[@]}" -ne 2 ]; then
+            echo "Expected two architecture digests, found ${#digests[@]}." >&2
+            exit 1
+          fi
+
+          tags=(-t "$IMAGE:$PRIMARY" -t "$IMAGE:$SHA_TAG")
+          if [ -n "$LATEST" ]; then
+            tags+=(-t "$IMAGE:$LATEST")
+          fi
+
+          docker buildx imagetools create             "${tags[@]}"             "${digests[@]/#/$IMAGE@sha256:}"
+
+          docker buildx imagetools inspect "$IMAGE:$PRIMARY"
+
+  anonymous-pull:
+    name: Verify public GHCR pull
+    runs-on: ubuntu-latest
+    needs: merge
+    timeout-minutes: 10
+
+    steps:
+      - name: Pull candidate without registry authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/librechat-botmode-v1:sha-${GITHUB_SHA::12}"
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          docker pull "$image"
+          echo "BOTMODE_GHCR_ANONYMOUS_PULL=PASS"
+
+  smoke-lite:
+    name: Smoke Lite runtime
+    runs-on: ubuntu-latest
+    needs: merge
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Start Lite candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          chmod 600 .env
+          export BOTMODE_MONGO_PASSWORD=ci-only-mongo-password
+          export POSTGRES_PASSWORD=ci-only-postgres-password
+          echo 'BOTMODE_MONGO_PASSWORD=ci-only-mongo-password' >> .env
+          echo 'POSTGRES_PASSWORD=ci-only-postgres-password' >> .env
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          export BOTMODE_IMAGE="ghcr.io/$owner/librechat-botmode-v1:sha-${GITHUB_SHA::12}"
+          export BOTMODE_HOST_PORT=3090
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml up -d
+
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3090/api/config >/tmp/botmode-config.json; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$ready" -ne 1 ]; then
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs --tail 200 api mongodb
+            exit 1
+          fi
+
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps
+          if docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs api | grep -q 'Exiting due to invalid configuration'; then
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs --tail 200 api
+            exit 1
+          fi
+
+          api_id="$(docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps -q api)"
+          api_network="$(docker inspect "$api_id" --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{break}}{{end}}')"
+          docker run -d --name botmode-lite-browser-ci --network "$api_network" \
+            --init --user pwuser --workdir /home/pwuser \
+            mcr.microsoft.com/playwright:v1.62.1-noble \
+            /bin/sh -c 'npx -y playwright@1.62.1 run-server --port 3000 --host 0.0.0.0'
+          for attempt in $(seq 1 30); do
+            if docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T \
+                -e BOTMODE_PLAYWRIGHT_WS_ENDPOINT=ws://botmode-lite-browser-ci:3000/ api \
+                node -e "const { chromium } = require('playwright'); chromium.connect(process.env.BOTMODE_PLAYWRIGHT_WS_ENDPOINT,{timeout:3000}).then(async b=>{const p=await b.newPage();await p.goto('data:text/html,<title>BOTMODE</title>');if(await p.title()!=='BOTMODE')throw Error('BROWSER_NAVIGATION_FAILED');await b.close();console.log('BOTMODE_BROWSER_SMOKE=PASS')}).catch(()=>process.exit(1))"; then
+              break
+            fi
+            if [ "$attempt" = 30 ]; then docker logs botmode-lite-browser-ci; exit 1; fi
+            sleep 2
+          done
+
+          echo "BOTMODE_LITE_SMOKE=PASS"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f botmode-lite-browser-ci >/dev/null 2>&1 || true
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down -v

@@ -1,7 +1,5 @@
 import { PlaywrightTestConfig } from '@playwright/test';
 import mainConfig from './playwright.config';
-import path from 'path';
-const absolutePath = path.resolve(process.cwd(), 'api/server/index.js');
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -12,7 +10,6 @@ const config: PlaywrightTestConfig = {
   globalTeardown: require.resolve('./setup/global-teardown.local'),
   webServer: {
     ...mainConfig.webServer,
-    command: `node ${absolutePath}`,
     env: {
       ...process.env,
       SEARCH: 'false',
@@ -51,6 +48,14 @@ const config: PlaywrightTestConfig = {
     },
   },
   fullyParallel: false, // if you are on Windows, keep this as `false`. On a Mac, `true` could make tests faster (maybe on some Windows too, just try)
+  // Use the identical installed Chrome for global auth and the test browser.
+  projects: (mainConfig.projects ?? []).map((project) => ({
+    ...project,
+    use: {
+      ...project.use,
+      ...(process.env.E2E_CHROMIUM_CHANNEL === 'chrome' ? { channel: 'chrome' as const } : {}),
+    },
+  })),
   // workers: 1,
   testMatch: /a11y/,
   // retries: 0,

@@ -1,0 +1,44 @@
+name: BOTMODE V1 Published OCI Native ARM64 Binary
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-published-arm64-image.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Public, unprivileged ARM64 runner; no credentials and no persistent volumes.
+jobs:
+  native-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    env:
+      IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0
+    steps:
+      - name: Assert native ARM64 GitHub runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          echo BOTMODE_NATIVE_ARM64_RUNNER=PASS
+      - name: Anonymous GHCR pull and OCI architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          docker pull "$IMAGE"
+          test "$(docker image inspect "$IMAGE" --format '{{.Architecture}}')" = arm64
+          echo BOTMODE_NATIVE_ARM64_DIGEST_PULL=PASS
+      - name: Run installed Node and agents SDK natively without network
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --workdir /app/api --entrypoint node "$IMAGE" -e '
+            if (process.arch !== "arm64") process.exit(2);
+            const { Run } = require("@librechat/agents");
+            if (typeof Run !== "function") process.exit(3);
+            console.log("BOTMODE_NATIVE_ARM64_NODE_SDK=PASS");
+          '
+          echo 'SCOPE=native ARM64 public immutable OCI image, Node SDK smoke only; no HTTP/DB/provider inference'

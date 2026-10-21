@@ -1,0 +1,81 @@
+name: BOTMODE V1 Release Readiness (pinned, no provider cost)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/botmode-v1-release-readiness.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-and-install-preflight:
+    name: Public audit and installer dry run
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact validated PR18 release-fix SHA
+        uses: actions/checkout@v4
+        with:
+          ref: d4e82dded5df49f17b97e20361c89796b8f1e068
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Pin verification
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 'd4e82dded5df49f17b97e20361c89796b8f1e068'
+          git cat-file -e 'f9f1b2fb951a99e1fd01ee7291304a0370ea6132^{commit}'
+          echo 'BOTMODE_RELEASE_SHA_PIN=PASS'
+      - name: Full tracked HEAD and since-baseline public secret audit
+        env:
+          BOTMODE_PUBLIC_AUDIT_BASE: f9f1b2fb951a99e1fd01ee7291304a0370ea6132
+        run: |
+          set -euo pipefail
+          bash scripts/botmode/audit-public-release.sh
+      - name: Create disposable Compose dotenv for non-destructive preflight
+        run: |
+          cp .env.example .env
+          chmod 600 .env
+          {
+            echo 'BOTMODE_MONGO_PASSWORD=ci-dry-run-not-a-secret'
+            echo 'POSTGRES_PASSWORD=ci-dry-run-not-a-secret'
+          } >> .env
+      - name: Runtime distribution static invariants (Full and Lite)
+        run: |
+          set -euo pipefail
+          bash scripts/botmode/verify-runtime-distribution.sh
+      - name: Installer dry run without pulling an image or mutating databases
+        run: |
+          set -euo pipefail
+          before=$(sha256sum .env | cut -d ' ' -f 1)
+          ./install.sh --lite --check-only > /tmp/botmode-ci-lite-check.log
+          after=$(sha256sum .env | cut -d ' ' -f 1)
+          test "$before" = "$after"
+          grep -q '^BOTMODE_PROFILE=lite$' /tmp/botmode-ci-lite-check.log
+          grep -q '^BOTMODE_BOOTSTRAP_CHECK=PASS$' /tmp/botmode-ci-lite-check.log
+          echo 'BOTMODE_LITE_INSTALL_DRYRUN=PASS'
+          ./install.sh --check-only > /tmp/botmode-ci-auto-check.log
+          grep -q '^BOTMODE_BOOTSTRAP_CHECK=PASS$' /tmp/botmode-ci-auto-check.log
+          after_auto=$(sha256sum .env | cut -d ' ' -f 1)
+          test "$before" = "$after_auto"
+          echo 'BOTMODE_AUTO_PROFILE_INSTALL_DRYRUN=PASS'
+          rm -f .env
+      - name: Source checks and invariant scripts syntax
+        run: |
+          set -euo pipefail
+          for sh in install.sh doctor.sh start.sh stop.sh update.sh scripts/botmode/bootstrap.sh scripts/botmode/audit-public-release.sh scripts/botmode/verify-runtime-distribution.sh; do
+            bash -n "$sh"
+          done
+          node --check scripts/botmode/ensure-singleton-agents-sdk.js
+          echo 'BOTMODE_RUNTIME_SCRIPT_SYNTAX=PASS'
+      - name: Report evidence
+        if: always()
+        run: |
+          {
+            echo '### BOT MODE V1 — Pinned release preflight'
+            echo "Candidate: d4e82dded5df49f17b97e20361c89796b8f1e068"
+            echo 'This run only audits Git and Compose configuration, and performs a no-image-pull installer dry run.'
+            echo 'It does **not** prove public GHCR image availability, live LLM inference, reboot/resume or a clean-machine installation.'
+          } >> "$GITHUB_STEP_SUMMARY"

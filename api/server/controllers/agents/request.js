@@ -46,6 +46,9 @@ const {
 const { disposeClient } = require('~/server/cleanup');
 const { observeMtoEvent } = require('~/server/services/Endpoints/agents/mtoObservation');
 const {
+  createNativeMissionCapabilityAttestation,
+} = require('~/server/services/Endpoints/agents/nativeMissionCapabilityAttestation');
+const {
   observeRequiredToolApproval,
 } = require('~/server/services/Endpoints/agents/approvalAuthorizationObservation');
 const {
@@ -1835,13 +1838,34 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         }
       }
 
-      await GenerationJobManager.updateMetadata(streamId, { orchestratorPlan }, jobCreatedAt);
+      // Record original effective agent capability provenance in the SAME
+      // epoch-scoped Redis write as the immutable plan, before models/tools
+      // begin. The digest is not a grant or replay receipt. In particular,
+      // delegation, code/file tools and host evidence paths must still acquire
+      // real effect receipts before a recovered provider can execute them.
+      const reachableAgents =
+        typeof client.getReachableMissionAgents === 'function'
+          ? client.getReachableMissionAgents()
+          : [client.options.agent, ...(client.agentConfigs?.values?.() ?? [])];
+      const nativeMissionCapabilityAttestation = createNativeMissionCapabilityAttestation({
+        plan: orchestratorPlan,
+        agents: reachableAgents,
+        subagentTasks: client.options.subagentTasks,
+        hostEffectPathsPresent: (orchestratorMission?.evidenceDeclarations?.length ?? 0) > 0,
+      });
+      await GenerationJobManager.updateMetadata(
+        streamId,
+        { orchestratorPlan, nativeMissionCapabilityAttestation },
+        jobCreatedAt,
+      );
       const persistedPlanJob = await GenerationJobManager.getJob(streamId);
       if (
         persistedPlanJob == null ||
         persistedPlanJob.createdAt !== jobCreatedAt ||
         JSON.stringify(persistedPlanJob.metadata?.orchestratorPlan) !==
-          JSON.stringify(orchestratorPlan)
+          JSON.stringify(orchestratorPlan) ||
+        JSON.stringify(persistedPlanJob.metadata?.nativeMissionCapabilityAttestation) !==
+          JSON.stringify(nativeMissionCapabilityAttestation)
       ) {
         throw new Error('Orchestrator plan persistence verification failed');
       }

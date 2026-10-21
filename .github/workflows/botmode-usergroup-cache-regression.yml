@@ -1,0 +1,38 @@
+name: BOTMODE userGroup Cache Regression Isolation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-usergroup-cache-regression.yml'
+      - 'packages/data-schemas/src/methods/userGroup.spec.ts'
+      - 'packages/data-schemas/src/methods/userGroup.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  usergroup-cache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install exact locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build required workspace packages
+        run: |
+          npm run build --workspace librechat-data-provider
+          npm run build --workspace @librechat/data-schemas
+      - name: Repeat targeted cache regression three times
+        shell: bash
+        run: |
+          set -euo pipefail
+          for n in 1 2 3; do
+            echo "BOTMODE_USERGROUP_REPEAT=$n"
+            npm exec --workspace @librechat/data-schemas -- jest --runInBand --coverage=false --runTestsByPath src/methods/userGroup.spec.ts
+          done
+          echo 'BOTMODE_USERGROUP_CACHE_ISOLATION=PASS'

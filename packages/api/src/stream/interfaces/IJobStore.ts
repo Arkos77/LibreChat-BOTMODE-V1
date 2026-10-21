@@ -9,6 +9,11 @@ import type {
   UserSubmittedMessageFieldPath,
 } from 'librechat-data-provider';
 import type { RunStep, StandardGraph } from '@librechat/agents';
+import type {
+  NativeMissionEffectIdentity,
+  NativeMissionEffectCommit,
+  NativeMissionEffectOutcome,
+} from '~/stream/nativeMissionEffectReceipts';
 import type { AgentEventDetachedTerminalEvidence } from '~/agents/triggers/types';
 import type { MissionOracleState } from '~/agents/orchestrator/missionOracle';
 import type { ActivityPhaseSnapshot } from '~/agents/activityPhases/runtime';
@@ -16,6 +21,7 @@ import type { ResolvedAskUserQuestion } from '~/agents/hitl/resume';
 import type { MissionPlan } from '~/agents/orchestrator/types';
 import type { RecoveredSteerPayload } from '../SteerRecovery';
 import type { MCPRuntimeRequestBody } from '~/mcp/types';
+import type { GenerationJobMetadata } from '~/types';
 
 /**
  * Detached Event Actor execution guarantee advertised by a generation store.
@@ -157,6 +163,16 @@ export interface SerializableJobData {
   /** Exact host-approved BOT MODE mission plan carried across HITL resume.
    * This is durable topology/planning evidence, not authorization. */
   orchestratorPlan?: MissionPlan;
+  /** Host-observed original agent execution surface, persisted BEFORE model
+   * execution. Topology provenance only: never a replay receipt or tool grant. */
+  nativeMissionCapabilityAttestation?: {
+    version: 1;
+    planId: string;
+    agentIds: string[];
+    mode: 'model_only' | 'receipts_required';
+    digest: string;
+    hostEffectPathsPresent: boolean;
+  };
   /** Durable Mission Oracle evidence/verdict state carried across HITL resume.
    * QA state only; never authorization or task settlement authority. */
   missionOracleState?: MissionOracleState;
@@ -447,6 +463,7 @@ export type JobMetadataPatch = Partial<
     | 'responseMessageId'
     | 'mtoTraceId'
     | 'orchestratorPlan'
+    | 'nativeMissionCapabilityAttestation'
     | 'missionOracleState'
     | 'executionGrants'
     | 'missionCandidateContent'
@@ -868,6 +885,9 @@ export function isStopConfirmed(result: AbortResult | null | undefined): boolean
  * Resume state for reconnecting clients
  */
 export interface ResumeState {
+  /** Host-approved plan retained across durable resume. */
+  orchestratorPlan?: MissionPlan;
+  isRegenerate?: boolean;
   runSteps: Agents.RunStep[];
   aggregatedContent: Agents.MessageContentComplex[];
   userMessage?: SerializableJobData['userMessage'];
@@ -1076,6 +1096,97 @@ export interface IJobStoreV2 extends IJobStore {
     providerExecutionId: string,
   ): Promise<boolean>;
 
+  /** Optional Redis-only recovery capability; claims are inspection-only. */
+  claimDrainedMissionRecovery?(
+    streamId: string,
+    expectedCreatedAt: number,
+    staleBeforeMs: number,
+    ownerToken: string,
+    leaseMs: number,
+  ): Promise<boolean>;
+
+  /** Optional Redis-only, owner-fenced rotation into recovered graph execution. */
+  activateDrainedMissionRecovery?(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    nextProviderExecutionId: string,
+  ): Promise<boolean>;
+
+  /** Optional Redis-only intent/receipt primitives. None starts an action.
+   * Tool adapters must remain fail-closed when these are unavailable. */
+  reserveNativeMissionEffect?(
+    identity: NativeMissionEffectIdentity,
+  ): Promise<NativeMissionEffectOutcome>;
+  commitNativeMissionEffect?(
+    receipt: NativeMissionEffectCommit,
+  ): Promise<NativeMissionEffectOutcome>;
+  readNativeMissionEffect?(
+    identity: Pick<
+      NativeMissionEffectIdentity,
+      'streamId' | 'createdAt' | 'checkpointNamespace' | 'operationKey' | 'argumentsDigest'
+    >,
+  ): Promise<NativeMissionEffectOutcome & { resultRef?: string; resultDigest?: string }>;
+
+  /** Optional fenced recovered-provider startup, never invoked by inspection. */
+  beginRecoveredMissionProviderExecution?(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    providerExecutionId: string,
+    checkpointNamespace: string,
+    leaseMs: number,
+  ): Promise<boolean>;
+
+  /** Optional read-only proof that the recovered owner currently holds the
+   * live Redis claim and valid provider phase, including terminal settlement. */
+  inspectLiveRecoveredMissionOwner?(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    providerExecutionId: string,
+    checkpointNamespace: string,
+  ): Promise<boolean>;
+
+  /** Optional recovered-provider heartbeat, guarded by owner and live lease. */
+  heartbeatRecoveredMissionProvider?(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    providerExecutionId: string,
+    checkpointNamespace: string,
+    leaseMs: number,
+  ): Promise<boolean>;
+
+  /** Optional terminal Redis CAS for an Oracle-verified recovered mission.
+   * This returns an ownership verdict; it does not publish any output. */
+  transitionRecoveredMissionToComplete?(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    providerExecutionId: string,
+    checkpointNamespace: string,
+  ): Promise<boolean>;
+
+  /** Optional owner-scoped FINAL event CAS after durable Mongo readback.
+   * The stale-owner reconciler has its separate epoch-only fallback. */
+  finalizeRecoveredMissionTerminal?(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+    providerExecutionId: string,
+    checkpointNamespace: string,
+    responseMessageId: string,
+    finalEvent: string,
+  ): Promise<boolean>;
+
+  /** Release a matching inspection claim without altering the live job. */
+  releaseDrainedMissionRecovery?(
+    streamId: string,
+    expectedCreatedAt: number,
+    ownerToken: string,
+  ): Promise<boolean>;
+
   /** Includes terminal jobs whose provider still owns user-data writes. */
   getCleanupBlockingJobIdsByUser(userId: string, tenantId?: string): Promise<string[]>;
 
@@ -1194,6 +1305,13 @@ export interface IJobStoreV2 extends IJobStore {
 
   /** Check if job exists */
   hasJob(streamId: string): Promise<boolean>;
+
+  /** Exact-owner liveness lease, Redis-only; other stores omit it. */
+  heartbeatMissionProvider?(
+    streamId: string,
+    generationId: number,
+    providerExecutionId: string,
+  ): Promise<boolean>;
 
   /** Get all running jobs (for cleanup) */
   getRunningJobs(): Promise<SerializableJobData[]>;
@@ -1658,6 +1776,13 @@ export interface IEventTransport {
   /** Persist proof that this process synchronously stopped the exact generation.
    * A delayed replacement can use the proof after the owner's listeners retire. */
   recordAbortAcknowledgement?(streamId: string, generationId: number): Promise<boolean>;
+
+  /** Exact-owner presence lease for native mission recovery (Redis only). */
+  heartbeatMissionProvider?(
+    streamId: string,
+    generationId: number,
+    providerExecutionId: string,
+  ): Promise<boolean>;
 
   /** Persist/read exact proof that a provider segment can no longer mutate user data. */
   recordProviderDrain?(

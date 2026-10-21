@@ -1,0 +1,49 @@
+name: BOTMODE V1 Exact HEAD Production npm Audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-pinned-npm-audit.yml'
+      - 'package-lock.json'
+      - 'package.json'
+
+permissions:
+  contents: read
+
+jobs:
+  production-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Assert exact PR head
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.16.0
+      - name: Audit production lockfile and print sanitized vulnerability summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm audit --omit=dev --package-lock-only --json > "$RUNNER_TEMP/npm-audit.json" || rc=$?
+          node - "$RUNNER_TEMP/npm-audit.json" <<'JS'
+          const fs = require('fs');
+          const p = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (!p.metadata?.vulnerabilities || !p.vulnerabilities) process.exit(2);
+          const list = Object.entries(p.vulnerabilities).map(([name, v]) => ({
+            name, severity: v.severity, direct: v.isDirect,
+            via: v.via.map(x => typeof x === 'string' ? x : {
+              name:x.name, title:x.title, url:x.url, range:x.range
+            }), range:v.range, fixAvailable:v.fixAvailable
+          }));
+          console.log('BOTMODE_PRODUCTION_NPM_AUDIT=' + JSON.stringify(p.metadata.vulnerabilities));
+          console.log('BOTMODE_PRODUCTION_NPM_FINDINGS=' + JSON.stringify(list));
+          JS
+          test "${rc:-0}" -le 1
+          echo 'BOTMODE_NPM_AUDIT_EVIDENCE=PASS'
+      - name: Scope
+        if: always()
+        run: echo 'Read-only production lockfile audit; findings require separate remediation or signed risk acceptance. No stable approval.' >> "$GITHUB_STEP_SUMMARY"
