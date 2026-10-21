@@ -129,6 +129,19 @@ jobs:
           # Fixture comes from the exact same Git checkout as the runtime image.
           # No network-fetched harness can silently test a different revision.
           cp scripts/botmode/ci-openai-subagent-fixture.py /tmp/botmode-ci-model-fixture.py
+          # In the SINGLE planned graph the selected specialist is a direct
+          # model node, so its output must satisfy the original Oracle JSON
+          # criterion. Keep tool-call native delegation behavior unchanged.
+          python3 - <<'PY_MODEL'
+          from pathlib import Path
+          p=Path('/tmp/botmode-ci-model-fixture.py')
+          source=p.read_text()
+          marker='"content":"CI_DELEGATED_CHILD_RECEIPT"'
+          assert source.count(marker)==1
+          source=source.replace(marker,'"content":\'{"ok":true}\'')
+          p.write_text(source)
+          print('CI_SYNTHETIC_PLANNED_SPECIALIST_JSON=PASS')
+          PY_MODEL
           python3 /tmp/botmode-ci-model-fixture.py >/tmp/botmode-ci-fixture.log 2>&1 &
           fixture_pid=$!
           echo "$fixture_pid" > /tmp/botmode-ci-fixture.pid
