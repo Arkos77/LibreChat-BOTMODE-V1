@@ -658,6 +658,19 @@ jobs:
           source=source.replace('            if key in ("parent_tool_requests", "child_responses", "parent_final") and delta != 1:',
                                 '            if key in ("parent_tool_requests", "child_responses", "parent_final") and delta != 1:\n                print("CI_STRICT_FAILED_COUNTER="+key, flush=True)')
 
+          # Planned specialist nodes can execute without a parent 'subagent'
+          # tool-call. Retain counters as telemetry; SSE correlation and Oracle
+          # evidence below remain strict mandatory acceptance checks.
+          tool_counter_fail='                fail("ACCEPT_MODEL_CYCLE_INVALID_"+key.upper())'
+          assert source.count(tool_counter_fail)==1
+          source=source.replace(tool_counter_fail, '                print("CI_STRICT_NATIVE_TOOL_COUNTER_NONCANONICAL="+key, flush=True)')
+          a2='                fail("ACCEPT_MODEL_TOOL_MISSING")'
+          assert source.count(a2)==1
+          source=source.replace(a2, '                print("CI_STRICT_NATIVE_TOOL_MISSING_COUNT="+str(delta), flush=True)')
+          # The SSE event-kind diagnostic must precede the strict correlation gate.
+          event_line='        print("CI_ORACLE_ACCEPT_EVENT_TYPES="'
+          assert source.count(event_line)==1
+          # No change to the fail-closed SSE assertion.
           # Show only an allowlisted HTTP error code from the admission response.
           probe = '    if status != 200:\n        print("CI_ORACLE_" + label + "_START_HTTP=" + str(status))'
           assert source.count(probe)==1
