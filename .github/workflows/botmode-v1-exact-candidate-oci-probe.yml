@@ -22,7 +22,7 @@ permissions:
 # Disposable GH Actions runners only; no production volumes.
 env:
   BOTMODE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  BOTMODE_PUBLISHED_IMAGE: ghcr.io/arkos77/librechat-botmode-v1:sha-ea3bf3c5d92e
+  BOTMODE_PUBLISHED_IMAGE: ghcr.io/arkos77/librechat-botmode-v1:sha-6092686c924c
   COMPOSE_PROJECT_NAME: botmode-oci-child-${{ github.run_id }}-${{ github.run_attempt }}
 
 jobs:
@@ -92,10 +92,10 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
-          git fetch --no-tags origin ea3bf3c5d92e638bc8216030cf904a473b6f57ea
+          git fetch --no-tags origin 6092686c924c656f3477b6d63e3d124592c60634
           python3 - <<'PY_PIN'
           import subprocess
-          baseline='ea3bf3c5d92e638bc8216030cf904a473b6f57ea'
+          baseline='6092686c924c656f3477b6d63e3d124592c60634'
           changed=set(subprocess.check_output(['git','diff','--name-only',baseline,'HEAD'],text=True).splitlines())
           assert changed=={'.github/workflows/botmode-v1-exact-candidate-oci-probe.yml'}, 'CI_CANDIDATE_RUNTIME_SOURCE_DRIFT_NOT_ALLOWED'
           print('CI_CANDIDATE_RUNTIME_SOURCE_UNMODIFIED=PASS')
@@ -107,7 +107,7 @@ jobs:
           docker logout ghcr.io >/dev/null 2>&1 || true
           docker pull "$BOTMODE_PUBLISHED_IMAGE"
           docker image inspect "$BOTMODE_PUBLISHED_IMAGE" >/dev/null
-          docker image inspect "$BOTMODE_PUBLISHED_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -Fx "BUILD_COMMIT=ea3bf3c5d92e638bc8216030cf904a473b6f57ea"
+          docker image inspect "$BOTMODE_PUBLISHED_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -Fx "BUILD_COMMIT=6092686c924c656f3477b6d63e3d124592c60634"
           echo 'CI_CANDIDATE_IMAGE_SOURCE=PASS'
           echo 'CI_PUBLISHED_OCI_SUBAGENT_ANONYMOUS_PULL=PASS'
       - name: Boot current candidate with disposable MongoDB
