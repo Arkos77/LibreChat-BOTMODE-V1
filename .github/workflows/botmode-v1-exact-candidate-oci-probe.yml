@@ -786,7 +786,7 @@ jobs:
               page=context.new_page()
               def refresh(route):
                   route.fulfill(status=200,content_type='application/json',body=json.dumps({'token':token,'user':user}))
-              page.route('**/api/auth/refresh*',refresh)
+              context.route('**/api/auth/refresh*',refresh)
               page.goto('/projects',wait_until='domcontentloaded',timeout=30000)
               page.get_by_role('button',name='New project').first.click(timeout=30000)
               dialog=page.get_by_role('dialog')
@@ -813,6 +813,8 @@ jobs:
               assert selector.locator('button[aria-pressed="true"]').count()==1
               launch.click()
               launched('auto')
+              page.close()
+              page=context.new_page()
               page.goto(project_url,wait_until='domcontentloaded')
               selector=page.locator('[aria-label="Sélection des agents BOT MODE"]')
               selector.wait_for(timeout=30000)
