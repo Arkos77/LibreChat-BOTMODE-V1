@@ -657,6 +657,7 @@ jobs:
                          '            parsed_error = json.loads(raw_start)\n'
                          '            error_code = parsed_error.get("code") if isinstance(parsed_error, dict) else None\n'
                          '        except (ValueError, TypeError):\n'
+                         '            parsed_error = {}\n'
                          '            error_code = None\n'
                          '        approved_codes = ("SERVER_NOT_READY", "AGENT_EXPECTED_MCP_TOOLS_UNAVAILABLE")\n'
                          '        print("CI_STRICT_ADMISSION_ERROR_CODE=" + (error_code if error_code in approved_codes else "OTHER_OR_MISSING"), flush=True)\n'
