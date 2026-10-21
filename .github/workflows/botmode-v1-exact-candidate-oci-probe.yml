@@ -669,6 +669,7 @@ jobs:
           classifier=('        reason = parsed_error.get("error", "") if isinstance(parsed_error, dict) else ""\n'
                       '        categories = {\n'
                       '            "GENERATION_OWNERSHIP": "Generation ownership",\n'
+                      '            "GENERATION_OWNERSHIP_CHANGED": "Generation ownership changed",\n'
                       '            "GENERATION_STARTING": "Generation is still starting",\n'
                       '            "GENERATION_FINALIZING": "Generation is finalizing",\n'
                       '            "QUEUED_ADMISSION": "Queued turn execution",\n'
