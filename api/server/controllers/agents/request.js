@@ -1817,10 +1817,21 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         throw new Error('Orchestrator worker must match the authorized primary agent');
       }
 
-      const authorizedAgentIds = new Set([
-        primaryAgentId,
-        ...(client?.agentConfigs?.keys?.() ?? []),
-      ]);
+      // Resolve native subagent delegation through the authenticated, initialized
+      // runtime graph. The legacy agentConfigs map alone omits native children.
+      // Never trust agent IDs supplied by the mission request as grants.
+      const reachableAgents =
+        typeof client.getReachableMissionAgents === 'function'
+          ? client.getReachableMissionAgents()
+          : [client.options.agent, ...(client.agentConfigs?.values?.() ?? [])];
+      const authorizedAgentIds = new Set(
+        (Array.isArray(reachableAgents) ? reachableAgents : [])
+          .map((agent) => agent?.id)
+          .filter((id) => typeof id === 'string' && id.length > 0),
+      );
+      if (!authorizedAgentIds.has(primaryAgentId)) {
+        throw new Error('Orchestrator primary agent is not an initialized binding');
+      }
       for (const specialist of plannerContext.specialists) {
         if (
           specialist == null ||
@@ -1843,10 +1854,6 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       // begin. The digest is not a grant or replay receipt. In particular,
       // delegation, code/file tools and host evidence paths must still acquire
       // real effect receipts before a recovered provider can execute them.
-      const reachableAgents =
-        typeof client.getReachableMissionAgents === 'function'
-          ? client.getReachableMissionAgents()
-          : [client.options.agent, ...(client.agentConfigs?.values?.() ?? [])];
       const nativeMissionCapabilityAttestation = createNativeMissionCapabilityAttestation({
         plan: orchestratorPlan,
         agents: reachableAgents,
