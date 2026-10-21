@@ -652,6 +652,12 @@ jobs:
           anchor='        print("CI_ORACLE_ACCEPT_DURABLE_CHILD_LINEAGE=NOT_PROVEN", flush=True)'
           assert source.count(anchor)==1
           source=source.replace(anchor, '        if not (len(runs) == 1 and linked and completed):\n            fail("STRICT_ACCEPT_CHILD_SSE_CORRELATION_MISSING")\n        print("CI_ORACLE_ACCEPT_CHILD_SSE_STRICT=PASS", flush=True)\n'+anchor)
+          # Preserve original assertions, but capture every fixture counter
+          # before the first assertion; absence of subagent tool is diagnostic.
+          assert source.count('            if key in ("parent_tool_requests", "child_responses", "parent_final") and delta != 1:')==1
+          source=source.replace('            if key in ("parent_tool_requests", "child_responses", "parent_final") and delta != 1:',
+                                '            if key in ("parent_tool_requests", "child_responses", "parent_final") and delta != 1:\n                print("CI_STRICT_FAILED_COUNTER="+key, flush=True)')
+
           # Show only an allowlisted HTTP error code from the admission response.
           probe = '    if status != 200:\n        print("CI_ORACLE_" + label + "_START_HTTP=" + str(status))'
           assert source.count(probe)==1
