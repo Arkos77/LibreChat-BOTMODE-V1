@@ -378,7 +378,7 @@ export default function BotModeProjectPanel({
                 onClick={() => setAgentMode('auto')}
                 className={`rounded-lg border p-3 text-left text-sm ${agentMode === 'auto' ? 'border-blue-500 bg-blue-500/10' : 'border-border-light'}`}
               >
-                <strong>Automatique</strong>
+                <strong>{localize('com_ui_bot_mode_agents_auto')}</strong>
                 <span className="mt-1 block text-xs text-text-secondary">
                   Le Worker choisit les agents autorisés selon la mission.
                 </span>
@@ -389,7 +389,7 @@ export default function BotModeProjectPanel({
                 onClick={() => setAgentMode('manual')}
                 className={`rounded-lg border p-3 text-left text-sm ${agentMode === 'manual' ? 'border-blue-500 bg-blue-500/10' : 'border-border-light'}`}
               >
-                <strong>Choisir mes agents</strong>
+                <strong>{localize('com_ui_bot_mode_agents_manual')}</strong>
                 <span className="mt-1 block text-xs text-text-secondary">
                   Sélectionner un ou plusieurs spécialistes existants.
                 </span>
@@ -424,7 +424,7 @@ export default function BotModeProjectPanel({
               </div>
             )}
             <details className="text-sm text-text-secondary">
-              <summary className="cursor-pointer">Options avancées</summary>
+              <summary className="cursor-pointer">{localize('com_ui_bot_mode_agents_advanced')}</summary>
               <p className="mt-2">
                 Les autorisations de délégation et la validation Oracle restent contrôlées par BOT
                 MODE.
