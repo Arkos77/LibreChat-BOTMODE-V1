@@ -819,7 +819,13 @@ jobs:
               context.route('**/api/auth/refresh*',refresh)
               page=context.new_page()
               page.goto(project_url,wait_until='domcontentloaded')
-              print('CI_BROWSER_MANUAL_RETURN_PATH='+__import__('urllib.parse',fromlist=['urlparse']).urlparse(page.url).path,flush=True)
+              # /projects hosts a transient project drawer: a fresh page must
+              # explicitly open its own project rather than expecting that
+              # drawer state to survive navigation from the automatic launch.
+              page.get_by_role('button',name='New project').first.click(timeout=30000)
+              manual_dialog=page.get_by_role('dialog')
+              manual_dialog.get_by_role('textbox',name='Project name').fill('CI BOT MODE Manual Acceptance')
+              manual_dialog.get_by_role('button',name='Create project').click()
               selector=page.locator('[aria-label="Sélection des agents BOT MODE"]')
               selector.wait_for(timeout=30000)
               selector.locator('button[aria-pressed="false"]').first.click()
