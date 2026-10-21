@@ -638,10 +638,15 @@ jobs:
           from pathlib import Path
           p=Path('/tmp/botmode-ci-oracle-publication-gate.py')
           source=p.read_text()
-          old='"role": "worker",\n                    "capabilities": ["basic"]'
-          new='"role": "worker",\n                    "capabilities": []'
-          assert source.count(old)==1, 'STRICT_WORKER_FIXTURE_NOT_UNIQUE'
-          source=source.replace(old,new)
+          # Keep the actual Worker runtime capability, but require a distinct
+          # mission capability held only by the authorized specialist.
+          # This makes delegation mandatory without disabling the native tool.
+          mission_anchor='"requiredCapabilities": ["basic"]'
+          specialist_anchor='"role": "specialist", "capabilities": ["basic"]'
+          assert source.count(mission_anchor)==1, 'STRICT_MISSION_CAPABILITY_ANCHOR'
+          assert source.count(specialist_anchor)==1, 'STRICT_SPECIALIST_CAPABILITY_ANCHOR'
+          source=source.replace(mission_anchor,'"requiredCapabilities": ["ci_delegated"]')
+          source=source.replace(specialist_anchor,'"role": "specialist", "capabilities": ["ci_delegated"]')
           old='        print("CI_ORACLE_ACCEPT_DURABLE_CHILD_LINEAGE=NOT_PROVEN", flush=True)'
           # Inject a fail-closed SSE assertion only after inspecting events.
           anchor='        print("CI_ORACLE_ACCEPT_DURABLE_CHILD_LINEAGE=NOT_PROVEN", flush=True)'
