@@ -658,7 +658,9 @@ jobs:
           specialist_anchor='"role": "specialist", "capabilities": ["basic"]'
           assert source.count(mission_anchor)==1, 'STRICT_MISSION_CAPABILITY_ANCHOR'
           assert source.count(specialist_anchor)==1, 'STRICT_SPECIALIST_CAPABILITY_ANCHOR'
-          source=source.replace(mission_anchor,'"requiredCapabilities": ["ci_delegated"]')
+          review_anchor='    if review:\n        mission["validation"]["review"]'
+          assert source.count(review_anchor)==1
+          source=source.replace(review_anchor, '    if not review:\n        mission["requiredCapabilities"] = ["ci_delegated"]\n'+review_anchor)
           source=source.replace(specialist_anchor,'"role": "specialist", "capabilities": ["ci_delegated"]')
           old='        print("CI_ORACLE_ACCEPT_DURABLE_CHILD_LINEAGE=NOT_PROVEN", flush=True)'
           # Inject a fail-closed SSE assertion only after inspecting events.
@@ -705,10 +707,11 @@ jobs:
           source=source.replace(target,inspection+target)
           plan_anchor='    if plan.get("mission", {}).get("missionId") != mission_id:'
           assert source.count(plan_anchor)==1
-          plan_check=('    planned_tasks = plan.get("tasks", [])\n'
-                      '    if len(planned_tasks) != 1 or planned_tasks[0].get("agentId") != CHILD or planned_tasks[0].get("requiredCapabilities") != ["ci_delegated"]:\n'
-                      '        fail("STRICT_SPECIALIST_PLAN_BINDING_MISMATCH")\n'
-                      '    print("CI_STRICT_SELECTED_SPECIALIST_DURABLE_PLAN=PASS", flush=True)\n')
+          plan_check=('    if not review:\n'
+                      '        planned_tasks = plan.get("tasks", [])\n'
+                      '        if len(planned_tasks) != 1 or planned_tasks[0].get("agentId") != CHILD or planned_tasks[0].get("requiredCapabilities") != ["ci_delegated"]:\n'
+                      '            fail("STRICT_SPECIALIST_PLAN_BINDING_MISMATCH")\n'
+                      '        print("CI_STRICT_SELECTED_SPECIALIST_DURABLE_PLAN=PASS", flush=True)\n')
           source=source.replace(plan_anchor,plan_check+plan_anchor)
           # The SSE event-kind diagnostic must precede the strict correlation gate.
           event_line='        print("CI_ORACLE_ACCEPT_EVENT_TYPES="'
