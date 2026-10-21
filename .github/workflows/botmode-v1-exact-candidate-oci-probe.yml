@@ -852,14 +852,15 @@ jobs:
       - name: Execute real installer and verify readiness
         run: |
           set -euo pipefail
-          ./install.sh --lite --image "$BOTMODE_PUBLISHED_IMAGE" > "$RUNNER_TEMP/ci-lite.log" 2>&1
+          sudo git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          sudo ./install.sh --lite --image "$BOTMODE_PUBLISHED_IMAGE" > "$RUNNER_TEMP/ci-lite.log" 2>&1
           grep -Fxq 'BOTMODE_BOOTSTRAP=PASS' "$RUNNER_TEMP/ci-lite.log"
           grep -Fxq 'BOTMODE_PROFILE=lite' "$RUNNER_TEMP/ci-lite.log"
           grep -Fxq 'BOTMODE_IMAGE_PULL=PASS' "$RUNNER_TEMP/ci-lite.log"
           grep -Fxq 'BOTMODE_STACK=STARTED' "$RUNNER_TEMP/ci-lite.log"
           test "$(stat -c %a .env)" = 600
           test -s .botmode-database-auth-initialized
-          grep -Fxq "BOTMODE_IMAGE=$BOTMODE_PUBLISHED_IMAGE" .env
+          sudo grep -Fxq "BOTMODE_IMAGE=$BOTMODE_PUBLISHED_IMAGE" .env
           echo 'CI_FRESH_LITE_INSTALL=PASS'
           for attempt in $(seq 1 90); do
             if curl -fsS --max-time 4 http://127.0.0.1:3080/api/config >/dev/null 2>&1; then
@@ -872,8 +873,8 @@ jobs:
       - name: Restart without losing installer configuration
         run: |
           set -euo pipefail
-          expected=$(sha256sum .env | cut -d' ' -f1)
-          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml restart api
+          expected=$(sudo sha256sum .env | cut -d' ' -f1)
+          sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml restart api
           for attempt in $(seq 1 90); do
             if curl -fsS --max-time 4 http://127.0.0.1:3080/api/config >/dev/null 2>&1; then
               echo 'CI_FRESH_LITE_RESTART=PASS'
@@ -882,5 +883,5 @@ jobs:
             if [ "$attempt" -eq 90 ]; then exit 1; fi
             sleep 2
           done
-          test "$(sha256sum .env | cut -d' ' -f1)" = "$expected"
+          test "$(sudo sha256sum .env | cut -d' ' -f1)" = "$expected"
           echo 'CI_FRESH_LITE_CONFIG_PRESERVED=PASS'
