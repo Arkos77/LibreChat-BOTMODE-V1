@@ -828,8 +828,32 @@ jobs:
                   assert len(ids)==len(set(ids)), 'CI_BROWSER_DUPLICATE_SPECIALIST_IDS'
                   print('CI_BROWSER_'+mode.upper()+'_AUTHORIZED_IDS_ROUTED=PASS',flush=True)
               assert selector.locator('button[aria-pressed="true"]').count()==1
+              admissions=[]
+              def capture_admission(request):
+                  if request.method=='POST' and '/api/agents/chat/agents' in request.url:
+                      try:
+                          body=request.post_data_json
+                          admissions.append(body if isinstance(body,dict) else {})
+                      except Exception:
+                          admissions.append({})
+              page.on('request',capture_admission)
               launch.click()
               launched('auto')
+              # Require an actual browser-originated backend admission, not
+              # merely navigation with query parameters. No synthetic POST.
+              import time
+              deadline=time.monotonic()+35
+              while not admissions and time.monotonic()<deadline:
+                  page.wait_for_timeout(500)
+              if not admissions:
+                  raise AssertionError('CI_BROWSER_WORKER_MISSION_POST_NOT_OBSERVED')
+              request=admissions[0]
+              assert request.get('agent_id')==worker_id, 'CI_BROWSER_POST_WORKER_MISMATCH'
+              orchestration=request.get('orchestratorMission') or {}
+              planner=orchestration.get('plannerContext') or {}
+              selected={s.get('agentId') for s in planner.get('specialists',[]) if isinstance(s,dict)}
+              assert selected and selected.issubset(allowlist), 'CI_BROWSER_POST_SPECIALIST_ACL_MISMATCH'
+              print('CI_BROWSER_REAL_MISSION_POST_AUTHORIZED=PASS',flush=True)
               page.close()
               context.close()
               context=browser.new_context(base_url='http://127.0.0.1:3090')
