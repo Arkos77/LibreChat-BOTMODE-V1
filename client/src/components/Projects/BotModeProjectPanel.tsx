@@ -194,12 +194,12 @@ export default function BotModeProjectPanel({
     return 'running';
   })();
   // Never launch a BOT MODE mission against an arbitrary agent from the list.
-  const primaryAgent = agents?.data?.find(
-    (agent) => agent.name === 'BOT MODE Worker',
-  );
+  const primaryAgent = agents?.data?.find((agent) => agent.name === 'BOT MODE Worker');
 
   const { data: workerDetails } = useGetAgentByIdQuery(primaryAgent?.id);
-  const authorizedIds = new Set(workerDetails?.subagents?.enabled === true ? workerDetails.subagents.agent_ids ?? [] : []);
+  const authorizedIds = new Set(
+    workerDetails?.subagents?.enabled === true ? (workerDetails.subagents.agent_ids ?? []) : [],
+  );
   const specialists = (agents?.data ?? []).filter(
     (agent) => agent.id && agent.id !== primaryAgent?.id && authorizedIds.has(agent.id),
   );
@@ -262,7 +262,9 @@ export default function BotModeProjectPanel({
       submit: 'true',
       botmode: '1',
       botmode_mode: 'analyze',
-      ...(agentMode === 'manual' ? { botmode_agent_ids: selectedSpecialists.map((agent) => agent.id).join(',') } : {}),
+      ...(agentMode === 'manual'
+        ? { botmode_agent_ids: selectedSpecialists.map((agent) => agent.id).join(',') }
+        : {}),
     });
     navigate(`/c/new?${params.toString()}`);
   };
@@ -318,7 +320,12 @@ export default function BotModeProjectPanel({
             </div>
             <div className="flex flex-col items-end gap-2">
               {primaryAgent?.id ? (
-                <Button type="button" size="sm" disabled={agentMode === 'manual' && selectedSpecialists.length === 0} onClick={launchMission}>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={agentMode === 'manual' && selectedSpecialists.length === 0}
+                  onClick={launchMission}
+                >
                   {localize('com_ui_bot_mode_project_launch')}
                 </Button>
               ) : (
@@ -357,32 +364,71 @@ export default function BotModeProjectPanel({
             </div>
           </div>
 
-          <div className="mt-4 space-y-3 rounded-xl border border-border-light p-3" aria-label="Sélection des agents BOT MODE">
-            <div className="text-sm font-semibold text-text-primary">Comment choisir les spécialistes ?</div>
+          <div
+            className="mt-4 space-y-3 rounded-xl border border-border-light p-3"
+            aria-label="Sélection des agents BOT MODE"
+          >
+            <div className="text-sm font-semibold text-text-primary">
+              Comment choisir les spécialistes ?
+            </div>
             <div className="grid gap-2 sm:grid-cols-2">
-              <button type="button" aria-pressed={agentMode === 'auto'} onClick={() => setAgentMode('auto')}
-                className={`rounded-lg border p-3 text-left text-sm ${agentMode === 'auto' ? 'border-blue-500 bg-blue-500/10' : 'border-border-light'}`}>
-                <strong>Automatique</strong><span className="mt-1 block text-xs text-text-secondary">Le Worker choisit les agents autorisés selon la mission.</span>
+              <button
+                type="button"
+                aria-pressed={agentMode === 'auto'}
+                onClick={() => setAgentMode('auto')}
+                className={`rounded-lg border p-3 text-left text-sm ${agentMode === 'auto' ? 'border-blue-500 bg-blue-500/10' : 'border-border-light'}`}
+              >
+                <strong>Automatique</strong>
+                <span className="mt-1 block text-xs text-text-secondary">
+                  Le Worker choisit les agents autorisés selon la mission.
+                </span>
               </button>
-              <button type="button" aria-pressed={agentMode === 'manual'} onClick={() => setAgentMode('manual')}
-                className={`rounded-lg border p-3 text-left text-sm ${agentMode === 'manual' ? 'border-blue-500 bg-blue-500/10' : 'border-border-light'}`}>
-                <strong>Choisir mes agents</strong><span className="mt-1 block text-xs text-text-secondary">Sélectionner un ou plusieurs spécialistes existants.</span>
+              <button
+                type="button"
+                aria-pressed={agentMode === 'manual'}
+                onClick={() => setAgentMode('manual')}
+                className={`rounded-lg border p-3 text-left text-sm ${agentMode === 'manual' ? 'border-blue-500 bg-blue-500/10' : 'border-border-light'}`}
+              >
+                <strong>Choisir mes agents</strong>
+                <span className="mt-1 block text-xs text-text-secondary">
+                  Sélectionner un ou plusieurs spécialistes existants.
+                </span>
               </button>
             </div>
             {agentMode === 'manual' && (
               <div className="grid gap-2 sm:grid-cols-2" aria-label="Spécialistes disponibles">
                 {specialists.map((agent) => (
-                  <label key={agent.id} className="flex cursor-pointer items-center gap-2 rounded-lg border border-border-light p-3 text-sm">
-                    <input type="checkbox" checked={chosenAgentIds.includes(agent.id)}
-                      onChange={(event) => setChosenAgentIds((ids) => event.target.checked ? [...ids, agent.id] : ids.filter((id) => id !== agent.id))} />
+                  <label
+                    key={agent.id}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg border border-border-light p-3 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={chosenAgentIds.includes(agent.id)}
+                      onChange={(event) =>
+                        setChosenAgentIds((ids) =>
+                          event.target.checked
+                            ? [...ids, agent.id]
+                            : ids.filter((id) => id !== agent.id),
+                        )
+                      }
+                    />
                     <span className="truncate">{agent.name}</span>
                   </label>
                 ))}
-                {specialists.length === 0 && <p className="text-sm text-text-secondary">Aucun spécialiste autorisé dans la configuration du Worker.</p>}
+                {specialists.length === 0 && (
+                  <p className="text-sm text-text-secondary">
+                    Aucun spécialiste autorisé dans la configuration du Worker.
+                  </p>
+                )}
               </div>
             )}
-            <details className="text-sm text-text-secondary"><summary className="cursor-pointer">Options avancées</summary>
-              <p className="mt-2">Les autorisations de délégation et la validation Oracle restent contrôlées par BOT MODE.</p>
+            <details className="text-sm text-text-secondary">
+              <summary className="cursor-pointer">Options avancées</summary>
+              <p className="mt-2">
+                Les autorisations de délégation et la validation Oracle restent contrôlées par BOT
+                MODE.
+              </p>
             </details>
           </div>
           <div className="mt-5 grid grid-cols-6 gap-1.5" aria-label="Mission progress">

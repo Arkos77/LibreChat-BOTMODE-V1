@@ -613,15 +613,31 @@ export default function useChatFunctions({
             ['RÉDACTION', 'botmode-r-daction', 'writing', ['writing']],
           ];
           const requestedAgentIds = searchParams.get('botmode_agent_ids');
-          const manualAgentIds = requestedAgentIds == null
-            ? null
-            : [...new Set(requestedAgentIds.split(',').map((id) => id.trim()).filter(Boolean))];
-          const selectedDefinitions: Array<[string, string, string, string[]]> = manualAgentIds == null
-            ? specialistDefinitions
-            : manualAgentIds.map((agentId, index) => {
-                const known = specialistDefinitions.find((definition) => definition[1] === agentId);
-                return [`MANUAL_${index + 1}`, agentId, known?.[2] ?? 'specialist', [`selected_agent_${index + 1}`]];
-              });
+          const manualAgentIds =
+            requestedAgentIds == null
+              ? null
+              : [
+                  ...new Set(
+                    requestedAgentIds
+                      .split(',')
+                      .map((id) => id.trim())
+                      .filter(Boolean),
+                  ),
+                ];
+          const selectedDefinitions: Array<[string, string, string, string[]]> =
+            manualAgentIds == null
+              ? specialistDefinitions
+              : manualAgentIds.map((agentId, index) => {
+                  const known = specialistDefinitions.find(
+                    (definition) => definition[1] === agentId,
+                  );
+                  return [
+                    `MANUAL_${index + 1}`,
+                    agentId,
+                    known?.[2] ?? 'specialist',
+                    [`selected_agent_${index + 1}`],
+                  ];
+                });
           const specialists = selectedDefinitions.map(([id, agentId, role, capabilities]) => ({
             id,
             agentId,
@@ -727,22 +743,21 @@ export default function useChatFunctions({
               requiredCapabilities: [capabilities[0] ?? `selected_agent_${index + 1}`],
               dependsOn: [],
             }));
-          }
-          else {
-          const required = new Set(
-            objectives.flatMap((objective) => objective.requiredCapabilities),
-          );
-          const specialists = specialistDefinitions
-            .filter(([, , , capabilities]) =>
-              capabilities.some((capability) => required.has(capability)),
-            )
-            .map(([id, agentId, role, capabilities]) => ({
-              id,
-              agentId,
-              role,
-              capabilities,
-              constraints: [],
-            }));
+          } else {
+            const required = new Set(
+              objectives.flatMap((objective) => objective.requiredCapabilities),
+            );
+            const specialists = specialistDefinitions
+              .filter(([, , , capabilities]) =>
+                capabilities.some((capability) => required.has(capability)),
+              )
+              .map(([id, agentId, role, capabilities]) => ({
+                id,
+                agentId,
+                role,
+                capabilities,
+                constraints: [],
+              }));
           }
           return {
             mission: {

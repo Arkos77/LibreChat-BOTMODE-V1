@@ -107,7 +107,9 @@ const indexes: Record<string, ParentSubagentIndex> = {
 describe('BotModeProjectPanel', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseGetAgentByIdQuery.mockReturnValue({ data: { subagents: { enabled: true, agent_ids: ['agent-research'] } } });
+    mockUseGetAgentByIdQuery.mockReturnValue({
+      data: { subagents: { enabled: true, agent_ids: ['agent-research'] } },
+    });
     mockUseListAgentsQuery.mockReturnValue({
       data: { data: [{ id: 'agent-worker', name: 'BOT MODE Worker' }] },
     });
@@ -250,11 +252,15 @@ describe('BotModeProjectPanel', () => {
   });
 
   it('only offers specialists bound to the Worker', () => {
-    mockUseListAgentsQuery.mockReturnValue({ data: { data: [
-      { id: 'agent-worker', name: 'BOT MODE Worker' },
-      { id: 'agent-research', name: 'RECHERCHE' },
-      { id: 'agent-other', name: 'AUTRE' },
-    ] } });
+    mockUseListAgentsQuery.mockReturnValue({
+      data: {
+        data: [
+          { id: 'agent-worker', name: 'BOT MODE Worker' },
+          { id: 'agent-research', name: 'RECHERCHE' },
+          { id: 'agent-other', name: 'AUTRE' },
+        ],
+      },
+    });
     render(<BotModeProjectPanel projectId="project-a" conversations={[conversationA]} />);
     fireEvent.click(screen.getByRole('button', { name: /Choisir mes agents/ }));
     expect(screen.getByText('RECHERCHE')).toBeInTheDocument();
@@ -262,15 +268,21 @@ describe('BotModeProjectPanel', () => {
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }));
     expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('agent-research'));
-    expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('botmode_agent_ids=agent-research'));
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.stringContaining('botmode_agent_ids=agent-research'),
+    );
   });
 
   it('blocks manual mode when the Worker has no authorized specialist', () => {
     mockUseGetAgentByIdQuery.mockReturnValue({ data: { subagents: { agent_ids: [] } } });
-    mockUseListAgentsQuery.mockReturnValue({ data: { data: [
-      { id: 'agent-worker', name: 'BOT MODE Worker' },
-      { id: 'agent-other', name: 'AUTRE' },
-    ] } });
+    mockUseListAgentsQuery.mockReturnValue({
+      data: {
+        data: [
+          { id: 'agent-worker', name: 'BOT MODE Worker' },
+          { id: 'agent-other', name: 'AUTRE' },
+        ],
+      },
+    });
     render(<BotModeProjectPanel projectId="project-a" conversations={[conversationA]} />);
     fireEvent.click(screen.getByRole('button', { name: /Choisir mes agents/ }));
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
@@ -278,7 +290,9 @@ describe('BotModeProjectPanel', () => {
   });
 
   it('blocks launch when the Worker is missing', () => {
-    mockUseListAgentsQuery.mockReturnValue({ data: { data: [{ id: 'agent-research', name: 'RECHERCHE' }] } });
+    mockUseListAgentsQuery.mockReturnValue({
+      data: { data: [{ id: 'agent-research', name: 'RECHERCHE' }] },
+    });
     render(<BotModeProjectPanel projectId="project-a" conversations={[conversationA]} />);
     expect(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' })).toBeDisabled();
   });
