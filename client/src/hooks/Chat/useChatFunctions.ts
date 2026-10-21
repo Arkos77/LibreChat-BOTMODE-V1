@@ -603,193 +603,205 @@ export default function useChatFunctions({
         console.error('BOT MODE mission requires a selected agent');
         return false;
       }
-      Object.assign(currentMsg, {
-        orchestratorMission: (() => {
-          const specialistDefinitions: Array<[string, string, string, string[]]> = [
-            ['RECHERCHE', 'botmode-recherche', 'research', ['web_search']],
-            ['ANALYSE', 'botmode-analyse', 'analysis', ['analysis']],
-            ['CODE', 'botmode-code', 'engineering', ['execute_code']],
-            ['DOCUMENTS', 'botmode-documents', 'documents', ['file_search']],
-            ['RÉDACTION', 'botmode-r-daction', 'writing', ['writing']],
-          ];
-          const rawBindings = searchParams.get('botmode_agent_bindings');
-          const selectionMode = searchParams.get('botmode_agent_mode');
-          let boundAgents: Array<{ id: string; name: string }> = [];
-          try {
-            const parsed: unknown = JSON.parse(rawBindings ?? '[]');
-            if (Array.isArray(parsed)) {
-              boundAgents = parsed.filter(
-                (item): item is { id: string; name: string } =>
-                  item != null &&
-                  typeof item.id === 'string' &&
-                  item.id.length > 0 &&
-                  typeof item.name === 'string' &&
-                  item.name.length > 0,
-              );
-            }
-          } catch (_error) {
-            console.error('Invalid BOT MODE agent bindings');
+      const orchestratorMission = (() => {
+        const specialistDefinitions: Array<[string, string, string, string[]]> = [
+          ['RECHERCHE', 'botmode-recherche', 'research', ['web_search']],
+          ['ANALYSE', 'botmode-analyse', 'analysis', ['analysis']],
+          ['CODE', 'botmode-code', 'engineering', ['execute_code']],
+          ['DOCUMENTS', 'botmode-documents', 'documents', ['file_search']],
+          ['RÉDACTION', 'botmode-r-daction', 'writing', ['writing']],
+        ];
+        const rawBindings = searchParams.get('botmode_agent_bindings');
+        const selectionMode = searchParams.get('botmode_agent_mode');
+        let boundAgents: Array<{ id: string; name: string }> = [];
+        try {
+          const parsed: unknown = JSON.parse(rawBindings ?? '[]');
+          if (Array.isArray(parsed)) {
+            boundAgents = parsed.filter(
+              (item): item is { id: string; name: string } =>
+                item != null &&
+                typeof item.id === 'string' &&
+                item.id.length > 0 &&
+                typeof item.name === 'string' &&
+                item.name.length > 0,
+            );
           }
-          const uniqueBindings = boundAgents.filter(
-            (agent, index) => boundAgents.findIndex((other) => other.id === agent.id) === index,
-          );
-          const selectedDefinitions: Array<[string, string, string, string[]]> =
-            selectionMode === 'auto'
-              ? specialistDefinitions.flatMap(([id, , role, capabilities]) => {
-                  const matching = uniqueBindings.find((agent) => agent.name === id);
-                  return matching
-                    ? [[id, matching.id, role, capabilities] as [string, string, string, string[]]]
-                    : [];
-                })
-              : uniqueBindings.map((agent, index) => [
-                  `MANUAL_${index + 1}`,
-                  agent.id,
-                  'specialist',
-                  [`selected_agent_${index + 1}`],
-                ]);
-          const manualAgentIds =
-            selectionMode === 'manual' ? uniqueBindings.map((a) => a.id) : null;
-          const specialists = selectedDefinitions.map(([id, agentId, role, capabilities]) => ({
-            id,
-            agentId,
-            role,
-            capabilities,
-            constraints: [],
+        } catch (_error) {
+          console.error('Invalid BOT MODE agent bindings');
+        }
+        const uniqueBindings = boundAgents.filter(
+          (agent, index) => boundAgents.findIndex((other) => other.id === agent.id) === index,
+        );
+        const selectedDefinitions: Array<[string, string, string, string[]]> =
+          selectionMode === 'auto'
+            ? specialistDefinitions.flatMap(([id, , role, capabilities]) => {
+                const matching = uniqueBindings.find((agent) => agent.name === id);
+                return matching
+                  ? [[id, matching.id, role, capabilities] as [string, string, string, string[]]]
+                  : [];
+              })
+            : uniqueBindings.map((agent, index) => [
+                `MANUAL_${index + 1}`,
+                agent.id,
+                'specialist',
+                [`selected_agent_${index + 1}`],
+              ]);
+        const manualAgentIds = selectionMode === 'manual' ? uniqueBindings.map((a) => a.id) : null;
+        const specialists = selectedDefinitions.map(([id, agentId, role, capabilities]) => ({
+          id,
+          agentId,
+          role,
+          capabilities,
+          constraints: [],
+        }));
+        const mode = botModeMode;
+        const analyzeObjectives = [
+          {
+            key: 'research',
+            objective:
+              'Rechercher en profondeur les informations, alternatives, sources et concurrents.',
+            requiredCapabilities: ['web_search'],
+            dependsOn: [],
+          },
+          {
+            key: 'analysis',
+            objective: 'Analyser la faisabilité, les risques, les opportunités et les scénarios.',
+            requiredCapabilities: ['analysis'],
+            dependsOn: ['research'],
+          },
+          {
+            key: 'engineering',
+            objective: 'Évaluer l’architecture et tester les éléments techniques pertinents.',
+            requiredCapabilities: ['execute_code'],
+            dependsOn: ['analysis'],
+          },
+          {
+            key: 'documentation',
+            objective: 'Vérifier les documents, données et preuves disponibles.',
+            requiredCapabilities: ['file_search'],
+            dependsOn: ['research'],
+          },
+          {
+            key: 'synthesis',
+            objective:
+              'Produire une synthèse consolidée avec conclusions et pistes de développement.',
+            requiredCapabilities: ['writing'],
+            dependsOn: ['analysis', 'engineering', 'documentation'],
+          },
+        ];
+        const developObjectives = [
+          {
+            key: 'research',
+            objective:
+              'Rechercher les solutions, références et contraintes techniques pertinentes.',
+            requiredCapabilities: ['web_search'],
+            dependsOn: [],
+          },
+          {
+            key: 'analysis',
+            objective: 'Évaluer la faisabilité, les risques, les coûts et les scénarios.',
+            requiredCapabilities: ['analysis'],
+            dependsOn: ['research'],
+          },
+          {
+            key: 'engineering',
+            objective: 'Concevoir et tester le volet technique de la solution.',
+            requiredCapabilities: ['execute_code'],
+            dependsOn: ['analysis'],
+          },
+          {
+            key: 'documentation',
+            objective: 'Rassembler les éléments documentaires et preuves utiles.',
+            requiredCapabilities: ['file_search'],
+            dependsOn: ['research'],
+          },
+          {
+            key: 'synthesis',
+            objective: 'Consolider le plan de développement et les prochaines étapes.',
+            requiredCapabilities: ['writing'],
+            dependsOn: ['engineering', 'documentation'],
+          },
+        ];
+        const watchObjectives = [
+          {
+            key: 'research',
+            objective: 'Effectuer une veille approfondie et recueillir les sources pertinentes.',
+            requiredCapabilities: ['web_search'],
+            dependsOn: [],
+          },
+          {
+            key: 'analysis',
+            objective: 'Analyser les évolutions, signaux, risques et opportunités.',
+            requiredCapabilities: ['analysis'],
+            dependsOn: ['research'],
+          },
+          {
+            key: 'synthesis',
+            objective: 'Synthétiser les résultats de la veille avec des conclusions vérifiables.',
+            requiredCapabilities: ['writing'],
+            dependsOn: ['analysis'],
+          },
+        ];
+        let objectives = analyzeObjectives;
+        if (mode === 'develop') objectives = developObjectives;
+        else if (mode === 'watch') objectives = watchObjectives;
+        if (manualAgentIds != null) {
+          objectives = selectedDefinitions.map(([id, , role, capabilities], index) => ({
+            key: `selected_${index + 1}`,
+            objective: `Exécuter la partie ${index + 1} de la mission avec le spécialiste sélectionné (${id}, ${role}).`,
+            requiredCapabilities: [capabilities[0] ?? `selected_agent_${index + 1}`],
+            dependsOn: [],
           }));
-          const mode = botModeMode;
-          const analyzeObjectives = [
-            {
-              key: 'research',
-              objective:
-                'Rechercher en profondeur les informations, alternatives, sources et concurrents.',
-              requiredCapabilities: ['web_search'],
-              dependsOn: [],
+        } else {
+          const available = new Set(specialists.flatMap((agent) => agent.capabilities));
+          objectives = objectives.filter((objective) =>
+            objective.requiredCapabilities.every((capability) => available.has(capability)),
+          );
+          const retained = new Set(objectives.map((objective) => objective.key));
+          objectives = objectives.map((objective) => ({
+            ...objective,
+            dependsOn: objective.dependsOn.filter((dependency) => retained.has(dependency)),
+          }));
+          const required = new Set(
+            objectives.flatMap((objective) => objective.requiredCapabilities),
+          );
+          specialists.splice(
+            0,
+            specialists.length,
+            ...specialists.filter(({ capabilities }) =>
+              capabilities.some((capability) => required.has(capability)),
+            ),
+          );
+        }
+        if (objectives.length === 0) return null;
+        return {
+          mission: {
+            missionId: `botmode-${clientRequestId}`,
+            taskId: clientRequestId,
+            objective: text,
+            constraints: ['mission_idée: privilégier profondeur et preuves plutôt que rapidité'],
+            requiredCapabilities: [
+              ...new Set(objectives.flatMap((objective) => objective.requiredCapabilities)),
+            ],
+            objectives,
+          },
+          plannerContext: {
+            worker: {
+              id: 'worker',
+              agentId: botModeAgentId,
+              role: 'worker',
+              capabilities: ['basic'],
+              constraints: [],
             },
-            {
-              key: 'analysis',
-              objective: 'Analyser la faisabilité, les risques, les opportunités et les scénarios.',
-              requiredCapabilities: ['analysis'],
-              dependsOn: ['research'],
-            },
-            {
-              key: 'engineering',
-              objective: 'Évaluer l’architecture et tester les éléments techniques pertinents.',
-              requiredCapabilities: ['execute_code'],
-              dependsOn: ['analysis'],
-            },
-            {
-              key: 'documentation',
-              objective: 'Vérifier les documents, données et preuves disponibles.',
-              requiredCapabilities: ['file_search'],
-              dependsOn: ['research'],
-            },
-            {
-              key: 'synthesis',
-              objective:
-                'Produire une synthèse consolidée avec conclusions et pistes de développement.',
-              requiredCapabilities: ['writing'],
-              dependsOn: ['analysis', 'engineering', 'documentation'],
-            },
-          ];
-          const developObjectives = [
-            {
-              key: 'research',
-              objective:
-                'Rechercher les solutions, références et contraintes techniques pertinentes.',
-              requiredCapabilities: ['web_search'],
-              dependsOn: [],
-            },
-            {
-              key: 'analysis',
-              objective: 'Évaluer la faisabilité, les risques, les coûts et les scénarios.',
-              requiredCapabilities: ['analysis'],
-              dependsOn: ['research'],
-            },
-            {
-              key: 'engineering',
-              objective: 'Concevoir et tester le volet technique de la solution.',
-              requiredCapabilities: ['execute_code'],
-              dependsOn: ['analysis'],
-            },
-            {
-              key: 'documentation',
-              objective: 'Rassembler les éléments documentaires et preuves utiles.',
-              requiredCapabilities: ['file_search'],
-              dependsOn: ['research'],
-            },
-            {
-              key: 'synthesis',
-              objective: 'Consolider le plan de développement et les prochaines étapes.',
-              requiredCapabilities: ['writing'],
-              dependsOn: ['engineering', 'documentation'],
-            },
-          ];
-          const watchObjectives = [
-            {
-              key: 'research',
-              objective: 'Effectuer une veille approfondie et recueillir les sources pertinentes.',
-              requiredCapabilities: ['web_search'],
-              dependsOn: [],
-            },
-            {
-              key: 'analysis',
-              objective: 'Analyser les évolutions, signaux, risques et opportunités.',
-              requiredCapabilities: ['analysis'],
-              dependsOn: ['research'],
-            },
-            {
-              key: 'synthesis',
-              objective: 'Synthétiser les résultats de la veille avec des conclusions vérifiables.',
-              requiredCapabilities: ['writing'],
-              dependsOn: ['analysis'],
-            },
-          ];
-          let objectives = analyzeObjectives;
-          if (mode === 'develop') objectives = developObjectives;
-          else if (mode === 'watch') objectives = watchObjectives;
-          if (manualAgentIds != null) {
-            objectives = selectedDefinitions.map(([id, , role, capabilities], index) => ({
-              key: `selected_${index + 1}`,
-              objective: `Exécuter la partie ${index + 1} de la mission avec le spécialiste sélectionné (${id}, ${role}).`,
-              requiredCapabilities: [capabilities[0] ?? `selected_agent_${index + 1}`],
-              dependsOn: [],
-            }));
-          } else {
-            const required = new Set(
-              objectives.flatMap((objective) => objective.requiredCapabilities),
-            );
-            specialists.splice(
-              0,
-              specialists.length,
-              ...specialists.filter(({ capabilities }) =>
-                capabilities.some((capability) => required.has(capability)),
-              ),
-            );
-          }
-          return {
-            mission: {
-              missionId: `botmode-${clientRequestId}`,
-              taskId: clientRequestId,
-              objective: text,
-              constraints: ['mission_idée: privilégier profondeur et preuves plutôt que rapidité'],
-              requiredCapabilities: [
-                ...new Set(objectives.flatMap((objective) => objective.requiredCapabilities)),
-              ],
-              objectives,
-            },
-            plannerContext: {
-              worker: {
-                id: 'worker',
-                agentId: botModeAgentId,
-                role: 'worker',
-                capabilities: ['basic'],
-                constraints: [],
-              },
-              specialists,
-            },
-          };
-        })(),
-      });
+            specialists,
+          },
+        };
+      })();
+      if (orchestratorMission == null) {
+        console.error('BOT MODE mission has no authorized specialist for the requested objectives');
+        return false;
+      }
+      Object.assign(currentMsg, { orchestratorMission });
     }
 
     const submissionFiles = overrideFiles ?? targetParentMessage?.files;
