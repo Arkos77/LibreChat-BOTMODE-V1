@@ -769,6 +769,16 @@ jobs:
           set -euo pipefail
           # Browser runs on this disposable GitHub runner against OCI :3090.
           python3 -m pip install --quiet --break-system-packages playwright==1.56.0
+          BOTMODE_MONGO_PASSWORD=ci-isolated-only POSTGRES_PASSWORD=ci-isolated-only BOTMODE_IMAGE="$BOTMODE_PUBLISHED_IMAGE" BOTMODE_HOST_PORT=3090 docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE_BROWSER_ACL' > /tmp/botmode-ci-authorized-ids.json
+          const mongoose=require('mongoose');
+          (async()=>{
+            await mongoose.connect(process.env.MONGO_URI);
+            const worker=await mongoose.connection.db.collection('agents').findOne({name:'BOT MODE Worker'},{projection:{subagents:1}});
+            if(!worker?.subagents?.enabled || !Array.isArray(worker.subagents.agent_ids) || !worker.subagents.agent_ids.length) throw new Error('WORKER_ACL_UNAVAILABLE');
+            process.stdout.write(JSON.stringify(worker.subagents.agent_ids));
+            await mongoose.disconnect();
+          })().catch(e=>{console.error('CI_BROWSER_ACL_CHECK='+e.name);process.exit(1)});
+          NODE_BROWSER_ACL
           python3 - <<'PY_BROWSER'
           import base64, json, os, shutil
           from pathlib import Path
@@ -800,11 +810,7 @@ jobs:
               selector.wait_for(timeout=30000)
               panel=page.locator('section').filter(has=selector).last
               launch=panel.locator('button').first
-              from urllib.request import Request,urlopen
-              detail_request=Request('http://127.0.0.1:3090/api/agents/'+worker_id,headers={'Authorization':'Bearer '+token,'User-Agent':'Mozilla/5.0'})
-              with urlopen(detail_request,timeout=15) as response:
-                  worker_detail=json.load(response)
-              allowlist=set((worker_detail.get('subagents') or {}).get('agent_ids') or [])
+              allowlist=set(json.loads(Path('/tmp/botmode-ci-authorized-ids.json').read_text()))
               assert child_id in allowlist, 'CI_BROWSER_WORKER_AUTHORIZATION_MISSING'
               manual_name=None
               def launched(mode):
