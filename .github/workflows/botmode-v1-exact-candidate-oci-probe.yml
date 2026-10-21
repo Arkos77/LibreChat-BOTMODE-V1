@@ -830,3 +830,57 @@ jobs:
           POSTGRES_PASSWORD: ci-isolated-only
           BOTMODE_IMAGE: ${{ env.BOTMODE_PUBLISHED_IMAGE }}
         run: sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
+
+  candidate-fresh-lite-install:
+    name: Clean Lite install and API restart, exact candidate OCI
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BOTMODE_CANDIDATE_SHA }}
+          persist-credentials: false
+      - name: Verify pristine checkout and public candidate
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+          test ! -e .env
+          test ! -e .botmode-database-auth-initialized
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          docker pull "$BOTMODE_PUBLISHED_IMAGE"
+          echo 'CI_FRESH_LITE_PUBLIC_IMAGE=PASS'
+      - name: Execute real installer and verify readiness
+        run: |
+          set -euo pipefail
+          ./install.sh --lite --image "$BOTMODE_PUBLISHED_IMAGE" > "$RUNNER_TEMP/ci-lite.log" 2>&1
+          grep -Fxq 'BOTMODE_BOOTSTRAP=PASS' "$RUNNER_TEMP/ci-lite.log"
+          grep -Fxq 'BOTMODE_PROFILE=lite' "$RUNNER_TEMP/ci-lite.log"
+          grep -Fxq 'BOTMODE_IMAGE_PULL=PASS' "$RUNNER_TEMP/ci-lite.log"
+          grep -Fxq 'BOTMODE_STACK=STARTED' "$RUNNER_TEMP/ci-lite.log"
+          test "$(stat -c %a .env)" = 600
+          test -s .botmode-database-auth-initialized
+          grep -Fxq "BOTMODE_IMAGE=$BOTMODE_PUBLISHED_IMAGE" .env
+          echo 'CI_FRESH_LITE_INSTALL=PASS'
+          for attempt in $(seq 1 90); do
+            if curl -fsS --max-time 4 http://127.0.0.1:3080/api/config >/dev/null 2>&1; then
+              echo 'CI_FRESH_LITE_API=PASS'
+              break
+            fi
+            if [ "$attempt" -eq 90 ]; then exit 1; fi
+            sleep 2
+          done
+      - name: Restart without losing installer configuration
+        run: |
+          set -euo pipefail
+          expected=$(sha256sum .env | cut -d' ' -f1)
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml restart api
+          for attempt in $(seq 1 90); do
+            if curl -fsS --max-time 4 http://127.0.0.1:3080/api/config >/dev/null 2>&1; then
+              echo 'CI_FRESH_LITE_RESTART=PASS'
+              break
+            fi
+            if [ "$attempt" -eq 90 ]; then exit 1; fi
+            sleep 2
+          done
+          test "$(sha256sum .env | cut -d' ' -f1)" = "$expected"
+          echo 'CI_FRESH_LITE_CONFIG_PRESERVED=PASS'
