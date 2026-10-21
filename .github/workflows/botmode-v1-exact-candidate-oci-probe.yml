@@ -837,6 +837,15 @@ jobs:
                       except Exception:
                           admissions.append({})
               page.on('request',capture_admission)
+              admission_replies=[]
+              def capture_reply(response):
+                  if response.request.method=='POST' and '/api/agents/chat/agents' in response.url:
+                      try:
+                          data=response.json()
+                          admission_replies.append({'status':response.status,'streamId':data.get('streamId') if isinstance(data,dict) else None})
+                      except Exception:
+                          admission_replies.append({'status':response.status})
+              page.on('response',capture_reply)
               launch.click()
               launched('auto')
               # Require an actual browser-originated backend admission, not
@@ -854,6 +863,17 @@ jobs:
               selected={s.get('agentId') for s in planner.get('specialists',[]) if isinstance(s,dict)}
               assert selected and selected.issubset(allowlist), 'CI_BROWSER_POST_SPECIALIST_ACL_MISMATCH'
               print('CI_BROWSER_REAL_MISSION_POST_AUTHORIZED=PASS',flush=True)
+              # Wait for the actual admission reply from this browser turn.
+              # Never substitute the separate synthetic Oracle mission.
+              deadline=time.monotonic()+40
+              admitted=None
+              while time.monotonic()<deadline and admitted is None:
+                  page.wait_for_timeout(500)
+                  if admission_replies:
+                      admitted=admission_replies[0]
+              assert admitted and admitted.get('status')==200 and admitted.get('streamId'), 'CI_BROWSER_REAL_MISSION_NOT_ADMITTED'
+              Path('/tmp/botmode-ci-browser-stream-id').write_text(admitted['streamId'])
+              print('CI_BROWSER_REAL_MISSION_ADMITTED=PASS',flush=True)
               page.close()
               context.close()
               context=browser.new_context(base_url='http://127.0.0.1:3090')
