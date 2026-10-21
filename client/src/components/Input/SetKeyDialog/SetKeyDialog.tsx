@@ -205,7 +205,8 @@ const SetKeyDialog = ({
 
   const expirationOptions = Object.values(EXPIRY);
   const configuredEndpoint = endpointType ?? endpoint;
-  const portal = providerKeyPortals[configuredEndpoint.toLowerCase()] ??
+  const portal =
+    providerKeyPortals[configuredEndpoint.toLowerCase()] ??
     providerKeyPortals[configuredEndpoint] ??
     providerKeyPortals[endpoint.toLowerCase()] ??
     providerKeyPortals[endpoint];
@@ -399,9 +400,11 @@ const SetKeyDialog = ({
           {portal && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-medium bg-surface-secondary p-3">
               <div>
-                <p className="text-sm font-medium">Vous n'avez pas encore de clé API ?</p>
+                <p className="text-sm font-medium">
+                  {localize('com_endpoint_config_key_portal_prompt')}
+                </p>
                 <p className="text-xs text-text-secondary">
-                  Ouvrez le portail officiel de {portal.name}. Aucune clé n'est transmise par ce lien.
+                  {localize('com_endpoint_config_key_portal_help', { 0: portal.name })}
                 </p>
               </div>
               <a
@@ -410,7 +413,10 @@ const SetKeyDialog = ({
                 rel="noopener noreferrer"
                 className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
               >
-                {currentExpiryLabel ? 'Renouveler la clé' : 'Créer une clé API'} {portal.name} ↗
+                {currentExpiryLabel
+                  ? localize('com_endpoint_config_key_portal_renew')
+                  : localize('com_endpoint_config_key_portal_create')}{' '}
+                {portal.name} ↗
               </a>
             </div>
           )}
