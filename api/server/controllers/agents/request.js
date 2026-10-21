@@ -43,6 +43,10 @@ const {
   resolveRequestTenantId,
   deterministicPlanner,
 } = require('@librechat/api');
+const {
+  authorizeOrchestratorMissionBindings,
+  assertAuthorizedOrchestratorTasks,
+} = require('./orchestratorMissionBindings');
 const { disposeClient } = require('~/server/cleanup');
 const { observeMtoEvent } = require('~/server/services/Endpoints/agents/mtoObservation');
 const {
@@ -1817,36 +1821,26 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         throw new Error('Orchestrator worker must match the authorized primary agent');
       }
 
-      const authorizedAgentIds = new Set([
+      // Resolve native subagent delegation through the authenticated, initialized
+      // runtime graph. The legacy agentConfigs map alone omits native children.
+      // Never trust agent IDs supplied by the mission request as grants.
+      const reachableAgents =
+        typeof client.getReachableMissionAgents === 'function'
+          ? client.getReachableMissionAgents()
+          : [client.options.agent, ...(client.agentConfigs?.values?.() ?? [])];
+      const authorizedAgentIds = authorizeOrchestratorMissionBindings({
         primaryAgentId,
-        ...(client?.agentConfigs?.keys?.() ?? []),
-      ]);
-      for (const specialist of plannerContext.specialists) {
-        if (
-          specialist == null ||
-          typeof specialist.agentId !== 'string' ||
-          !authorizedAgentIds.has(specialist.agentId)
-        ) {
-          throw new Error('Orchestrator specialist is not an authorized agent binding');
-        }
-      }
-
+        reachableAgents,
+        specialists: plannerContext.specialists,
+      });
       const orchestratorPlan = deterministicPlanner.planMission(mission, plannerContext);
-      for (const task of orchestratorPlan.tasks) {
-        if (!authorizedAgentIds.has(task.agentId)) {
-          throw new Error('Orchestrator plan selected an unauthorized agent binding');
-        }
-      }
+      assertAuthorizedOrchestratorTasks(orchestratorPlan.tasks, authorizedAgentIds);
 
       // Record original effective agent capability provenance in the SAME
       // epoch-scoped Redis write as the immutable plan, before models/tools
       // begin. The digest is not a grant or replay receipt. In particular,
       // delegation, code/file tools and host evidence paths must still acquire
       // real effect receipts before a recovered provider can execute them.
-      const reachableAgents =
-        typeof client.getReachableMissionAgents === 'function'
-          ? client.getReachableMissionAgents()
-          : [client.options.agent, ...(client.agentConfigs?.values?.() ?? [])];
       const nativeMissionCapabilityAttestation = createNativeMissionCapabilityAttestation({
         plan: orchestratorPlan,
         agents: reachableAgents,
