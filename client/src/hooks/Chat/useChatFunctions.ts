@@ -747,17 +747,13 @@ export default function useChatFunctions({
             const required = new Set(
               objectives.flatMap((objective) => objective.requiredCapabilities),
             );
-            const specialists = specialistDefinitions
-              .filter(([, , , capabilities]) =>
+            specialists.splice(
+              0,
+              specialists.length,
+              ...specialists.filter(({ capabilities }) =>
                 capabilities.some((capability) => required.has(capability)),
-              )
-              .map(([id, agentId, role, capabilities]) => ({
-                id,
-                agentId,
-                role,
-                capabilities,
-                constraints: [],
-              }));
+              ),
+            );
           }
           return {
             mission: {

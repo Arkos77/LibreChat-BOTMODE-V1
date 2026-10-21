@@ -369,7 +369,7 @@ export default function BotModeProjectPanel({
             aria-label="Sélection des agents BOT MODE"
           >
             <div className="text-sm font-semibold text-text-primary">
-              Comment choisir les spécialistes ?
+              {localize('com_ui_bot_mode_agents_choose_title')}
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               <button
@@ -380,7 +380,7 @@ export default function BotModeProjectPanel({
               >
                 <strong>{localize('com_ui_bot_mode_agents_auto')}</strong>
                 <span className="mt-1 block text-xs text-text-secondary">
-                  Le Worker choisit les agents autorisés selon la mission.
+                  {localize('com_ui_bot_mode_agents_auto_description')}
                 </span>
               </button>
               <button
@@ -391,7 +391,7 @@ export default function BotModeProjectPanel({
               >
                 <strong>{localize('com_ui_bot_mode_agents_manual')}</strong>
                 <span className="mt-1 block text-xs text-text-secondary">
-                  Sélectionner un ou plusieurs spécialistes existants.
+                  {localize('com_ui_bot_mode_agents_manual_description')}
                 </span>
               </button>
             </div>
@@ -418,7 +418,7 @@ export default function BotModeProjectPanel({
                 ))}
                 {specialists.length === 0 && (
                   <p className="text-sm text-text-secondary">
-                    Aucun spécialiste autorisé dans la configuration du Worker.
+                    {localize('com_ui_bot_mode_agents_none_authorized')}
                   </p>
                 )}
               </div>
@@ -427,10 +427,7 @@ export default function BotModeProjectPanel({
               <summary className="cursor-pointer">
                 {localize('com_ui_bot_mode_agents_advanced')}
               </summary>
-              <p className="mt-2">
-                Les autorisations de délégation et la validation Oracle restent contrôlées par BOT
-                MODE.
-              </p>
+              <p className="mt-2">{localize('com_ui_bot_mode_agents_security_description')}</p>
             </details>
           </div>
           <div className="mt-5 grid grid-cols-6 gap-1.5" aria-label="Mission progress">

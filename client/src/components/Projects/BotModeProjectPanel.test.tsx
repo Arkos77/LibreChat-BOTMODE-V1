@@ -262,7 +262,7 @@ describe('BotModeProjectPanel', () => {
       },
     });
     render(<BotModeProjectPanel projectId="project-a" conversations={[conversationA]} />);
-    fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_agents_manual' }));
+    fireEvent.click(screen.getByRole('button', { name: /com_ui_bot_mode_agents_manual/ }));
     expect(screen.getByText('RECHERCHE')).toBeInTheDocument();
     expect(screen.queryByText('AUTRE')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox'));
@@ -284,7 +284,7 @@ describe('BotModeProjectPanel', () => {
       },
     });
     render(<BotModeProjectPanel projectId="project-a" conversations={[conversationA]} />);
-    fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_agents_manual' }));
+    fireEvent.click(screen.getByRole('button', { name: /com_ui_bot_mode_agents_manual/ }));
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' })).toBeDisabled();
   });
