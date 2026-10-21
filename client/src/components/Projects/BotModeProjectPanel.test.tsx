@@ -289,12 +289,14 @@ describe('BotModeProjectPanel', () => {
     expect(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' })).toBeDisabled();
   });
 
-  it('blocks launch when the Worker is missing', () => {
+  it('offers Worker initialization rather than launching an unrelated agent', () => {
     mockUseListAgentsQuery.mockReturnValue({
       data: { data: [{ id: 'agent-research', name: 'RECHERCHE' }] },
     });
     render(<BotModeProjectPanel projectId="project-a" conversations={[conversationA]} />);
-    expect(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'com_ui_bot_mode_project_launch' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Initialiser BOT MODE' })).toBeEnabled();
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
   it('shows the durable SETTLED state when terminal evidence is present', () => {
     mockUseBotModeProjectProjectionQuery.mockReturnValue({
