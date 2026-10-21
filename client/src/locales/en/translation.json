@@ -2657,5 +2657,9 @@
   "com_ui_bot_mode_routing_hint": "Observed models, latency, cost and fallbacks.",
   "com_ui_bot_mode_routing_fallback": "fallback",
   "com_ui_bot_mode_routing_empty": "No routing receipt is available for this project yet.",
-  "com_ui_bot_mode_routing_latency_unit": "ms"
+  "com_ui_bot_mode_routing_latency_unit": "ms",
+  "com_endpoint_config_key_portal_prompt": "Need an API key?",
+  "com_endpoint_config_key_portal_help": "Open the official {{0}} portal. This link never transmits your key.",
+  "com_endpoint_config_key_portal_renew": "Renew key",
+  "com_endpoint_config_key_portal_create": "Create API key"
 }
