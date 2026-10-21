@@ -97,7 +97,7 @@ jobs:
           import subprocess
           baseline='087c9693c55357aff3d6f931aba400e62d174914'
           changed=set(subprocess.check_output(['git','diff','--name-only',baseline,'HEAD'],text=True).splitlines())
-          assert changed=={'.github/workflows/botmode-v1-exact-candidate-oci-probe.yml'}, 'CI_CANDIDATE_RUNTIME_SOURCE_DRIFT_NOT_ALLOWED'
+          assert changed=={'.github/workflows/botmode-v1-exact-candidate-oci-probe.yml','.github/workflows/botmode-v1-ghcr-subagent-oracle-probe.yml'}, 'CI_CANDIDATE_RUNTIME_SOURCE_DRIFT_NOT_ALLOWED'
           print('CI_CANDIDATE_RUNTIME_SOURCE_UNMODIFIED=PASS')
           PY_PIN
       - name: Pull exact public OCI image without GHCR credentials
