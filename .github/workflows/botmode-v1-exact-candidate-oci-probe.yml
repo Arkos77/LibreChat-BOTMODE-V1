@@ -901,6 +901,35 @@ jobs:
               print('CI_BROWSER_REAL_OCI_PROJECT_AGENT_MODES=PASS',flush=True)
               browser.close()
           PY_BROWSER
+          # The browser's actual stream must itself reach durable Oracle VERIFIED.
+          # This does not reuse the earlier standalone oracle gate's stream ID.
+          python3 - <<'PY_BROWSER_ORACLE'
+          import json,subprocess,time
+          from pathlib import Path
+          sid=Path('/tmp/botmode-ci-browser-stream-id').read_text().strip()
+          assert sid, 'CI_BROWSER_STREAM_ID_MISSING'
+          compose=['docker','compose','-f','docker-compose.botmode.yml','-f','docker-compose.botmode-lite.yml']
+          key='::stream:{'+sid+'}:job'
+          deadline=time.monotonic()+95
+          verified=False
+          while time.monotonic()<deadline:
+              proc=subprocess.run(compose+['exec','-T','redis','redis-cli','--raw','HMGET',key,'orchestratorPlan','missionOracleState'],capture_output=True,text=True,timeout=15)
+              if proc.returncode==0:
+                  lines=proc.stdout.splitlines()
+                  if len(lines)>=2 and lines[0].strip() and lines[1].strip():
+                      try:
+                          plan,state=json.loads(lines[0]),json.loads(lines[1])
+                          results=state.get('results',{})
+                          verdicts=[v.get('status') for outcome in results.values() for v in outcome.get('verdicts',[]) if isinstance(v,dict)]
+                          if 'VERIFIED' in verdicts and bool(plan.get('tasks')):
+                              verified=True
+                              break
+                      except (ValueError,TypeError,AttributeError):
+                          pass
+              time.sleep(2)
+          assert verified,'CI_BROWSER_MISSION_OWN_ORACLE_VERDICT_NOT_PROVEN'
+          print('CI_BROWSER_MISSION_SAME_STREAM_ORACLE_VERIFIED=PASS',flush=True)
+          PY_BROWSER_ORACLE
 
           echo '### Release-fix branch Oracle/QA E2E (local synthetic provider)' >> "$GITHUB_STEP_SUMMARY"
           echo 'Published immutable OCI digest tested with local synthetic subagent model; no real-provider inference.' >> "$GITHUB_STEP_SUMMARY"
