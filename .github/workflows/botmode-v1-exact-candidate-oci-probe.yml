@@ -763,6 +763,47 @@ jobs:
           cp scripts/botmode/ci-oracle-delegated-mission-gate.py /tmp/botmode-ci-oracle-publication-gate.py
           python3 /tmp/botmode-ci-oracle-publication-gate.py
           echo 'BOTMODE_CURRENT_IMAGE_SUBAGENT_ORACLE_PROBE=PASS'
+      - name: Browser acceptance — actual candidate UI and agent selector
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Browser runs on this disposable GitHub runner against OCI :3090.
+          python3 -m pip install --quiet --break-system-packages playwright==1.56.0
+          python3 - <<'PY_BROWSER'
+          import base64, json, os, shutil
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright
+          token=Path('/tmp/botmode-e2e-test-token').read_text().strip()
+          payload=token.split('.')[1]
+          identity=json.loads(base64.urlsafe_b64decode(payload+'='*(-len(payload)%4)))
+          user={'id':identity['id'],'_id':identity['id'],'name':'BOT MODE CI Agent','username':'botmode-ci-agent','email':'botmode-ci-agent@example.invalid','role':'ADMIN','provider':'local'}
+          browser_exe=shutil.which('google-chrome') or shutil.which('chromium') or shutil.which('chromium-browser')
+          if not browser_exe:
+              raise SystemExit('CI_BROWSER_CHROME_UNAVAILABLE')
+          with sync_playwright() as p:
+              browser=p.chromium.launch(headless=True,executable_path=browser_exe,args=['--no-sandbox'])
+              context=browser.new_context(base_url='http://127.0.0.1:3090')
+              page=context.new_page()
+              def refresh(route):
+                  route.fulfill(status=200,content_type='application/json',body=json.dumps({'token':token,'user':user}))
+              page.route('**/api/auth/refresh*',refresh)
+              page.goto('/projects',wait_until='domcontentloaded',timeout=30000)
+              page.get_by_role('button',name='New project').first.click(timeout=30000)
+              dialog=page.get_by_role('dialog')
+              dialog.get_by_role('textbox',name='Project name').fill('CI BOT MODE Browser Acceptance')
+              dialog.get_by_role('button',name='Create project').click()
+              selector=page.locator('[aria-label="Sélection des agents BOT MODE"]')
+              selector.wait_for(timeout=30000)
+              automatic=selector.locator('button[aria-pressed="true"]')
+              if automatic.count()!=1:
+                  raise SystemExit('CI_BROWSER_AUTO_SELECTOR_MISSING')
+              selector.locator('button[aria-pressed="false"]').first.click()
+              if selector.locator('button[aria-pressed="true"]').count()!=1:
+                  raise SystemExit('CI_BROWSER_MANUAL_SELECTOR_MISSING')
+              print('CI_BROWSER_REAL_OCI_PROJECT_AGENT_MODES=PASS',flush=True)
+              browser.close()
+          PY_BROWSER
+
           echo '### Release-fix branch Oracle/QA E2E (local synthetic provider)' >> "$GITHUB_STEP_SUMMARY"
           echo 'Published immutable OCI digest tested with local synthetic subagent model; no real-provider inference.' >> "$GITHUB_STEP_SUMMARY"
       - name: Optional real OpenRouter free-only delegated child and Oracle
