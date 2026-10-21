@@ -424,7 +424,9 @@ export default function BotModeProjectPanel({
               </div>
             )}
             <details className="text-sm text-text-secondary">
-              <summary className="cursor-pointer">{localize('com_ui_bot_mode_agents_advanced')}</summary>
+              <summary className="cursor-pointer">
+                {localize('com_ui_bot_mode_agents_advanced')}
+              </summary>
               <p className="mt-2">
                 Les autorisations de délégation et la validation Oracle restent contrôlées par BOT
                 MODE.
