@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { v4 } from 'uuid';
 import { Button } from '@librechat/client';
 import { useNavigate } from 'react-router-dom';
@@ -6,6 +7,7 @@ import type { ParentSubagentSummary, TConversation } from 'librechat-data-provid
 import {
   useBotModeProjectProjectionQuery,
   useListAgentsQuery,
+  useGetAgentByIdQuery,
   useParentSubagentsQuery,
   useSubagentControlMutation,
 } from '~/data-provider';
@@ -117,6 +119,8 @@ export default function BotModeProjectPanel({
   const localize = useLocalize();
   const navigate = useNavigate();
   const { data: agents } = useListAgentsQuery();
+  const [agentMode, setAgentMode] = useState<'auto' | 'manual'>('auto');
+  const [chosenAgentIds, setChosenAgentIds] = useState<string[]>([]);
   const {
     data: projection,
     isLoading: isProjectionLoading,
@@ -171,19 +175,30 @@ export default function BotModeProjectPanel({
     if (verifiedObservations.length > 0) return 'verified';
     return 'running';
   })();
-  const primaryAgent = agents?.data?.[0];
+  // Never launch a BOT MODE mission against an arbitrary agent from the list.
+  const primaryAgent = agents?.data?.find(
+    (agent) => agent.name === 'BOT MODE Worker' || agent.metadata?.botmode === true,
+  );
+
+  const { data: workerDetails } = useGetAgentByIdQuery(primaryAgent?.id);
+  const authorizedIds = new Set(workerDetails?.subagents?.enabled === true ? workerDetails.subagents.agent_ids ?? [] : []);
+  const specialists = (agents?.data ?? []).filter(
+    (agent) => agent.id && agent.id !== primaryAgent?.id && authorizedIds.has(agent.id),
+  );
+  const selectedSpecialists = specialists.filter((agent) => chosenAgentIds.includes(agent.id));
 
   const launchMission = () => {
-    if (!primaryAgent?.id) {
+    if (!primaryAgent?.id || (agentMode === 'manual' && selectedSpecialists.length === 0)) {
       return;
     }
     const params = new URLSearchParams({
       projectId,
       agent_id: primaryAgent.id,
-      prompt: 'Lance une mission BOT MODE et produis un résultat vérifiable.',
+      prompt: `Lance une mission BOT MODE et produis un résultat vérifiable. ${agentMode === 'auto' ? 'Choisis les spécialistes existants autorisés en fonction de la mission.' : `Privilégie uniquement ces spécialistes déclarés dans la configuration du Worker (nom et identifiant) : ${selectedSpecialists.map((agent) => `${agent.name} [${agent.id}]`).join(', ')}.`} Respecte toutes les autorisations de délégation ; ne contourne aucun refus.`,
       submit: 'true',
       botmode: '1',
       botmode_mode: 'analyze',
+      ...(agentMode === 'manual' ? { botmode_agent_ids: selectedSpecialists.map((agent) => agent.id).join(',') } : {}),
     });
     navigate(`/c/new?${params.toString()}`);
   };
@@ -237,11 +252,39 @@ export default function BotModeProjectPanel({
                 })}
               </p>
             </div>
-            <Button type="button" size="sm" disabled={!primaryAgent?.id} onClick={launchMission}>
+            <Button type="button" size="sm" disabled={!primaryAgent?.id || (agentMode === 'manual' && selectedSpecialists.length === 0)} onClick={launchMission}>
               {localize('com_ui_bot_mode_project_launch')}
             </Button>
           </div>
 
+          <div className="mt-4 space-y-3 rounded-xl border border-border-light p-3" aria-label="Sélection des agents BOT MODE">
+            <div className="text-sm font-semibold text-text-primary">Comment choisir les spécialistes ?</div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button type="button" aria-pressed={agentMode === 'auto'} onClick={() => setAgentMode('auto')}
+                className={`rounded-lg border p-3 text-left text-sm ${agentMode === 'auto' ? 'border-blue-500 bg-blue-500/10' : 'border-border-light'}`}>
+                <strong>Automatique</strong><span className="mt-1 block text-xs text-text-secondary">Le Worker choisit les agents autorisés selon la mission.</span>
+              </button>
+              <button type="button" aria-pressed={agentMode === 'manual'} onClick={() => setAgentMode('manual')}
+                className={`rounded-lg border p-3 text-left text-sm ${agentMode === 'manual' ? 'border-blue-500 bg-blue-500/10' : 'border-border-light'}`}>
+                <strong>Choisir mes agents</strong><span className="mt-1 block text-xs text-text-secondary">Sélectionner un ou plusieurs spécialistes existants.</span>
+              </button>
+            </div>
+            {agentMode === 'manual' && (
+              <div className="grid gap-2 sm:grid-cols-2" aria-label="Spécialistes disponibles">
+                {specialists.map((agent) => (
+                  <label key={agent.id} className="flex cursor-pointer items-center gap-2 rounded-lg border border-border-light p-3 text-sm">
+                    <input type="checkbox" checked={chosenAgentIds.includes(agent.id)}
+                      onChange={(event) => setChosenAgentIds((ids) => event.target.checked ? [...ids, agent.id] : ids.filter((id) => id !== agent.id))} />
+                    <span className="truncate">{agent.name}</span>
+                  </label>
+                ))}
+                {specialists.length === 0 && <p className="text-sm text-text-secondary">Aucun spécialiste autorisé dans la configuration du Worker.</p>}
+              </div>
+            )}
+            <details className="text-sm text-text-secondary"><summary className="cursor-pointer">Options avancées</summary>
+              <p className="mt-2">Les autorisations de délégation et la validation Oracle restent contrôlées par BOT MODE.</p>
+            </details>
+          </div>
           <div className="mt-5 grid grid-cols-6 gap-1.5" aria-label="Mission progress">
             {MTO_STEPS.map((step, index) => {
               const isComplete = index < progressStep;

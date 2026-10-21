@@ -566,7 +566,17 @@ export default function useChatFunctions({
             ['DOCUMENTS', 'botmode-documents', 'documents', ['file_search']],
             ['RÉDACTION', 'botmode-r-daction', 'writing', ['writing']],
           ];
-          const specialists = specialistDefinitions.map(([id, agentId, role, capabilities]) => ({
+          const requestedAgentIds = searchParams.get('botmode_agent_ids');
+          const manualAgentIds = requestedAgentIds == null
+            ? null
+            : [...new Set(requestedAgentIds.split(',').map((id) => id.trim()).filter(Boolean))];
+          const selectedDefinitions: Array<[string, string, string, string[]]> = manualAgentIds == null
+            ? specialistDefinitions
+            : manualAgentIds.map((agentId, index) => {
+                const known = specialistDefinitions.find((definition) => definition[1] === agentId);
+                return [`MANUAL_${index + 1}`, agentId, known?.[2] ?? 'specialist', [`selected_agent_${index + 1}`]];
+              });
+          const specialists = selectedDefinitions.map(([id, agentId, role, capabilities]) => ({
             id,
             agentId,
             role,
@@ -664,6 +674,14 @@ export default function useChatFunctions({
           let objectives = analyzeObjectives;
           if (mode === 'develop') objectives = developObjectives;
           else if (mode === 'watch') objectives = watchObjectives;
+          if (manualAgentIds != null) {
+            objectives = selectedDefinitions.map(([id, , role, capabilities], index) => ({
+              key: `selected_${index + 1}`,
+              objective: `Exécuter la partie ${index + 1} de la mission avec le spécialiste sélectionné (${id}, ${role}).`,
+              requiredCapabilities: [capabilities[0] ?? `selected_agent_${index + 1}`],
+              dependsOn: [],
+            }));
+          }
           return {
             mission: {
               missionId: `botmode-${clientRequestId}`,
