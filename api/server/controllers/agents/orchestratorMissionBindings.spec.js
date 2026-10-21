@@ -18,33 +18,50 @@ describe('orchestrator mission authorized initialized bindings', () => {
   });
 
   it('rejects an unauthorized specialist even if provided in the request', () => {
-    expect(() => authorizeOrchestratorMissionBindings({
-      primaryAgentId: worker.id,
-      reachableAgents: [worker, research],
-      specialists: [{ agentId: 'forged-agent' }],
-    })).toThrow('Orchestrator specialist is not an authorized agent binding');
+    expect(() =>
+      authorizeOrchestratorMissionBindings({
+        primaryAgentId: worker.id,
+        reachableAgents: [worker, research],
+        specialists: [{ agentId: 'forged-agent' }],
+      }),
+    ).toThrow('Orchestrator specialist is not an authorized agent binding');
   });
 
   it('rejects a planner task referencing an unauthorized agent', () => {
     const ids = authorizeOrchestratorMissionBindings({
-      primaryAgentId: worker.id, reachableAgents: [worker, research], specialists: [],
+      primaryAgentId: worker.id,
+      reachableAgents: [worker, research],
+      specialists: [],
     });
-    expect(() => assertAuthorizedOrchestratorTasks([{ agentId: 'forged-agent' }], ids))
-      .toThrow('Orchestrator plan selected an unauthorized agent binding');
+    expect(() => assertAuthorizedOrchestratorTasks([{ agentId: 'forged-agent' }], ids)).toThrow(
+      'Orchestrator plan selected an unauthorized agent binding',
+    );
   });
 
   it('fails closed if the primary agent is not in the initialized graph', () => {
-    expect(() => authorizeOrchestratorMissionBindings({
-      primaryAgentId: 'worker', reachableAgents: [research], specialists: [],
-    })).toThrow('Orchestrator primary agent is not an initialized binding');
+    expect(() =>
+      authorizeOrchestratorMissionBindings({
+        primaryAgentId: 'worker',
+        reachableAgents: [research],
+        specialists: [],
+      }),
+    ).toThrow('Orchestrator primary agent is not an initialized binding');
   });
 
   it('fails closed on missing graph or malformed specialist', () => {
-    expect(() => authorizeOrchestratorMissionBindings({
-      primaryAgentId: 'worker', reachableAgents: null, specialists: [],
-    })).toThrow();
-    expect(() => authorizeOrchestratorMissionBindings({
-      primaryAgentId: 'worker', reachableAgents: [worker], specialists: [{ agentId: null }],
-    })).toThrow('Orchestrator specialist is not an authorized agent binding');
+    expect(() =>
+      authorizeOrchestratorMissionBindings({
+        primaryAgentId: 'worker',
+        reachableAgents: null,
+        specialists: [],
+      }),
+    ).toThrow();
+    expect(() =>
+      authorizeOrchestratorMissionBindings({
+        primaryAgentId: 'worker',
+        reachableAgents: [worker],
+        specialists: [{ agentId: null }],
+      }),
+    ).toThrow('Orchestrator specialist is not an authorized agent binding');
   });
 });
