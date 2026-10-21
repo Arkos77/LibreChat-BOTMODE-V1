@@ -792,14 +792,38 @@ jobs:
               dialog=page.get_by_role('dialog')
               dialog.get_by_role('textbox',name='Project name').fill('CI BOT MODE Browser Acceptance')
               dialog.get_by_role('button',name='Create project').click()
+              from urllib.parse import urlparse,parse_qs
+              project_url=page.url
+              child_id=Path('/tmp/botmode-ci-child-id').read_text().strip()
+              worker_id=Path('/tmp/botmode-ci-worker-id').read_text().strip()
               selector=page.locator('[aria-label="Sélection des agents BOT MODE"]')
               selector.wait_for(timeout=30000)
-              automatic=selector.locator('button[aria-pressed="true"]')
-              if automatic.count()!=1:
-                  raise SystemExit('CI_BROWSER_AUTO_SELECTOR_MISSING')
+              panel=page.locator('section').filter(has=selector).last
+              launch=panel.locator('button').first
+              def launched(mode):
+                  page.wait_for_url('**/c/new?*',timeout=15000)
+                  params=parse_qs(urlparse(page.url).query)
+                  assert params.get('botmode_agent_mode')==[mode], 'CI_BROWSER_MODE_NOT_ROUTED'
+                  assert params.get('agent_id')==[worker_id], 'CI_BROWSER_WORKER_NOT_ROUTED'
+                  bindings=json.loads(params.get('botmode_agent_bindings',['[]'])[0])
+                  ids=[a.get('id') for a in bindings]
+                  assert child_id in ids, 'CI_BROWSER_AUTHORIZED_SPECIALIST_ID_NOT_ROUTED'
+                  assert len(ids)==len(set(ids)), 'CI_BROWSER_DUPLICATE_SPECIALIST_IDS'
+                  print('CI_BROWSER_'+mode.upper()+'_AUTHORIZED_IDS_ROUTED=PASS',flush=True)
+              assert selector.locator('button[aria-pressed="true"]').count()==1
+              launch.click()
+              launched('auto')
+              page.goto(project_url,wait_until='domcontentloaded')
+              selector=page.locator('[aria-label="Sélection des agents BOT MODE"]')
+              selector.wait_for(timeout=30000)
               selector.locator('button[aria-pressed="false"]').first.click()
-              if selector.locator('button[aria-pressed="true"]').count()!=1:
-                  raise SystemExit('CI_BROWSER_MANUAL_SELECTOR_MISSING')
+              checkbox=selector.locator('input[type="checkbox"]').first
+              checkbox.wait_for(timeout=15000)
+              checkbox.check()
+              launch=page.locator('section').filter(has=selector).last.locator('button').first
+              assert launch.is_enabled(), 'CI_BROWSER_MANUAL_LAUNCH_DISABLED'
+              launch.click()
+              launched('manual')
               print('CI_BROWSER_REAL_OCI_PROJECT_AGENT_MODES=PASS',flush=True)
               browser.close()
           PY_BROWSER
