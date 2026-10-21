@@ -667,6 +667,16 @@ jobs:
           a2='                fail("ACCEPT_MODEL_TOOL_MISSING")'
           assert source.count(a2)==1
           source=source.replace(a2, '                print("CI_STRICT_NATIVE_TOOL_MISSING_COUNT="+str(delta), flush=True)')
+          # Identify exact planned-step event fields without exposing prompts,
+          # outputs or model content. Native subagent-only SSE is not sufficient
+          # evidence for SDK-orchestrated specialist nodes.
+          target='        updates = [e.get("data") for e in events'
+          assert source.count(target)==1
+          inspection=('        step_events = [e for e in events if e.get("event") in ("on_run_step", "on_run_step_closed")]\n'
+                      '        print("CI_STRICT_PLAN_STEP_EVENT_COUNT="+str(len(step_events)),flush=True)\n'
+                      '        print("CI_STRICT_PLAN_STEP_EVENT_KEYS="+",".join(sorted({k for e in step_events for k in e if k not in ("data", "responseMessage")}))[:160],flush=True)\n'
+                      '        print("CI_STRICT_PLAN_STEP_DATA_KEYS="+",".join(sorted({k for e in step_events for k in (e.get("data") or {}) if isinstance(e.get("data"),dict)}))[:160],flush=True)\n')
+          source=source.replace(target,inspection+target)
           # The SSE event-kind diagnostic must precede the strict correlation gate.
           event_line='        print("CI_ORACLE_ACCEPT_EVENT_TYPES="'
           assert source.count(event_line)==1
