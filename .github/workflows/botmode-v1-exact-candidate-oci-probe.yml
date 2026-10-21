@@ -800,6 +800,13 @@ jobs:
               selector.wait_for(timeout=30000)
               panel=page.locator('section').filter(has=selector).last
               launch=panel.locator('button').first
+              from urllib.request import Request,urlopen
+              detail_request=Request('http://127.0.0.1:3090/api/agents/'+worker_id,headers={'Authorization':'Bearer '+token,'User-Agent':'Mozilla/5.0'})
+              with urlopen(detail_request,timeout=15) as response:
+                  worker_detail=json.load(response)
+              allowlist=set((worker_detail.get('subagents') or {}).get('agent_ids') or [])
+              assert child_id in allowlist, 'CI_BROWSER_WORKER_AUTHORIZATION_MISSING'
+              manual_name=None
               def launched(mode):
                   page.wait_for_url('**/c/new?*',timeout=15000)
                   params=parse_qs(urlparse(page.url).query)
@@ -807,7 +814,11 @@ jobs:
                   assert params.get('agent_id')==[worker_id], 'CI_BROWSER_WORKER_NOT_ROUTED'
                   bindings=json.loads(params.get('botmode_agent_bindings',['[]'])[0])
                   ids=[a.get('id') for a in bindings]
-                  assert child_id in ids, 'CI_BROWSER_AUTHORIZED_SPECIALIST_ID_NOT_ROUTED'
+                  assert ids and set(ids).issubset(allowlist), 'CI_BROWSER_UNAUTHORIZED_SPECIALIST_ID_ROUTED'
+                  if mode=='auto':
+                      assert child_id in ids, 'CI_BROWSER_AUTO_SPECIALIST_MISSING'
+                  else:
+                      assert len(bindings)==1 and bindings[0].get('name')==manual_name, 'CI_BROWSER_MANUAL_CHOICE_NOT_ROUTED'
                   assert len(ids)==len(set(ids)), 'CI_BROWSER_DUPLICATE_SPECIALIST_IDS'
                   print('CI_BROWSER_'+mode.upper()+'_AUTHORIZED_IDS_ROUTED=PASS',flush=True)
               assert selector.locator('button[aria-pressed="true"]').count()==1
@@ -831,6 +842,7 @@ jobs:
               selector.locator('button[aria-pressed="false"]').first.click()
               checkbox=selector.locator('input[type="checkbox"]').first
               checkbox.wait_for(timeout=15000)
+              manual_name=checkbox.locator('xpath=..').inner_text().strip()
               checkbox.check()
               launch=page.locator('section').filter(has=selector).last.locator('button').first
               assert launch.is_enabled(), 'CI_BROWSER_MANUAL_LAUNCH_DISABLED'
