@@ -713,6 +713,13 @@ jobs:
                       '            fail("STRICT_SPECIALIST_PLAN_BINDING_MISMATCH")\n'
                       '        print("CI_STRICT_SELECTED_SPECIALIST_DURABLE_PLAN=PASS", flush=True)\n')
           source=source.replace(plan_anchor,plan_check+plan_anchor)
+          # Planned SINGLE tasks do not create subagent tool-thread records.
+          # Their durable plan, correlated run steps and Oracle verdict were
+          # required above. The archival native-tool test below separately
+          # asserts child Mongo lineage across a real API restart.
+          native_restart='    verify_lineage_across_api_restart(accepted_conversation_id)'
+          assert source.count(native_restart)==1
+          source=source.replace(native_restart,'    print("CI_PLANNED_DIRECT_GRAPH_DURABLE_ORACLE=PASS", flush=True)')
           # The SSE event-kind diagnostic must precede the strict correlation gate.
           event_line='        print("CI_ORACLE_ACCEPT_EVENT_TYPES="'
           assert source.count(event_line)==1
@@ -751,7 +758,7 @@ jobs:
           # Execute strict acceptance FIRST on fresh services: do not confuse
           # subagent admission with readiness after a deliberately forced restart.
           python3 /tmp/botmode-ci-oracle-publication-gate.py
-          echo 'BOTMODE_STRICT_CHILD_SSE_AND_ORACLE_E2E=PASS'
+          echo 'BOTMODE_PLANNED_SPECIALIST_ORACLE_E2E=PASS'
           # Run the archival restart/durability regression independently.
           cp scripts/botmode/ci-oracle-delegated-mission-gate.py /tmp/botmode-ci-oracle-publication-gate.py
           python3 /tmp/botmode-ci-oracle-publication-gate.py
