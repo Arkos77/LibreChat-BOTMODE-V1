@@ -612,32 +612,43 @@ export default function useChatFunctions({
             ['DOCUMENTS', 'botmode-documents', 'documents', ['file_search']],
             ['RÉDACTION', 'botmode-r-daction', 'writing', ['writing']],
           ];
-          const requestedAgentIds = searchParams.get('botmode_agent_ids');
-          const manualAgentIds =
-            requestedAgentIds == null
-              ? null
-              : [
-                  ...new Set(
-                    requestedAgentIds
-                      .split(',')
-                      .map((id) => id.trim())
-                      .filter(Boolean),
-                  ),
-                ];
+          const rawBindings = searchParams.get('botmode_agent_bindings');
+          const selectionMode = searchParams.get('botmode_agent_mode');
+          let boundAgents: Array<{ id: string; name: string }> = [];
+          try {
+            const parsed: unknown = JSON.parse(rawBindings ?? '[]');
+            if (Array.isArray(parsed)) {
+              boundAgents = parsed.filter(
+                (item): item is { id: string; name: string } =>
+                  item != null &&
+                  typeof item.id === 'string' &&
+                  item.id.length > 0 &&
+                  typeof item.name === 'string' &&
+                  item.name.length > 0,
+              );
+            }
+          } catch (_error) {
+            console.error('Invalid BOT MODE agent bindings');
+          }
+          const uniqueBindings = boundAgents.filter(
+            (agent, index) => boundAgents.findIndex((other) => other.id === agent.id) === index,
+          );
           const selectedDefinitions: Array<[string, string, string, string[]]> =
-            manualAgentIds == null
-              ? specialistDefinitions
-              : manualAgentIds.map((agentId, index) => {
-                  const known = specialistDefinitions.find(
-                    (definition) => definition[1] === agentId,
-                  );
-                  return [
-                    `MANUAL_${index + 1}`,
-                    agentId,
-                    known?.[2] ?? 'specialist',
-                    [`selected_agent_${index + 1}`],
-                  ];
-                });
+            selectionMode === 'auto'
+              ? specialistDefinitions.flatMap(([id, , role, capabilities]) => {
+                  const matching = uniqueBindings.find((agent) => agent.name === id);
+                  return matching
+                    ? [[id, matching.id, role, capabilities] as [string, string, string, string[]]]
+                    : [];
+                })
+              : uniqueBindings.map((agent, index) => [
+                  `MANUAL_${index + 1}`,
+                  agent.id,
+                  'specialist',
+                  [`selected_agent_${index + 1}`],
+                ]);
+          const manualAgentIds =
+            selectionMode === 'manual' ? uniqueBindings.map((a) => a.id) : null;
           const specialists = selectedDefinitions.map(([id, agentId, role, capabilities]) => ({
             id,
             agentId,

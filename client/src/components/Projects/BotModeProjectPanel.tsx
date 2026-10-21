@@ -252,7 +252,11 @@ export default function BotModeProjectPanel({
   };
 
   const launchMission = () => {
-    if (!primaryAgent?.id || (agentMode === 'manual' && selectedSpecialists.length === 0)) {
+    if (
+      !primaryAgent?.id ||
+      !workerDetails?.subagents?.enabled ||
+      (agentMode === 'manual' && selectedSpecialists.length === 0)
+    ) {
       return;
     }
     const params = new URLSearchParams({
@@ -262,9 +266,13 @@ export default function BotModeProjectPanel({
       submit: 'true',
       botmode: '1',
       botmode_mode: 'analyze',
-      ...(agentMode === 'manual'
-        ? { botmode_agent_ids: selectedSpecialists.map((agent) => agent.id).join(',') }
-        : {}),
+      botmode_agent_mode: agentMode,
+      botmode_agent_bindings: JSON.stringify(
+        (agentMode === 'auto' ? specialists : selectedSpecialists).map((agent) => ({
+          id: agent.id,
+          name: agent.name,
+        })),
+      ),
     });
     navigate(`/c/new?${params.toString()}`);
   };
@@ -323,7 +331,10 @@ export default function BotModeProjectPanel({
                 <Button
                   type="button"
                   size="sm"
-                  disabled={agentMode === 'manual' && selectedSpecialists.length === 0}
+                  disabled={
+                    !workerDetails?.subagents?.enabled ||
+                    (agentMode === 'manual' && selectedSpecialists.length === 0)
+                  }
                   onClick={launchMission}
                 >
                   {localize('com_ui_bot_mode_project_launch')}

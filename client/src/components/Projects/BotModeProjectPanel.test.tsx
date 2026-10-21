@@ -249,6 +249,33 @@ describe('BotModeProjectPanel', () => {
     render(<BotModeProjectPanel projectId="project-a" conversations={[]} />);
     fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }));
     expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('agent_id=agent-worker'));
+    const launched = mockNavigate.mock.calls.at(-1)?.[0] as string;
+    const params = new URL(launched, 'http://localhost').searchParams;
+    expect(params.get('botmode_agent_mode')).toBe('auto');
+    expect(JSON.parse(params.get('botmode_agent_bindings') ?? '[]')).toEqual([]);
+  });
+
+  it('passes actual authorized Mongo agent IDs to automatic routing', () => {
+    mockUseListAgentsQuery.mockReturnValue({
+      data: {
+        data: [
+          { id: 'agent-worker', name: 'BOT MODE Worker' },
+          { id: 'mongo-recherche-123', name: 'RECHERCHE' },
+          { id: 'agent-unapproved', name: 'CODE' },
+        ],
+      },
+    });
+    mockUseGetAgentByIdQuery.mockReturnValue({
+      data: { subagents: { enabled: true, agent_ids: ['mongo-recherche-123'] } },
+    });
+    render(<BotModeProjectPanel projectId="project-a" conversations={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }));
+    const launched = mockNavigate.mock.calls.at(-1)?.[0] as string;
+    const params = new URL(launched, 'http://localhost').searchParams;
+    expect(params.get('botmode_agent_mode')).toBe('auto');
+    expect(JSON.parse(params.get('botmode_agent_bindings') ?? '[]')).toEqual([
+      { id: 'mongo-recherche-123', name: 'RECHERCHE' },
+    ]);
   });
 
   it('only offers specialists bound to the Worker', () => {
@@ -268,9 +295,7 @@ describe('BotModeProjectPanel', () => {
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }));
     expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('agent-research'));
-    expect(mockNavigate).toHaveBeenCalledWith(
-      expect.stringContaining('botmode_agent_ids=agent-research'),
-    );
+    expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('botmode_agent_bindings='));
   });
 
   it('blocks manual mode when the Worker has no authorized specialist', () => {
