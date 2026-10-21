@@ -662,6 +662,20 @@ jobs:
                          '        print("CI_STRICT_ADMISSION_ERROR_CODE=" + (error_code if error_code in approved_codes else "OTHER_OR_MISSING"), flush=True)\n'
                          '        print("CI_ORACLE_" + label + "_START_HTTP=" + str(status))')
           source=source.replace(probe,replacement)
+          detail_marker='        print("CI_STRICT_ADMISSION_ERROR_CODE="'
+          assert source.count(detail_marker)==1
+          # Classified reason only; never reveal arbitrary server response.
+          classifier=('        reason = parsed_error.get("error", "") if isinstance(parsed_error, dict) else ""\n'
+                      '        categories = {\n'
+                      '            "GENERATION_OWNERSHIP": "Generation ownership",\n'
+                      '            "GENERATION_STARTING": "Generation is still starting",\n'
+                      '            "GENERATION_FINALIZING": "Generation is finalizing",\n'
+                      '            "QUEUED_ADMISSION": "Queued turn execution",\n'
+                      '            "EPOCH_RECOVERY": "recovery",\n'
+                      '        }\n'
+                      '        label = next((k for k,v in categories.items() if v.lower() in str(reason).lower()), "UNCLASSIFIED")\n'
+                      '        print("CI_STRICT_ADMISSION_REASON="+label, flush=True)\n')
+          source=source.replace(detail_marker,classifier+detail_marker)
           p.write_text(source)
           PY_STRICT
           # The previous acceptance deliberately restarts API to verify durable
