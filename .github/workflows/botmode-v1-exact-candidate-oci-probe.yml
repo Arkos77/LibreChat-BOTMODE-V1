@@ -631,6 +631,28 @@ jobs:
           # Use the harness checked out from the identical candidate SHA.
           cp scripts/botmode/ci-oracle-delegated-mission-gate.py /tmp/botmode-ci-oracle-publication-gate.py
           python3 /tmp/botmode-ci-oracle-publication-gate.py
+
+          # Additional *strict* acceptance: the Worker cannot satisfy `basic`;
+          # planner MUST bind the only authorized specialist, and the child
+          # must emit correlated start+stop events on that very mission.
+          # This is a disposable CI harness copy; the OCI image is untouched.
+          python3 - <<'PY_STRICT'
+          from pathlib import Path
+          p=Path('/tmp/botmode-ci-oracle-publication-gate.py')
+          source=p.read_text()
+          old='"role": "worker",\n                    "capabilities": ["basic"]'
+          new='"role": "worker",\n                    "capabilities": []'
+          assert source.count(old)==1, 'STRICT_WORKER_FIXTURE_NOT_UNIQUE'
+          source=source.replace(old,new)
+          old='        print("CI_ORACLE_ACCEPT_DURABLE_CHILD_LINEAGE=NOT_PROVEN", flush=True)'
+          # Inject a fail-closed SSE assertion only after inspecting events.
+          anchor='        print("CI_ORACLE_ACCEPT_DURABLE_CHILD_LINEAGE=NOT_PROVEN", flush=True)'
+          assert source.count(anchor)==1
+          source=source.replace(anchor, '        if not (len(runs) == 1 and linked and completed):\n            fail("STRICT_ACCEPT_CHILD_SSE_CORRELATION_MISSING")\n        print("CI_ORACLE_ACCEPT_CHILD_SSE_STRICT=PASS", flush=True)\n'+anchor)
+          p.write_text(source)
+          PY_STRICT
+          python3 /tmp/botmode-ci-oracle-publication-gate.py
+          echo 'BOTMODE_STRICT_CHILD_SSE_AND_ORACLE_E2E=PASS'
           echo 'BOTMODE_CURRENT_IMAGE_SUBAGENT_ORACLE_PROBE=PASS'
           echo '### Release-fix branch Oracle/QA E2E (local synthetic provider)' >> "$GITHUB_STEP_SUMMARY"
           echo 'Published immutable OCI digest tested with local synthetic subagent model; no real-provider inference.' >> "$GITHUB_STEP_SUMMARY"
