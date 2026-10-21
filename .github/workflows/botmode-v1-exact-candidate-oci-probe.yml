@@ -927,6 +927,20 @@ jobs:
                       except (ValueError,TypeError,AttributeError):
                           pass
               time.sleep(2)
+          if not verified:
+              # Structured, non-sensitive terminal diagnosis, fail closed.
+              diag=subprocess.run(compose+['exec','-T','redis','redis-cli','--raw','HMGET',key,'status','error','orchestratorPlan','missionOracleState'],capture_output=True,text=True,timeout=15)
+              fields=diag.stdout.splitlines() if diag.returncode==0 else []
+              print('CI_BROWSER_JOB_REDIS_ACCESS='+('PASS' if diag.returncode==0 else 'FAIL'),flush=True)
+              print('CI_BROWSER_JOB_STATUS='+(fields[0][:32] if fields else 'ABSENT'),flush=True)
+              print('CI_BROWSER_JOB_HAS_ERROR='+str(bool(len(fields)>1 and fields[1].strip())),flush=True)
+              print('CI_BROWSER_JOB_HAS_PLAN='+str(bool(len(fields)>2 and fields[2].strip())),flush=True)
+              print('CI_BROWSER_JOB_HAS_ORACLE='+str(bool(len(fields)>3 and fields[3].strip())),flush=True)
+              if len(fields)>3 and fields[3].strip():
+                  try:
+                      state=json.loads(fields[3]); print('CI_BROWSER_ORACLE_RESULTS='+str(len(state.get('results',{}))),flush=True)
+                  except (ValueError,AttributeError,TypeError):
+                      print('CI_BROWSER_ORACLE_PARSE=FAILED',flush=True)
           assert verified,'CI_BROWSER_MISSION_OWN_ORACLE_VERDICT_NOT_PROVEN'
           print('CI_BROWSER_MISSION_SAME_STREAM_ORACLE_VERIFIED=PASS',flush=True)
           PY_BROWSER_ORACLE
