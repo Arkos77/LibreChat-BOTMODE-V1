@@ -43,6 +43,10 @@ const {
   resolveRequestTenantId,
   deterministicPlanner,
 } = require('@librechat/api');
+const {
+  authorizeOrchestratorMissionBindings,
+  assertAuthorizedOrchestratorTasks,
+} = require('./orchestratorMissionBindings');
 const { disposeClient } = require('~/server/cleanup');
 const { observeMtoEvent } = require('~/server/services/Endpoints/agents/mtoObservation');
 const {
@@ -1824,30 +1828,13 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         typeof client.getReachableMissionAgents === 'function'
           ? client.getReachableMissionAgents()
           : [client.options.agent, ...(client.agentConfigs?.values?.() ?? [])];
-      const authorizedAgentIds = new Set(
-        (Array.isArray(reachableAgents) ? reachableAgents : [])
-          .map((agent) => agent?.id)
-          .filter((id) => typeof id === 'string' && id.length > 0),
-      );
-      if (!authorizedAgentIds.has(primaryAgentId)) {
-        throw new Error('Orchestrator primary agent is not an initialized binding');
-      }
-      for (const specialist of plannerContext.specialists) {
-        if (
-          specialist == null ||
-          typeof specialist.agentId !== 'string' ||
-          !authorizedAgentIds.has(specialist.agentId)
-        ) {
-          throw new Error('Orchestrator specialist is not an authorized agent binding');
-        }
-      }
-
+      const authorizedAgentIds = authorizeOrchestratorMissionBindings({
+        primaryAgentId,
+        reachableAgents,
+        specialists: plannerContext.specialists,
+      });
       const orchestratorPlan = deterministicPlanner.planMission(mission, plannerContext);
-      for (const task of orchestratorPlan.tasks) {
-        if (!authorizedAgentIds.has(task.agentId)) {
-          throw new Error('Orchestrator plan selected an unauthorized agent binding');
-        }
-      }
+      assertAuthorizedOrchestratorTasks(orchestratorPlan.tasks, authorizedAgentIds);
 
       // Record original effective agent capability provenance in the SAME
       // epoch-scoped Redis write as the immutable plan, before models/tools
