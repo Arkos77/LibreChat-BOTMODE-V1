@@ -651,6 +651,19 @@ jobs:
           source=source.replace(anchor, '        if not (len(runs) == 1 and linked and completed):\n            fail("STRICT_ACCEPT_CHILD_SSE_CORRELATION_MISSING")\n        print("CI_ORACLE_ACCEPT_CHILD_SSE_STRICT=PASS", flush=True)\n'+anchor)
           p.write_text(source)
           PY_STRICT
+          # The previous acceptance deliberately restarts API to verify durable
+          # recovery. Wait for the restarted service before the next admission.
+          for attempt in $(seq 1 45); do
+            if curl -fsS --max-time 3 http://127.0.0.1:3090/api/config >/dev/null; then
+              echo 'CI_STRICT_API_READY_AFTER_RESTART=PASS'
+              break
+            fi
+            if [ "$attempt" -eq 45 ]; then
+              echo 'CI_STRICT_API_READY_AFTER_RESTART=FAIL'
+              exit 1
+            fi
+            sleep 2
+          done
           python3 /tmp/botmode-ci-oracle-publication-gate.py
           echo 'BOTMODE_STRICT_CHILD_SSE_AND_ORACLE_E2E=PASS'
           echo 'BOTMODE_CURRENT_IMAGE_SUBAGENT_ORACLE_PROBE=PASS'
