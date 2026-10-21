@@ -630,8 +630,6 @@ jobs:
 
           # Use the harness checked out from the identical candidate SHA.
           cp scripts/botmode/ci-oracle-delegated-mission-gate.py /tmp/botmode-ci-oracle-publication-gate.py
-          python3 /tmp/botmode-ci-oracle-publication-gate.py
-
           # Additional *strict* acceptance: the Worker cannot satisfy `basic`;
           # planner MUST bind the only authorized specialist, and the child
           # must emit correlated start+stop events on that very mission.
@@ -675,26 +673,18 @@ jobs:
                       '            "QUEUED_ADMISSION": "Queued turn execution",\n'
                       '            "EPOCH_RECOVERY": "recovery",\n'
                       '        }\n'
-                      '        label = next((k for k,v in categories.items() if v.lower() in str(reason).lower()), "UNCLASSIFIED")\n'
-                      '        print("CI_STRICT_ADMISSION_REASON="+label, flush=True)\n')
+                      '        admission_reason = next((k for k,v in categories.items() if v.lower() in str(reason).lower()), "UNCLASSIFIED")\n'
+                      '        print("CI_STRICT_ADMISSION_REASON="+admission_reason, flush=True)\n')
           source=source.replace(detail_marker,classifier+detail_marker)
           p.write_text(source)
           PY_STRICT
-          # The previous acceptance deliberately restarts API to verify durable
-          # recovery. Wait for the restarted service before the next admission.
-          for attempt in $(seq 1 45); do
-            if curl -fsS --max-time 3 http://127.0.0.1:3090/api/config >/dev/null; then
-              echo 'CI_STRICT_API_READY_AFTER_RESTART=PASS'
-              break
-            fi
-            if [ "$attempt" -eq 45 ]; then
-              echo 'CI_STRICT_API_READY_AFTER_RESTART=FAIL'
-              exit 1
-            fi
-            sleep 2
-          done
+          # Execute strict acceptance FIRST on fresh services: do not confuse
+          # subagent admission with readiness after a deliberately forced restart.
           python3 /tmp/botmode-ci-oracle-publication-gate.py
           echo 'BOTMODE_STRICT_CHILD_SSE_AND_ORACLE_E2E=PASS'
+          # Run the archival restart/durability regression independently.
+          cp scripts/botmode/ci-oracle-delegated-mission-gate.py /tmp/botmode-ci-oracle-publication-gate.py
+          python3 /tmp/botmode-ci-oracle-publication-gate.py
           echo 'BOTMODE_CURRENT_IMAGE_SUBAGENT_ORACLE_PROBE=PASS'
           echo '### Release-fix branch Oracle/QA E2E (local synthetic provider)' >> "$GITHUB_STEP_SUMMARY"
           echo 'Published immutable OCI digest tested with local synthetic subagent model; no real-provider inference.' >> "$GITHUB_STEP_SUMMARY"
