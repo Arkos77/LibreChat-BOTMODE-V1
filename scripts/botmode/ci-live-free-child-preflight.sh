@@ -126,13 +126,14 @@ if test "${CI_LIVE_FREE_FIVE_TASKS:-false}" = true; then
   selected_model="$(cat /tmp/botmode-ci-named-free-model)"
   worker_id="$(cat /tmp/botmode-ci-worker-id)"
   specialist_id="$(cat /tmp/botmode-ci-child-id)"
-  "${compose[@]}" exec -T \
+  timeout --signal=TERM --kill-after=5s 45s "${compose[@]}" exec -T \
     -e "CI_FREE_WORKER_ID=$worker_id" \
     -e "CI_FREE_SPECIALIST_ID=$specialist_id" \
     -e "CI_FREE_NAMED_MODEL=$selected_model" api node - <<'NODE_FREE_BIND'
 const mongoose=require('mongoose');
 const {ObjectId}=mongoose.Types;
 (async()=>{
+  try {
   await mongoose.connect(process.env.MONGO_URI);
   const ids=[process.env.CI_FREE_WORKER_ID,process.env.CI_FREE_SPECIALIST_ID];
   if(ids.some(x=>!ObjectId.isValid(x)) || new Set(ids).size!==2)throw Error('INVALID_TEST_AGENT_IDS');
@@ -146,8 +147,14 @@ const {ObjectId}=mongoose.Types;
   const confirmed=await db.collection('agents').countDocuments({_id:{$in:objects},model:process.env.CI_FREE_NAMED_MODEL});
   if(confirmed!==2)throw Error('TEST_BINDING_READBACK_FAILED');
   console.log('CI_LIVE_FREE_NAMED_MODEL_AGENT_BINDINGS=PASS');
-  await mongoose.disconnect();
-})().catch(e=>{console.log('CI_LIVE_FREE_NAMED_MODEL_BINDING_ERROR='+e.name);process.exitCode=2});
+  } catch(e) {
+    const allowed = new Set(['INVALID_TEST_AGENT_IDS','UNAUTHORIZED_TEST_BINDING','TEST_BINDING_MISMATCH','TEST_BINDING_READBACK_FAILED']);
+    console.log('CI_LIVE_FREE_NAMED_MODEL_BINDING_FAILURE='+(allowed.has(e.message)?e.message:e.name));
+    process.exitCode=2;
+  } finally {
+    await mongoose.disconnect().catch(()=>{process.exitCode=2});
+  }
+})().catch(e=>{console.log('CI_LIVE_FREE_NAMED_MODEL_FATAL='+e.name);process.exitCode=2});
 NODE_FREE_BIND
 fi
 echo 'CI_LIVE_FREE_REAL_OPENROUTER_ENDPOINT_READY=PASS'
