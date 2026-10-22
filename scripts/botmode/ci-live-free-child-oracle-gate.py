@@ -342,6 +342,18 @@ if stream_status != 200 or len(finals) != 1 or errors:
             words=[w.lower() for w in re.findall(r"[A-Za-z]{2,}",detail)]
             public_words=[w if w in safe_terms else "[redacted]" for w in words]
             print("CI_LIVE_FREE_INIT_ERROR_APPROVED_WORDS="+(" ".join(public_words[:28]))[:250],flush=True)
+            # Exact constant fingerprint observed on disposable CI runs.
+            # Render the error only when it contains no digits, URLs, possible
+            # token values, synthetic identities or unknown punctuation.
+            clean=err_read.stdout.strip()
+            safe_literal=(len(clean)==73 and sha256(clean.lower().encode()).hexdigest().startswith("566d360f31db184e")
+                and bool(re.fullmatch(r"""[A-Za-z\s:{}"',.()/=+_!~-]+""",clean))
+                and not any(token and token in clean for token in (
+                    os.environ.get("OPENROUTER_API_KEY",""),helpers.get("TOKEN",""),worker,child,mission_id,conversation_id
+                )))
+            print("CI_LIVE_FREE_INIT_ERROR_LITERAL_SAFE="+str(bool(safe_literal)).upper(),flush=True)
+            if safe_literal:
+                print("CI_LIVE_FREE_INIT_ERROR_LITERAL="+clean[:110],flush=True)
             # Also inspect a small bounded tail of local API logs for specific
             # error families, never show upstream text or arbitrary stack frames.
             try:
