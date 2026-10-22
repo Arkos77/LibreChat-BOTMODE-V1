@@ -92,3 +92,8 @@ https://openrouter.ai/docs/guides/features/structured-outputs
 L'accord est maintenant consommé par cette seule mission. Aucun replay ni nouvelle inférence, nouvelle publication, fusion ou changement d'installation n'a été effectué. Le nouveau constat d'audit à zéro ne réécrit pas rétroactivement les audits précédents ni l'acceptation D-02. Aucun retrait d'avis n'est déduit de ce seul rapport. D-01 résiduel et les décisions D-02/D-03/D-04 restent aux frontières documentées.
 
 **NO-GO stable : blocage courant = worker rejeté pour JSON invalide ; cinq tâches et P6 réels non acquis.**
+
+
+## Mission observée du 23 octobre 2026 — quatre verdicts, 429 final
+
+Run 39870514640 / job 120143482290, source applicative a6 inchangée : Worker et spécialistes 1–3 VERIFIED; spécialiste 4 sans verdict après HTTP 429 réel de openrouter/free. Cinq 429 primaires artificiels, quatre 200 fallback puis un 429 fallback observés; JSON et require_parameters présents dans toutes les requêtes fallback. P6 non validé. Deux correspondances HTTP→Oracle exactes; deux captures tronquées par la borne, donc comparaison globale incomplète sans preuve d'altération. Nettoyage réussi; autorisation unique consommée, aucune relance. Audit installé zéro critical/high/moderate. Image réutilisable un jour, pas de publication GHCR. Résultat détaillé et limites : https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/b6cb0a62c0d897790e5f6253385470e581c3fabf/docs/BOTMODE_V1_OBSERVED_MISSION_RESULT_20261023.md . Blocage actuel : limite fournisseur avant le cinquième verdict; ne pas relancer à l'identique sans capacité/route nouvelle autorisée. D01–D04 inchangés, NO-GO stable maintenu.
