@@ -1713,7 +1713,7 @@ describe('initializeClient — subagent loading', () => {
     return agent;
   };
 
-  it.each(['mission', 'handoff', 'lazy'])(
+  it.each(['mission', 'handoff', 'lazy', 'mission-spec'])(
     'installs the specialist own authorized fallback for %s initialization',
     async (mode) => {
       const child = await createAgent({
@@ -1738,7 +1738,7 @@ describe('initializeClient — subagent loading', () => {
         model_parameters: { model: agent.model, apiKey: 'fixture-specialist-secret' },
       }));
       const req = makeSubagentReq();
-      if (mode === 'mission') req.body.orchestratorMission = {};
+      if (mode.startsWith('mission')) req.body.orchestratorMission = {};
       req.config.endpoints.agents.hostModelRouting = [
         {
           agentId: SUBAGENT_ID,
@@ -1753,11 +1753,25 @@ describe('initializeClient — subagent loading', () => {
           routingConstraints: { spendingPolicy: 'free_only' },
         },
       ];
+      const option = makeEndpointOption();
+      if (mode === 'mission-spec') {
+        option.spec = 'primary-only-spec';
+        req.config.modelSpecs = { list: [{ name: option.spec, label: 'Primary choice' }] };
+        req.config.endpoints.agents.hostModelRouting.unshift({
+          agentId: PRIMARY_ID,
+          bindings: [
+            { id: 'primary', provider: 'openAI', model: 'gpt-4' },
+            { id: 'alternate', provider: 'openAI', model: 'b:free' },
+          ],
+          preferredBindingId: 'alternate',
+          allowFailover: true,
+        });
+      }
       await initializeClient({
         req,
         res: {},
         signal: new AbortController().signal,
-        endpointOption: makeEndpointOption(),
+        endpointOption: option,
         mtoTraceId: 'specialist-fallback-regression',
       });
       const specialist =
@@ -1778,6 +1792,7 @@ describe('initializeClient — subagent loading', () => {
         spendingPolicy: 'free_only',
       });
       expect(agentClientArgs.agent.hostModelDecision).toBeUndefined();
+      expect(agentClientArgs.agent.model).toBe('gpt-4');
       const records = await db.listMtoObservations({
         user: String(testUser._id),
         traceId: 'specialist-fallback-regression',
