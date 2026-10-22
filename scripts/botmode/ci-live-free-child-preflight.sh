@@ -121,41 +121,37 @@ if test "$mission_ready" != 1; then
 fi
 echo 'CI_LIVE_FREE_MISSION_SERVER_READY=PASS'
 if test "${CI_LIVE_FREE_FIVE_TASKS:-false}" = true; then
-  # Disposable runner: only two already-authorized CI agent model fields.
-  # No credentials/ACL/ownership/production databases are modified.
-  selected_model="$(cat /tmp/botmode-ci-named-free-model)"
-  worker_id="$(cat /tmp/botmode-ci-worker-id)"
-  specialist_id="$(cat /tmp/botmode-ci-child-id)"
-  timeout --signal=TERM --kill-after=5s 45s "${compose[@]}" exec -T \
-    -e "CI_FREE_WORKER_ID=$worker_id" \
-    -e "CI_FREE_SPECIALIST_ID=$specialist_id" \
-    -e "CI_FREE_NAMED_MODEL=$selected_model" api node - <<'NODE_FREE_BIND'
-const mongoose=require('mongoose');
-(async()=>{
-  try {
-  await mongoose.connect(process.env.MONGO_URI);
-  // Agent.id is the public persistent string identity in the LibreChat schema;
-  // Mongo _id is a DIFFERENT ObjectId used only by resource ACL storage.
-  const ids=[process.env.CI_FREE_WORKER_ID,process.env.CI_FREE_SPECIALIST_ID];
-  if(ids.some(x=>typeof x!=='string'||x.length<5||x.length>128) || new Set(ids).size!==2)throw Error('INVALID_TEST_AGENT_IDS');
-  const db=mongoose.connection.db;
-  const rows=await db.collection('agents').find({id:{$in:ids}},{projection:{id:1,provider:1,author:1}}).toArray();
-  if(rows.length!==2 || rows.some(x=>x.provider!=='OpenRouter') ||
-      new Set(rows.map(x=>String(x.author))).size!==1)throw Error('UNAUTHORIZED_TEST_BINDING');
-  const updated=await db.collection('agents').updateMany({id:{$in:ids},provider:'OpenRouter'},{$set:{model:process.env.CI_FREE_NAMED_MODEL}});
-  if(updated.matchedCount!==2)throw Error('TEST_BINDING_MISMATCH');
-  const confirmed=await db.collection('agents').countDocuments({id:{$in:ids},model:process.env.CI_FREE_NAMED_MODEL});
-  if(confirmed!==2)throw Error('TEST_BINDING_READBACK_FAILED');
-  console.log('CI_LIVE_FREE_NAMED_MODEL_AGENT_BINDINGS=PASS');
-  } catch(e) {
-    const allowed = new Set(['INVALID_TEST_AGENT_IDS','UNAUTHORIZED_TEST_BINDING','TEST_BINDING_MISMATCH','TEST_BINDING_READBACK_FAILED']);
-    console.log('CI_LIVE_FREE_NAMED_MODEL_BINDING_FAILURE='+(allowed.has(e.message)?e.message:e.name));
-    process.exitCode=2;
-  } finally {
-    await mongoose.disconnect().catch(()=>{process.exitCode=2});
-  }
-})().catch(e=>{console.log('CI_LIVE_FREE_NAMED_MODEL_FATAL='+e.name);process.exitCode=2});
-NODE_FREE_BIND
+  # Use the same authenticated native PATCH path as the UI. This preserves
+  # Agent versions/permissions, rather than bypassing them via direct Mongo edits.
+  python3 - <<'PY_FREE_BIND'
+import json
+from pathlib import Path
+from urllib.request import Request,urlopen
+from urllib.error import HTTPError
+model=Path('/tmp/botmode-ci-named-free-model').read_text().strip()
+token=Path('/tmp/botmode-e2e-test-token').read_text().strip()
+worker=Path('/tmp/botmode-ci-worker-id').read_text().strip()
+specialist=Path('/tmp/botmode-ci-child-id').read_text().strip()
+assert len({worker,specialist})==2 and all(len(x)>4 for x in (worker,specialist)), 'CI_FREE_BIND_IDENTITIES_INVALID'
+for agent_id in (worker,specialist):
+    request=Request(
+        'http://127.0.0.1:3090/api/agents/'+agent_id,
+        data=json.dumps({'model':model}).encode(),
+        headers={'Authorization':'Bearer '+token,'Content-Type':'application/json','Accept':'application/json',
+                 'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36'},
+        method='PATCH'
+    )
+    try:
+        with urlopen(request,timeout=20) as response:
+            status=response.status
+            data=json.load(response)
+    except HTTPError as e:
+        print('CI_LIVE_FREE_NAMED_MODEL_PATCH_HTTP='+str(e.code),flush=True)
+        raise SystemExit('CI_LIVE_FREE_NAMED_MODEL_PATCH_DENIED')
+    if status!=200 or data.get('id')!=agent_id or data.get('model')!=model or data.get('provider')!='OpenRouter':
+        raise SystemExit('CI_LIVE_FREE_NAMED_MODEL_PATCH_READBACK_DENIED')
+print('CI_LIVE_FREE_NAMED_MODEL_AGENT_BINDINGS=PASS',flush=True)
+PY_FREE_BIND
 fi
 echo 'CI_LIVE_FREE_REAL_OPENROUTER_ENDPOINT_READY=PASS'
 python3 scripts/botmode/ci-live-free-child-oracle-gate.py
