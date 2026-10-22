@@ -1,0 +1,388 @@
+# PROPOSITION INACTIVE : fichier hors .github/workflows, aucun déclenchement.
+# Copier vers Actions uniquement après autorisation explicite d'une mission réelle.
+name: BOTMODE One Explicitly Approved Final Free Fallback Mission
+'on':
+  push:
+    branches:
+    - ops/closeout-a6f6fee3c7dc
+permissions:
+  contents: read
+env:
+  BOTMODE_CANDIDATE_SHA: a6f6fee3c7dcfb5877fe798f759966774a046a58
+  BOTMODE_IMAGE: botmode-source-built:a6f6fee3c7dcfb5877fe798f759966774a046a58
+  BOTMODE_PUBLISHED_IMAGE: botmode-source-built:a6f6fee3c7dcfb5877fe798f759966774a046a58
+  BOTMODE_MONGO_PASSWORD: ci-isolated-only
+  POSTGRES_PASSWORD: ci-isolated-only
+  DOCKER_BUILD_RECORD_UPLOAD: 'false'
+concurrency:
+  group: botmode-closeout-a6f6fee3c7dc
+  cancel-in-progress: false
+jobs:
+  amd64-integrated:
+    if: github.repository == 'Arkos77/LibreChat-BOTMODE-V1' && github.run_attempt == 1 && github.event.before == 'a6f6fee3c7dcfb5877fe798f759966774a046a58'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      COMPOSE_PROJECT_NAME: botmode-oci-child-${{ github.run_id }}-${{ github.run_attempt }}
+      BOTMODE_HOST_PORT: '3090'
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        ref: a6f6fee3c7dcfb5877fe798f759966774a046a58
+        persist-credentials: false
+    - name: Verify pinned pristine source before build
+      run: |
+        test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+        test -z "$(git status --porcelain)"
+    - uses: docker/setup-buildx-action@v4
+    - name: Build exact corrected source locally without publication
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: Dockerfile
+        target: node
+        platforms: linux/amd64
+        push: false
+        load: true
+        tags: ${{ env.BOTMODE_IMAGE }}
+        cache-from: type=gha,scope=botmode-amd64
+        cache-to: type=gha,mode=max,scope=botmode-amd64
+        build-args: |
+          BUILD_COMMIT=a6f6fee3c7dcfb5877fe798f759966774a046a58
+          BUILD_BRANCH=fix/specialist-host-fallback-20261022
+    - name: Verify exact source and local image identity
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+        test -z "$(git status --porcelain)"
+        echo '6e59734742daa69251821e2fed6a765febb4e58f9139743a98c91813dff234cf  package-lock.json' | sha256sum -c -
+        docker image inspect "$BOTMODE_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -Fx "BUILD_COMMIT=$BOTMODE_CANDIDATE_SHA"
+        docker image inspect "$BOTMODE_IMAGE" --format 'CI_LOCAL_CLOSEOUT_IMAGE_ID={{.Id}}'
+        sha256sum package.json packages/api/src/endpoints/openai/llm.ts scripts/botmode/ci-live-free-child-preflight.sh > /tmp/closeout-source.sha256
+        docker run --rm -i --network none --entrypoint sh "$BOTMODE_IMAGE" -c 'sha256sum -c -' < /tmp/closeout-source.sha256
+        echo 'CI_CLOSEOUT_EXACT_SOURCE=PASS'
+        echo 'CI_REGISTRY_PUBLICATION=NONE'
+    - name: Run actual SDK JSON transmission tests inside image without external networking
+      run: |
+        docker run --rm -i --network none --entrypoint node "$BOTMODE_IMAGE" - <<'NODE'
+        const assert = require('node:assert/strict');
+        const tests = [];
+        global.describe = (_name, body) => body();
+        global.it = (name, body) => tests.push({ name, body });
+        global.it.each = (values) => (name, body) => {
+          for (const value of values) tests.push({ name: name.replace('%s', value), body: () => body(value) });
+        };
+        global.expect = (actual) => ({
+          toEqual: (expected) => assert.deepStrictEqual(actual, expected),
+          toBe: (expected) => assert.strictEqual(actual, expected),
+          toHaveLength: (expected) => assert.equal(actual.length, expected),
+        });
+        require('/app/api/server/services/Endpoints/agents/hostJsonMode.compat.spec.js');
+        (async () => {
+          assert.equal(tests.length, 4);
+          for (const test of tests) {
+            await test.body();
+            console.log('CI_IMAGE_JSON_TEST_PASS=' + test.name);
+          }
+          console.log('CI_IMAGE_JSON_MODE_TESTS=4');
+          console.log('CI_IMAGE_JSON_MODE_PRIMARY_AND_FALLBACK=PASS');
+        })().catch((error) => { console.error(error); process.exitCode = 1; });
+        NODE
+    - name: Audit actual production dependencies and inspect license payload
+      run: |
+        docker run --rm -i --entrypoint node "$BOTMODE_IMAGE" - <<'NODE_AUDIT'
+        const assert=require('node:assert/strict');
+        const fs=require('node:fs');const crypto=require('node:crypto');const cp=require('node:child_process');
+        for(const [name,version] of Object.entries({'dompurify':'3.4.17','follow-redirects':'1.16.1','ip-address':'10.7.4','sanitize-html':'2.18.1'})){
+         assert.equal(JSON.parse(fs.readFileSync('/app/node_modules/'+name+'/package.json')).version,version);
+        }
+        assert.equal(fs.existsSync('/app/node_modules/monaco-editor/node_modules/dompurify/package.json'),false);
+        console.log('CI_IMAGE_PATCHED_DEPENDENCY_VERSIONS=PASS');
+        const run=cp.spawnSync('npm',['audit','--omit=dev','--json'],{encoding:'utf8',timeout:90000,maxBuffer:4*1024*1024});
+        assert.ok(run.status===0||run.status===1);const audit=JSON.parse(run.stdout);assert.ok(!audit.error);
+        const counts=audit.metadata.vulnerabilities;
+        assert.equal(counts.critical,0);assert.equal(counts.high,0);
+        assert.deepEqual(Object.keys(audit.vulnerabilities).sort(),['argparse','mammoth','sprintf-js']);
+        assert.equal(counts.moderate,3);
+        console.log('CI_IMAGE_NPM_AUDIT_CRITICAL=0');console.log('CI_IMAGE_NPM_AUDIT_HIGH=0');console.log('CI_IMAGE_NPM_AUDIT_MODERATE=3');
+        console.log('CI_D02_NEW_LOCK_OWNER_APPROVAL=REQUIRED');
+        const notice=fs.readFileSync('/app/THIRD_PARTY_NOTICES.md','utf8');
+        assert.ok(notice.includes('@codesandbox/nodebox@0.1.8')&&notice.includes('Sustainable Use License'));
+        const paths=['/app/node_modules/@codesandbox/nodebox/LICENSE','/app/client/node_modules/@codesandbox/nodebox/LICENSE','/app/THIRD_PARTY_LICENSES/Nodebox-SUL-1.0.txt'];
+        const path=paths.find(p=>fs.existsSync(p));assert.ok(path);
+        assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path)).digest('hex'),'5aca9a36f98d883157f1d1a567347c3d776b7ae60bf93fbb7bfa190f1e3ccf46');
+        console.log('CI_IMAGE_NODEBOX_NOTICE_AND_COMPLETE_SUL=PASS');
+        NODE_AUDIT
+    - name: Prepare disposable native identities and DB only; prior integrated proof retained
+      run: |
+        python3 -m pip install --quiet --break-system-packages PyYAML==6.0.3
+        python3 - <<'PY_SETUP'
+        import os,subprocess,yaml
+        from pathlib import Path
+        workflow=yaml.safe_load(Path('.github/workflows/botmode-v1-exact-candidate-oci-probe.yml').read_text())
+        matches=[s for s in workflow['jobs']['current-candidate-runtime']['steps'] if s.get('name')=='Boot current candidate with disposable MongoDB']
+        assert len(matches)==1
+        step=matches[0]
+        assert chr(36)+'{{' not in step['run']
+        env={**os.environ,**step.get('env',{})}
+        assert env.get('OPENROUTER_API_KEY')=='ci-local-fixture-no-real-key'
+        script=step['run']
+        anchor='test -s /tmp/botmode-ci-child-id'
+        assert script.count(anchor)==1
+        script=script[:script.index(anchor)+len(anchor)]+chr(10)
+        subprocess.run(['bash','-e','-o','pipefail','-c',script],env=env,check=True)
+        print('CI_REAL_DISPOSABLE_NATIVE_SETUP=PASS',flush=True)
+        PY_SETUP
+    - name: Attest public zero pricing for both authorized models
+      run: |
+        python3 - <<'PY_PRICE'
+        import json
+        from decimal import Decimal
+        from urllib.request import Request,urlopen
+        with urlopen(Request('https://openrouter.ai/api/v1/models',headers={'Accept':'application/json','User-Agent':'BOTMODE-Free-Only-Approved-Test'}),timeout=25) as r:
+            catalog=json.load(r)
+        for name in ('google/gemma-4-31b-it:free','openrouter/free'):
+            matches=[m for m in catalog.get('data',[]) if m.get('id')==name]
+            assert len(matches)==1,'BLOCKED_PROVIDER_AUTHORIZED_FREE_MODEL_MISSING'
+            pricing=matches[0].get('pricing',{})
+            assert all(Decimal(str(pricing.get(k,'1')))==0 for k in ('prompt','completion')),'BLOCKED_PROVIDER_ZERO_PRICE_NOT_ATTESTED'
+            assert all(Decimal(str(pricing[k]))==0 for k in ('request','internal_reasoning') if k in pricing and pricing[k] is not None),'BLOCKED_PROVIDER_ADDITIONAL_PRICE_NOT_ZERO'
+        print('CI_REAL_TWO_AUTHORIZED_ZERO_PRICE_ROUTES=PASS',flush=True)
+        PY_PRICE
+    - name: Fetch pinned sanitized diagnostic only
+      uses: actions/checkout@v5
+      with:
+        ref: 5e4847b16899d48f9be9d93de18e18a9a8486cd5
+        path: .oracle-diagnostic
+        persist-credentials: false
+        sparse-checkout: |
+          scripts/botmode/ci-oracle-status-summary.py
+          scripts/botmode/ci-live-free-child-oracle-gate.py
+        sparse-checkout-cone-mode: false
+    - name: Install read-only verdict summary into runner harness
+      run: |
+        cp .oracle-diagnostic/scripts/botmode/ci-oracle-status-summary.py scripts/botmode/
+        cp .oracle-diagnostic/scripts/botmode/ci-live-free-child-oracle-gate.py scripts/botmode/
+    - name: Start controlled pre-stream 429 primary fixture
+      run: |
+        cat > /tmp/ci-primary-429.py <<'PY_SERVER'
+        import json,os,threading
+        from pathlib import Path
+        from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
+        state={'primary429':0,'unexpected':0};lock=threading.Lock();path=Path('/tmp/ci-primary-429-counts.json')
+        def save():
+            path.write_text(json.dumps(state));path.chmod(0o600)
+        save()
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self,*args):pass
+            def do_GET(self):
+                self.send_response(200 if self.path=='/health' else 404);self.end_headers();self.wfile.write(b'ready')
+            def do_POST(self):
+                try:
+                    size=int(self.headers.get('Content-Length','0'))
+                    if not 0<size<1000000:raise ValueError()
+                    body=json.loads(self.rfile.read(size))
+                    allowed=self.path=='/v1/chat/completions' and body.get('model')=='google/gemma-4-31b-it:free'
+                except (ValueError,TypeError):allowed=False
+                with lock:
+                    state['primary429' if allowed else 'unexpected']+=1;save()
+                self.send_response(429 if allowed else 400)
+                self.send_header('Content-Type','application/json');self.send_header('Retry-After','0');self.end_headers()
+                self.wfile.write(b'{"error":{"message":"controlled pre-stream test rate limit","type":"rate_limit_exceeded","code":429}}')
+        ThreadingHTTPServer(('0.0.0.0',8089),Handler).serve_forever()
+        PY_SERVER
+        python3 /tmp/ci-primary-429.py >/tmp/ci-primary-429-server.log 2>&1 &
+        echo "$!" > /tmp/ci-primary-429.pid
+        for _ in $(seq 1 30); do if curl -fsS http://127.0.0.1:8089/health >/dev/null; then break; fi; sleep 1; done
+        curl -fsS http://127.0.0.1:8089/health >/dev/null
+        echo 'CI_CONTROLLED_PRIMARY_429_SERVER=READY'
+    - name: One bounded real free fallback mission after controlled primary 429
+      env:
+        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        CI_EXTERNAL_FREE_PROVIDER: 'true'
+        CI_LIVE_FREE_FIVE_TASKS: 'true'
+        CI_LIVE_FREE_DISABLE_FALLBACK_DIAG: 'false'
+        CI_LIVE_FREE_COMPAT_FALLBACK_DIAG: 'true'
+        CI_CONTROLLED_PRIMARY_429: 'true'
+      run: |
+        set -euo pipefail
+        if test "${#OPENROUTER_API_KEY}" -le 16; then
+          echo 'CI_REAL_RESULT=BLOCKED_PROVIDER_NO_KEY'
+          exit 3
+        fi
+        echo "::add-mask::$OPENROUTER_API_KEY"
+        python3 - <<'PY_PIN'
+        import os
+        from pathlib import Path
+        p=Path('scripts/botmode/ci-live-free-child-preflight.sh')
+        s=p.read_text()
+        old="test \"${BOTMODE_PUBLISHED_IMAGE:-}\" = 'ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0'"
+        assert s.count(old)==1,'EXACT_OCI_PREFLIGHT_GUARD_ANCHOR'
+        ref=os.environ['BOTMODE_PUBLISHED_IMAGE']
+        assert ref=='botmode-source-built:a6f6fee3c7dcfb5877fe798f759966774a046a58','EXACT_APPROVED_LOCAL_SOURCE_REQUIRED'
+        s=s.replace(old,'test "${BOTMODE_PUBLISHED_IMAGE:-}" = "'+ref+'"')
+        config_anchor="cfg.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\\n')"
+        assert s.count(config_anchor)==1,'CONTROLLED_429_CONFIG_ANCHOR'
+        controlled="""if os.environ.get('CI_CONTROLLED_PRIMARY_429')=='true':
+            primary=[e for e in data['endpoints']['custom'] if e.get('name')=='OpenRouter']
+            fallback=[e for e in data['endpoints']['custom'] if e.get('name')=='OpenRouterFreeCompatCI']
+            assert len(primary)==len(fallback)==1 and fallback[0]['baseURL']=='https://openrouter.ai/api/v1'
+            assert primary[0]['addParams']['response_format']=={'type':'json_object'}
+            assert fallback[0]['addParams']['response_format']=={'type':'json_object'}
+            primary[0]['baseURL']='http://host.docker.internal:8089/v1'
+            primary[0]['addParams']['maxRetries']=0
+            print('CI_CONTROLLED_PRIMARY_429_AND_REAL_FALLBACK_ISOLATED=PASS',flush=True)
+        """
+        import textwrap
+        s=s.replace(config_anchor,textwrap.dedent(controlled)+config_anchor)
+        p.write_text(s)
+        gate=Path('scripts/botmode/ci-live-free-child-oracle-gate.py')
+        g=gate.read_text()
+        anchor='    stream_id = envelope["streamId"]'
+        assert g.count(anchor)==1,'LIVE_CONTEXT_ANCHOR'
+        extra='\n    Path("/tmp/botmode-live-proof-context.json").write_text(json.dumps({"streamId":stream_id,"conversationId":conversation_id,"missionId":mission_id}))\n    Path("/tmp/botmode-live-proof-context.json").chmod(0o600)'
+        gate.write_text(g.replace(anchor,anchor+extra))
+        PY_PIN
+        set +e
+        bash scripts/botmode/ci-live-free-child-preflight.sh 2>&1 | tee /tmp/botmode-real-result.log
+        code=${PIPESTATUS[0]}
+        set -e
+        if test "$code" != 0; then
+          if grep -Eq 'CI_LIVE_FREE_FINAL_ERROR_CLASS=(RATE_LIMIT|PROVIDER_UNAVAILABLE)' /tmp/botmode-real-result.log; then
+            echo 'CI_REAL_RESULT=BLOCKED_PROVIDER'
+          else
+            echo 'CI_REAL_RESULT=FAIL_REQUIRES_CLASSIFICATION'
+          fi
+          exit "$code"
+        fi
+        echo 'CI_REAL_RESULT=PASS_EXISTING_FREE_FIVE_TASK_HARNESS'
+    - name: Read back same mission canonical Mongo publication and receipts
+      run: |
+        python3 - <<'PY_P6'
+        import json,subprocess,time
+        from pathlib import Path
+        controlled=json.loads(Path("/tmp/ci-primary-429-counts.json").read_text())
+        assert controlled["primary429"]>0 and controlled["unexpected"]==0,"CONTROLLED_429_NOT_PROVEN"
+        ctx=json.loads(Path('/tmp/botmode-live-proof-context.json').read_text())
+        compose=['docker','compose','-f','docker-compose.botmode.yml','-f','docker-compose.botmode-lite.yml']
+        key='::stream:{'+ctx['streamId']+'}:job'
+        fields=[]
+        for _ in range(30):
+            r=subprocess.run(compose+['exec','-T','redis','redis-cli','--raw','HMGET',key,'status','responseMessageId','terminalPersistencePending'],capture_output=True,text=True,timeout=15)
+            fields=r.stdout.splitlines() if r.returncode==0 else []
+            if len(fields)>=3 and fields[0]=='complete' and fields[1] and fields[2] in ('0','false','False'):break
+            time.sleep(1)
+        assert len(fields)>=3 and fields[0]=='complete' and fields[1] and fields[2] in ('0','false','False'),'REAL_P6_TERMINAL_NOT_COMMITTED'
+        js=r"""
+        const mongoose=require('mongoose');
+        (async()=>{
+          await mongoose.connect(process.env.MONGO_URI);
+          const db=mongoose.connection.db;
+          const cid=process.env.CI_REAL_CID, mid=process.env.CI_REAL_MID;
+          const conversation=await db.collection('conversations').findOne({conversationId:cid},{projection:{conversationId:1}});
+          const messages=await db.collection('messages').find({conversationId:cid,isCreatedByUser:false,unfinished:false},{projection:{messageId:1,parentMessageId:1,content:1,metadata:1}}).toArray();
+          const message=messages.find(m=>m.messageId===mid);
+          const valid=Boolean(conversation && messages.length===1 && message && message.parentMessageId && Array.isArray(message.content) && message.content.some(p=>p.type==='text' && typeof p.text==='string' && p.text.trim()));
+          const receipt=message?.metadata?.hostModelUsage;
+          console.log('CI_REAL_P6_CANONICAL_ASSISTANT_COUNT='+messages.length);
+          console.log('CI_REAL_P6_SAME_MISSION_MONGO_COMMITTED='+String(valid).toUpperCase());
+          console.log('CI_REAL_HOST_USAGE_RECEIPT='+String(Boolean(receipt)).toUpperCase());
+          console.log('CI_REAL_FALLBACK_RECEIPT='+String(receipt?.fallbackUsed===true).toUpperCase());
+          if(receipt){
+            console.log('CI_REAL_RECEIPT_FREE_ONLY='+String(receipt.spendingPolicy==='free_only').toUpperCase());
+            console.log('CI_REAL_RECEIPT_MODEL_CALL_COUNT='+(Array.isArray(receipt.modelCalls)?receipt.modelCalls.length:0));
+          }
+          await mongoose.disconnect();
+          if(!valid)process.exitCode=3;
+        })().catch(()=>{console.log('CI_REAL_P6_READBACK=FAIL');process.exitCode=2});
+        """
+        r=subprocess.run(compose+['exec','-T','-e','CI_REAL_CID='+ctx['conversationId'],'-e','CI_REAL_MID='+fields[1],'api','node','-e',js],capture_output=True,text=True,timeout=60)
+        for line in r.stdout.splitlines():
+            if line.startswith('CI_REAL_'):print(line,flush=True)
+        assert r.returncode==0,'REAL_SAME_MISSION_P6_MONGO_NOT_PROVEN'
+        print('CI_REAL_FIVE_TASKS_ORACLE_P6_DURABLE=PASS',flush=True)
+        PY_P6
+    - name: Read back controlled 429 evidence without model content
+      if: always()
+      run: |
+        python3 - <<'PY_COUNTS'
+        import json
+        from pathlib import Path
+        p=Path('/tmp/ci-primary-429-counts.json')
+        if p.exists():
+            d=json.loads(p.read_text())
+            print('CI_CONTROLLED_PRIMARY_429_COUNT='+str(d['primary429']),flush=True)
+            print('CI_CONTROLLED_PRIMARY_UNEXPECTED_COUNT='+str(d['unexpected']),flush=True)
+            assert d['unexpected']==0,'UNEXPECTED_REQUEST_TO_CONTROLLED_PRIMARY'
+        PY_COUNTS
+    - name: Classify child execution exception from API logs
+      if: failure()
+      env:
+        BOTMODE_MONGO_PASSWORD: ci-isolated-only
+        POSTGRES_PASSWORD: ci-isolated-only
+        BOTMODE_IMAGE: ${{ env.BOTMODE_PUBLISHED_IMAGE }}
+      shell: bash
+      run: |
+        docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs --no-color api > /tmp/botmode-api-failure.log 2>/dev/null || true
+        python3 - <<'PY'
+        import re
+        from pathlib import Path
+        lines=Path('/tmp/botmode-api-failure.log').read_text(errors='replace').splitlines()
+        # Diagnose SDK provider-registry failure on the real API process.
+        # Never emit arbitrary log text or stack arguments.
+        unsupported=[i for i,line in enumerate(lines) if 'Unsupported LLM provider: openrouter' in line]
+        print('CI_SDK_OPENROUTER_UNSUPPORTED_LOG_COUNT='+str(len(unsupported)),flush=True)
+        safe_frames=('providerRegistry','llm/init','llm/invoke','Graph','initialize','hostModelRouting','getChatModelClass','initializeModel','tryFallbackProviders','node_modules')
+        for idx in unsupported[-2:]:
+            window=lines[max(0,idx-3):idx+25]
+            approved=[]
+            for line in window:
+                if not any(p in line for p in safe_frames):
+                    continue
+                for label in safe_frames:
+                    if label in line and label not in approved:
+                        approved.append(label)
+            print('CI_SDK_OPENROUTER_CALL_PATH='+','.join(approved[:12]),flush=True)
+        hits=[i for i,line in enumerate(lines) if '[subagentThreads] Child-thread execution failed' in line]
+        print('CI_CHILD_EXCEPTION_LOG_ENTRIES='+str(len(hits)))
+        # The process logger can serialize structured fields across lines.
+        # Inspect only narrowly scoped exception class and stack frame tokens;
+        # never print full log records, raw arguments, or credentials.
+        for i in hits[-2:]:
+            window=' '.join(lines[max(0,i-2):i+24])
+            for marker in ('errorName','stack','detail'):
+                print('CI_CHILD_LOG_FIELD_'+marker.upper()+'='+str(marker in window))
+            for kind in ('TypeError','ReferenceError','Error','SyntaxError','RangeError'):
+                if re.search(r'(?<![A-Za-z])'+kind+r'(?![A-Za-z])',window):
+                    print('CI_CHILD_LOG_ERROR_KIND='+kind)
+                    break
+            for match in re.finditer(r'at\s+([A-Za-z0-9_$.<>]+)\s*\(',window):
+                print('CI_CHILD_LOG_FRAME_FUNCTION='+match.group(1)[:100])
+                break
+        for i in hits[-3:]:
+            block='\n'.join(lines[i:i+14])
+            names=re.findall(r'errorName[^A-Za-z]+([A-Za-z][A-Za-z0-9]*)',block)
+            print('CI_CHILD_EXCEPTION_NAME='+(','.join(names[:2]) or 'unknown'))
+            # Winston may serialize the exception as a one-line JSON string;
+            # report only field names and bounded, non-sensitive stack locations.
+            try:
+                payload=lines[i].split(' | ',1)[-1]
+                obj=__import__('json').loads(payload)
+                if isinstance(obj,dict):
+                    print('CI_CHILD_EXCEPTION_FIELDS='+','.join(sorted(obj.keys()))[:150])
+                    value=obj.get('errorName') or obj.get('name')
+                    if isinstance(value,str) and re.fullmatch(r'[A-Za-z][A-Za-z0-9]{0,63}',value):
+                        print('CI_CHILD_EXCEPTION_JSON_NAME='+value)
+            except (ValueError,TypeError):
+                pass
+            for candidate in ('TypeError','ReferenceError','ValidationError','AbortError','MongoServerError','SubagentThreadPublicError'):
+                if candidate in block:
+                    print('CI_CHILD_EXCEPTION_CLASS='+candidate)
+            print('CI_CHILD_EXCEPTION_HAS_STACK='+str('stack:' in block))
+        PY
+    - name: Destroy runner-only stack
+      if: always()
+      run: |
+        sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
+        if test -f /tmp/ci-primary-429.pid; then kill "$(cat /tmp/ci-primary-429.pid)" 2>/dev/null || true; fi
+        docker image rm -f "$BOTMODE_IMAGE" >/dev/null 2>&1 || true
