@@ -51,7 +51,7 @@ Deux assertions de config avaient initialement échoué dans le runtime local à
 
 Le nouveau workflow construit le HEAD exact, vérifie son identité, teste l'initialiseur dans le conteneur puis réutilise les corps d'assertions du harnais Oracle/navigateur du même checkout. Il n'exécute pas les étapes de provenance de l'ancienne OCI. Les changements de libellés du wrapper distinguent explicitement l'image locale d'une image publique. Aucun code applicatif, Oracle, permission, garde de source ou seuil de publication n'a été relâché.
 
-**PC-04 réel reste NON PROUVÉ** : aucune inférence OpenRouter réelle n'a été effectuée pendant ce lot. Le test 429 local ne garantit ni disponibilité externe ni quota gratuit. Les cinq tâches réelles et le nested child réel restent distincts et non validés. Tous les autres restes et arbitrages D-01/D-02/D-04 du dossier maître demeurent inchangés.
+**PC-04 réel reste NON PROUVÉ** : les preuves ci-dessus sont synthétiques ; voir l'essai réel autorisé et échoué ci-dessous. Le test 429 local ne garantit ni disponibilité externe ni quota gratuit. Les cinq tâches réelles et le nested child réel restent distincts et non validés. Tous les autres restes et arbitrages D-01/D-02/D-04 du dossier maître demeurent inchangés.
 
 Le premier appel terminal Remote Desktop Commander sur penguin a expiré sans sortie exploitable. Aucun build, volume, installation, secret ou port de cette machine n'a été modifié par ce lot. Le travail a été réalisé dans un checkout isolé et sur runners jetables.
 
@@ -87,12 +87,20 @@ Définition du harnais dans la branche isolée `ops/qualify-ceb60eca989b`, commi
 
 L'essai initial de définition #39828128406 a été refusé avant tout job, car une chaîne Python littérale contenant le délimiteur d'expression Actions était interprétée par GitHub comme une expression non fermée. Correction limitée au harnais, sans reconstruction ni modification d'image ; le run suivant ci-dessus est terminé avec succès. Ne pas compter le premier run comme test produit ou succès.
 
-### Essai fournisseur réel : blocage d'approbation distinct
+### Essai fournisseur réel autorisé : échec Oracle non classifié
 
-Une proposition de workflow incluant une mission réelle gratuite à cinq tâches et la clé OpenRouter existante a été **rejetée par le contrôle automatique d'approbation avant création du fichier**. Motif : l'accord explicite D-03 couvre la publication GHCR, mais pas cette utilisation de la clé et l'envoi de la charge utile au fournisseur. Aucun appel OpenRouter réel n'a été exécuté.
+Après le refus initial d'approbation pour une étape réelle hors périmètre D-03, le propriétaire a explicitement répondu « j'autorise » à la demande distincte d'une seule mission réelle de cinq tâches. Cette autorisation a été utilisée une fois.
 
-Le travail non concerné a été achevé dans un workflow distinct, sans secret fournisseur ni étape réelle : les deux jobs de qualification ci-dessus sont SUCCESS. Il ne s'agit pas d'un contournement du refus.
+[Run réel #39830208377](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39830208377) : **FAILURE**, job 120004037780. Branche isolée `ops/live-free-ceb60eca989b-001`, commit de pilotage `4b7b5d40005ed5421c5614339188e2d409bd7e4d`. Source ceb60eca989b et digest publié inchangés ; aucune reconstruction. Garde run_attempt=1 et premier push uniquement.
 
-Autorisation complémentaire à recueillir explicitement : **une seule mission de cinq tâches de test** vers OpenRouter, avec la clé déjà enregistrée dans GitHub ; primaire `google/gemma-4-31b-it:free` après attestation catalogue à prix nul et fallback autorisé `openrouter/free` ; charge utile de test « préparer la réponse puis vérifier l'étape précédente, retourner strictement {"ok":true} » ; identités de test jetables. Aucun modèle payant, aucune rotation de clé ni donnée utilisateur réelle. Respecter les mêmes ids, Oracle durable et P6 ; ne pas confondre cinq tâches réelles réussies avec preuve d'un fallback effectivement observé.
+- Catalogue public : prix nuls attestés pour `google/gemma-4-31b-it:free` et `openrouter/free` ; préflight JSON/allowlist PASS.
+- Initialiseur, endpoint compatible, SDK CJS/ESM et démarrage de mission : PASS.
+- SSE : HTTP 200, un final, aucun error frame ; le contenu final contient néanmoins une partie error, classe MISSION_ORACLE.
+- Plan : cinq tâches. État Oracle : un résultat enregistré, **sans preuve que ce résultat est VERIFIED**. Impossible d'attribuer l'échec à un spécialiste, au quota ou à un candidat précis.
+- Aucun signal de mismatch de binding ou SDK unsupported dans les traces disponibles. Fallback configuré mais activation réelle non démontrée.
+- Gate terminale : FAIL=TERMINAL_CONTAINS_ERROR_PART. Lecture P6 durable du test réel non exécutée. Nettoyage du runner terminé.
+- Les détails de verdict/candidat n'ont pas été conservés hors du runner détruit ; cause exacte non établie. Aucun critère Oracle n'est relâché.
 
-**État final de ce lot : D-03 publication et gates synthétiques exact-digest acquis ; PC-04 externe et cinq tâches réelles restent NON PROUVÉS / BLOQUÉS_APPROBATION.** Les autres arbitrages D-01/D-02, les limites d'endurance/nested child réel et les gates de release non couverts restent ceux du dossier maître. Aucune conclusion GO stable.
+Diagnostic sans inférence préparé sur [commit 5e4847b](https://github.com/Arkos77/LibreChat-BOTMODE-V1/commit/5e4847b16899d48f9be9d93de18e18a9a8486cd5), branche `test/pr77-oracle-verdict-diagnostic-20261022` : résumé limité aux étapes connues, statuts/codes sur liste autorisée et forme JSON du candidat. Aucun texte modèle, identifiant de tâche, clé ou champ arbitraire affiché. Six tests de forme et de non-divulgation PASS dans la disposition réelle des fichiers ; syntaxe du gate PASS. Aucun workflow de nouvel appel n'est ajouté à cette branche, aucun produit ni image modifié.
+
+**État : D-03 et qualification synthétique exact-digest acquis ; essai externe effectué mais cinq tâches réelles / PC-04 / P6 réel NON PROUVÉS. NO-GO stable.** Une seconde mission réelle identique avec ce diagnostic requiert un nouvel accord, l'autorisation précédente portant sur une seule mission. D-04 demeure non autorisée ; aucun merge ni tag stable/latest.
