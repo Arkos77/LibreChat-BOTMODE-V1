@@ -265,6 +265,18 @@ for item in finals[:1]:
         for diagnostic,phrases in safe_patterns.items():
             print("CI_LIVE_FREE_FINAL_ERROR_HAS_"+diagnostic+"="+str(any(p in raw_error for p in phrases)).upper(),flush=True)
         allowed_keys={"type","error","message","text","code","details","data"}
+        import re
+        allowed_words={"an","a","the","error","occurred","while","processing","request","response",
+            "model","models","provider","openrouter","invalid","not","allowed","supported",
+            "available","unavailable","configuration","routing","missing","unsupported","key",
+            "api","failed","failure","no","with","cannot","could","can","use","using",
+            "is","was","for","of","in","to","on","selected","free","quota","limit",
+            "rate","fallback","tool","tools","call","calls","access","denied","permission",
+            "native","requesterror","badrequesterror","client","status","code","unexpected",
+            "format","unsupported","parameter","parameters","json","endpoint"}
+        redacted_words=[(w if w in allowed_words else "_")
+                        for w in re.findall(r"[a-z]{2,}",raw_error)[:35]]
+        print("CI_LIVE_FREE_FINAL_ERROR_APPROVED_WORDS="+" ".join(redacted_words),flush=True)
         print("CI_LIVE_FREE_FINAL_ERROR_PART_KEYS="+",".join(sorted({
             k for part in parts if isinstance(part,dict) and part.get("type")=="error"
             for k in part if k in allowed_keys
