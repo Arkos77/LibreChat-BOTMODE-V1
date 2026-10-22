@@ -47,6 +47,22 @@ payload = {
         },
     },
 }
+# The preceding archival gate restarts the container. Probe readiness without
+# replaying a mutating mission POST after an ambiguous connection reset.
+from urllib.request import urlopen
+from urllib.error import HTTPError, URLError
+api_ready = False
+for _ in range(60):
+    try:
+        with urlopen(h["BASE"] + "/api/config", timeout=3) as response:
+            api_ready = response.status == 200
+    except (URLError, HTTPError, ConnectionError, TimeoutError, OSError):
+        api_ready = False
+    if api_ready:
+        break
+    time.sleep(1)
+assert api_ready, "CI_FIVE_NATIVE_API_NOT_READY_AFTER_RESTART"
+print("CI_FIVE_NATIVE_API_RESTART_READY=PASS", flush=True)
 status, raw = request("POST", "/api/agents/chat/agents", payload)
 assert status == 200, "CI_FIVE_NATIVE_ADMISSION_FAILED"
 envelope = json.loads(raw)
