@@ -310,6 +310,8 @@ for item in finals[:1]:
             if raw_plan_now and raw_oracle_now:
                 parsed_plan_now=json.loads(raw_plan_now)
                 parsed_oracle_now=json.loads(raw_oracle_now)
+                summary=runpy.run_path("scripts/botmode/ci-oracle-status-summary.py")["summarize"](parsed_plan_now,parsed_oracle_now)
+                print("CI_LIVE_FREE_ORACLE_STATUS_SUMMARY="+json.dumps(summary,separators=(",",":")),flush=True)
                 print("CI_LIVE_FREE_TERMINAL_ERROR_PLAN_TASKS="+str(len(parsed_plan_now.get("tasks",[]))),flush=True)
                 print("CI_LIVE_FREE_TERMINAL_ERROR_VERDICT_TASKS="+str(len(parsed_oracle_now.get("results",{}))),flush=True)
         except (OSError, ValueError, TypeError, AttributeError, subprocess.SubprocessError):
