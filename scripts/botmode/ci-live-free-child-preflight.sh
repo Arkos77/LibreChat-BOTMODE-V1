@@ -14,14 +14,31 @@ export OPENROUTER_KEY="$OPENROUTER_API_KEY"
 sudo chown "$(id -u):$(id -g)" .env
 python3 - <<'PY'
 import json,os
+from decimal import Decimal
 from pathlib import Path
+from urllib.request import Request, urlopen
+model='openrouter/free'
+if os.environ.get('CI_LIVE_FREE_FIVE_TASKS')=='true':
+    # Named free model is a CI diagnostic, NOT a user model choice.
+    model='google/gemma-4-31b-it:free'
+    assert model.endswith(':free'), 'CI_LIVE_FREE_MODEL_SUFFIX_NOT_FREE'
+    req=Request('https://openrouter.ai/api/v1/models',headers={'Accept':'application/json','User-Agent':'BOTMODE-CI-FreeGuard'})
+    with urlopen(req,timeout=25) as response:
+        catalog=json.load(response)
+    matches=[m for m in catalog.get('data',[]) if m.get('id')==model]
+    assert len(matches)==1, 'CI_LIVE_FREE_MODEL_CATALOG_MISSING'
+    price=matches[0].get('pricing',{})
+    assert all(Decimal(str(price.get(k,'1')))==0 for k in ('prompt','completion')), 'CI_LIVE_FREE_MODEL_PRICING_DENIED'
+    assert 'response_format' in matches[0].get('supported_parameters',[]), 'CI_LIVE_FREE_MODEL_JSON_UNSUPPORTED'
+    print('CI_LIVE_FREE_NAMED_MODEL_PRICE_AND_JSON=PASS',flush=True)
+    Path('/tmp/botmode-ci-named-free-model').write_text(model)
 cfg=Path('librechat.yaml')
 data=json.loads(cfg.read_text())
 allowed=[]
 for item in data.get('endpoints',{}).get('custom',[]):
     if item.get('name')=='OpenRouter':
         item['baseURL']='https://openrouter.ai/api/v1'
-        item['models']={'fetch':False,'default':['openrouter/free']}
+        item['models']={'fetch':False,'default':[model]}
         allowed.append(item)
 assert len(allowed)==1, 'CI_LIVE_FREE_FAIL=OPENROUTER_CONFIG_MISSING'
 assert not data['endpoints']['agents'].get('hostModelRouting'), 'CI_LIVE_FREE_FAIL=OTHER_ROUTING_NOT_ISOLATED'
@@ -103,5 +120,35 @@ if test "$mission_ready" != 1; then
   exit 3
 fi
 echo 'CI_LIVE_FREE_MISSION_SERVER_READY=PASS'
+if test "${CI_LIVE_FREE_FIVE_TASKS:-false}" = true; then
+  # Disposable runner: only two already-authorized CI agent model fields.
+  # No credentials/ACL/ownership/production databases are modified.
+  selected_model="$(cat /tmp/botmode-ci-named-free-model)"
+  worker_id="$(cat /tmp/botmode-ci-worker-id)"
+  specialist_id="$(cat /tmp/botmode-ci-child-id)"
+  "${compose[@]}" exec -T \
+    -e "CI_FREE_WORKER_ID=$worker_id" \
+    -e "CI_FREE_SPECIALIST_ID=$specialist_id" \
+    -e "CI_FREE_NAMED_MODEL=$selected_model" api node - <<'NODE_FREE_BIND'
+const mongoose=require('mongoose');
+const {ObjectId}=mongoose.Types;
+(async()=>{
+  await mongoose.connect(process.env.MONGO_URI);
+  const ids=[process.env.CI_FREE_WORKER_ID,process.env.CI_FREE_SPECIALIST_ID];
+  if(ids.some(x=>!ObjectId.isValid(x)) || new Set(ids).size!==2)throw Error('INVALID_TEST_AGENT_IDS');
+  const objects=ids.map(x=>new ObjectId(x));
+  const db=mongoose.connection.db;
+  const rows=await db.collection('agents').find({_id:{$in:objects}},{projection:{_id:1,provider:1,author:1}}).toArray();
+  if(rows.length!==2 || rows.some(x=>x.provider!=='OpenRouter') ||
+      new Set(rows.map(x=>String(x.author))).size!==1)throw Error('UNAUTHORIZED_TEST_BINDING');
+  const updated=await db.collection('agents').updateMany({_id:{$in:objects},provider:'OpenRouter'},{$set:{model:process.env.CI_FREE_NAMED_MODEL}});
+  if(updated.matchedCount!==2)throw Error('TEST_BINDING_MISMATCH');
+  const confirmed=await db.collection('agents').countDocuments({_id:{$in:objects},model:process.env.CI_FREE_NAMED_MODEL});
+  if(confirmed!==2)throw Error('TEST_BINDING_READBACK_FAILED');
+  console.log('CI_LIVE_FREE_NAMED_MODEL_AGENT_BINDINGS=PASS');
+  await mongoose.disconnect();
+})().catch(e=>{console.log('CI_LIVE_FREE_NAMED_MODEL_BINDING_ERROR='+e.name);process.exitCode=2});
+NODE_FREE_BIND
+fi
 echo 'CI_LIVE_FREE_REAL_OPENROUTER_ENDPOINT_READY=PASS'
 python3 scripts/botmode/ci-live-free-child-oracle-gate.py
