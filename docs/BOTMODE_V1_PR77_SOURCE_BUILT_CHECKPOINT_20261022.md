@@ -1,5 +1,7 @@
 # PR77 — checkpoint du lot runtime compatible — 22 octobre 2026
 
+> **Priorité du 22/10 : source isolée 6424833, qualification locale/multiarchitecture synthétique SUCCESS ; aucun nouvel appel fournisseur ni publication. NO-GO stable. Voir le dernier addendum sécurité/clôture.**
+
 ## Décision et identité
 
 **NO-GO stable. Aucune fusion, release ni promotion latest. La candidate D-03 a été publiée et qualifiée dans le périmètre décrit ci-dessous.**
@@ -149,3 +151,24 @@ Build paquet API PASS ; 16 tests API + 234 config/LLM/politiques = **250 tests c
 Le premier run [#39836260622](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39836260622), commit de pilotage ceead73aaae442d5b914c6971531483d9b65fbf5, a construit l'image et confirmé ses empreintes, puis échoué sur une méthode toBe manquante dans le lanceur d'assertions. Correction du lanceur uniquement, vérifiée localement avant le second run ; aucun changement applicatif. La deuxième exécution importe des couches du cache mais effectue son propre chargement/contrôle d'image. Le premier run reste FAILURE et n'est pas compté comme qualification complète.
 
 Portée acquise : image AMD64 exacte et transmission de JSON mode démontrées. Ni l'exécution d'un fallback automatique dans cette image, ni cinq tâches Oracle réelles, ni P6 réel ne sont prouvés par ces quatre contrôles. Le source/digest GHCR ceb60eca989b reste inchangé. NO-GO stable conservé.
+
+## État prioritaire de clôture — 22 octobre 2026, après qualification sécurité
+
+Source proposée isolée : **64248339750f9e0f86e01530eb7067027cec8f6b**, branche fix/security-release-20261022. Le HEAD documentaire de cette branche est distinct ; ni celui-ci ni le HEAD documentaire PR77 ne sont la source embarquée testée.
+
+[Dossier sécurité et preuves complètes](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/001a923f9f3a73cbe830cbddc4d8df705defbf23/docs/BOTMODE_V1_SECURITY_CLOSEOUT_20261022.md) ; [proposition réelle inactive à approuver](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/001a923f9f3a73cbe830cbddc4d8df705defbf23/docs/qualification/BOTMODE_V1_FREE_FALLBACK_64248339750f_PROPOSAL.md).
+
+| Domaine | État actuel borné |
+|---|---|
+| Sécurité du verrou historique | Réaudit : 2 constats critical, 1 high, 5 moderate ; les deux critical partagent la chaîne DOMPurify/Monaco. Les anciens PASS ne valent pas audit actuel. |
+| Correctif sécurité | 4 paquets corrigés et 5 transitives requises, 9 entrées changées ; aucune rétrogradation Monaco/Mammoth. |
+| Audit du nouveau source | Lock SHA256 **6e59734742daa69251821e2fed6a765febb4e58f9139743a98c91813dff234cf** ; 0 high/critical, 3 moderate résiduels mammoth/argparse/sprintf-js. Nouveau rattachement D-02 requis, pas de prolongation tacite. |
+| Tests locaux de ce lot | npm ci propre, builds des 4 paquets, **634 tests ciblés PASS**, formatage/diff-check ; contrôle production prunée également PASS avec 0 high/critical. |
+| Images du nouveau source | [Run #39846965864](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39846965864) **SUCCESS** : AMD64 + ARM64 natives, image exacte, 4 contrôles JSON par architecture, versions installées et SUL/notice vérifiées. Images locales supprimées ; aucun manifeste GHCR publié. |
+| Oracle / UI / P6 | Sur AMD64 de ce même source : cinq verdicts VERIFIED, sélections UI et message canonique Mongo du même flux navigateur **PASS synthétique**. ARM64 ne couvre pas ces scénarios DB/navigateur. |
+| Fournisseur réel / PC-04 | **NON PROUVÉ sur 6424833 / BLOQUÉ_APPROBATION**. Les accords précédents d'une mission chacun sont consommés ; contrôle automatique a rejeté la nouvelle préparation avant branche/secret/exécution. Aucun troisième appel effectué. |
+| Suite prête | Une mission native à 5 tâches : 429 local contrôlé sur primaire, fallback OpenRouter/free réel à prix nul vérifié, clé GitHub existante, readback Oracle et P6. YAML conservé hors Actions, inactif ; aucune exécution indirecte. |
+| Publication / intégration | La candidate publique ceb60eca989b et son digest 32b29308… restent inchangés ; ils ne contiennent pas les nouveaux correctifs. D-03 pour nouvelle source non accordée ; D-04 fusion/stable non accordée. |
+| Portée D-01 | Aucune limitation nouvelle acceptée silencieusement. Nested child externe, création dynamique réelle, endurance/HITL, UX FR/TTS/clé/mobile et limites Full/migration restent à prouver ou arbitrer selon les exigences maintenues. |
+
+La qualification sans clé est achevée malgré le refus de la partie externe ; elle ne contourne pas ce refus. Ni image publiée ni mission fournisseur réelle n'est déduite du succès des deux jobs. **NO-GO stable maintenu.** Les références précédentes ci-dessous/conservées sont historiques pour leur source précise.
