@@ -64,6 +64,14 @@ if os.environ.get('CI_LIVE_FREE_FIVE_TASKS')=='true':
         {'agentId':agent_id,'models':free_choices,
          'preferredModel':model,'allowFailover':True,
          'routingMode':'static',
+         # The generic capability router rejects UNKNOWN pricing under
+         # free_only. The named model's zero cost was verified via catalog
+         # above; OpenRouter's free router is the sole exact virtual alias.
+         # Never infer 'free' for arbitrary configured models.
+         'routingSignals':{
+             model:{'pricingTier':'free','estimatedCost':0},
+             'openrouter/free':{'pricingTier':'free','estimatedCost':0},
+         },
          'routingConstraints':{'spendingPolicy':'free_only'}}
         for agent_id in agent_ids
     ]
