@@ -19,47 +19,56 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: botmode-fresh-ceb-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - &id001
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
           ref: ${{ env.BOTMODE_CANDIDATE_SHA }}
           persist-credentials: false
       - name: Verify exact source and anonymous digest pull
-        run: 'set -euo pipefail
-
+        run: |
+          set -euo pipefail
           test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
-
           test -z "$(git status --porcelain)"
-
           docker logout ghcr.io >/dev/null 2>&1 || true
-
           docker pull "$BOTMODE_PUBLISHED_IMAGE"
-
-          docker image inspect "$BOTMODE_PUBLISHED_IMAGE" --format ''{{range .Config.Env}}{{println .}}{{end}}'' |
-          grep -Fx "BUILD_COMMIT=$BOTMODE_CANDIDATE_SHA"
-
+          docker image inspect "$BOTMODE_PUBLISHED_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -Fx "BUILD_COMMIT=$BOTMODE_CANDIDATE_SHA"
           echo "CI_EXACT_APPROVED_OCI=$BOTMODE_PUBLISHED_IMAGE"
-
-          '
       - name: Execute real installer and verify readiness
-        run:
-          "set -euo pipefail\nsudo git config --global --add safe.directory \"$GITHUB_WORKSPACE\"\nsudo ./install.sh\
-          \ --lite --image \"$BOTMODE_PUBLISHED_IMAGE\" > \"$RUNNER_TEMP/ci-lite.log\" 2>&1\ngrep -Fxq 'BOTMODE_BOOTSTRAP=PASS'\
-          \ \"$RUNNER_TEMP/ci-lite.log\"\ngrep -Fxq 'BOTMODE_PROFILE=lite' \"$RUNNER_TEMP/ci-lite.log\"\ngrep -Fxq\
-          \ 'BOTMODE_IMAGE_PULL=PASS' \"$RUNNER_TEMP/ci-lite.log\"\ngrep -Fxq 'BOTMODE_STACK=STARTED' \"$RUNNER_TEMP/ci-lite.log\"\
-          \ntest \"$(stat -c %a .env)\" = 600\ntest -s .botmode-database-auth-initialized\nsudo grep -Fxq \"BOTMODE_IMAGE=$BOTMODE_PUBLISHED_IMAGE\"\
-          \ .env\necho 'CI_FRESH_LITE_INSTALL=PASS'\nfor attempt in $(seq 1 90); do\n  if curl -fsS --max-time 4 http://127.0.0.1:3080/api/config\
-          \ >/dev/null 2>&1; then\n    echo 'CI_FRESH_LITE_API=PASS'\n    break\n  fi\n  if [ \"$attempt\" -eq 90\
-          \ ]; then exit 1; fi\n  sleep 2\ndone\n"
+        run: |
+          set -euo pipefail
+          sudo git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          sudo ./install.sh --lite --image "$BOTMODE_PUBLISHED_IMAGE" > "$RUNNER_TEMP/ci-lite.log" 2>&1
+          grep -Fxq 'BOTMODE_BOOTSTRAP=PASS' "$RUNNER_TEMP/ci-lite.log"
+          grep -Fxq 'BOTMODE_PROFILE=lite' "$RUNNER_TEMP/ci-lite.log"
+          grep -Fxq 'BOTMODE_IMAGE_PULL=PASS' "$RUNNER_TEMP/ci-lite.log"
+          grep -Fxq 'BOTMODE_STACK=STARTED' "$RUNNER_TEMP/ci-lite.log"
+          test "$(stat -c %a .env)" = 600
+          test -s .botmode-database-auth-initialized
+          sudo grep -Fxq "BOTMODE_IMAGE=$BOTMODE_PUBLISHED_IMAGE" .env
+          echo 'CI_FRESH_LITE_INSTALL=PASS'
+          for attempt in $(seq 1 90); do
+            if curl -fsS --max-time 4 http://127.0.0.1:3080/api/config >/dev/null 2>&1; then
+              echo 'CI_FRESH_LITE_API=PASS'
+              break
+            fi
+            if [ "$attempt" -eq 90 ]; then exit 1; fi
+            sleep 2
+          done
       - name: Restart without losing installer configuration
-        run:
-          "set -euo pipefail\nexpected=$(sudo sha256sum .env | cut -d' ' -f1)\nsudo docker compose -f docker-compose.botmode.yml\
-          \ -f docker-compose.botmode-lite.yml restart api\nfor attempt in $(seq 1 90); do\n  if curl -fsS --max-time\
-          \ 4 http://127.0.0.1:3080/api/config >/dev/null 2>&1; then\n    echo 'CI_FRESH_LITE_RESTART=PASS'\n    break\n\
-          \  fi\n  if [ \"$attempt\" -eq 90 ]; then exit 1; fi\n  sleep 2\ndone\ntest \"$(sudo sha256sum .env | cut\
-          \ -d' ' -f1)\" = \"$expected\"\necho 'CI_FRESH_LITE_CONFIG_PRESERVED=PASS'\n"
-      - &id002
-        name: Destroy runner-only stack
+        run: |
+          set -euo pipefail
+          expected=$(sudo sha256sum .env | cut -d' ' -f1)
+          sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml restart api
+          for attempt in $(seq 1 90); do
+            if curl -fsS --max-time 4 http://127.0.0.1:3080/api/config >/dev/null 2>&1; then
+              echo 'CI_FRESH_LITE_RESTART=PASS'
+              break
+            fi
+            if [ "$attempt" -eq 90 ]; then exit 1; fi
+            sleep 2
+          done
+          test "$(sudo sha256sum .env | cut -d' ' -f1)" = "$expected"
+          echo 'CI_FRESH_LITE_CONFIG_PRESERVED=PASS'
+      - name: Destroy runner-only stack
         if: always()
         run:
           sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans
@@ -71,50 +80,63 @@ jobs:
       COMPOSE_PROJECT_NAME: botmode-oci-child-${{ github.run_id }}-${{ github.run_attempt }}
       BOTMODE_HOST_PORT: "3090"
     steps:
-      - *id001
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BOTMODE_CANDIDATE_SHA }}
+          persist-credentials: false
       - name: Verify exact source and anonymous digest pull
-        run: 'set -euo pipefail
-
+        run: |
+          set -euo pipefail
           test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
-
           test -z "$(git status --porcelain)"
-
           docker logout ghcr.io >/dev/null 2>&1 || true
-
           docker pull "$BOTMODE_PUBLISHED_IMAGE"
-
-          docker image inspect "$BOTMODE_PUBLISHED_IMAGE" --format ''{{range .Config.Env}}{{println .}}{{end}}'' |
-          grep -Fx "BUILD_COMMIT=$BOTMODE_CANDIDATE_SHA"
-
+          docker image inspect "$BOTMODE_PUBLISHED_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -Fx "BUILD_COMMIT=$BOTMODE_CANDIDATE_SHA"
           echo "CI_EXACT_APPROVED_OCI=$BOTMODE_PUBLISHED_IMAGE"
-
-          '
       - name: Native compatible initializer in published image
-        run:
-          "docker run --rm -i --entrypoint node \"$BOTMODE_IMAGE\" - <<'NODE'\nconst assert = require('node:assert/strict');\n\
-          const { initializeAgent } = require('@librechat/api');\n(async () => {\n  for (const compatible of [false,\
-          \ true]) {\n    const endpoint = { name: 'OpenRouterFreeCompatCI', apiKey: 'fixture-no-network',\n     \
-          \ baseURL: 'https://openrouter.ai/api/v1',\n      models: { fetch: false, default: ['openrouter/free'] },\n\
-          \      ...(compatible ? { customParams: { defaultParamsEndpoint: 'openAI' } } : {}) };\n    const result\
-          \ = await initializeAgent({\n      runtime: { user: { id: 'fixture-user' }, requestBody: {}, turnStartedAt:\
-          \ 1,\n        appConfig: { endpoints: { custom: [endpoint] } } },\n      agent: { id: 'fixture-agent', provider:\
-          \ endpoint.name, model: 'openrouter/free',\n        tools: [], model_parameters: { model: 'openrouter/free'\
-          \ } },\n      allowedProviders: new Set([endpoint.name]),\n      endpointOption: { endpoint: 'agents' },\n\
-          \      loadTools: async () => ({ tools: [], toolDefinitions: [] }),\n    }, { getFiles: async () => [],\
-          \ getConvoFiles: async () => [], updateFilesUsage: async () => [] });\n    assert.equal(result.provider,\
-          \ compatible ? 'openAI' : 'openrouter');\n    assert.equal(result.model_parameters.model, 'openrouter/free');\n\
-          \    assert.equal(result.model_parameters.apiKey, 'fixture-no-network');\n    assert.equal(result.model_parameters.configuration.baseURL,\
-          \ endpoint.baseURL);\n  }\n  console.log('CI_EXACT_OCI_NATIVE_COMPAT_INITIALIZER=PASS');\n})().catch(()\
-          \ => { console.error('CI_EXACT_OCI_NATIVE_COMPAT_INITIALIZER=FAIL'); process.exitCode = 1; });\nNODE\n"
+        run: |
+          docker run --rm -i --entrypoint node "$BOTMODE_IMAGE" - <<'NODE'
+          const assert = require('node:assert/strict');
+          const { initializeAgent } = require('@librechat/api');
+          (async () => {
+            for (const compatible of [false, true]) {
+              const endpoint = { name: 'OpenRouterFreeCompatCI', apiKey: 'fixture-no-network',
+                baseURL: 'https://openrouter.ai/api/v1',
+                models: { fetch: false, default: ['openrouter/free'] },
+                ...(compatible ? { customParams: { defaultParamsEndpoint: 'openAI' } } : {}) };
+              const result = await initializeAgent({
+                runtime: { user: { id: 'fixture-user' }, requestBody: {}, turnStartedAt: 1,
+                  appConfig: { endpoints: { custom: [endpoint] } } },
+                agent: { id: 'fixture-agent', provider: endpoint.name, model: 'openrouter/free',
+                  tools: [], model_parameters: { model: 'openrouter/free' } },
+                allowedProviders: new Set([endpoint.name]),
+                endpointOption: { endpoint: 'agents' },
+                loadTools: async () => ({ tools: [], toolDefinitions: [] }),
+              }, { getFiles: async () => [], getConvoFiles: async () => [], updateFilesUsage: async () => [] });
+              assert.equal(result.provider, compatible ? 'openAI' : 'openrouter');
+              assert.equal(result.model_parameters.model, 'openrouter/free');
+              assert.equal(result.model_parameters.apiKey, 'fixture-no-network');
+              assert.equal(result.model_parameters.configuration.baseURL, endpoint.baseURL);
+            }
+            console.log('CI_EXACT_OCI_NATIVE_COMPAT_INITIALIZER=PASS');
+          })().catch(() => { console.error('CI_EXACT_OCI_NATIVE_COMPAT_INITIALIZER=FAIL'); process.exitCode = 1; });
+          NODE
       - name: Same-source synthetic Oracle and browser gates
-        run:
-          "python3 -m pip install --quiet --break-system-packages PyYAML==6.0.3\npython3 - <<'PY_HARNESS'\nimport\
-          \ os,subprocess,yaml\nfrom pathlib import Path\nw=yaml.safe_load(Path('.github/workflows/botmode-v1-exact-candidate-oci-probe.yml').read_text())\n\
-          steps=w['jobs']['current-candidate-runtime']['steps']\nfor name in ['Boot current candidate with disposable\
-          \ MongoDB','Browser acceptance — actual candidate UI and agent selector']:\n    matches=[s for s in steps\
-          \ if s.get('name')==name]\n    assert len(matches)==1,'EXACT_SOURCE_HARNESS_MISMATCH'\n    step=matches[0]\n\
-          \    assert '${{' not in step['run'],'UNRESOLVED_EXPRESSION'\n    subprocess.run(['bash','-e','-o','pipefail','-c',step['run']],env={**os.environ,**step.get('env',{})},check=True)\n\
-          print('CI_EXACT_OCI_SYNTHETIC_ORACLE_BROWSER=PASS',flush=True)\nPY_HARNESS\n"
+        run: |
+          python3 -m pip install --quiet --break-system-packages PyYAML==6.0.3
+          python3 - <<'PY_HARNESS'
+          import os,subprocess,yaml
+          from pathlib import Path
+          w=yaml.safe_load(Path('.github/workflows/botmode-v1-exact-candidate-oci-probe.yml').read_text())
+          steps=w['jobs']['current-candidate-runtime']['steps']
+          for name in ['Boot current candidate with disposable MongoDB','Browser acceptance — actual candidate UI and agent selector']:
+              matches=[s for s in steps if s.get('name')==name]
+              assert len(matches)==1,'EXACT_SOURCE_HARNESS_MISMATCH'
+              step=matches[0]
+              assert chr(36) + '{{' not in step['run'],'UNRESOLVED_EXPRESSION'
+              subprocess.run(['bash','-e','-o','pipefail','-c',step['run']],env={**os.environ,**step.get('env',{})},check=True)
+          print('CI_EXACT_OCI_SYNTHETIC_ORACLE_BROWSER=PASS',flush=True)
+          PY_HARNESS
       - name: Classify child execution exception from API logs
         if: failure()
         env:
@@ -122,31 +144,66 @@ jobs:
           POSTGRES_PASSWORD: ci-isolated-only
           BOTMODE_IMAGE: ${{ env.BOTMODE_PUBLISHED_IMAGE }}
         shell: bash
+        run: |
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs --no-color api > /tmp/botmode-api-failure.log 2>/dev/null || true
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          lines=Path('/tmp/botmode-api-failure.log').read_text(errors='replace').splitlines()
+          # Diagnose SDK provider-registry failure on the real API process.
+          # Never emit arbitrary log text or stack arguments.
+          unsupported=[i for i,line in enumerate(lines) if 'Unsupported LLM provider: openrouter' in line]
+          print('CI_SDK_OPENROUTER_UNSUPPORTED_LOG_COUNT='+str(len(unsupported)),flush=True)
+          safe_frames=('providerRegistry','llm/init','llm/invoke','Graph','initialize','hostModelRouting','getChatModelClass','initializeModel','tryFallbackProviders','node_modules')
+          for idx in unsupported[-2:]:
+              window=lines[max(0,idx-3):idx+25]
+              approved=[]
+              for line in window:
+                  if not any(p in line for p in safe_frames):
+                      continue
+                  for label in safe_frames:
+                      if label in line and label not in approved:
+                          approved.append(label)
+              print('CI_SDK_OPENROUTER_CALL_PATH='+','.join(approved[:12]),flush=True)
+          hits=[i for i,line in enumerate(lines) if '[subagentThreads] Child-thread execution failed' in line]
+          print('CI_CHILD_EXCEPTION_LOG_ENTRIES='+str(len(hits)))
+          # The process logger can serialize structured fields across lines.
+          # Inspect only narrowly scoped exception class and stack frame tokens;
+          # never print full log records, raw arguments, or credentials.
+          for i in hits[-2:]:
+              window=' '.join(lines[max(0,i-2):i+24])
+              for marker in ('errorName','stack','detail'):
+                  print('CI_CHILD_LOG_FIELD_'+marker.upper()+'='+str(marker in window))
+              for kind in ('TypeError','ReferenceError','Error','SyntaxError','RangeError'):
+                  if re.search(r'(?<![A-Za-z])'+kind+r'(?![A-Za-z])',window):
+                      print('CI_CHILD_LOG_ERROR_KIND='+kind)
+                      break
+              for match in re.finditer(r'at\s+([A-Za-z0-9_$.<>]+)\s*\(',window):
+                  print('CI_CHILD_LOG_FRAME_FUNCTION='+match.group(1)[:100])
+                  break
+          for i in hits[-3:]:
+              block='\n'.join(lines[i:i+14])
+              names=re.findall(r'errorName[^A-Za-z]+([A-Za-z][A-Za-z0-9]*)',block)
+              print('CI_CHILD_EXCEPTION_NAME='+(','.join(names[:2]) or 'unknown'))
+              # Winston may serialize the exception as a one-line JSON string;
+              # report only field names and bounded, non-sensitive stack locations.
+              try:
+                  payload=lines[i].split(' | ',1)[-1]
+                  obj=__import__('json').loads(payload)
+                  if isinstance(obj,dict):
+                      print('CI_CHILD_EXCEPTION_FIELDS='+','.join(sorted(obj.keys()))[:150])
+                      value=obj.get('errorName') or obj.get('name')
+                      if isinstance(value,str) and re.fullmatch(r'[A-Za-z][A-Za-z0-9]{0,63}',value):
+                          print('CI_CHILD_EXCEPTION_JSON_NAME='+value)
+              except (ValueError,TypeError):
+                  pass
+              for candidate in ('TypeError','ReferenceError','ValidationError','AbortError','MongoServerError','SubagentThreadPublicError'):
+                  if candidate in block:
+                      print('CI_CHILD_EXCEPTION_CLASS='+candidate)
+              print('CI_CHILD_EXCEPTION_HAS_STACK='+str('stack:' in block))
+          PY
+      - name: Destroy runner-only stack
+        if: always()
         run:
-          "docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml logs --no-color api\
-          \ > /tmp/botmode-api-failure.log 2>/dev/null || true\npython3 - <<'PY'\nimport re\nfrom pathlib import Path\n\
-          lines=Path('/tmp/botmode-api-failure.log').read_text(errors='replace').splitlines()\n# Diagnose SDK provider-registry\
-          \ failure on the real API process.\n# Never emit arbitrary log text or stack arguments.\nunsupported=[i\
-          \ for i,line in enumerate(lines) if 'Unsupported LLM provider: openrouter' in line]\nprint('CI_SDK_OPENROUTER_UNSUPPORTED_LOG_COUNT='+str(len(unsupported)),flush=True)\n\
-          safe_frames=('providerRegistry','llm/init','llm/invoke','Graph','initialize','hostModelRouting','getChatModelClass','initializeModel','tryFallbackProviders','node_modules')\n\
-          for idx in unsupported[-2:]:\n    window=lines[max(0,idx-3):idx+25]\n    approved=[]\n    for line in window:\n\
-          \        if not any(p in line for p in safe_frames):\n            continue\n        for label in safe_frames:\n\
-          \            if label in line and label not in approved:\n                approved.append(label)\n    print('CI_SDK_OPENROUTER_CALL_PATH='+','.join(approved[:12]),flush=True)\n\
-          hits=[i for i,line in enumerate(lines) if '[subagentThreads] Child-thread execution failed' in line]\nprint('CI_CHILD_EXCEPTION_LOG_ENTRIES='+str(len(hits)))\n\
-          # The process logger can serialize structured fields across lines.\n# Inspect only narrowly scoped exception\
-          \ class and stack frame tokens;\n# never print full log records, raw arguments, or credentials.\nfor i in\
-          \ hits[-2:]:\n    window=' '.join(lines[max(0,i-2):i+24])\n    for marker in ('errorName','stack','detail'):\n\
-          \        print('CI_CHILD_LOG_FIELD_'+marker.upper()+'='+str(marker in window))\n    for kind in ('TypeError','ReferenceError','Error','SyntaxError','RangeError'):\n\
-          \        if re.search(r'(?<![A-Za-z])'+kind+r'(?![A-Za-z])',window):\n            print('CI_CHILD_LOG_ERROR_KIND='+kind)\n\
-          \            break\n    for match in re.finditer(r'at\\s+([A-Za-z0-9_$.<>]+)\\s*\\(',window):\n        print('CI_CHILD_LOG_FRAME_FUNCTION='+match.group(1)[:100])\n\
-          \        break\nfor i in hits[-3:]:\n    block='\\n'.join(lines[i:i+14])\n    names=re.findall(r'errorName[^A-Za-z]+([A-Za-z][A-Za-z0-9]*)',block)\n\
-          \    print('CI_CHILD_EXCEPTION_NAME='+(','.join(names[:2]) or 'unknown'))\n    # Winston may serialize the\
-          \ exception as a one-line JSON string;\n    # report only field names and bounded, non-sensitive stack locations.\n\
-          \    try:\n        payload=lines[i].split(' | ',1)[-1]\n        obj=__import__('json').loads(payload)\n\
-          \        if isinstance(obj,dict):\n            print('CI_CHILD_EXCEPTION_FIELDS='+','.join(sorted(obj.keys()))[:150])\n\
-          \            value=obj.get('errorName') or obj.get('name')\n            if isinstance(value,str) and re.fullmatch(r'[A-Za-z][A-Za-z0-9]{0,63}',value):\n\
-          \                print('CI_CHILD_EXCEPTION_JSON_NAME='+value)\n    except (ValueError,TypeError):\n    \
-          \    pass\n    for candidate in ('TypeError','ReferenceError','ValidationError','AbortError','MongoServerError','SubagentThreadPublicError'):\n\
-          \        if candidate in block:\n            print('CI_CHILD_EXCEPTION_CLASS='+candidate)\n    print('CI_CHILD_EXCEPTION_HAS_STACK='+str('stack:'\
-          \ in block))\nPY\n"
-      - *id002
+          sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans
+          || true
