@@ -1782,7 +1782,16 @@ describe('initializeClient — subagent loading', () => {
         user: String(testUser._id),
         traceId: 'specialist-fallback-regression',
       });
-      expect(records).toHaveLength(1);
+      expect(records).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            payload: expect.objectContaining({
+              decisionId: specialist.hostModelDecision.decisionId,
+              selectedOption: 'primary',
+            }),
+          }),
+        ]),
+      );
       expect(JSON.stringify(records)).not.toContain('fixture-specialist-secret');
     },
   );
