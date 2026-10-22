@@ -1,6 +1,6 @@
 # PR77 — checkpoint du lot runtime compatible — 22 octobre 2026
 
-> **Priorité du 22/10 : source isolée 6424833, qualification locale/multiarchitecture synthétique SUCCESS. Mission réelle autorisée #39850473486 : FAILURE / RATE_LIMIT après worker VERIFIED, quatre spécialistes sans verdict ; P6 non acquis. Aucun replay ni publication. NO-GO stable. Voir le dernier addendum.**
+> **Priorité du 22/10 : source corrigée a6f6fee3c7dc, routage propre aux spécialistes validé par 109 tests. Mission réelle complète sur cette source et image finale non encore qualifiées. NO-GO stable. Voir le dernier addendum.**
 
 ## Décision et identité
 
@@ -187,3 +187,19 @@ L'utilisateur a explicitement autorisé une seule mission après lecture de la p
 - Nettoyage stack/volumes/image : SUCCESS. Aucune publication GHCR, fusion, promotion stable/latest ni modification d'installation utilisateur.
 
 Cette autorisation d'une mission est consommée. Aucun replay ni seconde inférence n'est lancé. Le format JSON du worker est désormais validé dans ce scénario, mais le blocage RATE_LIMIT exige une attribution fondée sur des traces ; aucun correctif produit conjectural ni assouplissement Oracle n'est appliqué. D-01 résiduel reste ouvert ; D-02 doit encore rattacher explicitement les trois modérés au nouveau verrou ; D-03 publication nouvelle source et D-04 stable/fusion restent non autorisés.
+
+## Clôture ciblée du routage des spécialistes — 22 octobre 2026
+
+Source courante figée **a6f6fee3c7dcfb5877fe798f759966774a046a58**, branche fix/specialist-host-fallback-20261022, basée sur 6424833. [Checkpoint détaillé](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/4df7e393e58262d55ea6fd636bb0f1ec1227aac0/docs/BOTMODE_V1_SPECIALIST_ROUTING_CHECKPOINT_20261022.md).
+
+**Cause reproduite :** la mission réelle 39850473486 avait un worker VERIFIED puis RATE_LIMIT sur le spécialiste ; seul le primaire recevait la décision hostModelRouting. Les spécialistes de mission/lazy et les agents découverts gardaient leur primaire sans le fallback pourtant déclaré. Les 14 réponses 429 étaient locales. L'ancien classement harnais BLOCKED_PROVIDER n'établit pas un quota OpenRouter.
+
+**Correction :** réutilisation du même initialiseur avec décision de routage propre à chaque agent, validations natives, budget et provenance durable conservés. Le choix d'un model spec pour le primaire exempte uniquement ce primaire ; il ne désactive plus les politiques des spécialistes. Aucun second routeur ni changement Oracle/P6, aucune copie des credentials/fallbacks du worker vers ses spécialistes.
+
+**Preuve finale :** [run 39855394250](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39855394250), job 120092164281, SUCCESS sur source exacte : installation/builds PASS ; trois cas mission/handoff/lazy échouent bien sur l'ancien initialiseur (fallback undefined), puis **quatre suites / 109 tests PASS** sur le correctif, dont mission-spec et provenance Mongo. Revue après correction : aucun autre constat concret. Vérification ciblée, sans clé ni inférence externe ; pas un PASS de toute la suite monorepo.
+
+Le verrou sécurité reste **6e59734742daa69251821e2fed6a765febb4e58f9139743a98c91813dff234cf**. Aucun changement de dépendances dans ce lot. Les preuves d'image multiarchitecture 642 restent attachées à 642 ; **aucune image a6f6fee3c7dc construite/publiée et aucune mission réelle sur a6f6fee3c7dc**. Le digest public ceb reste inchangé.
+
+[Proposition inactive du prochain essai](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/4df7e393e58262d55ea6fd636bb0f1ec1227aac0/docs/qualification/BOTMODE_V1_FREE_FALLBACK_a6f6fee3c7dc_PROPOSAL.yml), hors Actions : une seule mission cinq tâches, primaire en 429 local sans attente artificielle de retry, fallback externe openrouter/free avec ses retries conservés, prix nuls revalidés, JSON strict, cinq VERIFIED et readback P6 de la même mission. Configuration exécutée à blanc sans réseau avec catalogue/clé fictifs ; syntaxe YAML/Bash/Python PASS. Autorisation distincte non encore reçue ; l'accord précédent est consommé.
+
+**NO-GO stable.** D-01 résiduel ouvert, D-02 nouveau verrou à rattacher explicitement, D-03 nouvelle publication et D-04 stable/fusion non autorisés. L'initialisation froide/recovery reste inchangée et n'est pas qualifiée par ce correctif.
