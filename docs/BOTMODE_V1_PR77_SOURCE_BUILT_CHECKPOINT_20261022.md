@@ -216,3 +216,8 @@ Source applicative figée **a6f6fee3c7dcfb5877fe798f759966774a046a58**. [Checkpo
 - OpenRouter documente que provider.require_parameters=true rend le support des paramètres obligatoire ; absent du préflight courant, ce contrôle est une piste pour le prochain diagnostic. La cause précise de la sortie invalide n'est **pas prouvée**, et aucune nouvelle modification produit conjecturale n'est appliquée.
 
 **Accord d'une mission consommé, aucun replay. NO-GO stable.** Le digest public ceb reste inchangé ; aucune nouvelle publication GHCR ni fusion/stable/latest. D-01 résiduel et les décisions D-02/D-03/D-04 restent ouverts selon leur périmètre. Le rapport audit zéro n'est pas une nouvelle acceptation de risque ni une preuve de retrait d'avis.
+
+
+## Mise à jour — méthode de clôture enregistrée le 23 octobre 2026
+
+Méthode et bilan revu : https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/9e8a2fdcf36e8f1329134f4e1296920e5852d05a/docs/BOTMODE_V1_CLOTURE_METHODIQUE_20261023.md . Diagnostic local : 25 tests ciblés réussis, sans nouveau build ni appel fournisseur. Workflow observé préparé mais inactif; nouvelle mission soumise à autorisation spécifique, la précédente étant consommée. Source applicative a6 inchangée. Le rejet JSON de la dernière mission réelle reste le blocage; aucun succès spécialistes/P6 supplémentaire, publication ou fusion ne doit être déduit de cette préparation. D01–D04 conservent leurs limites précédentes.
