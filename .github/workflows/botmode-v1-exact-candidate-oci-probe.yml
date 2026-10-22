@@ -964,6 +964,11 @@ jobs:
                           candidate_ok=(isinstance(candidate,list) and len(candidate)>0
                             and all(isinstance(p,dict) and p.get('type')=='text'
                               and isinstance(p.get('text'),str) for p in candidate))
+                          print('CI_BROWSER_FIVE_VERDICTS_VALID='+str(valid),flush=True)
+                          print('CI_BROWSER_PRIVATE_CANDIDATE_VALID='+str(candidate_ok),flush=True)
+                          print('CI_BROWSER_TERMINAL_PENDING='+str(lines[3].strip() if len(lines)>3 else 'absent'),flush=True)
+                          print('CI_BROWSER_TASK_VERDICT_COUNTS='+','.join(str(len(results.get(t.get('taskId'),{}).get('verdicts',[]))) for t in tasks if isinstance(t,dict))[:70],flush=True)
+                          print('CI_BROWSER_TASK_VERDICT_STATUS_CLASSES='+','.join(sorted({str(v.get('status')) for outcome in results.values() if isinstance(outcome,dict) for v in outcome.get('verdicts',[]) if isinstance(v,dict)}))[:100],flush=True)
                           if valid and candidate_ok:
                               print('CI_BROWSER_FIVE_TASK_VERDICTS_VERIFIED=PASS',flush=True)
                               print('CI_BROWSER_PRIVATE_CANDIDATE_PRESENT=PASS',flush=True)
