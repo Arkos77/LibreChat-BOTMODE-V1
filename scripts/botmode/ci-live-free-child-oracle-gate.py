@@ -247,6 +247,28 @@ for item in finals[:1]:
             else "STEP_LIMIT" if ("step limit" in raw_error or "recursion_limit" in raw_error or "recursion limit" in raw_error)
             else "OTHER")
         print("CI_LIVE_FREE_FINAL_ERROR_CLASS="+family,flush=True)
+        from hashlib import sha256
+        print("CI_LIVE_FREE_FINAL_ERROR_TEXT_LENGTH="+str(len(raw_error)),flush=True)
+        print("CI_LIVE_FREE_FINAL_ERROR_FINGERPRINT="+sha256(raw_error.encode()).hexdigest()[:16],flush=True)
+        # Public CI emits only bounded known diagnostic flags, not exception
+        # messages, provider model output, identities or secrets.
+        safe_patterns={
+            "NO_ADMISSIBLE":("no admissible authorized resource candidates",),
+            "MODEL_ROUTING":("model routing","routing","authorized binding"),
+            "FALLBACK":("fallback","failover","retryon"),
+            "MODEL_INIT":("model initialization","initializeagent","model not found","no models"),
+            "INVALID_CONFIG":("invalid configuration","invalid options","unsupported option"),
+            "MODEL_ERROR":("model","provider","openrouter"),
+            "REQUEST_ERROR":("request","badrequesterror","validationerror","400"),
+            "SDK_ERROR":("typeerror","error:","exception","traceback"),
+        }
+        for diagnostic,phrases in safe_patterns.items():
+            print("CI_LIVE_FREE_FINAL_ERROR_HAS_"+diagnostic+"="+str(any(p in raw_error for p in phrases)).upper(),flush=True)
+        allowed_keys={"type","error","message","text","code","details","data"}
+        print("CI_LIVE_FREE_FINAL_ERROR_PART_KEYS="+",".join(sorted({
+            k for part in parts if isinstance(part,dict) and part.get("type")=="error"
+            for k in part if k in allowed_keys
+        })),flush=True)
         # Diagnostic on the ORIGINAL durable job's sanitized error metadata,
         # never on arbitrary response/model text.
         from hashlib import sha256
