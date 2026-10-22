@@ -352,8 +352,19 @@ if stream_status != 200 or len(finals) != 1 or errors:
                     os.environ.get("OPENROUTER_API_KEY",""),helpers.get("TOKEN",""),worker,child,mission_id,conversation_id
                 )))
             print("CI_LIVE_FREE_INIT_ERROR_LITERAL_SAFE="+str(bool(safe_literal)).upper(),flush=True)
-            if safe_literal:
-                print("CI_LIVE_FREE_INIT_ERROR_LITERAL="+clean[:110],flush=True)
+            # This fingerprint has reproduced across isolated synthetic CI
+            # identities. Sanitize all non-word characters, digits and any
+            # credentials before printing the bounded constant message.
+            stable=(len(clean)==73 and sha256(clean.lower().encode()).hexdigest().startswith("566d360f31db184e"))
+            masked_secrets=[os.environ.get("OPENROUTER_API_KEY",""),helpers.get("TOKEN",""),worker,child,mission_id,conversation_id]
+            safely_static=stable and not any(tok and tok in clean for tok in masked_secrets)
+            if safely_static:
+                from urllib.parse import urlsplit
+                scrubbed=re.sub(r"https?://[^\s]+","[URL]",clean,flags=re.I)
+                scrubbed=re.sub(r"[0-9]","#",scrubbed)
+                scrubbed=re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+","[EMAIL]",scrubbed)
+                scrubbed=re.sub(r"[^A-Za-z #:/().={}'\"\[\],_!?-]","?",scrubbed)
+                print("CI_LIVE_FREE_INIT_SAFE_FIXED_MESSAGE="+scrubbed[:110],flush=True)
             # Also inspect a small bounded tail of local API logs for specific
             # error families, never show upstream text or arbitrary stack frames.
             try:
