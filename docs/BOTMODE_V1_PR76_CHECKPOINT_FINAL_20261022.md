@@ -38,3 +38,14 @@ La mission émise par `client/src/hooks/Chat/useChatFunctions.ts` contient déso
 **Verdict : candidate technique qualifiée sur simulateur ; release stable non autorisée.**
 
 Ne pas fusionner PR #76, supprimer le statut draft, taguer une nouvelle version stable, déployer chez l'utilisateur ou remplacer des installations sans approbation humaine explicite. Avant demande de promotion, vérifier les statuts requis sur le HEAD de PR et traiter les réserves de preuve intégrée ci-dessus.
+
+
+## Addendum — fournisseur réel OpenRouter (22 octobre 2026)
+
+Run: https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39712205594 — **SUCCESS** (jobs `current-candidate-runtime` et Lite).
+
+Le modèle gratuit OpenRouter a exécuté une mission réelle structurée en **deux nœuds** : Worker puis spécialiste. Preuves journalisées : `CI_LIVE_FREE_EVENT_WORKER_NODE_EVENT=5`, `CI_LIVE_FREE_EVENT_SPECIALIST_NODE_EVENT=14`, `CI_LIVE_FREE_STRUCTURED_SPECIALIST_PLAN=PASS`, `CI_LIVE_FREE_STRUCTURED_SPECIALIST_ORACLE=PASS`, `CI_LIVE_FREE_ORACLE_VERIFIED_AND_PUBLISHED=PASS` et `BOTMODE_LIVE_FREE_STRUCTURED_SPECIALIST_ORACLE=PASS`. Le flux SSE a émis une réponse terminale, sans erreur.
+
+**Portée exacte :** deux agents du graphe natif ; aucune conversation sous-agent imbriquée n'a été observée (`CI_LIVE_FREE_NESTED_CHILD_THREAD=NOT_OBSERVED`). Il serait inexact de transformer ce constat en réussite du scénario nested-child. Le test navigateur à cinq spécialistes repose toujours sur le modèle synthétique ; la preuve MongoDB de publication finale du *même flux navigateur* reste à acquérir.
+
+Les échecs intermittents précédents sont conservés dans l'historique et ne doivent pas être effacés du rapport. Aucun changement applicatif postérieur à `f0e102f` n'est inclus dans cette qualification.
