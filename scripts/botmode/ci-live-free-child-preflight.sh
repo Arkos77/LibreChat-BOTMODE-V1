@@ -187,5 +187,31 @@ for agent_id in (worker,specialist):
 print('CI_LIVE_FREE_NAMED_MODEL_AGENT_BINDINGS=PASS',flush=True)
 PY_FREE_BIND
 fi
+# Check the SDK provider registry in the exact immutable API image without
+# calling a model or exposing credentials. Keep this before the live inference.
+if test "${CI_LIVE_FREE_FIVE_TASKS:-false}" = true; then
+  "${compose[@]}" exec -T api node - <<'NODE_FREE_SDK_PROVIDER'
+  try {
+    const sdk=require('@librechat/agents');
+    if (typeof sdk.getChatModelClass!=='function') {
+      console.log('CI_LIVE_FREE_SDK_PROVIDER_EXPORT=ABSENT');
+      process.exit(7);
+    }
+    for (const provider of ['openAI','openrouter']) {
+      try {
+        const ModelClass=sdk.getChatModelClass(provider);
+        console.log('CI_LIVE_FREE_SDK_PROVIDER_'+provider.toUpperCase()+'='+(
+          typeof ModelClass==='function'?'REGISTERED':'UNAVAILABLE'));
+      } catch(err) {
+        const expected='Unsupported LLM provider: '+provider;
+        console.log('CI_LIVE_FREE_SDK_PROVIDER_'+provider.toUpperCase()+'='+(
+          err instanceof Error && err.message===expected?'UNREGISTERED':'INITIALIZATION_FAILURE'));
+      }
+    }
+  } catch(err) {
+    console.log('CI_LIVE_FREE_SDK_PROVIDER_PROBE=UNAVAILABLE');
+  }
+NODE_FREE_SDK_PROVIDER
+fi
 echo 'CI_LIVE_FREE_REAL_OPENROUTER_ENDPOINT_READY=PASS'
 python3 scripts/botmode/ci-live-free-child-oracle-gate.py
