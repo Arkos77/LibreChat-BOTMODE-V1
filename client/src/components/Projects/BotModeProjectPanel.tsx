@@ -9,6 +9,7 @@ import type { ParentSubagentSummary, TConversation } from 'librechat-data-provid
 import {
   useBotModeProjectProjectionQuery,
   useListAgentsQuery,
+  useGetAgentByIdQuery,
   useParentSubagentsQuery,
   useSubagentControlMutation,
 } from '~/data-provider';
@@ -136,6 +137,8 @@ export default function BotModeProjectPanel({
   const [setupModels, setSetupModels] = useState<Array<{ provider: string; model: string }>>([]);
   const [selectedSetupModel, setSelectedSetupModel] = useState('');
   const { data: agents } = useListAgentsQuery();
+  const [agentMode, setAgentMode] = useState<'auto' | 'manual'>('auto');
+  const [chosenAgentIds, setChosenAgentIds] = useState<string[]>([]);
   const {
     data: projection,
     isLoading: isProjectionLoading,
@@ -190,8 +193,17 @@ export default function BotModeProjectPanel({
     if (verifiedObservations.length > 0) return 'verified';
     return 'running';
   })();
-  // Never launch an arbitrary agent when the BOT MODE Worker is unavailable.
+  // Never launch a BOT MODE mission against an arbitrary agent from the list.
   const primaryAgent = agents?.data?.find((agent) => agent.name === 'BOT MODE Worker');
+
+  const { data: workerDetails } = useGetAgentByIdQuery(primaryAgent?.id);
+  const authorizedIds = new Set(
+    workerDetails?.subagents?.enabled === true ? (workerDetails.subagents.agent_ids ?? []) : [],
+  );
+  const specialists = (agents?.data ?? []).filter(
+    (agent) => agent.id && agent.id !== primaryAgent?.id && authorizedIds.has(agent.id),
+  );
+  const selectedSpecialists = specialists.filter((agent) => chosenAgentIds.includes(agent.id));
 
   const initializeAgents = async () => {
     if (setupPending) return;
@@ -240,16 +252,27 @@ export default function BotModeProjectPanel({
   };
 
   const launchMission = () => {
-    if (!primaryAgent?.id) {
+    if (
+      !primaryAgent?.id ||
+      !workerDetails?.subagents?.enabled ||
+      (agentMode === 'manual' && selectedSpecialists.length === 0)
+    ) {
       return;
     }
     const params = new URLSearchParams({
       projectId,
       agent_id: primaryAgent.id,
-      prompt: 'Lance une mission BOT MODE et produis un résultat vérifiable.',
+      prompt: `Lance une mission BOT MODE et produis un résultat vérifiable. ${agentMode === 'auto' ? 'Choisis les spécialistes existants autorisés en fonction de la mission.' : `Privilégie uniquement ces spécialistes déclarés dans la configuration du Worker (nom et identifiant) : ${selectedSpecialists.map((agent) => `${agent.name} [${agent.id}]`).join(', ')}.`} Respecte toutes les autorisations de délégation ; ne contourne aucun refus.`,
       submit: 'true',
       botmode: '1',
       botmode_mode: 'analyze',
+      botmode_agent_mode: agentMode,
+      botmode_agent_bindings: JSON.stringify(
+        (agentMode === 'auto' ? specialists : selectedSpecialists).map((agent) => ({
+          id: agent.id,
+          name: agent.name,
+        })),
+      ),
     });
     navigate(`/c/new?${params.toString()}`);
   };
@@ -305,7 +328,15 @@ export default function BotModeProjectPanel({
             </div>
             <div className="flex flex-col items-end gap-2">
               {primaryAgent?.id ? (
-                <Button type="button" size="sm" onClick={launchMission}>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={
+                    !workerDetails?.subagents?.enabled ||
+                    (agentMode === 'manual' && selectedSpecialists.length === 0)
+                  }
+                  onClick={launchMission}
+                >
                   {localize('com_ui_bot_mode_project_launch')}
                 </Button>
               ) : (
@@ -344,6 +375,72 @@ export default function BotModeProjectPanel({
             </div>
           </div>
 
+          <div
+            className="mt-4 space-y-3 rounded-xl border border-border-light p-3"
+            aria-label="Sélection des agents BOT MODE"
+          >
+            <div className="text-sm font-semibold text-text-primary">
+              {localize('com_ui_bot_mode_agents_choose_title')}
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                aria-pressed={agentMode === 'auto'}
+                onClick={() => setAgentMode('auto')}
+                className={`rounded-lg border p-3 text-left text-sm ${agentMode === 'auto' ? 'border-blue-500 bg-blue-500/10' : 'border-border-light'}`}
+              >
+                <strong>{localize('com_ui_bot_mode_agents_auto')}</strong>
+                <span className="mt-1 block text-xs text-text-secondary">
+                  {localize('com_ui_bot_mode_agents_auto_description')}
+                </span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={agentMode === 'manual'}
+                onClick={() => setAgentMode('manual')}
+                className={`rounded-lg border p-3 text-left text-sm ${agentMode === 'manual' ? 'border-blue-500 bg-blue-500/10' : 'border-border-light'}`}
+              >
+                <strong>{localize('com_ui_bot_mode_agents_manual')}</strong>
+                <span className="mt-1 block text-xs text-text-secondary">
+                  {localize('com_ui_bot_mode_agents_manual_description')}
+                </span>
+              </button>
+            </div>
+            {agentMode === 'manual' && (
+              <div className="grid gap-2 sm:grid-cols-2" aria-label="Spécialistes disponibles">
+                {specialists.map((agent) => (
+                  <label
+                    key={agent.id}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg border border-border-light p-3 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={chosenAgentIds.includes(agent.id)}
+                      onChange={(event) =>
+                        setChosenAgentIds((ids) =>
+                          event.target.checked
+                            ? [...ids, agent.id]
+                            : ids.filter((id) => id !== agent.id),
+                        )
+                      }
+                    />
+                    <span className="truncate">{agent.name}</span>
+                  </label>
+                ))}
+                {specialists.length === 0 && (
+                  <p className="text-sm text-text-secondary">
+                    {localize('com_ui_bot_mode_agents_none_authorized')}
+                  </p>
+                )}
+              </div>
+            )}
+            <details className="text-sm text-text-secondary">
+              <summary className="cursor-pointer">
+                {localize('com_ui_bot_mode_agents_advanced')}
+              </summary>
+              <p className="mt-2">{localize('com_ui_bot_mode_agents_security_description')}</p>
+            </details>
+          </div>
           <div className="mt-5 grid grid-cols-6 gap-1.5" aria-label="Mission progress">
             {MTO_STEPS.map((step, index) => {
               const isComplete = index < progressStep;

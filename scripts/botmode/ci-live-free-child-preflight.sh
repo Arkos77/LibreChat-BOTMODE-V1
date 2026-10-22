@@ -14,17 +14,92 @@ export OPENROUTER_KEY="$OPENROUTER_API_KEY"
 sudo chown "$(id -u):$(id -g)" .env
 python3 - <<'PY'
 import json,os
+from decimal import Decimal
 from pathlib import Path
+from urllib.request import Request, urlopen
+model='openrouter/free'
+if os.environ.get('CI_LIVE_FREE_FIVE_TASKS')=='true':
+    # Named free model is a CI diagnostic, NOT a user model choice.
+    model='google/gemma-4-31b-it:free'
+    assert model.endswith(':free'), 'CI_LIVE_FREE_MODEL_SUFFIX_NOT_FREE'
+    req=Request('https://openrouter.ai/api/v1/models',headers={'Accept':'application/json','User-Agent':'BOTMODE-CI-FreeGuard'})
+    with urlopen(req,timeout=25) as response:
+        catalog=json.load(response)
+    matches=[m for m in catalog.get('data',[]) if m.get('id')==model]
+    assert len(matches)==1, 'CI_LIVE_FREE_MODEL_CATALOG_MISSING'
+    price=matches[0].get('pricing',{})
+    assert all(Decimal(str(price.get(k,'1')))==0 for k in ('prompt','completion')), 'CI_LIVE_FREE_MODEL_PRICING_DENIED'
+    assert 'response_format' in matches[0].get('supported_parameters',[]), 'CI_LIVE_FREE_MODEL_JSON_UNSUPPORTED'
+    print('CI_LIVE_FREE_NAMED_MODEL_PRICE_AND_JSON=PASS',flush=True)
+    Path('/tmp/botmode-ci-named-free-model').write_text(model)
 cfg=Path('librechat.yaml')
 data=json.loads(cfg.read_text())
 allowed=[]
 for item in data.get('endpoints',{}).get('custom',[]):
     if item.get('name')=='OpenRouter':
         item['baseURL']='https://openrouter.ai/api/v1'
-        item['models']={'fetch':False,'default':['openrouter/free']}
+        # The saved Worker/specialist bindings use the named model, but some
+        # already-authorized runtime actors retain OpenRouter's free router.
+        # Never make their original FREE binding illegal during this probe.
+        allowed_free=list(dict.fromkeys([model,'openrouter/free']))
+        assert all(m=='openrouter/free' or m.endswith(':free') for m in allowed_free), 'CI_LIVE_FREE_NONFREE_MODEL_DENIED'
+        item['models']={'fetch':False,'default':allowed_free}
+        print('CI_LIVE_FREE_MODEL_ALLOWLIST_FREE_ONLY=PASS',flush=True)
         allowed.append(item)
 assert len(allowed)==1, 'CI_LIVE_FREE_FAIL=OPENROUTER_CONFIG_MISSING'
 assert not data['endpoints']['agents'].get('hostModelRouting'), 'CI_LIVE_FREE_FAIL=OTHER_ROUTING_NOT_ISOLATED'
+if os.environ.get('CI_LIVE_FREE_FIVE_TASKS')=='true':
+    # Authorize exactly two FREE alternatives for these two CI agents.
+    # The primary is the catalog-verified named free model; the alternate
+    # is OpenRouter's documented free-only router. No paid binding can enter.
+    agent_ids=[Path('/tmp/botmode-ci-worker-id').read_text().strip(),
+               Path('/tmp/botmode-ci-child-id').read_text().strip()]
+    assert len(set(agent_ids))==2 and all(agent_ids),'CI_LIVE_FREE_ROUTING_AGENT_IDENTITY'
+    free_choices=[model,'openrouter/free']
+    assert len(set(free_choices))==2 and all(
+        candidate=='openrouter/free' or candidate.endswith(':free')
+        for candidate in free_choices
+    ),'CI_LIVE_FREE_ROUTING_PAID_BINDING'
+    compat_mode=os.environ.get('CI_LIVE_FREE_COMPAT_FALLBACK_DIAG')=='true'
+    if compat_mode:
+        # CI-only clone of the SAME zero-cost OpenRouter endpoint credentials
+        # and URL, resolved through LibreChat's canonical OpenAI-compatible
+        # client rather than the OpenRouter-specific SDK fallback loader.
+        # There is no new provider account, paid binding or direct DB mutation.
+        import copy
+        compat=copy.deepcopy(allowed[0])
+        compat['name']='OpenRouterFreeCompatCI'
+        compat.pop('provider',None)
+        compat['models']={'fetch':False,'default':['openrouter/free']}
+        data['endpoints']['custom'].append(compat)
+        print('CI_LIVE_FREE_COMPAT_FREE_ENDPOINT_ISOLATED=PASS',flush=True)
+    def policy(agent_id):
+        base={'agentId':agent_id,
+              'allowFailover':os.environ.get('CI_LIVE_FREE_DISABLE_FALLBACK_DIAG')!='true',
+              'routingMode':'static',
+              'routingConstraints':{'spendingPolicy':'free_only'}}
+        if compat_mode:
+            base.update({
+                'bindings':[
+                    {'id':'primary','provider':'OpenRouter','model':model,
+                     'signals':{'pricingTier':'free','estimatedCost':0}},
+                    {'id':'fallback','provider':'OpenRouterFreeCompatCI','model':'openrouter/free',
+                     'signals':{'pricingTier':'free','estimatedCost':0}}],
+                'preferredBindingId':'primary',
+            })
+        else:
+            base.update({
+                'models':free_choices,'preferredModel':model,
+                'routingSignals':{
+                    model:{'pricingTier':'free','estimatedCost':0},
+                    'openrouter/free':{'pricingTier':'free','estimatedCost':0},
+                },
+            })
+        return base
+    data['endpoints']['agents']['hostModelRouting']=[policy(agent_id) for agent_id in agent_ids]
+    print('CI_LIVE_FREE_TWO_AUTHORIZED_FREE_ROUTING_POLICIES=PASS',flush=True)
+    print('CI_LIVE_FREE_FALLBACK_CONFIGURED='+str(os.environ.get('CI_LIVE_FREE_DISABLE_FALLBACK_DIAG')!='true').upper(),flush=True)
+    print('CI_LIVE_FREE_FALLBACK_RUNTIME_COMPAT='+str(compat_mode).upper(),flush=True)
 cfg.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
 dotenv=Path('.env')
 lines=dotenv.read_text().splitlines()
@@ -103,5 +178,97 @@ if test "$mission_ready" != 1; then
   exit 3
 fi
 echo 'CI_LIVE_FREE_MISSION_SERVER_READY=PASS'
+if test "${CI_LIVE_FREE_FIVE_TASKS:-false}" = true; then
+  # Use the same authenticated native PATCH path as the UI. This preserves
+  # Agent versions/permissions, rather than bypassing them via direct Mongo edits.
+  python3 - <<'PY_FREE_BIND'
+import json
+from pathlib import Path
+from urllib.request import Request,urlopen
+from urllib.error import HTTPError
+model=Path('/tmp/botmode-ci-named-free-model').read_text().strip()
+token=Path('/tmp/botmode-e2e-test-token').read_text().strip()
+worker=Path('/tmp/botmode-ci-worker-id').read_text().strip()
+specialist=Path('/tmp/botmode-ci-child-id').read_text().strip()
+assert len({worker,specialist})==2 and all(len(x)>4 for x in (worker,specialist)), 'CI_FREE_BIND_IDENTITIES_INVALID'
+for agent_id in (worker,specialist):
+    request=Request(
+        'http://127.0.0.1:3090/api/agents/'+agent_id,
+        data=json.dumps({'model':model}).encode(),
+        headers={'Authorization':'Bearer '+token,'Content-Type':'application/json','Accept':'application/json',
+                 'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36'},
+        method='PATCH'
+    )
+    try:
+        with urlopen(request,timeout=20) as response:
+            status=response.status
+            data=json.load(response)
+    except HTTPError as e:
+        print('CI_LIVE_FREE_NAMED_MODEL_PATCH_HTTP='+str(e.code),flush=True)
+        raise SystemExit('CI_LIVE_FREE_NAMED_MODEL_PATCH_DENIED')
+    if status!=200 or data.get('id')!=agent_id or data.get('model')!=model or data.get('provider')!='OpenRouter':
+        raise SystemExit('CI_LIVE_FREE_NAMED_MODEL_PATCH_READBACK_DENIED')
+print('CI_LIVE_FREE_NAMED_MODEL_AGENT_BINDINGS=PASS',flush=True)
+PY_FREE_BIND
+fi
+# Check the SDK provider registry in the exact immutable API image without
+# calling a model or exposing credentials. Keep this before the live inference.
+if test "${CI_LIVE_FREE_FIVE_TASKS:-false}" = true; then
+  "${compose[@]}" exec -T api node - <<'NODE_FREE_SDK_PROVIDER'
+  try {
+    const sdk=require('@librechat/agents');
+    if (typeof sdk.getChatModelClass!=='function') {
+      console.log('CI_LIVE_FREE_SDK_PROVIDER_EXPORT=ABSENT');
+      process.exit(7);
+    }
+    for (const provider of ['openAI','openrouter']) {
+      try {
+        const ModelClass=sdk.getChatModelClass(provider);
+        console.log('CI_LIVE_FREE_SDK_PROVIDER_'+provider.toUpperCase()+'='+(
+          typeof ModelClass==='function'?'REGISTERED':'UNAVAILABLE'));
+      } catch(err) {
+        const expected='Unsupported LLM provider: '+provider;
+        console.log('CI_LIVE_FREE_SDK_PROVIDER_'+provider.toUpperCase()+'='+(
+          err instanceof Error && err.message===expected?'UNREGISTERED':'INITIALIZATION_FAILURE'));
+      }
+    }
+    // ESM/CJS SDK entrypoints have separate module graphs; report both.
+    // A mismatch explains why direct CJS registration cannot prove the
+    // Graph's runtime provider registry is initialized.
+    (async()=>{
+      try {
+        const esm=await import('@librechat/agents');
+        for(const provider of ['openAI','openrouter']){
+          let state='UNREGISTERED';
+          try{
+            const klass=esm.getChatModelClass(provider);
+            if(typeof klass==='function') state='REGISTERED';
+          }catch(e){state=e instanceof Error && e.message==='Unsupported LLM provider: '+provider?'UNREGISTERED':'INITIALIZATION_FAILURE';}
+          console.log('CI_LIVE_FREE_SDK_ESM_'+provider.toUpperCase()+'='+state);
+        }
+      }catch(e){ console.log('CI_LIVE_FREE_SDK_ESM_PROBE=UNAVAILABLE'); }
+      try{
+        const fs=require('node:fs');
+        const path=require('node:path');
+        let current=path.dirname(require.resolve('@librechat/agents'));
+        for(let i=0;i<6;i++){
+          const manifest=path.join(current,'package.json');
+          if(fs.existsSync(manifest)){
+            const pkg=JSON.parse(fs.readFileSync(manifest,'utf8'));
+            if(pkg.name==='@librechat/agents'){
+              const version=String(pkg.version||'');
+              console.log('CI_LIVE_FREE_SDK_INSTALLED_VERSION='+(/^[0-9]+\.[0-9]+\.[0-9]+$/.test(version)?version:'OTHER'));
+              break;
+            }
+          }
+          current=path.dirname(current);
+        }
+      }catch(e){console.log('CI_LIVE_FREE_SDK_VERSION_READ=UNAVAILABLE');}
+    })().catch(()=>{console.log('CI_LIVE_FREE_SDK_ESM_PROBE=FAILED')});
+  } catch(err) {
+    console.log('CI_LIVE_FREE_SDK_PROVIDER_PROBE=UNAVAILABLE');
+  }
+NODE_FREE_SDK_PROVIDER
+fi
 echo 'CI_LIVE_FREE_REAL_OPENROUTER_ENDPOINT_READY=PASS'
 python3 scripts/botmode/ci-live-free-child-oracle-gate.py

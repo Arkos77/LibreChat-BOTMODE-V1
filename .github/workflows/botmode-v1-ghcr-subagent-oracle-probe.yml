@@ -1,6 +1,7 @@
 name: BOTMODE V1 Published OCI Digest Subagent Oracle Probe
 on:
-  pull_request:
+  # Historical immutable stable-digest qualification; the candidate PR has
+  # its own exact-source OCI gate and must not compare against an old digest.
   push:
     branches: [main]
   workflow_dispatch:
