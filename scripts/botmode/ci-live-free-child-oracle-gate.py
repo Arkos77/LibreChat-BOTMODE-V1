@@ -168,7 +168,9 @@ def read_terminal_stream(stream_path):
         method="GET",
     )
     started = time.monotonic()
-    deadline = started + (450 if FIVE_TASKS else 210)
+    deadline = started + 210
+    if FIVE_TASKS:
+        deadline = started + 450
     items = []
     retries = 0
     http_status = 0
@@ -197,7 +199,7 @@ def read_terminal_stream(stream_path):
         except HTTPError as exc:
             return exc.code, items, "HTTP_ERROR"
         except (socket.timeout, TimeoutError):
-            if time.monotonic() >= deadline or retries >= (5 if FIVE_TASKS else 2):
+            if time.monotonic() >= deadline or (retries >= 5 if FIVE_TASKS else retries >= 2):
                 return http_status, items, "SSE_IDLE_TOTAL_DEADLINE"
             retries += 1
             # This GET merely resumes observation of the same already-started
