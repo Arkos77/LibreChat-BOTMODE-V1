@@ -19,7 +19,7 @@ conversation_id = str(uuid.uuid4())
 keys = ["worker"] + ["specialist_" + str(n) for n in range(1, 5)]
 objectives = [{
     "key": key,
-    "objective": "Retourne exclusivement l'objet JSON de validation {\\"ok\\":true}.",
+    "objective": "Retourne exclusivement l'objet JSON de validation {\"ok\":true}.",
     "requiredCapabilities": ["basic"] if key == "worker" else ["research_specialist_ci"],
     "dependsOn": [] if index == 0 else [keys[index - 1]],
 } for index, key in enumerate(keys)]
