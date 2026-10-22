@@ -874,6 +874,25 @@ jobs:
               assert admitted and admitted.get('status')==200 and admitted.get('streamId'), 'CI_BROWSER_REAL_MISSION_NOT_ADMITTED'
               Path('/tmp/botmode-ci-browser-stream-id').write_text(admitted['streamId'])
               print('CI_BROWSER_REAL_MISSION_ADMITTED=PASS',flush=True)
+              # Keep the originating browser/SSE subscription alive until
+              # the native mission is settled; closing it here can abandon
+              # work before Oracle. The separate Redis attestation below
+              # remains the strict fail-closed final assertion.
+              import subprocess
+              stream_key='::stream:{'+admitted['streamId']+'}:job'
+              command=['docker','compose','-f','docker-compose.botmode.yml','-f','docker-compose.botmode-lite.yml','exec','-T','redis','redis-cli','--raw','HMGET',stream_key,'status','missionOracleState']
+              completed=False
+              deadline=time.monotonic()+120
+              while time.monotonic()<deadline:
+                  proc=subprocess.run(command,capture_output=True,text=True,timeout=15)
+                  if proc.returncode==0:
+                      fields=proc.stdout.splitlines()
+                      if len(fields)>=2 and fields[0].strip() in ('complete','completed','error','failed','aborted','cancelled'):
+                          completed=True
+                          print('CI_BROWSER_ORIGIN_STREAM_TERMINAL='+fields[0].strip()[:24],flush=True)
+                          break
+                  page.wait_for_timeout(1000)
+              assert completed, 'CI_BROWSER_MISSION_STREAM_NOT_TERMINAL_WITH_PAGE_OPEN'
               page.close()
               context.close()
               context=browser.new_context(base_url='http://127.0.0.1:3090')
