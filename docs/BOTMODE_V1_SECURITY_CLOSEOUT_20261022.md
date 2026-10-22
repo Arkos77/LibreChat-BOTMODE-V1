@@ -94,3 +94,9 @@ L'utilisateur a explicitement autorisé une seule mission après lecture de la p
 - Nettoyage stack/volumes/image : SUCCESS. Aucune publication GHCR, fusion, promotion stable/latest ni modification d'installation utilisateur.
 
 Cette autorisation d'une mission est consommée. Aucun replay ni seconde inférence n'est lancé. Le format JSON du worker est désormais validé dans ce scénario, mais le blocage RATE_LIMIT exige une attribution fondée sur des traces ; aucun correctif produit conjectural ni assouplissement Oracle n'est appliqué. D-01 résiduel reste ouvert ; D-02 doit encore rattacher explicitement les trois modérés au nouveau verrou ; D-03 publication nouvelle source et D-04 stable/fusion restent non autorisés.
+
+## Successeur applicatif — spécialistes
+
+Le lot suivant est figé à **a6f6fee3c7dcfb5877fe798f759966774a046a58**, avec le même verrou sécurité ci-dessus. [Checkpoint et proposition inactive](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/4df7e393e58262d55ea6fd636bb0f1ec1227aac0/docs/BOTMODE_V1_SPECIALIST_ROUTING_CHECKPOINT_20261022.md). [Run 39855394250](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39855394250) : SUCCESS, trois régressions confirmées sur l'ancien initialiseur, puis 109 tests ciblés PASS.
+
+La cause du RATE_LIMIT du run réel précédent a été reproduite : politique de fallback des spécialistes non appliquée par leur initialiseur, alors que celle du worker l'était. Le classement BLOCKED_PROVIDER historique n'est donc pas une preuve de quota externe. La décision de routage partagée est maintenant appliquée avec la politique propre à chaque agent, y compris lorsque le primaire choisit un model spec. Pas de nouvelle mission réelle ni d'image publiée pour ce successeur ; D-01/D-02/D-03/D-04 restent aux frontières documentées. Les preuves d'images 642 restent celles de 642.
