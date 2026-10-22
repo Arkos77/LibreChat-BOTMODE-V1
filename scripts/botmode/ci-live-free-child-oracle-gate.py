@@ -326,6 +326,22 @@ if stream_status != 200 or len(finals) != 1 or errors:
             }
             for group,terms in diagnostic_words.items():
                 print("CI_LIVE_FREE_INIT_TERM_"+group+"="+str(any(w in detail for w in terms)).upper(),flush=True)
+            # Emit only dictionary-approved words in the exact order they occur.
+            # No free-form upstream/model text reaches public CI logs.
+            import re
+            safe_terms={"model","models","provider","providers","not","supported","support","unsupported",
+                "cannot","can","be","configured","configuration","custom","endpoint","endpoints","selected",
+                "requested","invalid","missing","unknown","available","unavailable","was","is","for","the",
+                "with","on","in","to","from","no","of","a","an","agent","routing","saved","binding",
+                "found","registered","register","use","using","specification","specifications","at",
+                "allowed","denied","key","option","options","must","match","does","this","that",
+                "name","names","client","setup","resolution","failed","failure","error","resolve",
+                "resolved","and","only","recognized","recognised","openrouter","openai","default",
+                "identity","type","id","value","providerid","modelid","modelname","providername",
+                "baseurl","required","local","notfound","found"}
+            words=[w.lower() for w in re.findall(r"[A-Za-z]{2,}",detail)]
+            public_words=[w if w in safe_terms else "[redacted]" for w in words]
+            print("CI_LIVE_FREE_INIT_ERROR_APPROVED_WORDS="+(" ".join(public_words[:28]))[:250],flush=True)
             # Also inspect a small bounded tail of local API logs for specific
             # error families, never show upstream text or arbitrary stack frames.
             try:
