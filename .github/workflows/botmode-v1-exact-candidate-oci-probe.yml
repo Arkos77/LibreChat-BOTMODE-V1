@@ -836,6 +836,10 @@ jobs:
                           admissions.append(body if isinstance(body,dict) else {})
                       except Exception:
                           admissions.append({})
+              # Snapshot fixture counters immediately before browser mission.
+              from urllib.request import urlopen
+              with urlopen('http://127.0.0.1:8088/metrics',timeout=5) as metric_response:
+                  fixture_before=json.load(metric_response)
               page.on('request',capture_admission)
               admission_replies=[]
               def capture_reply(response):
@@ -893,6 +897,12 @@ jobs:
                           break
                   page.wait_for_timeout(1000)
               assert completed, 'CI_BROWSER_MISSION_STREAM_NOT_TERMINAL_WITH_PAGE_OPEN'
+              with urlopen('http://127.0.0.1:8088/metrics',timeout=5) as metric_response:
+                  fixture_after=json.load(metric_response)
+              for metric in ('completion_calls','parent_tool_requests','child_responses','parent_final','missing_tool'):
+                  before=fixture_before.get(metric,0)
+                  after=fixture_after.get(metric,0)
+                  print('CI_BROWSER_FIXTURE_'+metric.upper()+'_DELTA='+str(after-before),flush=True)
               page.close()
               context.close()
               context=browser.new_context(base_url='http://127.0.0.1:3090')
