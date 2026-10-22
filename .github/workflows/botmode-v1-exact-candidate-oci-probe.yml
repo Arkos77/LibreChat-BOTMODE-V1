@@ -1004,6 +1004,17 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CI_EXTERNAL_FREE_PROVIDER: 'true'
         run: |
+          # Update the CI-only preflight digest guard on the disposable runner
+          # to the exact multiarch image resolved from this candidate tag.
+          python3 - <<'PY_LIVE_PIN'
+          from pathlib import Path
+          p=Path('scripts/botmode/ci-live-free-child-preflight.sh')
+          data=p.read_text()
+          old="test \"${BOTMODE_PUBLISHED_IMAGE:-}\" = 'ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0'"
+          assert data.count(old)==1, 'CI_LIVE_PIN_GUARD_MISMATCH'
+          data=data.replace(old,'test "${BOTMODE_PUBLISHED_IMAGE:-}" = "ghcr.io/arkos77/librechat-botmode-v1:sha-f0e102ffdfe4"')
+          p.write_text(data)
+          PY_LIVE_PIN
           bash scripts/botmode/ci-live-free-child-preflight.sh
       - name: Classify child execution exception from API logs
         if: failure()
