@@ -230,6 +230,16 @@ if durable is None:
         print("CI_LIVE_FREE_REDIS_JOB_STATUS=" + (job_status if job_status in allowed else "OTHER_OR_MISSING"), flush=True)
         print("CI_LIVE_FREE_REDIS_PLAN_PRESENT=" + str(bool(raw_plan)).upper(), flush=True)
         print("CI_LIVE_FREE_REDIS_ORACLE_STATE_PRESENT=" + str(bool(raw_state)).upper(), flush=True)
+        if raw_plan:
+            parsed_plan=json.loads(raw_plan)
+            stages=parsed_plan.get('tasks',[]) if isinstance(parsed_plan,dict) else []
+            if not isinstance(stages,list):
+                stages=[]
+            print("CI_LIVE_FREE_PLAN_TASK_COUNT="+str(len(stages)),flush=True)
+            print("CI_LIVE_FREE_PLAN_STRATEGY="+str(parsed_plan.get('strategy','OTHER'))[:32],flush=True)
+            print("CI_LIVE_FREE_PLAN_WORKER_PRESENT="+str(any(isinstance(t,dict) and t.get('key')=='worker' and t.get('agentId')==worker for t in stages)).upper(),flush=True)
+            print("CI_LIVE_FREE_PLAN_SPECIALIST_PRESENT="+str(any(isinstance(t,dict) and t.get('key')=='specialist' and t.get('agentId')==child for t in stages)).upper(),flush=True)
+            print("CI_LIVE_FREE_PLAN_SPECIALIST_DEPENDS_WORKER="+str(any(isinstance(t,dict) and t.get('key')=='specialist' and t.get('dependsOn')==['worker'] for t in stages)).upper(),flush=True)
         if raw_state:
             parsed = json.loads(raw_state)
             results = parsed.get("results", {}) if isinstance(parsed, dict) else {}
