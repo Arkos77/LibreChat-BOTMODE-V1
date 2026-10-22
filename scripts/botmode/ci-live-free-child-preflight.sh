@@ -208,6 +208,39 @@ if test "${CI_LIVE_FREE_FIVE_TASKS:-false}" = true; then
           err instanceof Error && err.message===expected?'UNREGISTERED':'INITIALIZATION_FAILURE'));
       }
     }
+    // ESM/CJS SDK entrypoints have separate module graphs; report both.
+    // A mismatch explains why direct CJS registration cannot prove the
+    // Graph's runtime provider registry is initialized.
+    (async()=>{
+      try {
+        const esm=await import('@librechat/agents');
+        for(const provider of ['openAI','openrouter']){
+          let state='UNREGISTERED';
+          try{
+            const klass=esm.getChatModelClass(provider);
+            if(typeof klass==='function') state='REGISTERED';
+          }catch(e){state=e instanceof Error && e.message==='Unsupported LLM provider: '+provider?'UNREGISTERED':'INITIALIZATION_FAILURE';}
+          console.log('CI_LIVE_FREE_SDK_ESM_'+provider.toUpperCase()+'='+state);
+        }
+      }catch(e){ console.log('CI_LIVE_FREE_SDK_ESM_PROBE=UNAVAILABLE'); }
+      try{
+        const fs=require('node:fs');
+        const path=require('node:path');
+        let current=path.dirname(require.resolve('@librechat/agents'));
+        for(let i=0;i<6;i++){
+          const manifest=path.join(current,'package.json');
+          if(fs.existsSync(manifest)){
+            const pkg=JSON.parse(fs.readFileSync(manifest,'utf8'));
+            if(pkg.name==='@librechat/agents'){
+              const version=String(pkg.version||'');
+              console.log('CI_LIVE_FREE_SDK_INSTALLED_VERSION='+(/^[0-9]+\\.[0-9]+\\.[0-9]+$/.test(version)?version:'OTHER'));
+              break;
+            }
+          }
+          current=path.dirname(current);
+        }
+      }catch(e){console.log('CI_LIVE_FREE_SDK_VERSION_READ=UNAVAILABLE');}
+    })().catch(()=>{console.log('CI_LIVE_FREE_SDK_ESM_PROBE=FAILED')});
   } catch(err) {
     console.log('CI_LIVE_FREE_SDK_PROVIDER_PROBE=UNAVAILABLE');
   }
