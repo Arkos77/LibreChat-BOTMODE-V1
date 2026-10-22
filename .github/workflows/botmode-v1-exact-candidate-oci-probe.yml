@@ -18,6 +18,11 @@ on:
         type: boolean
         required: false
         default: false
+      diagnose_compatible_free_fallback:
+        description: 'Try only on CI the same OpenRouter free account via an OpenAI-compatible fallback binding'
+        type: boolean
+        required: false
+        default: false
       quota_only:
         description: 'Read OpenRouter free daily quota, strictly no inference or paid model'
         type: boolean
@@ -1056,6 +1061,7 @@ jobs:
           CI_EXTERNAL_FREE_PROVIDER: 'true'
           CI_LIVE_FREE_FIVE_TASKS: ${{ inputs.live_five_tasks }}
           CI_LIVE_FREE_DISABLE_FALLBACK_DIAG: ${{ inputs.diagnose_without_fallback }}
+          CI_LIVE_FREE_COMPAT_FALLBACK_DIAG: ${{ inputs.diagnose_compatible_free_fallback }}
         run: |
           python3 -m py_compile scripts/botmode/ci-live-free-child-oracle-gate.py
           # Update the CI-only preflight digest guard on the disposable runner
