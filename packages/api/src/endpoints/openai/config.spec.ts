@@ -989,6 +989,35 @@ describe('getOpenAIConfig', () => {
   });
 
   describe('OpenRouter Configuration', () => {
+    it('keeps an explicitly opted-in OpenAI-compatible custom fallback on the OpenAI SDK', () => {
+      const result = getOpenAIConfig(
+        mockApiKey,
+        {
+          reverseProxyUrl: 'https://openrouter.ai/api/v1',
+          customParams: { defaultParamsEndpoint: EModelEndpoint.openAI },
+          modelOptions: { model: 'openrouter/free' },
+        },
+        'OpenRouterFreeCompatCI',
+      );
+
+      expect(result.provider).toBeUndefined();
+      expect(result.llmConfig.model).toBe('openrouter/free');
+      expect(result.configOptions?.baseURL).toBe('https://openrouter.ai/api/v1');
+    });
+
+    it('still automatically selects OpenRouter when no compatible adapter is explicitly chosen', () => {
+      const result = getOpenAIConfig(
+        mockApiKey,
+        {
+          reverseProxyUrl: 'https://openrouter.ai/api/v1',
+          modelOptions: { model: 'openrouter/free' },
+        },
+        'OpenRouterFreeCompatCI',
+      );
+
+      expect(result.provider).toBe('openrouter');
+    });
+
     it('should detect OpenRouter from endpoint parameter', () => {
       const result = getOpenAIConfig(mockApiKey, {}, 'openrouter');
 
