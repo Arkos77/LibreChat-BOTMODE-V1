@@ -874,7 +874,82 @@ const initializeClient = async ({
   )
     ? structuredClone(primaryAgent)
     : primaryAgent;
-  let primaryConfig = await initializeAgent(
+  const initializeRoutedAgent = async (params, methods) => {
+    const originalAgent = hostModelRouting?.some(
+      (entry) =>
+        entry.agentId === params.agent.id ||
+        (typeof entry.agentName === 'string' && entry.agentName === params.agent.name),
+    )
+      ? structuredClone(params.agent)
+      : params.agent;
+    let resolvedConfig = await initializeAgent(params, methods);
+    const initialConfig = resolvedConfig;
+    const modelBudgetConfig = appConfig?.endpoints?.[EModelEndpoint.agents]?.modelBudget;
+    const adaptiveHostRouting = hostModelRouting?.some(
+      (entry) =>
+        entry.routingMode === 'adaptive' &&
+        (entry.agentId === originalAgent.id ||
+          (typeof entry.agentName === 'string' && entry.agentName === originalAgent.name)),
+    );
+    const [modelBudgetState, modelHealthState] = await Promise.all([
+      hostModelRouting && modelBudgetConfig
+        ? readModelBudgetState({
+            userId: req.user.id,
+            config: modelBudgetConfig,
+          })
+        : undefined,
+      adaptiveHostRouting
+        ? readModelHealthState({
+            userId: req.user.id,
+          })
+        : undefined,
+    ]);
+    resolvedConfig = await resolveHostModelRouting({
+      config: hostModelRouting,
+      originalAgent,
+      primaryConfig: resolvedConfig,
+      validate: (agent) => validateAgentModel({ req, res, agent, modelsConfig, logViolation }),
+      resolveRuntimeProvider: (provider) =>
+        getProviderConfig({ provider, appConfig }).overrideProvider,
+      initialize: (agent) =>
+        initializeAgent(
+          {
+            ...params,
+            agent,
+            endpointOption: {
+              ...params.endpointOption,
+              model_parameters:
+                agent.provider?.toLowerCase() === originalAgent.provider?.toLowerCase()
+                  ? { ...(params.endpointOption?.model_parameters ?? {}), model: agent.model }
+                  : { model: agent.model },
+            },
+          },
+          methods,
+        ),
+      decide: require('@librechat/api').decideHostModel,
+      persist: db.recordMtoObservation,
+      sink: mtoEventSink,
+      traceId: mtoTraceId,
+      user: req.user.id,
+      tenantId: resolveRequestTenantId(req),
+      timestamp: new Date().toISOString(),
+      decisionId: randomUUID(),
+      traceEventId: randomUUID(),
+      budgetState: modelBudgetState,
+      modelHealthState,
+    });
+
+    if (resolvedConfig !== initialConfig) {
+      Object.assign(params.agent, {
+        model: resolvedConfig.model,
+        model_parameters: resolvedConfig.model_parameters,
+        provider: resolvedConfig.provider,
+      });
+    }
+    return resolvedConfig;
+  };
+
+  const primaryConfig = await initializeRoutedAgent(
     {
       runtime: agentRuntime,
       loadTools,
@@ -915,103 +990,6 @@ const initializeClient = async ({
       getSkillByName: skillDbMethods.getSkillByName,
     },
   );
-
-  const initialPrimaryConfig = primaryConfig;
-  const modelBudgetConfig = appConfig?.endpoints?.[EModelEndpoint.agents]?.modelBudget;
-  const adaptiveHostRouting = hostModelRouting?.some(
-    (entry) =>
-      entry.routingMode === 'adaptive' &&
-      (entry.agentId === originalPrimaryAgent.id ||
-        (typeof entry.agentName === 'string' && entry.agentName === originalPrimaryAgent.name)),
-  );
-  const [modelBudgetState, modelHealthState] = await Promise.all([
-    hostModelRouting && modelBudgetConfig
-      ? readModelBudgetState({
-          userId: req.user.id,
-          config: modelBudgetConfig,
-        })
-      : undefined,
-    adaptiveHostRouting
-      ? readModelHealthState({
-          userId: req.user.id,
-        })
-      : undefined,
-  ]);
-  primaryConfig = await resolveHostModelRouting({
-    config: hostModelRouting,
-    originalAgent: originalPrimaryAgent,
-    primaryConfig,
-    validate: (agent) => validateAgentModel({ req, res, agent, modelsConfig, logViolation }),
-    resolveRuntimeProvider: (provider) =>
-      getProviderConfig({ provider, appConfig }).overrideProvider,
-    initialize: (agent) =>
-      initializeAgent(
-        {
-          runtime: agentRuntime,
-          loadTools,
-          requestFiles,
-          conversationId,
-          parentMessageId,
-          requestBody: runtimeRequestBody,
-          agent,
-          endpointOption: {
-            ...endpointOption,
-            model_parameters:
-              agent.provider?.toLowerCase() === originalPrimaryAgent.provider?.toLowerCase()
-                ? { ...(endpointOption.model_parameters ?? {}), model: agent.model }
-                : { model: agent.model },
-          },
-          allowedProviders,
-          isInitialAgent: true,
-          accessibleSkillIds: primaryScopedSkillIds,
-          skillAuthoringAvailable: primarySkillAuthoringAvailable,
-          codeEnvAvailable,
-          backgroundToolsAvailable,
-          toolIntentsAvailable,
-          statefulSessionsAvailable,
-          allowedStatefulCodeEnvironments,
-          memoryAvailable,
-          skillStates,
-          defaultActiveOnShare,
-          manualSkills,
-        },
-        {
-          getFiles: db.getFiles,
-          getUserKey: db.getUserKey,
-          getMessages: db.getMessages,
-          getConvoFiles: db.getConvoFiles,
-          getAccessibleMcpServerNames,
-          updateFilesUsage: db.updateFilesUsage,
-          getUserKeyValues: db.getUserKeyValues,
-          getUserCodeFiles: db.getUserCodeFiles,
-          getToolFilesByIds: db.getToolFilesByIds,
-          getCodeGeneratedFiles: db.getCodeGeneratedFiles,
-          filterFilesByAgentAccess,
-          listSkillsByAccess: skillDbMethods.listSkillsByAccess,
-          listAlwaysApplySkills: skillDbMethods.listAlwaysApplySkills,
-          getSkillByName: skillDbMethods.getSkillByName,
-        },
-      ),
-    decide: require('@librechat/api').decideHostModel,
-    persist: db.recordMtoObservation,
-    sink: mtoEventSink,
-    traceId: mtoTraceId,
-    user: req.user.id,
-    tenantId: resolveRequestTenantId(req),
-    timestamp: new Date().toISOString(),
-    decisionId: randomUUID(),
-    traceEventId: randomUUID(),
-    budgetState: modelBudgetState,
-    modelHealthState,
-  });
-
-  if (primaryConfig !== initialPrimaryConfig) {
-    Object.assign(primaryAgent, {
-      model: primaryConfig.model,
-      model_parameters: primaryConfig.model_parameters,
-      provider: primaryConfig.provider,
-    });
-  }
 
   /** Price emitted usage with the primary agent's resolved endpoint config so
    *  custom-endpoint agents reflect configured rates (mirrors the AgentClient
@@ -1106,7 +1084,7 @@ const initializeClient = async ({
       },
       // Pass through the `@librechat/api` exports so that tests which
       // `jest.mock('@librechat/api')` can override the initializer/validator.
-      initializeAgent,
+      initializeAgent: initializeRoutedAgent,
       validateAgentModel,
     },
   );
@@ -1496,7 +1474,7 @@ const initializeClient = async ({
       ephemeralSkillsToggle,
     });
     const config = await waitForAbort(
-      initializeAgent(
+      initializeRoutedAgent(
         {
           runtime: agentRuntime,
           agent,
