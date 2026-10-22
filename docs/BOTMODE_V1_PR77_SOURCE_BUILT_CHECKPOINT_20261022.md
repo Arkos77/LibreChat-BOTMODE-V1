@@ -104,3 +104,19 @@ Après le refus initial d'approbation pour une étape réelle hors périmètre D
 Diagnostic sans inférence préparé sur [commit 5e4847b](https://github.com/Arkos77/LibreChat-BOTMODE-V1/commit/5e4847b16899d48f9be9d93de18e18a9a8486cd5), branche `test/pr77-oracle-verdict-diagnostic-20261022` : résumé limité aux étapes connues, statuts/codes sur liste autorisée et forme JSON du candidat. Aucun texte modèle, identifiant de tâche, clé ou champ arbitraire affiché. Six tests de forme et de non-divulgation PASS dans la disposition réelle des fichiers ; syntaxe du gate PASS. Aucun workflow de nouvel appel n'est ajouté à cette branche, aucun produit ni image modifié.
 
 **État : D-03 et qualification synthétique exact-digest acquis ; essai externe effectué mais cinq tâches réelles / PC-04 / P6 réel NON PROUVÉS. NO-GO stable.** Une seconde mission réelle identique avec ce diagnostic requiert un nouvel accord, l'autorisation précédente portant sur une seule mission. D-04 demeure non autorisée ; aucun merge ni tag stable/latest.
+
+### Second essai réel autorisé : cause immédiate établie
+
+Accord explicite « oui go » pour une seconde et unique mission identique, avec diagnostic de verdict uniquement. [Run #39832255634](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39832255634) : **FAILURE**, job 120011143839, nettoyage SUCCESS. Commit de pilotage `4b36ee850a746011a765cd8991de4ac62b5ad2c4`, branche `ops/live-free-ceb60eca989b-002`. Même source ceb60eca989b, même digest public, mêmes modèles gratuits et charge utile. Le harnais seul charge les deux fichiers de diagnostic au commit 5e4847b ; aucun changement d'image.
+
+Identité OCI, initialiseur, configuration des bindings, catalogue à prix nul, SDK et démarrage réel : PASS. Le résumé Oracle durable établit :
+- Worker : un verdict **REJECTED**, code **INVALID_CANDIDATE**.
+- Candidat Worker : chaîne de **59 caractères**, **INVALID_JSON**, markdownFence=false.
+- specialist_1 à specialist_4 : zéro verdict ; aucune réussite de ces tâches revendiquée.
+- SSE HTTP 200, final contenant une partie error MISSION_ORACLE ; P6 réel non exécuté.
+
+La cause immédiate est donc le rejet de la sortie Worker non conforme au JSON attendu. Ce résultat ne prouve ni quota, ni panne de provider, ni activation du fallback. La sortie brute n'est pas affichée et sa cause de non-conformité n'est pas déterminée par les seules métadonnées.
+
+Lecture statique : le harnais vérifie dans le catalogue le support de response_format, mais ne configure pas ce paramètre dans son PATCH des agents (qui ne modifie que model). Cette distinction support/configuration est une piste de correction du harnais, **pas une preuve que l'absence de ce paramètre explique les 59 caractères**, ni un correctif appliqué. Le validateur transmet directement output.content à Oracle ; il n'a pas été modifié et aucun JSON réparé ou fabriqué n'est accepté.
+
+Les deux autorisations de mission unique sont consommées ; aucune troisième inférence lancée. Les gates synthétiques acquis restent acquis. **NO-GO stable ; cinq tâches et P6 réels toujours non validés.**
