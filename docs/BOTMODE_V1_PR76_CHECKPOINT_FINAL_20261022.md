@@ -1,0 +1,40 @@
+# BOT MODE V1 — PR #76 — checkpoint de qualification du 22 octobre 2026
+
+## Périmètre immuable
+
+- PR : https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/76
+- Branche applicative : `fix/botmode-worker-agent-selection-20261021`
+- **Source applicative qualifiée** : `f0e102ffdfe4e562252c0e401781bccedcedbbbc`.
+- Candidate OCI multiarchitecture GHCR : `ghcr.io/arkos77/librechat-botmode-v1:sha-f0e102ffdfe4` (alias candidat : `candidate-botmode-v1-f0e102ffdfe4`).
+- Workflow de qualification exact sur branche de tests séparée `ci/qualify-f0e102ffdfe4` : https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39707168135. La branche de tests épingle la source applicative `f0e102f` ; les changements sur cette branche sont propres au harnais de qualification.
+- Construction et publication GHCR : https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39705834398.
+
+## Preuves acquises
+
+1. **Construction et image** : tous les huit jobs de la construction candidate réussis, dont préflights amd64/arm64, garde de tag immuable, constructions amd64/arm64, manifeste multiarchitecture, pull GHCR public et smoke Lite.
+2. **Installation reproductible** : job `Clean Lite install and API restart, exact candidate OCI` réussi dans le run 39707168135 ; provisioning de six agents et contrôle authentifié réussis.
+3. **Mission navigateur réelle** : `CI_BROWSER_REAL_MISSION_POST_AUTHORIZED=PASS`, `CI_BROWSER_REAL_MISSION_ADMITTED=PASS`, `CI_BROWSER_ORIGIN_STREAM_TERMINAL=complete`.
+4. **Sélection** : `CI_BROWSER_AUTO_AUTHORIZED_IDS_ROUTED=PASS`, `CI_BROWSER_MANUAL_AUTHORIZED_IDS_ROUTED=PASS`, `CI_BROWSER_REAL_OCI_PROJECT_AGENT_MODES=PASS`.
+5. **Activité simulée du graphe cinq tâches** : deltas `completion_calls=5`, `child_responses=5`, `parent_tool_requests=0`, `parent_final=0`, `missing_tool=0`. Ces compteurs prouvent cinq appels/réponses du simulateur et non une délégation native parent/outils ni la qualité sémantique des résultats.
+6. **Oracle pour la mission issue du navigateur** : `CI_BROWSER_MISSION_SAME_STREAM_ORACLE_VERIFIED=PASS`. C'est le flux navigateur lui-même, pas seulement un run autonome.
+7. **Scénarios autonomes Oracle et P6** : `CI_ORACLE_ACCEPT_PERSISTED_STATUS=VERIFIED`, `CI_ORACLE_ACCEPT_PUBLICATION=PASS`, `CI_ORACLE_REVIEW_CANDIDATE_SUPPRESSED=PASS`, `BOTMODE_PLANNED_SPECIALIST_ORACLE_E2E=PASS`.
+8. **Durabilité des descendants** : `BOTMODE_DURABLE_CHILD_LINEAGE_RESTART=PASS`.
+9. **Checks généraux de la source applicative** : tests unitaires frontend, TypeScript client, Vite, statiques, E2E Playwright et Docker smoke réussis dans les runs PR du commit `f0e102f` (voir onglet Checks de PR #76).
+
+## Correction qualifiée
+
+La mission émise par `client/src/hooks/Chat/useChatFunctions.ts` contient désormais un contrat Oracle `validation.criteria` (`ok === true`) hérité par chaque tâche. Les instructions demandent un objet JSON strict avec `ok` et `result`. Ce critère vérifie une forme minimale et non la véracité des assertions externes ; aucune autorité de publication supplémentaire n'est confiée au modèle.
+
+## Réserves explicites
+
+- La qualification intégrée repose sur un **fournisseur de modèle simulé**. La qualité des contenus et un chemin réel de production avec un fournisseur configuré n'ont pas été qualifiés par ce run.
+- La présence d'un verdict `VERIFIED` dans le même flux navigateur est vérifiée ; une assertion dédiée prouvant les **cinq verdicts, leur identité exacte, leurs preuves durables et la barrière P6 de publication de ce même flux** demeure à renforcer. Les assertions P6 réussies concernent des scénarios autonomes.
+- `CI_SUBAGENT_UPDATE_COUNT=0` sur le stream rejoué : observation non bloquante de ce protocole ; les compteurs et le plan ne doivent pas être présentés comme une preuve SSE de sous-agent natif.
+- L'ancien workflow de PR `botmode-v1-exact-candidate-oci-probe.yml` demeure épinglé à `087c9693...` et refuse volontairement la dérive de source ; son échec sur `f0e102f` n'est pas un échec de la nouvelle image. Le run exact recalé `39707168135` est vert. Aligner le check requis de PR sur la qualification immuable avant fusion pour ne pas masquer un rouge.
+- Un commit ultérieur de documentation change le HEAD Git, **pas** la source applicative qualifiée. Tout changement de code postérieur à `f0e102f` exigerait une nouvelle image/qualification.
+
+## Décision et interdictions
+
+**Verdict : candidate technique qualifiée sur simulateur ; release stable non autorisée.**
+
+Ne pas fusionner PR #76, supprimer le statut draft, taguer une nouvelle version stable, déployer chez l'utilisateur ou remplacer des installations sans approbation humaine explicite. Avant demande de promotion, vérifier les statuts requis sur le HEAD de PR et traiter les réserves de preuve intégrée ci-dessus.
