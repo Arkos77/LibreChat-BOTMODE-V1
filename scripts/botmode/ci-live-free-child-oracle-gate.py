@@ -192,6 +192,27 @@ print("CI_LIVE_FREE_SSE_OUTCOME=" + stream_outcome, flush=True)
 print("CI_LIVE_FREE_SSE_EVENTS_SEEN=" + str(len(events)), flush=True)
 print("CI_LIVE_FREE_FINAL_COUNT=" + str(len(finals)), flush=True)
 print("CI_LIVE_FREE_ERROR_FRAME_COUNT=" + str(len(errors)), flush=True)
+# Correlate only event metadata with the two deterministic native node ids.
+# Avoid logging event bodies, prompts, model output or identifiers.
+import hashlib
+from collections import Counter
+def node_id(key):
+    compact=json.dumps([mission_id,key],separators=(',',':'),ensure_ascii=False)
+    return 'p6_'+hashlib.sha256(compact.encode()).hexdigest()
+seen=Counter()
+for event in events:
+    if not isinstance(event,dict):
+        continue
+    kind=event.get('event') or event.get('type') or 'other'
+    if kind in ('on_run_step','on_run_step_completed','on_run_step_closed','on_run_step_delta'):
+        seen[str(kind)]+=1
+    metadata=event.get('data') if isinstance(event.get('data'),dict) else {}
+    as_text=json.dumps(metadata,default=str,ensure_ascii=False)
+    for label in ('worker','specialist'):
+        if node_id(label) in as_text:
+            seen[label+'_node_event']+=1
+for label in ('worker_node_event','specialist_node_event','on_run_step','on_run_step_completed','on_run_step_closed','on_run_step_delta'):
+    print('CI_LIVE_FREE_EVENT_'+label.upper()+'='+str(seen[label]),flush=True)
 if stream_status != 200 or len(finals) != 1 or errors:
     try:
         job_status, raw_plan, raw_state = redis_job(stream_id)
