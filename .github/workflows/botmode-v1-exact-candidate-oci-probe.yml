@@ -969,9 +969,11 @@ jobs:
                           print('CI_BROWSER_TERMINAL_PENDING='+str(lines[3].strip() if len(lines)>3 else 'absent'),flush=True)
                           print('CI_BROWSER_TASK_VERDICT_COUNTS='+','.join(str(len(results.get(t.get('taskId'),{}).get('verdicts',[]))) for t in tasks if isinstance(t,dict))[:70],flush=True)
                           print('CI_BROWSER_TASK_VERDICT_STATUS_CLASSES='+','.join(sorted({str(v.get('status')) for outcome in results.values() if isinstance(outcome,dict) for v in outcome.get('verdicts',[]) if isinstance(v,dict)}))[:100],flush=True)
-                          if valid and candidate_ok:
+                          if valid:
                               print('CI_BROWSER_FIVE_TASK_VERDICTS_VERIFIED=PASS',flush=True)
-                              print('CI_BROWSER_PRIVATE_CANDIDATE_PRESENT=PASS',flush=True)
+                              # Candidate content is intentionally not a persistent
+                              # publication receipt. The terminal MongoDB readback
+                              # must be checked separately before claiming P6.
                               verified=True
                               break
                       except (ValueError,TypeError,AttributeError):
