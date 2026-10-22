@@ -49,3 +49,10 @@ Le modèle gratuit OpenRouter a exécuté une mission réelle structurée en **d
 **Portée exacte :** deux agents du graphe natif ; aucune conversation sous-agent imbriquée n'a été observée (`CI_LIVE_FREE_NESTED_CHILD_THREAD=NOT_OBSERVED`). Il serait inexact de transformer ce constat en réussite du scénario nested-child. Le test navigateur à cinq spécialistes repose toujours sur le modèle synthétique ; la preuve MongoDB de publication finale du *même flux navigateur* reste à acquérir.
 
 Les échecs intermittents précédents sont conservés dans l'historique et ne doivent pas être effacés du rapport. Aucun changement applicatif postérieur à `f0e102f` n'est inclus dans cette qualification.
+
+
+## Addendum — publication MongoDB du flux navigateur (22 octobre 2026)
+
+Run https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39713209780 — **SUCCESS** pour les jobs runtime et installation Lite. Le flux **réellement admis depuis le navigateur**, avec cinq tâches et un fournisseur synthétique, conserve cinq verdicts Oracle vérifiés sous son propre stream ID (`CI_BROWSER_FIVE_TASK_VERDICTS_VERIFIED=PASS`, `CI_BROWSER_MISSION_SAME_STREAM_ORACLE_VERIFIED=PASS`). La lecture indépendante de MongoDB sur ce même identifiant prouve conversation parente présente, réponse assistant finale non vide et complète (`CI_BROWSER_P6_PARENT_HISTORY=TRUE`, `CI_BROWSER_P6_FINAL_MESSAGE=TRUE`, `CI_BROWSER_P6_MONGO_COMMITTED=TRUE`, `CI_BROWSER_P6_SAME_STREAM_PUBLISHED_MONGO=PASS`).
+
+Cette preuve complète celle du run OpenRouter gratuit réel #39712205594 (deux tâches séquentielles, Oracle et publication). Elle ne démontre pas une mission navigateur cinq tâches avec un fournisseur réel, ni l'existence d'une conversation enfant imbriquée. Le code applicatif qualifié demeure `f0e102ffdfe4e562252c0e401781bccedcedbbbc`; seuls les contrôles CI et la documentation ont changé. PR #76 maintenue non fusionnée.
