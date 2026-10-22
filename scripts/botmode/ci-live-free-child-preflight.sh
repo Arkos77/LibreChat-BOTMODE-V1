@@ -62,7 +62,7 @@ if os.environ.get('CI_LIVE_FREE_FIVE_TASKS')=='true':
     ),'CI_LIVE_FREE_ROUTING_PAID_BINDING'
     data['endpoints']['agents']['hostModelRouting']=[
         {'agentId':agent_id,'models':free_choices,
-         'preferredModel':model,'allowFailover':True,
+         'preferredModel':model,'allowFailover':os.environ.get('CI_LIVE_FREE_DISABLE_FALLBACK_DIAG')!='true',
          'routingMode':'static',
          # The generic capability router rejects UNKNOWN pricing under
          # free_only. The named model's zero cost was verified via catalog
@@ -76,6 +76,7 @@ if os.environ.get('CI_LIVE_FREE_FIVE_TASKS')=='true':
         for agent_id in agent_ids
     ]
     print('CI_LIVE_FREE_TWO_AUTHORIZED_FREE_ROUTING_POLICIES=PASS',flush=True)
+    print('CI_LIVE_FREE_FALLBACK_CONFIGURED='+str(os.environ.get('CI_LIVE_FREE_DISABLE_FALLBACK_DIAG')!='true').upper(),flush=True)
 cfg.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
 dotenv=Path('.env')
 lines=dotenv.read_text().splitlines()
