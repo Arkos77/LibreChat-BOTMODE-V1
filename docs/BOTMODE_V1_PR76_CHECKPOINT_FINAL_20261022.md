@@ -80,3 +80,12 @@ Cette preuve complète celle du run OpenRouter gratuit réel #39712205594 (deux 
 Le scénario **cinq tâches dépendantes, une tâche Worker + quatre nœuds spécialiste utilisant la même identité d'agent autorisée** est exécuté et ses cinq verdicts Oracle sont persistés lorsque le fournisseur simulé renvoie la structure JSON attendue. Cela démontre le fonctionnement du graphe natif dans cette configuration contrôlée, mais ne prouve pas la réussite d'une mission de cinq tâches sur un modèle OpenRouter réel. Les runs réels #39714676111, #39716464906 et #39717176805 restent des échecs ; ils ne doivent pas être effacés ni attribués sans preuve à une cause unique (sortie du modèle, disponibilité du fournisseur, limite d'exécution ou autre intégration).
 
 La barrière Oracle et le contrôle CI refuseront toujours une publication à cinq tâches quand seuls un ou deux verdicts sont durables. **Aucune modification du code applicatif ni de l'image OCI ; pas de promotion stable.**
+
+
+## Addendum — diagnostic OpenRouter gratuit et quota (22 octobre 2026, lot de clôture)
+
+- [Run OpenRouter réel à cinq tâches #39728962748](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39728962748) : **FAIL**, `CI_LIVE_FREE_FINAL_ERROR_CLASS=RATE_LIMIT`, `CI_LIVE_FREE_FINAL_CONTENT_TYPES=error`, `CI_LIVE_FREE_SSE_EVENTS_SEEN=3`, `CI_LIVE_FREE_FAIL=TERMINAL_CONTAINS_ERROR_PART`. Le modèle gratuit refuse l'exécution avant vérification Oracle ; ne pas attribuer cet essai à une régression du graphe.
+- [Contrôle automatique PR #39728924273](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39728924273) : **SUCCESS** (OCI synthétique et Lite).
+- [Run metadata/quota #39729381847](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39729381847) : **SUCCESS**, mais job d'inférence volontairement **SKIPPED** : aucune preuve de cinq tâches réelles. Un quota journalier positif ne garantit pas la disponibilité instantanée du fournisseur ni l'absence de limite par minute.
+
+**Règle de clôture :** le rate limit est une indisponibilité du fournisseur à traiter par les mécanismes existants de retry/fallback gratuit, pas une raison de publier une mission Oracle incomplète. Ne pas affirmer qu'un fallback a été exercé sans trace de changement effectif de modèle et de reprise de la même mission ; ne pas démarrer de rafales de générations uniquement pour consommer le quota gratuit. La candidate applicative reste `f0e102f` jusqu'à correction démontrée et nouveau build qualifié. PR #76 maintenue DRAFT.
