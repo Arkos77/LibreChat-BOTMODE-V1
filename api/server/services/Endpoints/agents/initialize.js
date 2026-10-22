@@ -864,10 +864,10 @@ const initializeClient = async ({
     ephemeralSkillsToggle,
   });
 
-  const hostModelRouting = selectedModelSpec
+  const primaryHostModelRouting = selectedModelSpec
     ? undefined
     : appConfig?.endpoints?.[EModelEndpoint.agents]?.hostModelRouting;
-  const originalPrimaryAgent = hostModelRouting?.some(
+  const originalPrimaryAgent = primaryHostModelRouting?.some(
     (entry) =>
       entry.agentId === primaryAgent.id ||
       (typeof entry.agentName === 'string' && entry.agentName === primaryAgent.name),
@@ -875,6 +875,10 @@ const initializeClient = async ({
     ? structuredClone(primaryAgent)
     : primaryAgent;
   const initializeRoutedAgent = async (params, methods) => {
+    const hostModelRouting =
+      params.isInitialAgent === true
+        ? primaryHostModelRouting
+        : appConfig?.endpoints?.[EModelEndpoint.agents]?.hostModelRouting;
     const originalAgent = hostModelRouting?.some(
       (entry) =>
         entry.agentId === params.agent.id ||
