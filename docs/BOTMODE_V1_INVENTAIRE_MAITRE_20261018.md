@@ -1,6 +1,6 @@
 # BOT MODE V1 — INVENTAIRE MAÎTRE DES EXIGENCES ET PREUVES
 
-> **Priorité du 22/10 : source corrigée a6f6fee3c7dc, routage propre aux spécialistes validé par 109 tests. Mission réelle complète sur cette source et image finale non encore qualifiées. NO-GO stable. Voir le dernier addendum.**
+> **Priorité du 22/10 : a6f6fee3c7dc, 109 tests de routage acquis. Mission réelle #39857859228 : worker REJECTED / INVALID_JSON ; spécialistes et P6 non qualifiés. Image AMD64 locale contrôlée, audit zéro, aucune publication. NO-GO stable.**
 
 **Version du registre :** 2026-10-19, édition 2. **Type :** registre vivant de continuité et de clôture, **pas** certificat de release. **Statut décisionnel : NO-GO stable**, sauf décision ultérieure documentée sur tous les gates.
 
@@ -513,3 +513,16 @@ Le verrou sécurité reste **6e59734742daa69251821e2fed6a765febb4e58f9139743a98c
 [Proposition inactive du prochain essai](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/4df7e393e58262d55ea6fd636bb0f1ec1227aac0/docs/qualification/BOTMODE_V1_FREE_FALLBACK_a6f6fee3c7dc_PROPOSAL.yml), hors Actions : une seule mission cinq tâches, primaire en 429 local sans attente artificielle de retry, fallback externe openrouter/free avec ses retries conservés, prix nuls revalidés, JSON strict, cinq VERIFIED et readback P6 de la même mission. Configuration exécutée à blanc sans réseau avec catalogue/clé fictifs ; syntaxe YAML/Bash/Python PASS. Autorisation distincte non encore reçue ; l'accord précédent est consommé.
 
 **NO-GO stable.** D-01 résiduel ouvert, D-02 nouveau verrou à rattacher explicitement, D-03 nouvelle publication et D-04 stable/fusion non autorisés. L'initialisation froide/recovery reste inchangée et n'est pas qualifiée par ce correctif.
+
+## Résultat réel définitif a6f6fee3c7dc — 22 octobre 2026
+
+Source applicative figée **a6f6fee3c7dcfb5877fe798f759966774a046a58**. [Checkpoint complet](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/02c69058b3c84855fdfb52bb5e52f2d683f8c253/docs/BOTMODE_V1_SPECIALIST_ROUTING_CHECKPOINT_20261022.md).
+
+- Premier [run 39856719539](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39856719539) arrêté avant secret/mission : l'audit était vide alors que le harnais attendait exactement trois modérés. Correction du seul contrôle : accepter zéro ou les seuls modérés connus, refuser tout high/critical/alerte inconnue. Cas positifs et négatifs testés localement.
+- [Run 39857859228](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39857859228), job **120100634900**, pilote **970353308d1dfb69ab56b41b70d01749822764aa** : **FAILURE** après l'unique mission autorisée. L'image AMD64 locale exacte, quatre tests JSON, dépendances et licence SUL passent. Audit installé : **0 critical / 0 high / 0 moderate à 23:38 Paris** ; pas de changement du verrou 6e59734742daa69251821e2fed6a765febb4e58f9139743a98c91813dff234cf.
+- Prix gratuits des deux routes revalidés. **Un 429 local contrôlé, zéro requête inattendue**. Worker : **REJECTED / INVALID_CANDIDATE**, candidat **INVALID_JSON de 59 caractères**, sans clôture Markdown. Spécialistes 1–4 : **zéro verdict**, non atteints. Terminal MISSION_ORACLE ; pas de nouveau RATE_LIMIT établi.
+- Readback final P6/receipts **SKIPPED** ; cinq VERIFIED et publication canonique non qualifiés. Nettoyage SUCCESS. Config ID image locale : sha256:7ecd1ba676038586378a63c7b0870949d84dab86a312790019ea6dc068435854 ; image non publiée/supprimée, pas une qualification ARM64.
+- Diagnostic après run : **8 tests locaux PASS** sur le SDK réel et HTTP loopback ; response_format=json_object reste présent lors du fallback après429, streaming activé ou non. Extension de test seulement au commit b4eb797c669b502e722c0fc8b7304c2b80e5fbc3. Les 109 tests de routage restent acquis, mais les spécialistes ne sont pas confirmés par ce run réel.
+- OpenRouter documente que provider.require_parameters=true rend le support des paramètres obligatoire ; absent du préflight courant, ce contrôle est une piste pour le prochain diagnostic. La cause précise de la sortie invalide n'est **pas prouvée**, et aucune nouvelle modification produit conjecturale n'est appliquée.
+
+**Accord d'une mission consommé, aucun replay. NO-GO stable.** Le digest public ceb reste inchangé ; aucune nouvelle publication GHCR ni fusion/stable/latest. D-01 résiduel et les décisions D-02/D-03/D-04 restent ouverts selon leur périmètre. Le rapport audit zéro n'est pas une nouvelle acceptation de risque ni une preuve de retrait d'avis.
