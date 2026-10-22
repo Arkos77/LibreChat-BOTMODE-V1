@@ -58,9 +58,9 @@ if FIVE_TASKS:
         {
             "key": key,
             "objective": (
-                "Préparer la réponse. Retourne strictement {\\"ok\\":true}."
+                "Préparer la réponse. Retourne strictement {\"ok\":true}."
                 if key == "worker" else
-                "Vérifier l'étape précédente. Retourne strictement {\\"ok\\":true}."
+                "Vérifier l'étape précédente. Retourne strictement {\"ok\":true}."
             ),
             "requiredCapabilities": ["basic"] if key == "worker" else ["research_specialist_ci"],
             "dependsOn": [task_keys[index - 1]] if index else [],
@@ -88,7 +88,7 @@ payload = {
 if FIVE_TASKS:
     payload["text"] = (
         "Exécute successivement les cinq étapes, Worker puis quatre étapes spécialistes. "
-        "Chaque résultat doit être le JSON strict {\\"ok\\":true}, afin d'être validé "
+        "Chaque résultat doit être le JSON strict {\"ok\":true}, afin d'être validé "
         "indépendamment par Oracle avant publication."
     )
 status, raw = request("POST", "/api/agents/chat/agents", payload)
