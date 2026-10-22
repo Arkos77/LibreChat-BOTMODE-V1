@@ -1,0 +1,133 @@
+name: BOTMODE D03 ceb60eca989b Authorized Candidate
+# Human D-03 approval recorded in PR77 checkpoint; candidate publication only.
+on:
+  push:
+    branches: ["ops/d03-ceb60eca989b"]
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: botmode-d03-ceb60eca989b
+  cancel-in-progress: false
+env:
+  SOURCE_SHA: ceb60eca989b8850ac10fab84f1eaac1eedd79ec
+  IMAGE: ghcr.io/arkos77/librechat-botmode-v1
+  CANDIDATE_TAG: candidate-botmode-v1-ceb60eca989b
+  SHA_TAG: sha-ceb60eca989b
+jobs:
+  preflight:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/ops/d03-ceb60eca989b' && github.repository == 'Arkos77/LibreChat-BOTMODE-V1'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - name: Verify immutable candidate tag availability
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          env GITHUB_SHA="$SOURCE_SHA" GITHUB_REF_TYPE=branch bash scripts/botmode/guard-candidate-ghcr.sh
+  build:
+    needs: preflight
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          target: node
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=botmode-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=botmode-${{ matrix.arch }}
+          build-args: |
+            BUILD_COMMIT=${{ env.SOURCE_SHA }}
+            BUILD_BRANCH=candidate/botmode-pr77-ceb60eca989b
+      - name: Store digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          test -n "$DIGEST"
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidate-digest-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+  manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: candidate-digest-*
+          merge-multiple: true
+          path: /tmp/digests
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Recheck tags immediately before manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          env GITHUB_SHA="$SOURCE_SHA" GITHUB_REF_TYPE=branch bash scripts/botmode/guard-candidate-ghcr.sh
+      - name: Publish immutable candidate without stable or latest
+        working-directory: /tmp/digests
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          digests=(*)
+          test "${#digests[@]}" -eq 2
+          docker buildx imagetools create -t "$IMAGE:$CANDIDATE_TAG" -t "$IMAGE:$SHA_TAG" "${digests[@]/#/$IMAGE@sha256:}"
+          docker buildx imagetools inspect --raw "$IMAGE:$CANDIDATE_TAG" > /tmp/candidate-manifest.json
+          jq -e '([.manifests[]?.platform?.architecture] | index("amd64") != null and index("arm64") != null)' /tmp/candidate-manifest.json
+  anonymous-pull:
+    name: Anonymous candidate pull (${{ matrix.arch }})
+    needs: manifest
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Verify unauthenticated pull on native architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          docker pull "$IMAGE:$CANDIDATE_TAG"
+          actual="$(docker image inspect "$IMAGE:$CANDIDATE_TAG" --format '{{.Architecture}}')"
+          test "$actual" = "${{ matrix.arch }}"
+          docker image inspect "$IMAGE:$CANDIDATE_TAG" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -Fx "BUILD_COMMIT=$SOURCE_SHA"
+          docker run --rm --entrypoint node "$IMAGE:$CANDIDATE_TAG" -e "const {chromium}=require('playwright'); if (!require('fs').existsSync(chromium.executablePath())) throw Error('BROWSER_MISSING'); console.log('D03_BROWSER_PRESENT=PASS')"
+          echo "D03_ANONYMOUS_PULL_${{ matrix.arch }}=PASS"
