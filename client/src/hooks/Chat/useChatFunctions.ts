@@ -779,7 +779,16 @@ export default function useChatFunctions({
             missionId: `botmode-${clientRequestId}`,
             taskId: clientRequestId,
             objective: text,
-            constraints: ['mission_idée: privilégier profondeur et preuves plutôt que rapidité'],
+            constraints: [
+              'mission_idée: privilégier profondeur et preuves plutôt que rapidité',
+              'Chaque spécialiste doit retourner un objet JSON strict contenant ok=true et un champ result décrivant précisément son travail et ses preuves. Ne pas déclarer ok=true si le travail demandé n’est pas terminé.',
+            ],
+            // Host-owned, deterministic baseline contract. This is a machine-readable
+            // completion check, not proof that external factual claims are true.
+            // It must be inherited by every planned objective, including manual mode.
+            validation: {
+              criteria: [{ id: 'task-completed', field: 'ok', expected: true }],
+            },
             requiredCapabilities: [
               ...new Set(objectives.flatMap((objective) => objective.requiredCapabilities)),
             ],
