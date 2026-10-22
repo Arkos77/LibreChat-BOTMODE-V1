@@ -29,7 +29,7 @@ jobs:
           trap 'cp /tmp/fixed-initialize.js api/server/services/Endpoints/agents/initialize.js' EXIT
           git show 64248339750f9e0f86e01530eb7067027cec8f6b:api/server/services/Endpoints/agents/initialize.js > api/server/services/Endpoints/agents/initialize.js
           set +e
-          (cd api && npx jest server/services/Endpoints/agents/initialize.spec.js -t 'installs the specialist own authorized fallback' --runInBand --coverage=false --forceExit) > /tmp/specialist-baseline.log 2>&1
+          (cd api && npx jest server/services/Endpoints/agents/initialize.spec.js -t 'installs the specialist own authorized fallback for (mission|handoff|lazy) initialization' --runInBand --coverage=false --forceExit) > /tmp/specialist-baseline.log 2>&1
           baseline_code=$?
           set -e
           test "$baseline_code" -ne 0
@@ -38,7 +38,7 @@ jobs:
           from pathlib import Path
           s=re.sub(r'\x1b\[[0-9;]*m','',Path('/tmp/specialist-baseline.log').read_text())
           assert s.count('Received: undefined') == 3, 'BASELINE_MUST_FAIL_ONLY_ON_MISSING_FALLBACK'
-          assert re.search(r'Tests:\s+3 failed, 89 skipped, 92 total',s), 'BASELINE_EXACT_THREE_REGRESSIONS_REQUIRED'
+          assert re.search(r'Tests:\s+3 failed, 90 skipped, 93 total',s), 'BASELINE_EXACT_THREE_REGRESSIONS_REQUIRED'
           assert 'Host model routing requires an OpenRouter agent' not in s, 'INVALID_FIXTURE_POLICY'
           print('CI_SPECIALIST_BASELINE_THREE_MISSING_FALLBACKS=CONFIRMED')
           PY
