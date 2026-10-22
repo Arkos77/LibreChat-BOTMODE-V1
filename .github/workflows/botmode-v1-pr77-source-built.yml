@@ -1,0 +1,111 @@
+name: BOTMODE PR77 Source Built Compatibility Qualification
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-v1-pr77-source-built.yml'
+      - 'scripts/botmode/ci-source-built-oracle.py'
+      - 'api/server/services/Endpoints/agents/hostModelRouting.compat.spec.js'
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  BOTMODE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+jobs:
+  binding-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BOTMODE_CANDIDATE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:data-provider && npm run build:data-schemas && npm run build:api
+      - name: Real native initializer and SDK against local HTTP 429 fixture
+        working-directory: api
+        run: npx jest server/services/Endpoints/agents/hostModelRouting.compat.spec.js server/services/Endpoints/agents/hostModelRouting.spec.js --runInBand --coverage=false
+      - name: Free-only policy and endpoint regression
+        working-directory: packages/api
+        run: npx jest src/endpoints/openai/config.spec.ts src/agents/orchestrator/hostModelDecision.spec.ts --runInBand --coverage=false
+  source-built-runtime:
+    needs: binding-regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      COMPOSE_PROJECT_NAME: botmode-oci-child-${{ github.run_id }}-${{ github.run_attempt }}
+      BOTMODE_PUBLISHED_IMAGE: botmode-source-built:${{ github.event.pull_request.head.sha || github.sha }}
+      BOTMODE_IMAGE: botmode-source-built:${{ github.event.pull_request.head.sha || github.sha }}
+      BOTMODE_HOST_PORT: '3090'
+      BOTMODE_MONGO_PASSWORD: ci-isolated-only
+      POSTGRES_PASSWORD: ci-isolated-only
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BOTMODE_CANDIDATE_SHA }}
+          persist-credentials: false
+      - name: Verify source before building
+        run: |
+          test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+          test -z "$(git status --porcelain)"
+      - uses: docker/setup-buildx-action@v4
+      - name: Build exact source locally without registry publication
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          target: node
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ${{ env.BOTMODE_IMAGE }}
+          cache-from: type=gha,scope=botmode-amd64
+          cache-to: type=gha,mode=max,scope=botmode-amd64
+          build-args: |
+            BUILD_COMMIT=${{ env.BOTMODE_CANDIDATE_SHA }}
+            BUILD_BRANCH=${{ github.head_ref || github.ref_name }}
+      - name: Record local image identity and verify embedded source
+        run: |
+          set -euo pipefail
+          docker image inspect "$BOTMODE_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -Fx "BUILD_COMMIT=$BOTMODE_CANDIDATE_SHA"
+          echo "CI_SOURCE_BUILT_SHA=$BOTMODE_CANDIDATE_SHA"
+          docker image inspect "$BOTMODE_IMAGE" --format 'CI_SOURCE_BUILT_IMAGE_ID={{.Id}}'
+          echo 'CI_SOURCE_BUILT_REGISTRY_PUBLICATION=NONE'
+      - name: Verify native compatible initializer inside the exact image
+        run: |
+          docker run --rm -i --entrypoint node "$BOTMODE_IMAGE" - <<'NODE'
+          const assert = require('node:assert/strict');
+          const { initializeAgent } = require('@librechat/api');
+          (async () => {
+            for (const compatible of [false, true]) {
+              const endpoint = { name: 'OpenRouterFreeCompatCI', apiKey: 'fixture-no-network',
+                baseURL: 'https://openrouter.ai/api/v1',
+                models: { fetch: false, default: ['openrouter/free'] },
+                ...(compatible ? { customParams: { defaultParamsEndpoint: 'openAI' } } : {}) };
+              const result = await initializeAgent({
+                runtime: { user: { id: 'fixture-user' }, requestBody: {}, turnStartedAt: 1,
+                  appConfig: { endpoints: { custom: [endpoint] } } },
+                agent: { id: 'fixture-agent', provider: endpoint.name, model: 'openrouter/free',
+                  tools: [], model_parameters: { model: 'openrouter/free' } },
+                allowedProviders: new Set([endpoint.name]),
+                endpointOption: { endpoint: 'agents' },
+                loadTools: async () => ({ tools: [], toolDefinitions: [] }),
+              }, { getFiles: async () => [], getConvoFiles: async () => [], updateFilesUsage: async () => [] });
+              assert.equal(result.provider, compatible ? 'openAI' : 'openrouter');
+              assert.equal(result.model_parameters.model, 'openrouter/free');
+              assert.equal(result.model_parameters.apiKey, 'fixture-no-network');
+              assert.equal(result.model_parameters.configuration.baseURL, endpoint.baseURL);
+            }
+            console.log('CI_SOURCE_BUILT_NATIVE_COMPAT_INITIALIZER=PASS');
+          })().catch(() => { console.error('CI_SOURCE_BUILT_NATIVE_COMPAT_INITIALIZER=FAIL'); process.exitCode = 1; });
+          NODE
+      - name: Reuse same-source five-task, Oracle, Mongo P6 and browser assertions
+        run: |
+          python3 -m pip install --quiet --break-system-packages PyYAML==6.0.3
+          python3 scripts/botmode/ci-source-built-oracle.py
+      - name: Destroy only this runner stack
+        if: always()
+        run: sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
