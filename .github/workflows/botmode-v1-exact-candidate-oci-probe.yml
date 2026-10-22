@@ -1000,6 +1000,36 @@ jobs:
                       print('CI_BROWSER_ORACLE_PARSE=FAILED',flush=True)
           assert verified,'CI_BROWSER_MISSION_OWN_ORACLE_VERDICT_NOT_PROVEN'
           print('CI_BROWSER_MISSION_SAME_STREAM_ORACLE_VERIFIED=PASS',flush=True)
+          # Independently read durable parent history after Oracle: no synthetic
+          # success based on Redis's temporary private candidate.
+          response=subprocess.run(compose+['exec','-T','redis','redis-cli','--raw','HMGET',key,'status','responseMessageId','terminalPersistencePending'],capture_output=True,text=True,timeout=15)
+          assert response.returncode==0, 'CI_BROWSER_P6_REDIS_READBACK_FAILED'
+          fields=response.stdout.splitlines()
+          assert len(fields)>=3 and fields[0].strip()=='complete' and fields[1].strip() and fields[2].strip() in ('0','false','False'), 'CI_BROWSER_P6_TERMINAL_NOT_COMMITTED'
+          response_id=fields[1].strip()
+          js=r"""
+          const mongoose=require('mongoose');
+          (async()=>{
+            await mongoose.connect(process.env.MONGO_URI);
+            const db=mongoose.connection.db;
+            const sid=process.env.CI_BROWSER_STREAM_ID;
+            const mid=process.env.CI_BROWSER_RESPONSE_ID;
+            const conversation=await db.collection('conversations').findOne({conversationId:sid},{projection:{conversationId:1}});
+            const message=await db.collection('messages').findOne({conversationId:sid,messageId:mid,isCreatedByUser:false},{projection:{messageId:1,conversationId:1,parentMessageId:1,content:1,unfinished:1}});
+            const valid=Boolean(conversation && message && message.unfinished===false && typeof message.parentMessageId==='string' && message.parentMessageId && Array.isArray(message.content) && message.content.some(p=>p.type==='text' && typeof p.text==='string' && p.text.trim()));
+            console.log('CI_BROWSER_P6_PARENT_HISTORY='+String(Boolean(conversation)).toUpperCase());
+            console.log('CI_BROWSER_P6_FINAL_MESSAGE='+String(Boolean(message)).toUpperCase());
+            console.log('CI_BROWSER_P6_MONGO_COMMITTED='+String(valid).toUpperCase());
+            await mongoose.disconnect();
+            if(!valid)process.exitCode=3;
+          })().catch(e=>{console.log('CI_BROWSER_P6_READBACK_ERROR_CLASS='+e.name);process.exitCode=2});
+          """
+          checked=subprocess.run(compose+['exec','-T','-e','CI_BROWSER_STREAM_ID='+sid,'-e','CI_BROWSER_RESPONSE_ID='+response_id,'api','node','-e',js],capture_output=True,text=True,timeout=60)
+          for line in checked.stdout.splitlines():
+              if line.startswith('CI_BROWSER_P6_'):
+                  print(line,flush=True)
+          assert checked.returncode==0,'CI_BROWSER_SAME_STREAM_MONGO_PUBLICATION_NOT_PROVEN'
+          print('CI_BROWSER_P6_SAME_STREAM_PUBLISHED_MONGO=PASS',flush=True)
           PY_BROWSER_ORACLE
 
           echo '### Release-fix branch Oracle/QA E2E (local synthetic provider)' >> "$GITHUB_STEP_SUMMARY"
