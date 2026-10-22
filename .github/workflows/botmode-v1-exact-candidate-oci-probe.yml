@@ -1077,6 +1077,21 @@ jobs:
           import re
           from pathlib import Path
           lines=Path('/tmp/botmode-api-failure.log').read_text(errors='replace').splitlines()
+          # Diagnose SDK provider-registry failure on the real API process.
+          # Never emit arbitrary log text or stack arguments.
+          unsupported=[i for i,line in enumerate(lines) if 'Unsupported LLM provider: openrouter' in line]
+          print('CI_SDK_OPENROUTER_UNSUPPORTED_LOG_COUNT='+str(len(unsupported)),flush=True)
+          safe_frames=('providerRegistry','llm/init','llm/invoke','Graph','initialize','hostModelRouting','getChatModelClass','initializeModel','tryFallbackProviders','node_modules')
+          for idx in unsupported[-2:]:
+              window=lines[max(0,idx-3):idx+25]
+              approved=[]
+              for line in window:
+                  if not any(p in line for p in safe_frames):
+                      continue
+                  for label in safe_frames:
+                      if label in line and label not in approved:
+                          approved.append(label)
+              print('CI_SDK_OPENROUTER_CALL_PATH='+','.join(approved[:12]),flush=True)
           hits=[i for i,line in enumerate(lines) if '[subagentThreads] Child-thread execution failed' in line]
           print('CI_CHILD_EXCEPTION_LOG_ENTRIES='+str(len(hits)))
           # The process logger can serialize structured fields across lines.
