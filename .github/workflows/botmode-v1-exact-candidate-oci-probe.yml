@@ -13,6 +13,11 @@ on:
         type: boolean
         required: true
         default: false
+      diagnose_without_fallback:
+        description: 'Diagnostic negative control: preserve two authorized free bindings but disable SDK failover'
+        type: boolean
+        required: false
+        default: false
       quota_only:
         description: 'Read OpenRouter free daily quota, strictly no inference or paid model'
         type: boolean
@@ -1050,6 +1055,7 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CI_EXTERNAL_FREE_PROVIDER: 'true'
           CI_LIVE_FREE_FIVE_TASKS: ${{ inputs.live_five_tasks }}
+          CI_LIVE_FREE_DISABLE_FALLBACK_DIAG: ${{ inputs.diagnose_without_fallback }}
         run: |
           python3 -m py_compile scripts/botmode/ci-live-free-child-oracle-gate.py
           # Update the CI-only preflight digest guard on the disposable runner
