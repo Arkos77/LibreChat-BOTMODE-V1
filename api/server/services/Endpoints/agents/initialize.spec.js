@@ -1713,54 +1713,78 @@ describe('initializeClient — subagent loading', () => {
     return agent;
   };
 
-  it('installs the specialist own authorized fallback before an orchestrated task runs', async () => {
-    const child = await createAgent({
-      id: SUBAGENT_ID,
-      name: 'Free specialist',
-      provider: 'openAI',
-      model: 'a:free',
-      author: new mongoose.Types.ObjectId(),
-      tools: [],
-    });
-    await grantView(child);
-    mockInitializeAgent.mockImplementation(async ({ agent }) => ({
-      ...(agent.id === PRIMARY_ID
-        ? makePrimaryConfig({ subagents: { enabled: true, allowSelf: false, agent_ids: [SUBAGENT_ID] } })
-        : makeSubagentConfig(agent.id)),
-      provider: 'openAI',
-      model: agent.model,
-      model_parameters: { model: agent.model, apiKey: 'fixture-specialist-secret' },
-    }));
-    const req = makeSubagentReq();
-    req.body.orchestratorMission = {};
-    req.config.endpoints.agents.hostModelRouting = [{
-      agentId: SUBAGENT_ID,
-      models: ['a:free', 'b:free'],
-      preferredModel: 'a:free',
-      allowFailover: true,
-      routingConstraints: { spendingPolicy: 'free_only' },
-      routingSignals: {
-        'a:free': { pricingTier: 'free', estimatedCost: 0 },
-        'b:free': { pricingTier: 'free', estimatedCost: 0 },
-      },
-    }];
-    await initializeClient({
-      req, res: {}, signal: new AbortController().signal,
-      endpointOption: makeEndpointOption(), mtoTraceId: 'specialist-fallback-regression',
-    });
-    const specialist = agentClientArgs.agentConfigs.get(SUBAGENT_ID);
-    expect(specialist.model_parameters.fallbacks).toEqual([
-      expect.objectContaining({
-        provider: 'openAI', retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
-        clientOptions: expect.objectContaining({ model: 'b:free' }),
-      }),
-    ]);
-    expect(specialist.hostModelDecision).toMatchObject({ agentId: SUBAGENT_ID, spendingPolicy: 'free_only' });
-    expect(agentClientArgs.agent.hostModelDecision).toBeUndefined();
-    const records = await db.listMtoObservations({ user: String(testUser._id), traceId: 'specialist-fallback-regression' });
-    expect(records).toHaveLength(1);
-    expect(JSON.stringify(records)).not.toContain('fixture-specialist-secret');
-  });
+  it.each(['mission', 'handoff', 'lazy'])(
+    'installs the specialist own authorized fallback for %s initialization',
+    async (mode) => {
+      const child = await createAgent({
+        id: SUBAGENT_ID,
+        name: 'Free specialist',
+        provider: 'openAI',
+        model: 'a:free',
+        author: new mongoose.Types.ObjectId(),
+        tools: [],
+      });
+      await grantView(child);
+      mockInitializeAgent.mockImplementation(async ({ agent }) => ({
+        ...(agent.id === PRIMARY_ID
+          ? makePrimaryConfig({
+              ...(mode === 'handoff'
+                ? { agent_ids: [SUBAGENT_ID] }
+                : { subagents: { enabled: true, allowSelf: false, agent_ids: [SUBAGENT_ID] } }),
+            })
+          : makeSubagentConfig(agent.id)),
+        provider: 'openAI',
+        model: agent.model,
+        model_parameters: { model: agent.model, apiKey: 'fixture-specialist-secret' },
+      }));
+      const req = makeSubagentReq();
+      if (mode === 'mission') req.body.orchestratorMission = {};
+      req.config.endpoints.agents.hostModelRouting = [
+        {
+          agentId: SUBAGENT_ID,
+          models: ['a:free', 'b:free'],
+          preferredModel: 'a:free',
+          allowFailover: true,
+          routingConstraints: { spendingPolicy: 'free_only' },
+          routingSignals: {
+            'a:free': { pricingTier: 'free', estimatedCost: 0 },
+            'b:free': { pricingTier: 'free', estimatedCost: 0 },
+          },
+        },
+      ];
+      await initializeClient({
+        req,
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption: makeEndpointOption(),
+        mtoTraceId: 'specialist-fallback-regression',
+      });
+      const specialist =
+        mode === 'lazy'
+          ? await agentClientArgs.agent.lazySubagentConfigs[0].resolve({
+              signal: new AbortController().signal,
+            })
+          : agentClientArgs.agentConfigs.get(SUBAGENT_ID);
+      expect(specialist.model_parameters.fallbacks).toEqual([
+        expect.objectContaining({
+          provider: 'openAI',
+          retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
+          clientOptions: expect.objectContaining({ model: 'b:free' }),
+        }),
+      ]);
+      expect(specialist.hostModelDecision).toMatchObject({
+        agentId: SUBAGENT_ID,
+        spendingPolicy: 'free_only',
+      });
+      expect(agentClientArgs.agent.hostModelDecision).toBeUndefined();
+      const records = await db.listMtoObservations({
+        user: String(testUser._id),
+        traceId: 'specialist-fallback-regression',
+      });
+      expect(records).toHaveLength(1);
+      expect(JSON.stringify(records)).not.toContain('fixture-specialist-secret');
+    },
+  );
 
   it('creates one trusted durable thread scope for detached subagents', async () => {
     mockInitializeAgent.mockResolvedValue(
