@@ -286,6 +286,8 @@ if stream_status != 200 or len(finals) != 1 or errors:
             job_status = "OTHER_OR_MISSING"
         print("CI_LIVE_FREE_REDIS_JOB_STATUS=" + job_status, flush=True)
         print("CI_LIVE_FREE_REDIS_ORACLE_STATE_PRESENT=" + str(bool(raw_state)).upper(), flush=True)
+        # Existing allowlisted Redis error classifier prints no raw provider text.
+        helpers["classify_durable_failure"](stream_id)
     except (subprocess.SubprocessError, OSError):
         print("CI_LIVE_FREE_REDIS_DIAG_UNAVAILABLE=TRUE", flush=True)
     try:
