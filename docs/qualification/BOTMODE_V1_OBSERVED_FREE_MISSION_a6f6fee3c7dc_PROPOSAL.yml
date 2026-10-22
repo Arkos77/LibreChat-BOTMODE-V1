@@ -297,7 +297,7 @@ jobs:
         \ if e.get('name')=='OpenRouterFreeCompatCI']\n    assert len(primary)==len(fallback)==1 and fallback[0]['baseURL']=='https://openrouter.ai/api/v1'\n\
         \    assert primary[0]['addParams']['response_format']=={'type':'json_object'}\n    assert fallback[0]['addParams']['response_format']=={'type':'json_object'}\n\
         \    primary[0]['baseURL']='http://host.docker.internal:8089/v1'\n    primary[0]['addParams']['maxRetries']=0\n  \
-        \  primary[0]['addParams']['provider']={'require_parameters':True}\n    fallback[0]['addParams']['provider']={'require_parameters':True}\n\
+        \  primary[0]['addParams'].setdefault('provider',{})['require_parameters']=True\n    fallback[0]['addParams'].setdefault('provider',{})['require_parameters']=True\n\
         \    print('CI_CONTROLLED_PRIMARY_429_AND_REAL_FALLBACK_ISOLATED=PASS',flush=True)\n\"\"\"\nimport textwrap\ns=s.replace(config_anchor,textwrap.dedent(controlled)+config_anchor)\n\
         compose_anchor='compose=(docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)'\nassert\
         \ s.count(compose_anchor)==1,'OBSERVATION_COMPOSE_ANCHOR'\ns=s.replace(compose_anchor,compose_anchor[:-1]+' -f /tmp/ci-json-observation.yml)')\n\
@@ -381,8 +381,12 @@ jobs:
         fallback=[r for r in records if r.get('request',{}).get('model')=='openrouter/free']\nprint('CI_WIRE_ALL_FALLBACK_JSON_REQUESTED='+str(bool(fallback)\
         \ and all(r.get('request',{}).get('jsonObjectRequested') is True for r in fallback)).upper())\nprint('CI_WIRE_ALL_FALLBACK_SUPPORT_REQUIRED='+str(bool(fallback)\
         \ and all(r.get('request',{}).get('requireParameters') is True for r in fallback)).upper())\n# Observer serialization\
-        \ is allowlisted and unit-tested; no prompts/content/keys are written.\nPath('/tmp/botmode-wire-sanitized.jsonl').write_text('\\\
-        n'.join(json.dumps(r) for r in records)+'\\n')\nPY_COMPARE\n"
+        \ is allowlisted and unit-tested; no prompts/content/keys are written.\nPath('/tmp/botmode-wire-sanitized.jsonl').write_text(chr(10).join(json.dumps(r)\
+        \ for r in records)+chr(10))\nsummary=json.loads(result.stdout)\nassert summary.get('stages'),'WIRE_ORACLE_VERDICTS_MISSING'\n\
+        assert all(r.get('wireMatchCount',0)>0 and r.get('jsonRequested') is True and r.get('supportRequired') is True for\
+        \ r in summary['stages']),'WIRE_ORACLE_EVIDENCE_INCOMPLETE'\nassert fallback and all(r.get('request',{}).get('jsonObjectRequested')\
+        \ is True and r.get('request',{}).get('requireParameters') is True for r in fallback),'WIRE_FALLBACK_PARAMETERS_INCOMPLETE'\n\
+        PY_COMPARE\n"
     - name: Retain bounded observation metadata; no raw prompts or response text
       if: always()
       uses: actions/upload-artifact@v4
