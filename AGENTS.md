@@ -44,3 +44,9 @@ through props or a small host-supplied context rather than reached for through `
 them in is what lets a feature move to its own workspace later without a rewrite, and it keeps the
 Jotai conversion scoped to the state a feature owns. See the detailed policy in `CLAUDE.md` under
 “Client State Ownership”.
+
+## BOT MODE V1 closure workflow
+
+For BOT MODE finalization, read and follow [the owner-approved closure method](docs/BOTMODE_V1_METHODE_CLOTURE_20261023.md) before making changes. Use the current master inventory and latest checkpoint; preserve source/image identities and acquired proofs.
+
+Investigate one concrete blocker per lot. Run cheap configuration, audit, syntax and targeted regression checks before Docker builds or external inference. Do not repeat a real mission without a new information-bearing hypothesis and available authorization. Group reviewable changes, avoid CI for documentation-only commits, and reuse the exact built image where possible. Never weaken Oracle/P6 or silently remove release requirements. Proceed autonomously within authorized reversible work; ask only for a concrete decision outside that scope.
