@@ -247,6 +247,30 @@ for item in finals[:1]:
             else "STEP_LIMIT" if ("step limit" in raw_error or "recursion_limit" in raw_error or "recursion limit" in raw_error)
             else "OTHER")
         print("CI_LIVE_FREE_FINAL_ERROR_CLASS="+family,flush=True)
+        # Diagnostic on the ORIGINAL durable job's sanitized error metadata,
+        # never on arbitrary response/model text.
+        from hashlib import sha256
+        error_key=helpers["REDIS_PHYSICAL_PREFIX"]+"stream:{"+stream_id+"}:job"
+        error_probe=subprocess.run(helpers["COMPOSE"]+["exec","-T","redis","redis-cli","--raw","HGET",error_key,"error"],capture_output=True,text=True,timeout=20)
+        if error_probe.returncode==0:
+            error_text=error_probe.stdout.strip().lower()
+            print("CI_LIVE_FREE_TERMINAL_JOB_ERROR_LENGTH="+str(len(error_text)),flush=True)
+            print("CI_LIVE_FREE_TERMINAL_JOB_ERROR_FINGERPRINT="+sha256(error_text.encode()).hexdigest()[:16],flush=True)
+            families={
+                "HOST_ROUTER_NO_CANDIDATES":("no admissible authorized resource candidates",),
+                "HOST_MODEL_ALTERNATIVE_REJECTED":("host model routing alternative failed native validation",),
+                "MODEL_NOT_FOUND":("model not found","no endpoints found","unknown model"),
+                "PROVIDER_RATE_LIMIT":("rate limit","rate_limit","429","quota"),
+                "MISSION_ORACLE":("mission oracle","mission_oracle"),
+                "CHECKPOINT_OR_REDIS":("redis","persist","checkpoint"),
+                "AGENT_MODEL_VALIDATION":("model validation","model is not authorized","model not allowed"),
+                "SDK_FALLBACK":("fallback","failover","retryon"),
+                "GRAPH":("graph","recursion","node"),
+            }
+            for label,patterns in families.items():
+                print("CI_LIVE_FREE_TERMINAL_JOB_ERROR_"+label+"="+str(any(p in error_text for p in patterns)).upper(),flush=True)
+        else:
+            print("CI_LIVE_FREE_TERMINAL_JOB_ERROR_READ_UNAVAILABLE=TRUE",flush=True)
         try:
             status_now, raw_plan_now, raw_oracle_now=redis_job(stream_id)
             if raw_plan_now and raw_oracle_now:
