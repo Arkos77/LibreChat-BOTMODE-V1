@@ -935,6 +935,11 @@ jobs:
               print('CI_BROWSER_JOB_STATUS='+(fields[0][:32] if fields else 'ABSENT'),flush=True)
               print('CI_BROWSER_JOB_HAS_ERROR='+str(bool(len(fields)>1 and fields[1].strip())),flush=True)
               print('CI_BROWSER_JOB_HAS_PLAN='+str(bool(len(fields)>2 and fields[2].strip())),flush=True)
+              if len(fields)>2 and fields[2].strip():
+                  try:
+                      plan=json.loads(fields[2]); print('CI_BROWSER_PLAN_TASK_COUNT='+str(len(plan.get('tasks',[]))),flush=True)
+                  except (ValueError,TypeError,AttributeError):
+                      print('CI_BROWSER_PLAN_PARSE=FAILED',flush=True)
               print('CI_BROWSER_JOB_HAS_ORACLE='+str(bool(len(fields)>3 and fields[3].strip())),flush=True)
               if len(fields)>3 and fields[3].strip():
                   try:
