@@ -8,6 +8,11 @@ on:
         type: boolean
         required: true
         default: false
+      live_five_tasks:
+        description: 'With real OpenRouter, run a five-task ordered native graph instead of the established two-task gate'
+        type: boolean
+        required: true
+        default: false
       quota_only:
         description: 'Read OpenRouter free daily quota, strictly no inference or paid model'
         type: boolean
@@ -16,7 +21,7 @@ on:
 permissions:
   contents: read
 
-# Candidate-only qualification for immutable SHA ea3bf3c5d92e.
+# Candidate-only qualification for immutable source f0e102ffdfe4.
 # The published v1.0.0 digest archival guard remains untouched.
 # Refuse different source revisions and assert embedded image BUILD_COMMIT.
 # Disposable GH Actions runners only; no production volumes.
@@ -1040,7 +1045,9 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CI_EXTERNAL_FREE_PROVIDER: 'true'
+          CI_LIVE_FREE_FIVE_TASKS: ${{ inputs.live_five_tasks }}
         run: |
+          python3 -m py_compile scripts/botmode/ci-live-free-child-oracle-gate.py
           # Update the CI-only preflight digest guard on the disposable runner
           # to the exact multiarch image resolved from this candidate tag.
           python3 - <<'PY_LIVE_PIN'
