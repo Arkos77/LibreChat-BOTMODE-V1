@@ -2,7 +2,7 @@
 
 ## Décision et identité
 
-**NO-GO stable. Aucune fusion, release, promotion latest ni publication GHCR effectuée.**
+**NO-GO stable. Aucune fusion, release ni promotion latest. La candidate D-03 a été publiée et qualifiée dans le périmètre décrit ci-dessous.**
 
 Source qualifiée : `ceb60eca989b8850ac10fab84f1eaac1eedd79ec`.
 Branche de source figée : `candidate/botmode-pr77-ceb60eca989b`.
@@ -55,22 +55,44 @@ Le nouveau workflow construit le HEAD exact, vérifie son identité, teste l'ini
 
 Le premier appel terminal Remote Desktop Commander sur penguin a expiré sans sortie exploitable. Aucun build, volume, installation, secret ou port de cette machine n'a été modifié par ce lot. Le travail a été réalisé dans un checkout isolé et sur runners jetables.
 
-## Prochain geste soumis à décision D-03
+## D-03 autorisée, publication terminée et qualification du digest
 
-La qualification source-built autorisée est terminée. La qualification de distribution finale nécessite une nouvelle image publique correspondant à la source corrigée ; f0e102f ne peut pas la remplacer.
+Accord explicite du propriétaire : « oui », le 22 octobre 2026, pour la candidate multiarch uniquement. Cet accord est acquis ; D-04 reste NON AUTORISÉ.
 
-**D-03 AUTORISÉE par réponse explicite « oui » du propriétaire le 22 octobre 2026 ; publication NON EXÉCUTÉE** :
-- source exacte : ceb60eca989b8850ac10fab84f1eaac1eedd79ec ;
-- branche figée : candidate/botmode-pr77-ceb60eca989b ;
-- workflow existant : botmode-image.yml, workflow_dispatch, publish=true, verify_guard_only=false ;
-- tag demandé : candidate-botmode-v1-ceb60eca989b ;
-- publication candidate GHCR AMD64 + ARM64 avec garde d'immutabilité ;
-- aucun tag stable/latest, aucune fusion, aucun remplacement d'installation.
+- Source exacte : `ceb60eca989b8850ac10fab84f1eaac1eedd79ec`.
+- Branche source figée : `candidate/botmode-pr77-ceb60eca989b`, inchangée.
+- Tag GHCR : `candidate-botmode-v1-ceb60eca989b` ; alias `sha-ceb60eca989b`.
+- Référence immuable : `ghcr.io/arkos77/librechat-botmode-v1@sha256:32b29308e883e83aee5bdb3b702492c2abff46a0843bdc30936d0e981766555d`.
+- [Publication D-03 #39826967183](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39826967183) : **SUCCESS**. Prépublication, builds natifs AMD64/ARM64, seconde garde d'immutabilité avant manifeste et pulls anonymes natifs : tous SUCCESS. Les deux pulls retrouvent ce même digest, BUILD_COMMIT exact et Chromium présent.
 
-Après accord D-03 seulement : publier, relever le digest réellement produit, qualifier son pull anonyme et les gates impactés, puis au plus un essai gratuit réel avec bindings autorisés et quota disponible. En cas de quota indisponible : BLOCKED_PROVIDER explicite, sans abaisser les exigences. D-04 reste requis séparément pour fusion/stable.
+Le connecteur GitHub disponible ne permettait pas workflow_dispatch. Deux appels de lecture via Desktop Commander ont expiré ; lors de la seconde reprise, penguin était pourtant signalé Online. **La machine ciblée était le Chromebook penguin, pas le MacBook ; aucune commande n'a ciblé le MacBook.** Aucun build, remplacement d'installation, volume, port ou secret local n'a été modifié.
 
-## Exécution D-03 — blocage de connexion
+La publication autorisée a donc été exécutée via une branche d'opération isolée `ops/d03-ceb60eca989b`, commit de pilotage `990c2998c553fcd1908da01a4a205f2eb7744d28`. Son workflow reprend la procédure D-03 existante, avec source, tags et branche de déclenchement fixés. **Tous les checkouts de build portent sur ceb60eca989b**, pas sur le commit de pilotage. Les gardes d'immutabilité existantes n'ont pas été modifiées ; aucun tag stable/latest, merge ou déploiement local n'a été effectué.
 
-L'accord utilisateur couvre uniquement la candidate multiarch et la source figée ci-dessus. Il est acquis et ne doit pas être redemandé. D-04 demeure non autorisé.
+### Qualification de l'image publique exacte, sans reconstruction
 
-Contrôles de cette reprise : la branche candidate pointe toujours sur ceb60eca989b8850ac10fab84f1eaac1eedd79ec ; aucun workflow_dispatch n'est présent pour ce SHA au contrôle. Le connecteur GitHub courant ne propose pas de création de workflow_dispatch. Desktop Commander signale penguin et le MacBook hors ligne. Aucun lancement distant, push GHCR, merge, tag stable ni modification d'installation n'a eu lieu. Reprendre le déclenchement du workflow botmode-image.yml sur la branche candidate avec les paramètres D-03 déjà préparés dès le rétablissement d'un moyen d'exécution autorisé. La garde d'immutabilité doit rester exécutée avant publication.
+[Run #39828461454](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39828461454) : **SUCCESS**, sur runners jetables, source ceb60eca989b et digest public ci-dessus.
+
+| Gate | Verdict | Preuve et limite |
+|---|---|---|
+| Installation Lite via véritable install.sh | PASS | CI_FRESH_LITE_INSTALL=PASS ; HTTP API PASS |
+| Redémarrage/configuration | PASS | CI_FRESH_LITE_RESTART=PASS ; CI_FRESH_LITE_CONFIG_PRESERVED=PASS |
+| Initialiseur compatible dans OCI publiée | PASS | CI_EXACT_OCI_NATIVE_COMPAT_INITIALIZER=PASS ; opt-in, modèle, URL et clé de fixture contrôlés, pas d'inférence externe |
+| Cinq tâches natives | PASS synthétique | CI_FIVE_NATIVE_FIVE_ORACLE_VERDICTS=PASS |
+| Navigateur/sélection/Oracle | PASS synthétique | CI_BROWSER_FIVE_TASK_VERDICTS_VERIFIED=PASS |
+| P6 dans même flux, readback Mongo | PASS synthétique | CI_BROWSER_P6_SAME_STREAM_PUBLISHED_MONGO=PASS |
+| Nettoyage des runners | PASS | Destroy runner-only stack SUCCESS dans les deux jobs |
+
+Définition du harnais dans la branche isolée `ops/qualify-ceb60eca989b`, commit de pilotage `6b495b5067b62c172f7677b96c7f3f4c49100ebc`. Les jobs checkoutent toujours la source figée. Le workflow de qualification n'a ni droit de publication ni référence à une clé fournisseur.
+
+L'essai initial de définition #39828128406 a été refusé avant tout job, car une chaîne Python littérale contenant le délimiteur d'expression Actions était interprétée par GitHub comme une expression non fermée. Correction limitée au harnais, sans reconstruction ni modification d'image ; le run suivant ci-dessus est terminé avec succès. Ne pas compter le premier run comme test produit ou succès.
+
+### Essai fournisseur réel : blocage d'approbation distinct
+
+Une proposition de workflow incluant une mission réelle gratuite à cinq tâches et la clé OpenRouter existante a été **rejetée par le contrôle automatique d'approbation avant création du fichier**. Motif : l'accord explicite D-03 couvre la publication GHCR, mais pas cette utilisation de la clé et l'envoi de la charge utile au fournisseur. Aucun appel OpenRouter réel n'a été exécuté.
+
+Le travail non concerné a été achevé dans un workflow distinct, sans secret fournisseur ni étape réelle : les deux jobs de qualification ci-dessus sont SUCCESS. Il ne s'agit pas d'un contournement du refus.
+
+Autorisation complémentaire à recueillir explicitement : **une seule mission de cinq tâches de test** vers OpenRouter, avec la clé déjà enregistrée dans GitHub ; primaire `google/gemma-4-31b-it:free` après attestation catalogue à prix nul et fallback autorisé `openrouter/free` ; charge utile de test « préparer la réponse puis vérifier l'étape précédente, retourner strictement {"ok":true} » ; identités de test jetables. Aucun modèle payant, aucune rotation de clé ni donnée utilisateur réelle. Respecter les mêmes ids, Oracle durable et P6 ; ne pas confondre cinq tâches réelles réussies avec preuve d'un fallback effectivement observé.
+
+**État final de ce lot : D-03 publication et gates synthétiques exact-digest acquis ; PC-04 externe et cinq tâches réelles restent NON PROUVÉS / BLOQUÉS_APPROBATION.** Les autres arbitrages D-01/D-02, les limites d'endurance/nested child réel et les gates de release non couverts restent ceux du dossier maître. Aucune conclusion GO stable.
