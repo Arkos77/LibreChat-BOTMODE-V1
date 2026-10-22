@@ -38,7 +38,13 @@ allowed=[]
 for item in data.get('endpoints',{}).get('custom',[]):
     if item.get('name')=='OpenRouter':
         item['baseURL']='https://openrouter.ai/api/v1'
-        item['models']={'fetch':False,'default':[model]}
+        # The saved Worker/specialist bindings use the named model, but some
+        # already-authorized runtime actors retain OpenRouter's free router.
+        # Never make their original FREE binding illegal during this probe.
+        allowed_free=list(dict.fromkeys([model,'openrouter/free']))
+        assert all(m=='openrouter/free' or m.endswith(':free') for m in allowed_free), 'CI_LIVE_FREE_NONFREE_MODEL_DENIED'
+        item['models']={'fetch':False,'default':allowed_free}
+        print('CI_LIVE_FREE_MODEL_ALLOWLIST_FREE_ONLY=PASS',flush=True)
         allowed.append(item)
 assert len(allowed)==1, 'CI_LIVE_FREE_FAIL=OPENROUTER_CONFIG_MISSING'
 assert not data['endpoints']['agents'].get('hostModelRouting'), 'CI_LIVE_FREE_FAIL=OTHER_ROUTING_NOT_ISOLATED'
