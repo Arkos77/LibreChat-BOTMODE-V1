@@ -311,6 +311,41 @@ if stream_status != 200 or len(finals) != 1 or errors:
             print("CI_LIVE_FREE_INIT_ERROR_CLASSES="+(",".join(matches) if matches else "UNCLASSIFIED"),flush=True)
             print("CI_LIVE_FREE_INIT_ERROR_TEXT_LENGTH="+str(len(detail)),flush=True)
             print("CI_LIVE_FREE_INIT_ERROR_FINGERPRINT="+sha256(detail.encode()).hexdigest()[:16],flush=True)
+            # Whitelisted terms only; opaque provider text remains private.
+            diagnostic_words={
+                "NAMED_FREE_MODEL":("gemma-4","gemma","31b-it",":free"),
+                "MODEL_RESOLUTION":("model","tokeniz","tiktoken","encoding","context length"),
+                "GRAPH_SETUP":("graph","agent","compile","node","duplicate","recursion"),
+                "PROVIDER_SETUP":("openrouter","provider","api key","credential","baseurl"),
+                "STREAM_SETUP":("stream","sse","listener","callback","session"),
+                "P6_INIT":("mission","oracle","checkpoint","attestation","recovery"),
+                "FUNCTIONAL_ERROR":("typeerror","rangeerror","syntaxerror","validationerror","error:"),
+                "PERMISSION":("access","permission","forbidden","denied","policy"),
+                "BUDGET":("budget","credit","limit","token","rate"),
+                "NETWORK":("http","connect","fetch","socket","timeout"),
+            }
+            for group,terms in diagnostic_words.items():
+                print("CI_LIVE_FREE_INIT_TERM_"+group+"="+str(any(w in detail for w in terms)).upper(),flush=True)
+            # Also inspect a small bounded tail of local API logs for specific
+            # error families, never show upstream text or arbitrary stack frames.
+            try:
+                logs=subprocess.run(helpers["COMPOSE"]+["logs","--no-color","--tail","100","api"],
+                                    capture_output=True,text=True,timeout=18)
+                if logs.returncode==0:
+                    corpus=logs.stdout.lower()
+                    families={
+                        "AGENT_CREATION":("create run failed","could not create","model initialization"),
+                        "MODEL_VALIDATION":("invalid model","model not found","unknown model","model configuration"),
+                        "AUTHORIZATION":("authorization denied","permission denied","forbidden"),
+                        "PROVIDER_HTTP":("openrouter","response_format","429","401","provider error"),
+                        "SDK_GRAPH":("multiagentgraph","invalid graph","langgraph","unsupported graph"),
+                        "RUNTIME_EXCEPTION":("typeerror","referenceerror","syntaxerror","cannot read properties"),
+                        "PERSISTENCE":("redis","mongodb","checkpoint","generation job"),
+                    }
+                    for group,terms in families.items():
+                        print("CI_LIVE_FREE_INIT_API_LOG_"+group+"="+str(any(w in corpus for w in terms)).upper(),flush=True)
+            except (OSError, subprocess.SubprocessError):
+                print("CI_LIVE_FREE_INIT_API_LOG_DIAGNOSTIC=UNAVAILABLE",flush=True)
     except (subprocess.SubprocessError, OSError):
         print("CI_LIVE_FREE_REDIS_DIAG_UNAVAILABLE=TRUE", flush=True)
     try:
