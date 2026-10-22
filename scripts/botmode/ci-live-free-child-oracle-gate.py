@@ -34,7 +34,9 @@ conversation_id = str(uuid.uuid4())
 # The deterministic planner must REQUIRE a specialist by a capability gap,
 # rather than relying on prose instructions that a free model may ignore.
 # Two ordered graph tasks exercise real Worker -> specialist -> Oracle actors.
-task_ids = {"worker": mission_id + "/worker", "specialist": mission_id + "/specialist"}
+FIVE_TASKS = os.environ.get("CI_LIVE_FREE_FIVE_TASKS") == "true"
+task_keys = ["worker"] + ([f"specialist_{i}" for i in range(1, 5)] if FIVE_TASKS else ["specialist"])
+task_ids = {key: mission_id + "/" + key for key in task_keys}
 mission = {
     "missionId": mission_id,
     "taskId": mission_id,
@@ -49,6 +51,22 @@ mission = {
     ],
     "validation": {"criteria": [{"id": "ci-ok", "field": "ok", "expected": True}]},
 }
+if FIVE_TASKS:
+    # Four explicitly ordered specialist graph nodes; no model tool-choice
+    # heuristics and no claim of four separate nested child conversations.
+    mission["objectives"] = [
+        {
+            "key": key,
+            "objective": (
+                "Préparer la réponse. Retourne strictement {\\"ok\\":true}."
+                if key == "worker" else
+                "Vérifier l'étape précédente. Retourne strictement {\\"ok\\":true}."
+            ),
+            "requiredCapabilities": ["basic"] if key == "worker" else ["research_specialist_ci"],
+            "dependsOn": [task_keys[index - 1]] if index else [],
+        }
+        for index, key in enumerate(task_keys)
+    ]
 payload = {
     "endpoint": "agents",
     "agent_id": worker,
@@ -67,6 +85,12 @@ payload = {
         },
     },
 }
+if FIVE_TASKS:
+    payload["text"] = (
+        "Exécute successivement les cinq étapes, Worker puis quatre étapes spécialistes. "
+        "Chaque résultat doit être le JSON strict {\\"ok\\":true}, afin d'être validé "
+        "indépendamment par Oracle avant publication."
+    )
 status, raw = request("POST", "/api/agents/chat/agents", payload)
 if status != 200:
     print("CI_LIVE_FREE_MISSION_START_HTTP=" + str(status), flush=True)
@@ -144,7 +168,7 @@ def read_terminal_stream(stream_path):
         method="GET",
     )
     started = time.monotonic()
-    deadline = started + 210
+    deadline = started + (450 if FIVE_TASKS else 210)
     items = []
     retries = 0
     http_status = 0
@@ -173,7 +197,7 @@ def read_terminal_stream(stream_path):
         except HTTPError as exc:
             return exc.code, items, "HTTP_ERROR"
         except (socket.timeout, TimeoutError):
-            if time.monotonic() >= deadline or retries >= 2:
+            if time.monotonic() >= deadline or retries >= (5 if FIVE_TASKS else 2):
                 return http_status, items, "SSE_IDLE_TOTAL_DEADLINE"
             retries += 1
             # This GET merely resumes observation of the same already-started
@@ -208,10 +232,10 @@ for event in events:
         seen[str(kind)]+=1
     metadata=event.get('data') if isinstance(event.get('data'),dict) else {}
     as_text=json.dumps(metadata,default=str,ensure_ascii=False)
-    for label in ('worker','specialist'):
+    for label in task_keys:
         if node_id(label) in as_text:
             seen[label+'_node_event']+=1
-for label in ('worker_node_event','specialist_node_event','on_run_step','on_run_step_completed','on_run_step_closed','on_run_step_delta'):
+for label in [key+'_node_event' for key in task_keys] + ['on_run_step','on_run_step_completed','on_run_step_closed','on_run_step_delta']:
     print('CI_LIVE_FREE_EVENT_'+label.upper()+'='+str(seen[label]),flush=True)
 if stream_status != 200 or len(finals) != 1 or errors:
     try:
@@ -259,8 +283,8 @@ if durable is None:
             print("CI_LIVE_FREE_PLAN_TASK_COUNT="+str(len(stages)),flush=True)
             print("CI_LIVE_FREE_PLAN_STRATEGY="+str(parsed_plan.get('strategy','OTHER'))[:32],flush=True)
             print("CI_LIVE_FREE_PLAN_WORKER_PRESENT="+str(any(isinstance(t,dict) and t.get('key')=='worker' and t.get('agentId')==worker for t in stages)).upper(),flush=True)
-            print("CI_LIVE_FREE_PLAN_SPECIALIST_PRESENT="+str(any(isinstance(t,dict) and t.get('key')=='specialist' and t.get('agentId')==child for t in stages)).upper(),flush=True)
-            print("CI_LIVE_FREE_PLAN_SPECIALIST_DEPENDS_WORKER="+str(any(isinstance(t,dict) and t.get('key')=='specialist' and t.get('dependsOn')==['worker'] for t in stages)).upper(),flush=True)
+            print("CI_LIVE_FREE_PLAN_SPECIALIST_COUNT="+str(sum(isinstance(t,dict) and t.get('key') in task_keys[1:] and t.get('agentId')==child for t in stages)),flush=True)
+            print("CI_LIVE_FREE_PLAN_CHAIN_VALID="+str(all(any(isinstance(t,dict) and t.get('key')==key and t.get('dependsOn')==([task_keys[i-1]] if i else []) for t in stages) for i,key in enumerate(task_keys))).upper(),flush=True)
         if raw_state:
             parsed = json.loads(raw_state)
             results = parsed.get("results", {}) if isinstance(parsed, dict) else {}
@@ -268,7 +292,7 @@ if durable is None:
                 results = {}
             print("CI_LIVE_FREE_RESULT_TASK_COUNT=" + str(min(len(results), 9999)), flush=True)
             print("CI_LIVE_FREE_WORKER_VERDICT_PRESENT=" + str(bool(results.get(task_ids["worker"], {}).get("verdicts")) if isinstance(results.get(task_ids["worker"]), dict) else False).upper(), flush=True)
-            print("CI_LIVE_FREE_SPECIALIST_VERDICT_PRESENT=" + str(bool(results.get(task_ids["specialist"], {}).get("verdicts")) if isinstance(results.get(task_ids["specialist"]), dict) else False).upper(), flush=True)
+            print("CI_LIVE_FREE_SPECIALIST_VERDICT_COUNT=" + str(sum(bool(results.get(task_ids[k], {}).get("verdicts")) for k in task_keys[1:])), flush=True)
     except (OSError, ValueError, TypeError, AttributeError, subprocess.SubprocessError):
         print("CI_LIVE_FREE_REDIS_DIAG_UNAVAILABLE=TRUE", flush=True)
     try:
@@ -278,8 +302,8 @@ if durable is None:
     raise SystemExit("CI_LIVE_FREE_FAIL=ORACLE_NOT_DURABLE")
 plan, results = durable
 expected_tasks = {
-    "worker": {"taskId": task_ids["worker"], "agentId": worker},
-    "specialist": {"taskId": task_ids["specialist"], "agentId": child},
+    key: {"taskId": task_ids[key], "agentId": worker if key == "worker" else child}
+    for key in task_keys
 }
 actual_tasks = {item.get("key"): item for item in plan.get("tasks", []) if isinstance(item, dict)}
 if (plan.get("mission", {}).get("missionId") != mission_id or
@@ -288,7 +312,8 @@ if (plan.get("mission", {}).get("missionId") != mission_id or
         any(actual_tasks[key].get("taskId") != expected["taskId"] or
             actual_tasks[key].get("agentId") != expected["agentId"]
             for key, expected in expected_tasks.items()) or
-        actual_tasks["specialist"].get("dependsOn") != ["worker"]):
+        any(actual_tasks[key].get("dependsOn") != ([task_keys[i-1]] if i else [])
+            for i, key in enumerate(task_keys))):
     raise SystemExit("CI_LIVE_FREE_FAIL=STRUCTURED_SPECIALIST_PLAN_MISSING")
 print("CI_LIVE_FREE_STRUCTURED_SPECIALIST_PLAN=PASS", flush=True)
 for key, task in expected_tasks.items():
@@ -301,6 +326,8 @@ if not any(response_text(e.get("responseMessage")).strip()
            for e in finals if isinstance(e.get("responseMessage"), dict)):
     raise SystemExit("CI_LIVE_FREE_FAIL=NO_PUBLISHED_RESPONSE")
 print("CI_LIVE_FREE_ORACLE_VERIFIED_AND_PUBLISHED=PASS", flush=True)
+if FIVE_TASKS:
+    print("CI_LIVE_FREE_FIVE_TASKS_ORACLE_VERIFIED=PASS", flush=True)
 
 # Distinguish a real completed child from a running/error child. The
 # synthetic verifier accepts any terminal status; the LIVE gate requires
