@@ -4,11 +4,59 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { mkdtemp, readFile, stat, rm } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
+const { compareHttpOracle } = require(
+  path.resolve(__dirname, '../../../../../scripts/botmode/ci-compare-http-oracle.cjs'),
+);
 const { installJsonObserver, responseSummary, describeContent } = require(
   path.resolve(__dirname, '../../../../../scripts/botmode/ci-http-json-observer.cjs'),
 );
 
 describe('bounded read-only HTTP JSON observation', () => {
+  it.each(['same-invalid', 'changed', 'same-valid', 'ambiguous'])(
+    'attributes only observed wire matches for %s without exposing candidate or task ids',
+    (mode) => {
+      const candidate = mode === 'same-valid' ? '{"ok":true}' : 'private-canary-invalid';
+      const matched = {
+        status: 200,
+        request: { jsonObjectRequested: true, requireParameters: true },
+        response: { content: describeContent(candidate) },
+      };
+      const records =
+        mode === 'changed'
+          ? [{ ...matched, response: { content: describeContent('different') } }]
+          : mode === 'ambiguous'
+            ? [matched, matched]
+            : [matched];
+      const result = compareHttpOracle({
+        plan: { tasks: [{ key: 'worker', taskId: 'private-task-id' }] },
+        state: {
+          results: {
+            'private-task-id': {
+              verdicts: [
+                { status: mode === 'same-valid' ? 'VERIFIED' : 'REJECTED', input: { candidate } },
+              ],
+            },
+          },
+        },
+        records,
+      });
+      expect(result.stages[0].boundary).toBe(
+        mode === 'changed'
+          ? 'HTTP_TO_ORACLE_CHANGED_OR_UNOBSERVED'
+          : mode === 'same-valid'
+            ? 'VERIFIED_JSON_OBJECT'
+            : 'HTTP_RESPONSE_NOT_JSON',
+      );
+      expect(result.stages[0].wireMatchCount).toBe(
+        mode === 'changed' ? 0 : mode === 'ambiguous' ? 2 : 1,
+      );
+      expect(result.stages[0].uniqueWireMatch).toBe(
+        mode === 'same-invalid' || mode === 'same-valid',
+      );
+      expect(JSON.stringify(result)).not.toContain('private-canary');
+      expect(JSON.stringify(result)).not.toContain('private-task-id');
+    },
+  );
   it('bounds UTF-8 request bytes rather than JavaScript string length', async () => {
     const records = [];
     const server = createServer((_req, res) =>
