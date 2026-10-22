@@ -1742,14 +1742,15 @@ describe('initializeClient — subagent loading', () => {
       req.config.endpoints.agents.hostModelRouting = [
         {
           agentId: SUBAGENT_ID,
-          models: ['a:free', 'b:free'],
-          preferredModel: 'a:free',
+          bindings: ['a:free', 'b:free'].map((model, index) => ({
+            id: index === 0 ? 'primary' : 'fallback',
+            provider: 'openAI',
+            model,
+            signals: { pricingTier: 'free', estimatedCost: 0 },
+          })),
+          preferredBindingId: 'primary',
           allowFailover: true,
           routingConstraints: { spendingPolicy: 'free_only' },
-          routingSignals: {
-            'a:free': { pricingTier: 'free', estimatedCost: 0 },
-            'b:free': { pricingTier: 'free', estimatedCost: 0 },
-          },
         },
       ];
       await initializeClient({
