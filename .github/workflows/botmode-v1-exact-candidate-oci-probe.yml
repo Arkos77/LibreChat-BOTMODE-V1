@@ -21,8 +21,8 @@ permissions:
 # Refuse different source revisions and assert embedded image BUILD_COMMIT.
 # Disposable GH Actions runners only; no production volumes.
 env:
-  BOTMODE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  BOTMODE_PUBLISHED_IMAGE: ghcr.io/arkos77/librechat-botmode-v1:sha-087c9693c553
+  BOTMODE_CANDIDATE_SHA: f0e102ffdfe4e562252c0e401781bccedcedbbbc
+  BOTMODE_PUBLISHED_IMAGE: ghcr.io/arkos77/librechat-botmode-v1:sha-f0e102ffdfe4
   COMPOSE_PROJECT_NAME: botmode-oci-child-${{ github.run_id }}-${{ github.run_attempt }}
 
 jobs:
@@ -92,12 +92,12 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
-          git fetch --no-tags origin 087c9693c55357aff3d6f931aba400e62d174914
+          git fetch --no-tags origin f0e102ffdfe4e562252c0e401781bccedcedbbbc
           python3 - <<'PY_PIN'
           import subprocess
-          baseline='087c9693c55357aff3d6f931aba400e62d174914'
+          baseline='f0e102ffdfe4e562252c0e401781bccedcedbbbc'
           changed=set(subprocess.check_output(['git','diff','--name-only',baseline,'HEAD'],text=True).splitlines())
-          assert changed=={'.github/workflows/botmode-v1-exact-candidate-oci-probe.yml','.github/workflows/botmode-v1-ghcr-subagent-oracle-probe.yml'}, 'CI_CANDIDATE_RUNTIME_SOURCE_DRIFT_NOT_ALLOWED'
+          assert not changed, 'CI_CANDIDATE_RUNTIME_SOURCE_DRIFT_NOT_ALLOWED'
           print('CI_CANDIDATE_RUNTIME_SOURCE_UNMODIFIED=PASS')
           PY_PIN
       - name: Pull exact public OCI image without GHCR credentials
@@ -107,7 +107,7 @@ jobs:
           docker logout ghcr.io >/dev/null 2>&1 || true
           docker pull "$BOTMODE_PUBLISHED_IMAGE"
           docker image inspect "$BOTMODE_PUBLISHED_IMAGE" >/dev/null
-          docker image inspect "$BOTMODE_PUBLISHED_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -Fx "BUILD_COMMIT=087c9693c55357aff3d6f931aba400e62d174914"
+          docker image inspect "$BOTMODE_PUBLISHED_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -Fx "BUILD_COMMIT=f0e102ffdfe4e562252c0e401781bccedcedbbbc"
           echo 'CI_CANDIDATE_IMAGE_SOURCE=PASS'
           echo 'CI_PUBLISHED_OCI_SUBAGENT_ANONYMOUS_PULL=PASS'
       - name: Boot current candidate with disposable MongoDB
