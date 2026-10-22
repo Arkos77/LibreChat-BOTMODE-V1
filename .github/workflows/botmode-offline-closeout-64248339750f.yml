@@ -1,0 +1,218 @@
+name: BOTMODE Final Offline Security JSON Oracle Multiarch Qualification
+'on':
+  push:
+    branches:
+    - ops/offline-closeout-64248339750f
+permissions:
+  contents: read
+env:
+  BOTMODE_CANDIDATE_SHA: 64248339750f9e0f86e01530eb7067027cec8f6b
+  BOTMODE_IMAGE: botmode-source-built:64248339750f9e0f86e01530eb7067027cec8f6b
+  BOTMODE_PUBLISHED_IMAGE: botmode-source-built:64248339750f9e0f86e01530eb7067027cec8f6b
+  BOTMODE_MONGO_PASSWORD: ci-isolated-only
+  POSTGRES_PASSWORD: ci-isolated-only
+  DOCKER_BUILD_RECORD_UPLOAD: 'false'
+concurrency:
+  group: botmode-offline-closeout-64248339750f
+  cancel-in-progress: false
+jobs:
+  amd64-integrated:
+    if: github.repository == 'Arkos77/LibreChat-BOTMODE-V1' && github.run_attempt == 1 && github.event.before == '64248339750f9e0f86e01530eb7067027cec8f6b'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      COMPOSE_PROJECT_NAME: botmode-oci-child-${{ github.run_id }}-${{ github.run_attempt }}
+      BOTMODE_HOST_PORT: '3090'
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        ref: 64248339750f9e0f86e01530eb7067027cec8f6b
+        persist-credentials: false
+    - name: Verify pinned pristine source before build
+      run: |
+        test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+        test -z "$(git status --porcelain)"
+    - uses: docker/setup-buildx-action@v4
+    - name: Build exact security and JSON source locally without publication
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: Dockerfile
+        target: node
+        platforms: linux/amd64
+        push: false
+        load: true
+        tags: ${{ env.BOTMODE_IMAGE }}
+        cache-from: type=gha,scope=botmode-amd64
+        cache-to: type=gha,mode=max,scope=botmode-amd64
+        build-args: |
+          BUILD_COMMIT=64248339750f9e0f86e01530eb7067027cec8f6b
+          BUILD_BRANCH=fix/security-release-20261022
+    - name: Verify exact source and local image identity
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+        test -z "$(git status --porcelain)"
+        echo '6e59734742daa69251821e2fed6a765febb4e58f9139743a98c91813dff234cf  package-lock.json' | sha256sum -c -
+        docker image inspect "$BOTMODE_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -Fx "BUILD_COMMIT=$BOTMODE_CANDIDATE_SHA"
+        docker image inspect "$BOTMODE_IMAGE" --format 'CI_LOCAL_CLOSEOUT_IMAGE_ID={{.Id}}'
+        sha256sum package.json packages/api/src/endpoints/openai/llm.ts scripts/botmode/ci-live-free-child-preflight.sh > /tmp/closeout-source.sha256
+        docker run --rm -i --network none --entrypoint sh "$BOTMODE_IMAGE" -c 'sha256sum -c -' < /tmp/closeout-source.sha256
+        echo 'CI_CLOSEOUT_EXACT_SOURCE=PASS'
+        echo 'CI_REGISTRY_PUBLICATION=NONE'
+    - name: Run actual SDK JSON transmission tests inside image without external networking
+      run: |
+        docker run --rm -i --network none --entrypoint node "$BOTMODE_IMAGE" - <<'NODE'
+        const assert = require('node:assert/strict');
+        const tests = [];
+        global.describe = (_name, body) => body();
+        global.it = (name, body) => tests.push({ name, body });
+        global.it.each = (values) => (name, body) => {
+          for (const value of values) tests.push({ name: name.replace('%s', value), body: () => body(value) });
+        };
+        global.expect = (actual) => ({
+          toEqual: (expected) => assert.deepStrictEqual(actual, expected),
+          toBe: (expected) => assert.strictEqual(actual, expected),
+          toHaveLength: (expected) => assert.equal(actual.length, expected),
+        });
+        require('/app/api/server/services/Endpoints/agents/hostJsonMode.compat.spec.js');
+        (async () => {
+          assert.equal(tests.length, 4);
+          for (const test of tests) {
+            await test.body();
+            console.log('CI_IMAGE_JSON_TEST_PASS=' + test.name);
+          }
+          console.log('CI_IMAGE_JSON_MODE_TESTS=4');
+          console.log('CI_IMAGE_JSON_MODE_PRIMARY_AND_FALLBACK=PASS');
+        })().catch((error) => { console.error(error); process.exitCode = 1; });
+        NODE
+    - name: Audit actual production dependencies and inspect license payload
+      run: |
+        docker run --rm -i --entrypoint node "$BOTMODE_IMAGE" - <<'NODE_AUDIT'
+        const assert=require('node:assert/strict');
+        const fs=require('node:fs');const crypto=require('node:crypto');const cp=require('node:child_process');
+        for(const [name,version] of Object.entries({'dompurify':'3.4.17','follow-redirects':'1.16.1','ip-address':'10.7.4','sanitize-html':'2.18.1'})){
+         assert.equal(JSON.parse(fs.readFileSync('/app/node_modules/'+name+'/package.json')).version,version);
+        }
+        assert.equal(fs.existsSync('/app/node_modules/monaco-editor/node_modules/dompurify/package.json'),false);
+        console.log('CI_IMAGE_PATCHED_DEPENDENCY_VERSIONS=PASS');
+        const run=cp.spawnSync('npm',['audit','--omit=dev','--json'],{encoding:'utf8',timeout:90000,maxBuffer:4*1024*1024});
+        assert.ok(run.status===0||run.status===1);const audit=JSON.parse(run.stdout);assert.ok(!audit.error);
+        const counts=audit.metadata.vulnerabilities;
+        assert.equal(counts.critical,0);assert.equal(counts.high,0);
+        assert.deepEqual(Object.keys(audit.vulnerabilities).sort(),['argparse','mammoth','sprintf-js']);
+        assert.equal(counts.moderate,3);
+        console.log('CI_IMAGE_NPM_AUDIT_CRITICAL=0');console.log('CI_IMAGE_NPM_AUDIT_HIGH=0');console.log('CI_IMAGE_NPM_AUDIT_MODERATE=3');
+        console.log('CI_D02_NEW_LOCK_OWNER_APPROVAL=REQUIRED');
+        const notice=fs.readFileSync('/app/THIRD_PARTY_NOTICES.md','utf8');
+        assert.ok(notice.includes('@codesandbox/nodebox@0.1.8')&&notice.includes('Sustainable Use License'));
+        const paths=['/app/node_modules/@codesandbox/nodebox/LICENSE','/app/client/node_modules/@codesandbox/nodebox/LICENSE','/app/THIRD_PARTY_LICENSES/Nodebox-SUL-1.0.txt'];
+        const path=paths.find(p=>fs.existsSync(p));assert.ok(path);
+        assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path)).digest('hex'),'5aca9a36f98d883157f1d1a567347c3d776b7ae60bf93fbb7bfa190f1e3ccf46');
+        console.log('CI_IMAGE_NODEBOX_NOTICE_AND_COMPLETE_SUL=PASS');
+        NODE_AUDIT
+    - name: Integrated synthetic five-task Oracle and browser gates on exact image
+      run: |
+        python3 -m pip install --quiet --break-system-packages PyYAML==6.0.3
+        python3 scripts/botmode/ci-source-built-oracle.py
+    - name: Destroy runner-only stack
+      if: always()
+      run: |
+        sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
+        docker image rm -f "$BOTMODE_IMAGE" >/dev/null 2>&1 || true
+  arm64-offline:
+    if: github.repository == 'Arkos77/LibreChat-BOTMODE-V1' && github.run_attempt == 1 && github.event.before == '64248339750f9e0f86e01530eb7067027cec8f6b'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        ref: 64248339750f9e0f86e01530eb7067027cec8f6b
+        persist-credentials: false
+    - name: Verify pinned pristine source before build
+      run: |
+        test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+        test -z "$(git status --porcelain)"
+    - uses: docker/setup-buildx-action@v4
+    - name: Build exact security and JSON source locally without publication
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: Dockerfile
+        target: node
+        platforms: linux/arm64
+        push: false
+        load: true
+        tags: ${{ env.BOTMODE_IMAGE }}
+        cache-from: type=gha,scope=botmode-arm64
+        cache-to: type=gha,mode=max,scope=botmode-arm64
+        build-args: |
+          BUILD_COMMIT=64248339750f9e0f86e01530eb7067027cec8f6b
+          BUILD_BRANCH=fix/security-release-20261022
+    - name: Verify exact source and local image identity
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+        test -z "$(git status --porcelain)"
+        echo '6e59734742daa69251821e2fed6a765febb4e58f9139743a98c91813dff234cf  package-lock.json' | sha256sum -c -
+        docker image inspect "$BOTMODE_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -Fx "BUILD_COMMIT=$BOTMODE_CANDIDATE_SHA"
+        docker image inspect "$BOTMODE_IMAGE" --format 'CI_LOCAL_CLOSEOUT_IMAGE_ID={{.Id}}'
+        sha256sum package.json packages/api/src/endpoints/openai/llm.ts scripts/botmode/ci-live-free-child-preflight.sh > /tmp/closeout-source.sha256
+        docker run --rm -i --network none --entrypoint sh "$BOTMODE_IMAGE" -c 'sha256sum -c -' < /tmp/closeout-source.sha256
+        echo 'CI_CLOSEOUT_EXACT_SOURCE=PASS'
+        echo 'CI_REGISTRY_PUBLICATION=NONE'
+    - name: Run actual SDK JSON transmission tests inside image without external networking
+      run: |
+        docker run --rm -i --network none --entrypoint node "$BOTMODE_IMAGE" - <<'NODE'
+        const assert = require('node:assert/strict');
+        const tests = [];
+        global.describe = (_name, body) => body();
+        global.it = (name, body) => tests.push({ name, body });
+        global.it.each = (values) => (name, body) => {
+          for (const value of values) tests.push({ name: name.replace('%s', value), body: () => body(value) });
+        };
+        global.expect = (actual) => ({
+          toEqual: (expected) => assert.deepStrictEqual(actual, expected),
+          toBe: (expected) => assert.strictEqual(actual, expected),
+          toHaveLength: (expected) => assert.equal(actual.length, expected),
+        });
+        require('/app/api/server/services/Endpoints/agents/hostJsonMode.compat.spec.js');
+        (async () => {
+          assert.equal(tests.length, 4);
+          for (const test of tests) {
+            await test.body();
+            console.log('CI_IMAGE_JSON_TEST_PASS=' + test.name);
+          }
+          console.log('CI_IMAGE_JSON_MODE_TESTS=4');
+          console.log('CI_IMAGE_JSON_MODE_PRIMARY_AND_FALLBACK=PASS');
+        })().catch((error) => { console.error(error); process.exitCode = 1; });
+        NODE
+    - name: Audit actual production dependencies and inspect license payload
+      run: |
+        docker run --rm -i --entrypoint node "$BOTMODE_IMAGE" - <<'NODE_AUDIT'
+        const assert=require('node:assert/strict');
+        const fs=require('node:fs');const crypto=require('node:crypto');const cp=require('node:child_process');
+        for(const [name,version] of Object.entries({'dompurify':'3.4.17','follow-redirects':'1.16.1','ip-address':'10.7.4','sanitize-html':'2.18.1'})){
+         assert.equal(JSON.parse(fs.readFileSync('/app/node_modules/'+name+'/package.json')).version,version);
+        }
+        assert.equal(fs.existsSync('/app/node_modules/monaco-editor/node_modules/dompurify/package.json'),false);
+        console.log('CI_IMAGE_PATCHED_DEPENDENCY_VERSIONS=PASS');
+        const run=cp.spawnSync('npm',['audit','--omit=dev','--json'],{encoding:'utf8',timeout:90000,maxBuffer:4*1024*1024});
+        assert.ok(run.status===0||run.status===1);const audit=JSON.parse(run.stdout);assert.ok(!audit.error);
+        const counts=audit.metadata.vulnerabilities;
+        assert.equal(counts.critical,0);assert.equal(counts.high,0);
+        assert.deepEqual(Object.keys(audit.vulnerabilities).sort(),['argparse','mammoth','sprintf-js']);
+        assert.equal(counts.moderate,3);
+        console.log('CI_IMAGE_NPM_AUDIT_CRITICAL=0');console.log('CI_IMAGE_NPM_AUDIT_HIGH=0');console.log('CI_IMAGE_NPM_AUDIT_MODERATE=3');
+        console.log('CI_D02_NEW_LOCK_OWNER_APPROVAL=REQUIRED');
+        const notice=fs.readFileSync('/app/THIRD_PARTY_NOTICES.md','utf8');
+        assert.ok(notice.includes('@codesandbox/nodebox@0.1.8')&&notice.includes('Sustainable Use License'));
+        const paths=['/app/node_modules/@codesandbox/nodebox/LICENSE','/app/client/node_modules/@codesandbox/nodebox/LICENSE','/app/THIRD_PARTY_LICENSES/Nodebox-SUL-1.0.txt'];
+        const path=paths.find(p=>fs.existsSync(p));assert.ok(path);
+        assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path)).digest('hex'),'5aca9a36f98d883157f1d1a567347c3d776b7ae60bf93fbb7bfa190f1e3ccf46');
+        console.log('CI_IMAGE_NODEBOX_NOTICE_AND_COMPLETE_SUL=PASS');
+        NODE_AUDIT
+    - name: Destroy runner-only local image
+      if: always()
+      run: |
+        docker image rm -f "$BOTMODE_IMAGE" >/dev/null 2>&1 || true
