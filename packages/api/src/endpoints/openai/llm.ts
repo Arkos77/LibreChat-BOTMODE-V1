@@ -952,6 +952,19 @@ export function getOpenAILLMConfig({
     hasModelKwargs = true;
   }
 
+  // Endpoint-enforced chat response_format is a LangChain call-time option,
+  // not a constructor field. Move it after API selection and dropParams so
+  // Responses API behavior and explicit removals remain unchanged.
+  if (
+    addParams?.response_format != null &&
+    llmConfig.response_format != null &&
+    llmConfig.useResponsesApi !== true
+  ) {
+    modelKwargs.response_format = llmConfig.response_format;
+    delete llmConfig.response_format;
+    hasModelKwargs = true;
+  }
+
   if (hasModelKwargs && Object.keys(modelKwargs).length > 0) {
     llmConfig.modelKwargs = modelKwargs;
   }

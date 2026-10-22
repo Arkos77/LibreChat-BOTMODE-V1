@@ -44,6 +44,12 @@ for item in data.get('endpoints',{}).get('custom',[]):
         allowed_free=list(dict.fromkeys([model,'openrouter/free']))
         assert all(m=='openrouter/free' or m.endswith(':free') for m in allowed_free), 'CI_LIVE_FREE_NONFREE_MODEL_DENIED'
         item['models']={'fetch':False,'default':allowed_free}
+        if os.environ.get('CI_LIVE_FREE_FIVE_TASKS')=='true':
+            # The Oracle contract requires a JSON object. Catalog support alone
+            # does not request JSON output; pass it through the native client.
+            item['addParams']=dict(item.get('addParams') or {})
+            item['addParams']['response_format']={'type':'json_object'}
+            print('CI_LIVE_FREE_JSON_OBJECT_MODE_CONFIGURED=PASS',flush=True)
         print('CI_LIVE_FREE_MODEL_ALLOWLIST_FREE_ONLY=PASS',flush=True)
         allowed.append(item)
 assert len(allowed)==1, 'CI_LIVE_FREE_FAIL=OPENROUTER_CONFIG_MISSING'

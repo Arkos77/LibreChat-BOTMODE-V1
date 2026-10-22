@@ -1408,8 +1408,10 @@ describe('getOpenAIConfig', () => {
 
       const result = getOpenAIConfig(mockApiKey, { addParams: testParams });
 
-      // All should be in llmConfig, none in modelKwargs
-      expect(result.llmConfig.modelKwargs).toBeUndefined();
+      // Constructor fields stay in llmConfig; response_format must reach
+      // chat requests through modelKwargs rather than an ignored SDK field.
+      expect(result.llmConfig.modelKwargs).toEqual({ response_format: 'test-response_format' });
+      expect((result.llmConfig as Record<string, unknown>).response_format).toBeUndefined();
 
       // Check a few key parameters are correctly placed
       expect((result.llmConfig as Record<string, unknown>).model).toBe('test-model');
