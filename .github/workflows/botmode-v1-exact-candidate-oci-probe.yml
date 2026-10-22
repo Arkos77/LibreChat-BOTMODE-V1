@@ -764,16 +764,14 @@ jobs:
           # subagent admission with readiness after a deliberately forced restart.
           python3 /tmp/botmode-ci-oracle-publication-gate.py
           echo 'BOTMODE_PLANNED_SPECIALIST_ORACLE_E2E=PASS'
+          # Run five sequential native nodes before the archival API restart.
+          # The strict oracle test above already acquired its own baseline.
+          python3 -m py_compile scripts/botmode/ci-five-sequential-mission-gate.py
+          python3 scripts/botmode/ci-five-sequential-mission-gate.py
           # Run the archival restart/durability regression independently.
           cp scripts/botmode/ci-oracle-delegated-mission-gate.py /tmp/botmode-ci-oracle-publication-gate.py
           python3 /tmp/botmode-ci-oracle-publication-gate.py
           echo 'BOTMODE_CURRENT_IMAGE_SUBAGENT_ORACLE_PROBE=PASS'
-      - name: Five-stage sequential synthetic native graph and Oracle acceptance
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m py_compile scripts/botmode/ci-five-sequential-mission-gate.py
-          python3 scripts/botmode/ci-five-sequential-mission-gate.py
       - name: Browser acceptance — actual candidate UI and agent selector
         shell: bash
         run: |
