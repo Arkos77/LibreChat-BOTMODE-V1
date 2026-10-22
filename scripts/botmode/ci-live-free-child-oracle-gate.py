@@ -218,6 +218,19 @@ print("CI_LIVE_FREE_SSE_OUTCOME=" + stream_outcome, flush=True)
 print("CI_LIVE_FREE_SSE_EVENTS_SEEN=" + str(len(events)), flush=True)
 print("CI_LIVE_FREE_FINAL_COUNT=" + str(len(finals)), flush=True)
 print("CI_LIVE_FREE_ERROR_FRAME_COUNT=" + str(len(errors)), flush=True)
+# Terminal classification only; never display model output or identities.
+for item in finals[:1]:
+    msg=item.get("responseMessage")
+    msg=msg if isinstance(msg,dict) else {}
+    print("CI_LIVE_FREE_FINAL_UNFINISHED="+str(msg.get("unfinished","ABSENT")),flush=True)
+    reason=msg.get("finish_reason",msg.get("finishReason"))
+    safe_reasons={"stop","length","tool_calls","content_filter","tool_call_limit","max_tokens","incomplete","error"}
+    print("CI_LIVE_FREE_FINAL_FINISH_REASON="+(reason if isinstance(reason,str) and reason in safe_reasons else "OTHER_OR_ABSENT"),flush=True)
+    parts=msg.get("content")
+    parts=parts if isinstance(parts,list) else []
+    types=sorted({p.get("type") for p in parts if isinstance(p,dict) and isinstance(p.get("type"),str)})
+    print("CI_LIVE_FREE_FINAL_CONTENT_TYPES="+",".join(x for x in types if x in {"text","error","tool_call","think","reasoning","activity_label"}),flush=True)
+
 # Correlate only event metadata with the two deterministic native node ids.
 # Avoid logging event bodies, prompts, model output or identifiers.
 import hashlib
