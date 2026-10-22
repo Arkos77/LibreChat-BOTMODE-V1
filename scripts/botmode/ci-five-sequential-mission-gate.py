@@ -64,7 +64,17 @@ for _ in range(60):
 assert api_ready, "CI_FIVE_NATIVE_API_NOT_READY_AFTER_RESTART"
 print("CI_FIVE_NATIVE_API_RESTART_READY=PASS", flush=True)
 status, raw = request("POST", "/api/agents/chat/agents", payload)
-assert status == 200, "CI_FIVE_NATIVE_ADMISSION_FAILED"
+print("CI_FIVE_NATIVE_ADMISSION_HTTP=" + str(status), flush=True)
+if status != 200:
+    # Do not expose the response body; classify only known admission families.
+    low=raw.lower()
+    kind=("UNAUTHORIZED" if "unauthorized" in low or status==401
+          else "FORBIDDEN" if "forbidden" in low or status==403
+          else "INVALID_PLAN" if "orchestrator" in low or "mission" in low
+          else "SERVICE_UNAVAILABLE" if status in (502,503,504)
+          else "OTHER")
+    print("CI_FIVE_NATIVE_ADMISSION_CLASS="+kind,flush=True)
+    raise SystemExit("CI_FIVE_NATIVE_ADMISSION_FAILED")
 envelope = json.loads(raw)
 assert envelope.get("status") == "started" and envelope.get("streamId"), "CI_FIVE_NATIVE_MISSING_STREAM"
 sid = envelope["streamId"]
