@@ -131,20 +131,20 @@ if test "${CI_LIVE_FREE_FIVE_TASKS:-false}" = true; then
     -e "CI_FREE_SPECIALIST_ID=$specialist_id" \
     -e "CI_FREE_NAMED_MODEL=$selected_model" api node - <<'NODE_FREE_BIND'
 const mongoose=require('mongoose');
-const {ObjectId}=mongoose.Types;
 (async()=>{
   try {
   await mongoose.connect(process.env.MONGO_URI);
+  // Agent.id is the public persistent string identity in the LibreChat schema;
+  // Mongo _id is a DIFFERENT ObjectId used only by resource ACL storage.
   const ids=[process.env.CI_FREE_WORKER_ID,process.env.CI_FREE_SPECIALIST_ID];
-  if(ids.some(x=>!ObjectId.isValid(x)) || new Set(ids).size!==2)throw Error('INVALID_TEST_AGENT_IDS');
-  const objects=ids.map(x=>new ObjectId(x));
+  if(ids.some(x=>typeof x!=='string'||x.length<5||x.length>128) || new Set(ids).size!==2)throw Error('INVALID_TEST_AGENT_IDS');
   const db=mongoose.connection.db;
-  const rows=await db.collection('agents').find({_id:{$in:objects}},{projection:{_id:1,provider:1,author:1}}).toArray();
+  const rows=await db.collection('agents').find({id:{$in:ids}},{projection:{id:1,provider:1,author:1}}).toArray();
   if(rows.length!==2 || rows.some(x=>x.provider!=='OpenRouter') ||
       new Set(rows.map(x=>String(x.author))).size!==1)throw Error('UNAUTHORIZED_TEST_BINDING');
-  const updated=await db.collection('agents').updateMany({_id:{$in:objects},provider:'OpenRouter'},{$set:{model:process.env.CI_FREE_NAMED_MODEL}});
+  const updated=await db.collection('agents').updateMany({id:{$in:ids},provider:'OpenRouter'},{$set:{model:process.env.CI_FREE_NAMED_MODEL}});
   if(updated.matchedCount!==2)throw Error('TEST_BINDING_MISMATCH');
-  const confirmed=await db.collection('agents').countDocuments({_id:{$in:objects},model:process.env.CI_FREE_NAMED_MODEL});
+  const confirmed=await db.collection('agents').countDocuments({id:{$in:ids},model:process.env.CI_FREE_NAMED_MODEL});
   if(confirmed!==2)throw Error('TEST_BINDING_READBACK_FAILED');
   console.log('CI_LIVE_FREE_NAMED_MODEL_AGENT_BINDINGS=PASS');
   } catch(e) {
