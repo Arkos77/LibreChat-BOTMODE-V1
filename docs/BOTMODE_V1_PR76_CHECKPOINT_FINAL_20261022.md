@@ -65,3 +65,18 @@ Cette preuve complète celle du run OpenRouter gratuit réel #39712205594 (deux 
 - [Contrôle automatique PR #39717145159](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39717145159) : **SUCCESS**, y compris OCI/Lite/browser P6 synthétique. La source applicative immuable `f0e102f` reste inchangée ; le seul correctif de ce lot est le contrôle CI qui classe et refuse une réponse finale contenant un élément `error`.
 
 **Blocage avant release** : expliquer pourquoi un graphe natif de cinq tâches ne parcourt pas ses cinq nœuds sur le modèle gratuit ; vérifier les arrêts de run, la politique de budget/limites, les outils effectivement proposés au modèle et la réutilisation de l'identité du même spécialiste. Ne pas présenter le parcours à cinq tâches OpenRouter comme validé ni assouplir Oracle pour le faire passer.
+
+
+## Addendum — cinq tâches séquentielles, même spécialiste, fournisseur synthétique (22 octobre 2026)
+
+[Run CI #39719895095](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39719895095) : **SUCCESS** sur `current-candidate-runtime` et `Clean Lite install and API restart`. Validation supplémentaire introduite sur la candidate applicative inchangée `f0e102f` :
+
+- `CI_FIVE_NATIVE_ADMISSION_HTTP=200`
+- `CI_FIVE_NATIVE_SEQUENTIAL_GRAPH=PASS`
+- `CI_FIVE_NATIVE_FIVE_ORACLE_VERDICTS=PASS`
+- `CI_BROWSER_FIVE_TASK_VERDICTS_VERIFIED=PASS`
+- `CI_BROWSER_P6_SAME_STREAM_PUBLISHED_MONGO=PASS`
+
+Le scénario **cinq tâches dépendantes, une tâche Worker + quatre nœuds spécialiste utilisant la même identité d'agent autorisée** est exécuté et ses cinq verdicts Oracle sont persistés lorsque le fournisseur simulé renvoie la structure JSON attendue. Cela démontre le fonctionnement du graphe natif dans cette configuration contrôlée, mais ne prouve pas la réussite d'une mission de cinq tâches sur un modèle OpenRouter réel. Les runs réels #39714676111, #39716464906 et #39717176805 restent des échecs ; ils ne doivent pas être effacés ni attribués sans preuve à une cause unique (sortie du modèle, disponibilité du fournisseur, limite d'exécution ou autre intégration).
+
+La barrière Oracle et le contrôle CI refuseront toujours une publication à cinq tâches quand seuls un ou deux verdicts sont durables. **Aucune modification du code applicatif ni de l'image OCI ; pas de promotion stable.**
