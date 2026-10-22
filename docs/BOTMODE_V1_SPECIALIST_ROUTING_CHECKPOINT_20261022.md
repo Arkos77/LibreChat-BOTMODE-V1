@@ -34,12 +34,61 @@ La revue a relevé un cas important : un model spec choisi pour le primaire dés
 ## Statut de clôture
 
 - Régression de routage spécialiste reproduite et corrigée, preuve rouge/verte acquise.
-- Mission externe complète à cinq tâches sur cette nouvelle source : **non exécutée / non prouvée**.
-- Image intégrée a6f6fee3c7dc : **non construite ni publiée** ; les images historiques 642/ceb conservent leur identité et leurs seules preuves.
+- Mission réelle exécutée une fois : **échec worker INVALID_CANDIDATE ; cinq verdicts/P6 non prouvés**. Voir le résultat définitif ci-dessous.
+- Image intégrée a6f6fee3c7dc : **AMD64 construite et contrôlée localement, non publiée** ; ARM64 non construite pour ce source. Les images historiques 642/ceb conservent leurs seules preuves.
 - D-01 résiduel ouvert ; D-02 nouveau verrou toujours à rattacher explicitement ; D-03 publication nouvelle source et D-04 fusion/stable non autorisés.
 
-## Prochain essai préparé, inactif
+## Proposition historique — autorisée et exécutée une fois
 
 Le YAML docs/qualification/BOTMODE_V1_FREE_FALLBACK_a6f6fee3c7dc_PROPOSAL.yml reste hors .github/workflows. Il ne déclenche rien. Autorisation distincte requise pour une seule mission réelle sur a6f6fee3c7dc, même clé GitHub, prix nuls revalidés, primaire en HTTP429 contrôlé puis fallback externe openrouter/free, cinq verdicts VERIFIED et même mission relue en Mongo.
 
 Pour cette injection contrôlée uniquement, maxRetries=0 est placé sur le primaire local : pas d'attente artificielle de ses retries, dont l'issue est connue. Le fallback externe conserve sa politique de retry ; aucun changement produit. La configuration préparée a été exécutée à blanc sans réseau avec catalogue/clé fictifs : URL primaire locale, fallback HTTPS réel, JSON sur les deux, maxRetries=0 uniquement sur le primaire, deux politiques free_only vérifiées. YAML, Bash et Python de patch analysés. Une seule admission de mission, run_attempt=1 et event.before lié à la source exacte, nettoyage systématique, aucune publication ni fusion.
+
+## Mission réelle du 22 octobre — résultat définitif sur a6f6fee3c7dc
+
+L'utilisateur a autorisé explicitement une mission réelle, sans publication ni fusion.
+
+### Arrêt préalable du harnais, sans mission ni clé réelle
+
+[Run 39856719539](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39856719539), job 120096711009, pilote **76178fa414e0284cddfebca1f9d687ee354316f9**, branche ops/closeout-a6f6fee3c7dc : FAILURE avant les étapes fournisseur. Image AMD64 construite depuis la source exacte a6f6fee3c7dcfb5877fe798f759966774a046a58 ; identité/source et quatre tests JSON dans l'image PASS. L'audit renvoyait une liste vide, mais le harnais exigeait exactement les trois anciens modérés : assertion trop stricte. La licence, située après cette assertion, n'a pas été validée par ce premier run. Étape recevant OPENROUTER_API_KEY et mission : **SKIPPED** ; nettoyage SUCCESS. L'autorisation d'une mission n'était donc pas consommée.
+
+Correction limitée au workflow : autoriser une liste vide ou un sous-ensemble des trois seuls noms historiques, tous de sévérité moderate, cohérent avec les compteurs ; refuser high/critical/low/info et toute alerte inconnue. Vérification locale : listes vide/trois modérés/sous-ensemble acceptées ; high, critical, inconnu, compteur incohérent et low refusés. Aucun changement applicatif ni du verrou.
+
+### Une seule mission exécutée
+
+[Run 39857859228](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39857859228), job **120100634900**, pilote **970353308d1dfb69ab56b41b70d01749822764aa**, branche ops/closeout-a6f6fee3c7dc-r2 : **FAILURE**, terminé. Source construite/testée exacte **a6f6fee3c7dcfb5877fe798f759966774a046a58**, distincte du pilote. Config ID local AMD64 **sha256:7ecd1ba676038586378a63c7b0870949d84dab86a312790019ea6dc068435854** : ce n'est pas un digest GHCR ni une publication multiarchitecture.
+
+| Contrôle | Résultat |
+|---|---|
+| Source exacte / empreintes / BUILD_COMMIT | PASS |
+| Mode JSON SDK primaire et compatible, dans l'image | 4 tests PASS |
+| Versions des quatre dépendances corrigées | PASS |
+| Audit production installé, à 23:38 Paris le 22/10 | **0 critical / 0 high / 0 moderate** |
+| Notice Nodebox et termes SUL complets / hash | PASS |
+| Deux routes autorisées et prix nuls revalidés | PASS |
+| Admission de mission / plan natif | Une mission, cinq tâches planifiées |
+| Primaire local contrôlé | **1 HTTP429 / 0 requête inattendue** |
+| Verdict worker | **REJECTED / INVALID_CANDIDATE** |
+| Forme du candidat worker | 59 caractères, INVALID_JSON, aucune clôture Markdown ; contenu brut non conservé |
+| Spécialistes 1–4 | Zéro verdict chacun ; non atteints après le rejet worker |
+| Terminal | Partie error, classe expurgée MISSION_ORACLE ; pas RATE_LIMIT |
+| P6 final / receipts | **SKIPPED**, non qualifié |
+| Nettoyage stack/volumes/image | SUCCESS |
+
+La réponse générée malgré le primaire en 429 contrôlé atteste un chemin alternatif dans cette configuration ; le reçu final fallback n'a pas été recueilli et aucune sortie brute de modèle n'est publiée. Ce run ne constitue ni cinq verdicts VERIFIED ni une publication canonique réussie. Il n'invalide pas les 109 tests de routage des spécialistes, mais il ne les confirme pas encore en mission réelle, car le worker échoue avant eux.
+
+### Diagnostic hors ligne après ce résultat
+
+Le test existant hostModelRouting.compat.spec.js a été étendu pour capturer de vraies requêtes HTTP du SDK : primaire HTTP429, puis fallback compatible. Le corps de la requête fallback contient bien response_format={type:json_object}, **streaming=false et streaming=true**, avec uniquement une fixture loopback. Avec hostJsonMode.compat.spec.js : **2 suites / 8 tests PASS**, Node/Prettier/diff check PASS. Test conservé au commit **b4eb797c669b502e722c0fc8b7304c2b80e5fbc3** ; aucun nouveau patch produit.
+
+Cette preuve exclut une perte systématique du paramètre dans le trajet SDK testé. Elle ne capture pas la requête réelle de ce run, ni son fournisseur sous-jacent, et ne permet pas d'attribuer définitivement les 59 caractères invalides à une cause précise.
+
+La documentation officielle OpenRouter indique que response_format reste une préférence de routage si provider.require_parameters n'est pas activé ; un paramètre non pris en charge peut alors être ignoré. Ce contrôle n'était pas imposé par le préflight courant. C'est une piste fondée pour un prochain diagnostic, **pas une cause prouvée de cette réponse** :
+https://openrouter.ai/docs/guides/routing/provider-selection#requiring-providers-to-support-all-parameters
+https://openrouter.ai/docs/guides/features/structured-outputs
+
+### Autorisations et décision
+
+L'accord est maintenant consommé par cette seule mission. Aucun replay ni nouvelle inférence, nouvelle publication, fusion ou changement d'installation n'a été effectué. Le nouveau constat d'audit à zéro ne réécrit pas rétroactivement les audits précédents ni l'acceptation D-02. Aucun retrait d'avis n'est déduit de ce seul rapport. D-01 résiduel et les décisions D-02/D-03/D-04 restent aux frontières documentées.
+
+**NO-GO stable : blocage courant = worker rejeté pour JSON invalide ; cinq tâches et P6 réels non acquis.**
