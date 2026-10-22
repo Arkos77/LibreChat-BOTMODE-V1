@@ -230,6 +230,33 @@ for item in finals[:1]:
     parts=parts if isinstance(parts,list) else []
     types=sorted({p.get("type") for p in parts if isinstance(p,dict) and isinstance(p.get("type"),str)})
     print("CI_LIVE_FREE_FINAL_CONTENT_TYPES="+",".join(x for x in types if x in {"text","error","tool_call","think","reasoning","activity_label"}),flush=True)
+    if "error" in types:
+        # Classify internal response error only; never emit raw provider/error
+        # messages, secrets, user content or arbitrary upstream error codes.
+        error_fragments=[]
+        for part in parts:
+            if isinstance(part,dict) and part.get("type")=="error":
+                for key in ("error","message","text"):
+                    val=part.get(key)
+                    if val is not None:
+                        error_fragments.append(str(val)[:2000])
+        raw_error=" ".join(error_fragments).lower()
+        family=("MISSION_ORACLE" if ("mission oracle" in raw_error or "mission_oracle" in raw_error)
+            else "RATE_LIMIT" if ("rate limit" in raw_error or "rate_limit" in raw_error or "429" in raw_error)
+            else "PROVIDER_UNAVAILABLE" if any(t in raw_error for t in ("upstream", "503", "502", "504", "timeout", "temporarily unavailable"))
+            else "STEP_LIMIT" if ("step limit" in raw_error or "recursion_limit" in raw_error or "recursion limit" in raw_error)
+            else "OTHER")
+        print("CI_LIVE_FREE_FINAL_ERROR_CLASS="+family,flush=True)
+        try:
+            status_now, raw_plan_now, raw_oracle_now=redis_job(stream_id)
+            if raw_plan_now and raw_oracle_now:
+                parsed_plan_now=json.loads(raw_plan_now)
+                parsed_oracle_now=json.loads(raw_oracle_now)
+                print("CI_LIVE_FREE_TERMINAL_ERROR_PLAN_TASKS="+str(len(parsed_plan_now.get("tasks",[]))),flush=True)
+                print("CI_LIVE_FREE_TERMINAL_ERROR_VERDICT_TASKS="+str(len(parsed_oracle_now.get("results",{}))),flush=True)
+        except (OSError, ValueError, TypeError, AttributeError, subprocess.SubprocessError):
+            print("CI_LIVE_FREE_TERMINAL_ERROR_REDIS_DIAG_UNAVAILABLE=TRUE",flush=True)
+        raise SystemExit("CI_LIVE_FREE_FAIL=TERMINAL_CONTAINS_ERROR_PART")
 
 # Correlate only event metadata with the two deterministic native node ids.
 # Avoid logging event bodies, prompts, model output or identifiers.
