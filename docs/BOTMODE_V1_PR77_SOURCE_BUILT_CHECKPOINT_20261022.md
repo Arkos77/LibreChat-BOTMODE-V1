@@ -59,7 +59,7 @@ Le premier appel terminal Remote Desktop Commander sur penguin a expiré sans so
 
 La qualification source-built autorisée est terminée. La qualification de distribution finale nécessite une nouvelle image publique correspondant à la source corrigée ; f0e102f ne peut pas la remplacer.
 
-**Demande préparée, NON AUTORISÉE et NON EXÉCUTÉE** :
+**D-03 AUTORISÉE par réponse explicite « oui » du propriétaire le 22 octobre 2026 ; publication NON EXÉCUTÉE** :
 - source exacte : ceb60eca989b8850ac10fab84f1eaac1eedd79ec ;
 - branche figée : candidate/botmode-pr77-ceb60eca989b ;
 - workflow existant : botmode-image.yml, workflow_dispatch, publish=true, verify_guard_only=false ;
@@ -68,3 +68,9 @@ La qualification source-built autorisée est terminée. La qualification de dist
 - aucun tag stable/latest, aucune fusion, aucun remplacement d'installation.
 
 Après accord D-03 seulement : publier, relever le digest réellement produit, qualifier son pull anonyme et les gates impactés, puis au plus un essai gratuit réel avec bindings autorisés et quota disponible. En cas de quota indisponible : BLOCKED_PROVIDER explicite, sans abaisser les exigences. D-04 reste requis séparément pour fusion/stable.
+
+## Exécution D-03 — blocage de connexion
+
+L'accord utilisateur couvre uniquement la candidate multiarch et la source figée ci-dessus. Il est acquis et ne doit pas être redemandé. D-04 demeure non autorisé.
+
+Contrôles de cette reprise : la branche candidate pointe toujours sur ceb60eca989b8850ac10fab84f1eaac1eedd79ec ; aucun workflow_dispatch n'est présent pour ce SHA au contrôle. Le connecteur GitHub courant ne propose pas de création de workflow_dispatch. Desktop Commander signale penguin et le MacBook hors ligne. Aucun lancement distant, push GHCR, merge, tag stable ni modification d'installation n'a eu lieu. Reprendre le déclenchement du workflow botmode-image.yml sur la branche candidate avec les paramètres D-03 déjà préparés dès le rétablissement d'un moyen d'exécution autorisé. La garde d'immutabilité doit rester exécutée avant publication.
