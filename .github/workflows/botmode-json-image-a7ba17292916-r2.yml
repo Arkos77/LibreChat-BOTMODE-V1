@@ -1,0 +1,85 @@
+name: BOTMODE JSON Fix Exact Image Offline Transmission
+'on':
+  push:
+    branches:
+    - ops/json-image-a7ba17292916-r2
+permissions:
+  contents: read
+env:
+  BOTMODE_SOURCE_SHA: a7ba172929168132d6b0fe44c56d0e3f17b40d80
+  BOTMODE_IMAGE: botmode-json-source:a7ba17292916
+  DOCKER_BUILD_RECORD_UPLOAD: 'false'
+concurrency:
+  group: botmode-json-image-a7ba17292916-r2
+  cancel-in-progress: false
+jobs:
+  json-image-probe:
+    if: github.repository == 'Arkos77/LibreChat-BOTMODE-V1' && github.run_attempt == 1 && github.event.before == 'a7ba172929168132d6b0fe44c56d0e3f17b40d80'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        ref: a7ba172929168132d6b0fe44c56d0e3f17b40d80
+        persist-credentials: false
+    - name: Verify pinned clean source
+      run: |
+        test "$(git rev-parse HEAD)" = "$BOTMODE_SOURCE_SHA"
+        test -z "$(git status --porcelain)"
+    - uses: docker/setup-buildx-action@v4
+    - name: Build exact JSON fix locally without publication
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: Dockerfile
+        target: node
+        platforms: linux/amd64
+        push: false
+        load: true
+        tags: ${{ env.BOTMODE_IMAGE }}
+        cache-from: type=gha,scope=botmode-amd64
+        cache-to: type=gha,mode=max,scope=botmode-amd64
+        build-args: |
+          BUILD_COMMIT=a7ba172929168132d6b0fe44c56d0e3f17b40d80
+          BUILD_BRANCH=fix/pr77-json-mode-transmission-20261022
+    - name: Verify image identity and exact source file hashes
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$BOTMODE_SOURCE_SHA"
+        test -z "$(git status --porcelain)"
+        docker image inspect "$BOTMODE_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -Fx "BUILD_COMMIT=$BOTMODE_SOURCE_SHA"
+        docker image inspect "$BOTMODE_IMAGE" --format 'CI_LOCAL_IMAGE_CONFIG_ID={{.Id}}'
+        sha256sum packages/api/src/endpoints/openai/llm.ts scripts/botmode/ci-live-free-child-preflight.sh api/server/services/Endpoints/agents/hostJsonMode.compat.spec.js > /tmp/json-source.sha256
+        docker run --rm -i --network none --entrypoint sh "$BOTMODE_IMAGE" -c 'sha256sum -c -' < /tmp/json-source.sha256
+        echo 'CI_IMAGE_EXACT_SOURCE_HASHES=PASS'
+        echo 'CI_IMAGE_REGISTRY_PUBLICATION=NONE'
+    - name: Run actual SDK JSON transmission tests inside image without external networking
+      run: |
+        docker run --rm -i --network none --entrypoint node "$BOTMODE_IMAGE" - <<'NODE'
+        const assert = require('node:assert/strict');
+        const tests = [];
+        global.describe = (_name, body) => body();
+        global.it = (name, body) => tests.push({ name, body });
+        global.it.each = (values) => (name, body) => {
+          for (const value of values) tests.push({ name: name.replace('%s', value), body: () => body(value) });
+        };
+        global.expect = (actual) => ({
+          toEqual: (expected) => assert.deepStrictEqual(actual, expected),
+          toBe: (expected) => assert.strictEqual(actual, expected),
+          toHaveLength: (expected) => assert.equal(actual.length, expected),
+        });
+        require('/app/api/server/services/Endpoints/agents/hostJsonMode.compat.spec.js');
+        (async () => {
+          assert.equal(tests.length, 4);
+          for (const test of tests) {
+            await test.body();
+            console.log('CI_IMAGE_JSON_TEST_PASS=' + test.name);
+          }
+          console.log('CI_IMAGE_JSON_MODE_TESTS=4');
+          console.log('CI_IMAGE_JSON_MODE_PRIMARY_AND_FALLBACK=PASS');
+        })().catch((error) => { console.error(error); process.exitCode = 1; });
+        NODE
+    - name: Destroy runner-only local image
+      if: always()
+      run: |
+        docker image rm -f "$BOTMODE_IMAGE" >/dev/null 2>&1 || true
