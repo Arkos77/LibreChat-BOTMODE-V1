@@ -60,23 +60,46 @@ if os.environ.get('CI_LIVE_FREE_FIVE_TASKS')=='true':
         candidate=='openrouter/free' or candidate.endswith(':free')
         for candidate in free_choices
     ),'CI_LIVE_FREE_ROUTING_PAID_BINDING'
-    data['endpoints']['agents']['hostModelRouting']=[
-        {'agentId':agent_id,'models':free_choices,
-         'preferredModel':model,'allowFailover':os.environ.get('CI_LIVE_FREE_DISABLE_FALLBACK_DIAG')!='true',
-         'routingMode':'static',
-         # The generic capability router rejects UNKNOWN pricing under
-         # free_only. The named model's zero cost was verified via catalog
-         # above; OpenRouter's free router is the sole exact virtual alias.
-         # Never infer 'free' for arbitrary configured models.
-         'routingSignals':{
-             model:{'pricingTier':'free','estimatedCost':0},
-             'openrouter/free':{'pricingTier':'free','estimatedCost':0},
-         },
-         'routingConstraints':{'spendingPolicy':'free_only'}}
-        for agent_id in agent_ids
-    ]
+    compat_mode=os.environ.get('CI_LIVE_FREE_COMPAT_FALLBACK_DIAG')=='true'
+    if compat_mode:
+        # CI-only clone of the SAME zero-cost OpenRouter endpoint credentials
+        # and URL, resolved through LibreChat's canonical OpenAI-compatible
+        # client rather than the OpenRouter-specific SDK fallback loader.
+        # There is no new provider account, paid binding or direct DB mutation.
+        import copy
+        compat=copy.deepcopy(allowed[0])
+        compat['name']='OpenRouterFreeCompatCI'
+        compat.pop('provider',None)
+        compat['models']={'fetch':False,'default':['openrouter/free']}
+        data['endpoints']['custom'].append(compat)
+        print('CI_LIVE_FREE_COMPAT_FREE_ENDPOINT_ISOLATED=PASS',flush=True)
+    def policy(agent_id):
+        base={'agentId':agent_id,
+              'allowFailover':os.environ.get('CI_LIVE_FREE_DISABLE_FALLBACK_DIAG')!='true',
+              'routingMode':'static',
+              'routingConstraints':{'spendingPolicy':'free_only'}}
+        if compat_mode:
+            base.update({
+                'bindings':[
+                    {'id':'primary','provider':'OpenRouter','model':model,
+                     'signals':{'pricingTier':'free','estimatedCost':0}},
+                    {'id':'fallback','provider':'OpenRouterFreeCompatCI','model':'openrouter/free',
+                     'signals':{'pricingTier':'free','estimatedCost':0}}],
+                'preferredBindingId':'primary',
+            })
+        else:
+            base.update({
+                'models':free_choices,'preferredModel':model,
+                'routingSignals':{
+                    model:{'pricingTier':'free','estimatedCost':0},
+                    'openrouter/free':{'pricingTier':'free','estimatedCost':0},
+                },
+            })
+        return base
+    data['endpoints']['agents']['hostModelRouting']=[policy(agent_id) for agent_id in agent_ids]
     print('CI_LIVE_FREE_TWO_AUTHORIZED_FREE_ROUTING_POLICIES=PASS',flush=True)
     print('CI_LIVE_FREE_FALLBACK_CONFIGURED='+str(os.environ.get('CI_LIVE_FREE_DISABLE_FALLBACK_DIAG')!='true').upper(),flush=True)
+    print('CI_LIVE_FREE_FALLBACK_RUNTIME_COMPAT='+str(compat_mode).upper(),flush=True)
 cfg.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
 dotenv=Path('.env')
 lines=dotenv.read_text().splitlines()
@@ -234,7 +257,7 @@ if test "${CI_LIVE_FREE_FIVE_TASKS:-false}" = true; then
             const pkg=JSON.parse(fs.readFileSync(manifest,'utf8'));
             if(pkg.name==='@librechat/agents'){
               const version=String(pkg.version||'');
-              console.log('CI_LIVE_FREE_SDK_INSTALLED_VERSION='+(/^[0-9]+\\.[0-9]+\\.[0-9]+$/.test(version)?version:'OTHER'));
+              console.log('CI_LIVE_FREE_SDK_INSTALLED_VERSION='+(/^[0-9]+\.[0-9]+\.[0-9]+$/.test(version)?version:'OTHER'));
               break;
             }
           }
