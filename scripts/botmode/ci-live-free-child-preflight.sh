@@ -48,6 +48,26 @@ for item in data.get('endpoints',{}).get('custom',[]):
         allowed.append(item)
 assert len(allowed)==1, 'CI_LIVE_FREE_FAIL=OPENROUTER_CONFIG_MISSING'
 assert not data['endpoints']['agents'].get('hostModelRouting'), 'CI_LIVE_FREE_FAIL=OTHER_ROUTING_NOT_ISOLATED'
+if os.environ.get('CI_LIVE_FREE_FIVE_TASKS')=='true':
+    # Authorize exactly two FREE alternatives for these two CI agents.
+    # The primary is the catalog-verified named free model; the alternate
+    # is OpenRouter's documented free-only router. No paid binding can enter.
+    agent_ids=[Path('/tmp/botmode-ci-worker-id').read_text().strip(),
+               Path('/tmp/botmode-ci-child-id').read_text().strip()]
+    assert len(set(agent_ids))==2 and all(agent_ids),'CI_LIVE_FREE_ROUTING_AGENT_IDENTITY'
+    free_choices=[model,'openrouter/free']
+    assert len(set(free_choices))==2 and all(
+        candidate=='openrouter/free' or candidate.endswith(':free')
+        for candidate in free_choices
+    ),'CI_LIVE_FREE_ROUTING_PAID_BINDING'
+    data['endpoints']['agents']['hostModelRouting']=[
+        {'agentId':agent_id,'models':free_choices,
+         'preferredModel':model,'allowFailover':True,
+         'routingMode':'static',
+         'routingConstraints':{'spendingPolicy':'free_only'}}
+        for agent_id in agent_ids
+    ]
+    print('CI_LIVE_FREE_TWO_AUTHORIZED_FREE_ROUTING_POLICIES=PASS',flush=True)
 cfg.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
 dotenv=Path('.env')
 lines=dotenv.read_text().splitlines()
