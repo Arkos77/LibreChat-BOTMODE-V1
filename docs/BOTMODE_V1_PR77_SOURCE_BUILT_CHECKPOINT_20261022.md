@@ -120,3 +120,13 @@ La cause immédiate est donc le rejet de la sortie Worker non conforme au JSON a
 Lecture statique : le harnais vérifie dans le catalogue le support de response_format, mais ne configure pas ce paramètre dans son PATCH des agents (qui ne modifie que model). Cette distinction support/configuration est une piste de correction du harnais, **pas une preuve que l'absence de ce paramètre explique les 59 caractères**, ni un correctif appliqué. Le validateur transmet directement output.content à Oracle ; il n'a pas été modifié et aucun JSON réparé ou fabriqué n'est accepté.
 
 Les deux autorisations de mission unique sont consommées ; aucune troisième inférence lancée. Les gates synthétiques acquis restent acquis. **NO-GO stable ; cinq tâches et P6 réels toujours non validés.**
+
+### Mode JSON : défaut de transmission reproduit et correctif isolé
+
+[Correctif a7ba1729](https://github.com/Arkos77/LibreChat-BOTMODE-V1/commit/a7ba172929168132d6b0fe44c56d0e3f17b40d80), branche `fix/pr77-json-mode-transmission-20261022` ; [checkpoint détaillé](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/a7ba172929168132d6b0fe44c56d0e3f17b40d80/docs/BOTMODE_V1_JSON_MODE_CHECKPOINT_20261022.md).
+
+Vérification sans appel fournisseur : le harnais n'activait pas JSON mode, et addParams.response_format seul était ensuite perdu car placé dans un champ constructeur que le SDK ignore. Captures HTTP locales initialement rouges sur les deux adaptateurs. Correction isolée : activation json_object uniquement pour le probe cinq tâches ; conversion de cet addParams explicite vers modelKwargs après sélection API et dropParams, hors Responses API.
+
+Build paquet API PASS ; 16 tests API + 234 config/LLM/politiques = **250 tests ciblés PASS** ; syntaxe Bash, diff-check et formatage PASS. Catalogue substitué, vraies initialisations et requêtes SDK limitées au serveur loopback ; aucun secret ni appel modèle externe. Aucun critère Oracle modifié.
+
+**Ce correctif applicatif est distinct de ceb60eca989b et du digest déjà publié.** Il reste sur sa branche isolée, sans fusion, nouvelle image, publication ou troisième mission. La CI OCI n'est pas exécutée pour ce lot local (commit skip-ci) ; aucun résultat antérieur d'image n'est attribué au nouveau source. Le lien causal complet avec la sortie réelle de 59 caractères et les cinq tâches réelles restent à valider sur une image de ce nouveau source. NO-GO stable conservé.
