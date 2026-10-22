@@ -1,0 +1,25 @@
+name: BOTMODE Specialist Host Routing Regression
+on:
+  push:
+    branches: [fix/specialist-host-fallback-20261022]
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run build:data-provider
+      - run: npm run build:data-schemas
+      - run: npm run build:api
+      - name: Native initialization and routing regression without external inference
+        working-directory: api
+        run: npx jest server/services/Endpoints/agents/initialize.spec.js server/services/Endpoints/agents/hostModelRouting.spec.js server/services/Endpoints/agents/hostModelRouting.compat.spec.js server/services/Endpoints/agents/hostJsonMode.compat.spec.js --runInBand --coverage=false --forceExit
