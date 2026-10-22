@@ -288,6 +288,29 @@ if stream_status != 200 or len(finals) != 1 or errors:
         print("CI_LIVE_FREE_REDIS_ORACLE_STATE_PRESENT=" + str(bool(raw_state)).upper(), flush=True)
         # Existing allowlisted Redis error classifier prints no raw provider text.
         helpers["classify_durable_failure"](stream_id)
+        # The archival classifier is deliberately narrow; classify the current
+        # provider/model init failure locally without exposing exception text.
+        from hashlib import sha256
+        redis_key=helpers["REDIS_PHYSICAL_PREFIX"]+"stream:{"+stream_id+"}:job"
+        err_read=subprocess.run(helpers["COMPOSE"]+["exec","-T","redis","redis-cli","--raw",
+                         "HGET",redis_key,"error"],capture_output=True,text=True,timeout=20)
+        if err_read.returncode==0:
+            detail=err_read.stdout.strip().lower()
+            kinds={
+                "OPENROUTER_AUTH":("unauthorized","invalid api key","authentication","401"),
+                "PROVIDER_RATE_LIMIT":("rate limit","rate_limit","429","quota","daily limit"),
+                "MODEL_UNAVAILABLE":("model not found","no endpoints found","unsupported model","model unavailable","unknown model","404"),
+                "JSON_MODE_UNSUPPORTED":("response_format","json_schema","json mode","structured output"),
+                "PROVIDER_TRANSPORT":("timeout","econnreset","fetch failed","network error","upstream","503","502"),
+                "AGENT_BINDING":("missing or mismatched authorized binding","invalid agent","agent not found","unsupported provider"),
+                "RUNTIME_CONFIGURATION":("undefined","cannot read properties","typeerror","invalid configuration","missing config"),
+                "RECURSION_BUDGET":("recursion_limit","recursion limit","step limit","max iterations"),
+                "MISSION_ORACLE":("mission oracle","oracle_not","native mission"),
+            }
+            matches=[k for k,patterns in kinds.items() if any(t in detail for t in patterns)]
+            print("CI_LIVE_FREE_INIT_ERROR_CLASSES="+(",".join(matches) if matches else "UNCLASSIFIED"),flush=True)
+            print("CI_LIVE_FREE_INIT_ERROR_TEXT_LENGTH="+str(len(detail)),flush=True)
+            print("CI_LIVE_FREE_INIT_ERROR_FINGERPRINT="+sha256(detail.encode()).hexdigest()[:16],flush=True)
     except (subprocess.SubprocessError, OSError):
         print("CI_LIVE_FREE_REDIS_DIAG_UNAVAILABLE=TRUE", flush=True)
     try:
