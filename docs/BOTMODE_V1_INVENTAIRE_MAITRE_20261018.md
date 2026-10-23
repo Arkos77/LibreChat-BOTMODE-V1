@@ -1,14 +1,29 @@
 # BOT MODE V1 — INVENTAIRE MAÎTRE DES EXIGENCES ET PREUVES
 
-## État prioritaire — assemblage d59 qualifié, publication candidate en attente d'accord
+## D03 candidate autorisée et publiée — 23 octobre 2026
 
-Source applicative **d59dedf071d26503ec9bec5a31ee474f0ccc9724**, branche integration/botmode-final-candidate-20261023 : base b221 plus correctifs déjà développés PR75 et PR73, absents de cette base ; traductions fusionnées sans perte. Reproduction rouge/verte de l'admission native, 5 tests d'autorisation +10 tests panneau projet, typecheck client et contrôles ciblés PASS ; revue indépendante sans constat.
+Accord utilisateur reçu après présentation de la proposition figée f189ac947311ac3d9b81b2660fbb20c9c493e2bf. Activation exacte sur ops/publish-d59dedf071d2-approved, commit pilote eb20b62342d5848880e145d419f1c5f9de8558d9, départ de la source applicative d59dedf071d26503ec9bec5a31ee474f0ccc9724.
 
-[Run 39923900344](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39923900344) **SUCCESS AMD64/ARM64 natives** : image exacte, empreintes, architecture, cinq tests d'admission exécutés depuis l'image, portail de clés dans les assets compilés, licence complète. Sur AMD64 : spécialiste planifié, cinq verdicts Oracle, UI auto/manuelle et publication P6 MongoDB du même flux. Fournisseur synthétique local, aucune nouvelle inférence externe. Images conservées un jour, une compilation effective par architecture ; pas de publication GHCR/merge/stable/install.
+[Publication 39926287063](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39926287063) **SUCCESS** : restauration des archives déjà qualifiées 39923900344, checksum/source/configuration/architecture contrôlés, aucune reconstruction ni inférence.
 
-[Résultat exact, limites et artefacts](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/f871e224c34add8d12e6fa5be7f2b19a5110eec0/docs/BOTMODE_V1_FINAL_COMPOSITION_RESULT_20261023.md). [D03 candidate inactive préparée](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/f189ac947311ac3d9b81b2660fbb20c9c493e2bf/docs/qualification/BOTMODE_V1_D03_d59dedf071d2_PROPOSAL.yml) : réutilisation des archives vérifiées, deux tags d'architecture et index propres à d59 uniquement, sans recompilation ni stable/latest. Accord spécifique de publication de cette nouvelle source requis ; ne pas étendre l'accord attaché à une ancienne source.
+| Objet publié | Digest immuable |
+|---|---|
+| Index sha-d59dedf071d2 | sha256:2eb9e3714beda2603ce7efdff2c9fde581ab236dc0b4495a6156856f0757f685 |
+| AMD64 sha-d59dedf071d2-amd64 | sha256:c14d9192a01877fd6de06053cc0d0a3d504b3653358d65c4d30662dcfe4611ff |
+| ARM64 sha-d59dedf071d2-arm64 | sha256:d8d282d6d8fea5af02d7482661093f3046de8a92ef13f2703315c49282885f9f |
 
-Acquis conservés : soak180,44min (corps exact/config/faux modèle/streaming/stores/native/planner inchangés), garde de mise à jour et fence RAG identiques à stable595, receipts et enfants b221 dans leurs portées, stable historique. Aucun nouveau chantier factory persistante (#66 post-V1), aucune relance de trois heures. L'installation nécessite une préparation séparée des sauvegardes/configurations/quiescence/espace ; aucun changement utilisateur effectué.
+Référence : ghcr.io/arkos77/librechat-botmode-v1@sha256:2eb9e3714beda2603ce7efdff2c9fde581ab236dc0b4495a6156856f0757f685.
+
+Jobs AMD64 120323371123, ARM64 120323371494, index 120329380382 : SUCCESS. Le job index vérifie les configurations distantes des deux manifests contre les ID qualifiés, assemble leurs digests, supprime l'authentification puis vérifie publiquement les plateformes Linux AMD64 et ARM64 : CANDIDATE_PUBLIC_TWO_ARCH_INDEX=PASS. Nettoyage d'authentification réussi. Preuve index/digest : artefact 12490147943, candidate-d59dedf071d2-publication-proof, conservé jusqu'au 30 octobre 2026 à 08:55:35 UTC.
+
+Le transfert ARM64 a pris plus longtemps ; aucune relance ni seconde compilation. Stable/latest, releases, fusion et installation restent inchangés. D03 est clos uniquement pour cette candidate ; ceci ne transforme pas les limites de qualification en preuves supplémentaires ni en GO stable global.
+
+Installation suivante à préparer séparément : préserver les modifications locales, sauvegarder configurations et données, vérifier espace et quiescence, utiliser le digest immuable, garder un retour arrière. Aucun effacement, arrêt ou basculement du Chromebook autorisé par cet accord D03.
+
+
+[Rapport de composition et publication courant](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/dfb4b357500266d70a4b4df976e4448c2bbf8992/docs/BOTMODE_V1_FINAL_COMPOSITION_RESULT_20261023.md). Qualification native AMD64/ARM64 39923900344 acquise ; sur AMD64, spécialiste planifié, cinq Oracle VERIFIED et publication P6 dans le flux navigateur. Les preuves restent synthétiques/locales dans leur périmètre. PR75 et PR73 intégrées ; source applicative d59, arbre 02f201a344c7de510c88a4daa48bf52032307e24.
+
+Acquis conservés sans replay : soak 180,44 minutes, garde update/quiescence et fence RAG, receipts/enfants b221 et stable historique. Factory persistante supplémentaire hors V1 selon #66. Les états antérieurs de D03 ci-dessous sont historiques et remplacés par cette publication pour d59 uniquement.
 
 ## Rectification prioritaire — ne pas rouvrir les acquis ni le post-V1
 
