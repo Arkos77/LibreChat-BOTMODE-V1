@@ -301,6 +301,9 @@ async function resolveHostModelRouting({
     bindingId: binding.id,
     provider: binding.provider,
     model: binding.model,
+    ...(!sameProvider(binding.provider, binding.runtimeProvider)
+      ? { runtimeProvider: binding.runtimeProvider }
+      : {}),
   }));
   const hostModelDecision = {
     traceId,
