@@ -1,0 +1,143 @@
+name: BOTMODE Approved AMD64 Mission Continuity Publication From Retained Image
+'on':
+  push:
+    branches:
+    - ops/publish-d25358c2d71e-approved
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: publish-d25358c2d71e-once
+  cancel-in-progress: false
+env:
+  APP_SOURCE: d25358c2d71ed72ba00e78630bdb2c87d2815e44
+  LOCAL_IMAGE: botmode-source-built:d25358c2d71ed72ba00e78630bdb2c87d2815e44
+  REPOSITORY: ghcr.io/arkos77/librechat-botmode-v1
+jobs:
+  publish-arch:
+    if: github.repository == 'Arkos77/LibreChat-BOTMODE-V1' && github.run_attempt == 1 && github.event.before ==
+      'd25358c2d71ed72ba00e78630bdb2c87d2815e44'
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - arch: amd64
+          runner: ubuntu-latest
+          configId: sha256:12ea385daeee0df727729c0e7faaf5950d13f7d0b7955d03d36de5ae6eb77e12
+    env:
+      PUBLISH_ARCH: ${{ matrix.arch }}
+      EXPECTED_CONFIG_ID: ${{ matrix.configId }}
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: botmode-final-d25358c2d71e-${{ matrix.arch }}-39994098756
+        run-id: 39994098756
+        github-token: ${{ github.token }}
+        path: /tmp/retained
+    - name: Restore exact already-qualified source image; no compilation
+      run: 'set -euo pipefail
+
+        test "$(cat /tmp/retained/final-source.txt)" = "$APP_SOURCE"
+
+        test "$(cat /tmp/retained/final-image-id.txt)" = "$EXPECTED_CONFIG_ID"
+
+        (cd /tmp/retained && sha256sum -c final-image.sha256)
+
+        gzip -dc /tmp/retained/final-image.tar.gz | docker load
+
+        test "$(docker image inspect "$LOCAL_IMAGE" --format ''{{.Id}}'')" = "$EXPECTED_CONFIG_ID"
+
+        test "$(docker image inspect "$LOCAL_IMAGE" --format ''{{.Architecture}}'')" = "$PUBLISH_ARCH"
+
+        docker image inspect "$LOCAL_IMAGE" --format ''{{range .Config.Env}}{{println .}}{{end}}'' | grep -Fx "BUILD_COMMIT=$APP_SOURCE"
+
+        echo ''CANDIDATE_RESTORED_VERIFIED_IMAGE_NO_BUILD=PASS''
+
+        '
+    - name: Publish only source-specific architecture candidate
+      env:
+        GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: 'set -euo pipefail
+
+        printf ''%s'' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+        docker tag "$LOCAL_IMAGE" "$REPOSITORY:sha-d25358c2d71e-$PUBLISH_ARCH"
+
+        docker push "$REPOSITORY:sha-d25358c2d71e-$PUBLISH_ARCH" | tee /tmp/candidate-push.txt
+
+        python3 - <<''PY_PUSH''
+
+        import json,os,re
+
+        from pathlib import Path
+
+        found=re.findall(r''digest: (sha256:[0-9a-f]{64})'',Path(''/tmp/candidate-push.txt'').read_text())
+
+        assert len(set(found))==1,''PUSH_DIGEST_UNAMBIGUOUS_REQUIRED''
+
+        Path(''/tmp/''+os.environ[''PUBLISH_ARCH'']+''.json'').write_text(json.dumps({''arch'':os.environ[''PUBLISH_ARCH''],''digest'':found[0],''configId'':os.environ[''EXPECTED_CONFIG_ID''],''source'':os.environ[''APP_SOURCE'']}))
+
+        print(''CANDIDATE_ARCH_PUSH_DIGEST=''+found[0])
+
+        PY_PUSH
+
+        '
+    - uses: actions/upload-artifact@v4
+      with:
+        name: published-metadata-${{ matrix.arch }}
+        path: /tmp/${{ matrix.arch }}.json
+        retention-days: 1
+    - name: Remove runner authentication
+      if: always()
+      run: docker logout ghcr.io || true
+  publish-index:
+    needs: publish-arch
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EXPECTED_IDS: '{"amd64": "sha256:12ea385daeee0df727729c0e7faaf5950d13f7d0b7955d03d36de5ae6eb77e12"}'
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: published-metadata-*
+        merge-multiple: true
+        path: /tmp/metadata
+    - name: Login for candidate index publication only
+      env:
+        GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: 'printf ''%s'' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+        '
+    - name: Publish digest-pinned candidate index and verify anonymous visibility
+      run: "set -euo pipefail\npython3 - <<'PY_INDEX'\nimport json,os,subprocess\nfrom pathlib import Path\nproof=[json.loads(Path('/tmp/metadata/'+a+'.json').read_text())\
+        \ for a in ['amd64']]\nexpected=json.loads(os.environ['EXPECTED_IDS'])\nfor p in proof:\n assert p['source']==os.environ['APP_SOURCE']\
+        \ and p['configId']==expected[p['arch']]\n reference=os.environ['REPOSITORY']+'@'+p['digest']\n raw=subprocess.check_output(['docker','buildx','imagetools','inspect','--raw',reference],text=True)\n\
+        \ assert json.loads(raw)['config']['digest']==p['configId'],'REMOTE_CONFIG_ID_MISMATCH'\nrefs=[os.environ['REPOSITORY']+'@'+p['digest']\
+        \ for p in proof]\nsubprocess.run(['docker','buildx','imagetools','create','--tag',os.environ['REPOSITORY']+':sha-d25358c2d71e',*refs],check=True)\n\
+        PY_INDEX\ndocker logout ghcr.io\n# Public, anonymous verification of only the newly approved candidate tag.\n\
+        docker buildx imagetools inspect --raw \"$REPOSITORY:sha-d25358c2d71e\" > /tmp/candidate-index.json\npython3\
+        \ - <<'PY_VERIFY'\nimport json\nfrom pathlib import Path\nindex=json.loads(Path('/tmp/candidate-index.json').read_text())\n\
+        platforms={m.get('platform',{}).get('architecture') for m in index.get('manifests',[]) if m.get('platform',{}).get('os')=='linux'}\n\
+        assert platforms=={'amd64'},'NATIVE_ARCHITECTURES_REQUIRED'\nprint('CANDIDATE_PUBLIC_AMD64_INDEX=PASS')\n\
+        PY_VERIFY\ndocker buildx imagetools inspect \"$REPOSITORY:sha-d25358c2d71e\" --format '{{.Manifest.Digest}}'\
+        \ > /tmp/candidate-digest.txt\ncat /tmp/candidate-digest.txt\necho 'STABLE_LATEST_RELEASE_MERGE_INSTALL_CHANGED=FALSE'\n"
+    - uses: actions/upload-artifact@v4
+      with:
+        name: candidate-d25358c2d71e-publication-proof
+        path: '/tmp/candidate-digest.txt
+
+          /tmp/candidate-index.json'
+        retention-days: 7
+    - name: Remove runner authentication
+      if: always()
+      run: docker logout ghcr.io || true
