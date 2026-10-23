@@ -1031,7 +1031,7 @@ function createToolEndCallback({
 
     const missionEvidenceScope =
       typeof missionEvidenceContext?.resolve === 'function'
-        ? missionEvidenceContext.resolve(metadata?.executingAgentId)
+        ? missionEvidenceContext.resolve(metadata?.agentId ?? metadata?.executingAgentId)
         : undefined;
     const evidenceDeclarations =
       missionEvidenceScope?.declarations ?? improvementEvidenceDeclarations;

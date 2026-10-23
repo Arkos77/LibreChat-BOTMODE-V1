@@ -129,57 +129,61 @@ describe('P10 optional tool-end evidence callback', () => {
 });
 
 describe('native research source capture', () => {
-  it('records URLs only from the admitted node native search artifact', async () => {
-    const { createTransientEvidenceBuffer } = require('@librechat/api');
-    const buffer = createTransientEvidenceBuffer();
-    const callback = createToolEndCallback({
-      req: { user: { id: 'user' }, config: {} },
-      res: { headersSent: false },
-      artifactPromises: [],
-      transientEvidenceBuffer: buffer,
-      missionEvidenceContext: {
-        resolve: (node) =>
-          node === 'research-node'
-            ? {
-                taskId: 'research-task',
-                producerAgentId: 'research-agent',
-                traceId: 'trace',
-                declarations: [],
-                collectSources: true,
-              }
-            : undefined,
-      },
-    });
-    const data = {
-      output: {
-        name: 'web_search',
-        tool_call_id: 'call',
-        artifact: {
-          web_search: {
-            references: [{ link: 'https://example.org/report', type: 'link' }],
-          },
+  it.each([{ executingAgentId: 'research-node' }, { agentId: 'research-node' }])(
+    'records native search sources with SDK identity %j',
+    async (admittedMetadata) => {
+      const { createTransientEvidenceBuffer } = require('@librechat/api');
+      const buffer = createTransientEvidenceBuffer();
+      const callback = createToolEndCallback({
+        req: { user: { id: 'user' }, config: {} },
+        res: { headersSent: false },
+        artifactPromises: [],
+        transientEvidenceBuffer: buffer,
+        missionEvidenceContext: {
+          resolve: (node) =>
+            node === 'research-node'
+              ? {
+                  taskId: 'research-task',
+                  producerAgentId: 'research-agent',
+                  traceId: 'trace',
+                  declarations: [],
+                  collectSources: true,
+                }
+              : undefined,
         },
-      },
-    };
-    await callback(data, { executingAgentId: 'other-node' });
-    expect(buffer.snapshot()).toEqual([]);
-    await callback(
-      {
+      });
+      const data = {
         output: {
           name: 'web_search',
-          tool_call_id: 'text-only',
-          content: '{"url":"https://fake.example"}',
+          tool_call_id: 'call',
+          artifact: {
+            web_search: {
+              references: [{ link: 'https://example.org/report', type: 'link' }],
+            },
+          },
         },
-      },
-      { executingAgentId: 'research-node' },
-    );
-    expect(buffer.snapshot()).toEqual([]);
-    await callback(data, { executingAgentId: 'research-node' });
-    expect(buffer.snapshot()[0]).toMatchObject({
-      taskId: 'research-task',
-      sourceUrls: ['https://example.org/report'],
-    });
-  });
+      };
+      await callback(data, { executingAgentId: 'other-node' });
+      await callback(data, { agentId: 'other-node', executingAgentId: 'research-node' });
+      expect(buffer.snapshot()).toEqual([]);
+      await callback(
+        {
+          output: {
+            name: 'web_search',
+            tool_call_id: 'text-only',
+            content: '{"url":"https://fake.example"}',
+          },
+        },
+        { executingAgentId: 'research-node' },
+      );
+      expect(buffer.snapshot()).toEqual([]);
+      await callback(data, admittedMetadata);
+      expect(buffer.snapshot()[0]).toMatchObject({
+        taskId: 'research-task',
+        sourceUrls: ['https://example.org/report'],
+      });
+    },
+  );
 });
 
 it('keeps both declared criterion evidence and sources from the same native search call', async () => {
