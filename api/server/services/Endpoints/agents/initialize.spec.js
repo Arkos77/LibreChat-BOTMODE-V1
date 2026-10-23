@@ -682,6 +682,26 @@ describe('initializeClient — processAgent ACL gate', () => {
       declarations: [{ toolName: 'verify_a', criterionId: 'ok', expectedValue: true }],
     });
     expect(second.missionEvidenceContext.resolve('node-a')).toBeUndefined();
+    first.missionEvidenceContext.configure({
+      traceId: 'source-trace',
+      declarations: [],
+      sourceTasks: [
+        {
+          nodeId: 'research-node',
+          taskId: 'research-task',
+          producerAgentId: 'research-agent',
+        },
+      ],
+    });
+    expect(first.missionEvidenceContext.resolve('research-node')).toMatchObject({
+      taskId: 'research-task',
+      producerAgentId: 'research-agent',
+      collectSources: true,
+      declarations: [],
+    });
+    expect(first.missionEvidenceContext.resolve('node-a')).toBeUndefined();
+    expect(second.missionEvidenceContext.resolve('research-node')).toBeUndefined();
+
     expect(createToolEndCallback).toHaveBeenCalledWith(
       expect.objectContaining({ missionEvidenceContext: second.missionEvidenceContext }),
     );

@@ -14,5 +14,23 @@ export function prepareBotModeMission(mission: Mission): Mission {
     criteria: hasCompletion ? criteria : [...criteria, completion],
     outputContract: 'result-v1',
   };
+  const researchValidation = { ...admitted.validation, outputContract: 'research-v1' as const };
+  if (admitted.objectives == null && admitted.requiredCapabilities.includes('web_search')) {
+    admitted.validation = researchValidation;
+  }
+  admitted.objectives = admitted.objectives?.map((objective) =>
+    objective.requiredCapabilities.includes('web_search')
+      ? {
+          ...objective,
+          validation: {
+            ...objective.validation,
+            criteria: objective.validation?.criteria?.length
+              ? objective.validation.criteria
+              : admitted.validation!.criteria,
+            outputContract: 'research-v1',
+          },
+        }
+      : objective,
+  );
   return admitted;
 }

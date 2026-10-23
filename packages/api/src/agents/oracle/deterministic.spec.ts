@@ -178,3 +178,84 @@ describe('versioned mission result contract', () => {
     expect(verdict.input.outputContract).toBe('result-v1');
   });
 });
+
+describe('research source provenance', () => {
+  const research = {
+    ...input(),
+    outputContract: 'research-v1' as const,
+    criteria: [{ id: 'completed', field: 'ok', expected: true }],
+    candidate: JSON.stringify({
+      ok: true,
+      result: 'See https://example.org/report',
+      sources: 'https://example.org/report',
+    }),
+  };
+  it('rejects model supplied citations without an executed search observation', async () => {
+    expect((await deterministicOracle.validate(research)).status).toBe('REJECTED');
+  });
+  it('accepts a cited URL present in the task native search observation', async () => {
+    const verdict = await deterministicOracle.validate({
+      ...research,
+      observedSources: [{ toolCallId: 'search-call', urls: ['https://example.org/report'] }],
+    });
+    expect(verdict.status).toBe('VERIFIED');
+  });
+  it('rejects a citation absent from observed results', async () => {
+    expect(
+      (
+        await deterministicOracle.validate({
+          ...research,
+          observedSources: [{ toolCallId: 'search-call', urls: ['https://other.example/report'] }],
+        })
+      ).status,
+    ).toBe('REJECTED');
+  });
+  it('rejects a bibliography not cited in the result', async () => {
+    expect(
+      (
+        await deterministicOracle.validate({
+          ...research,
+          candidate: JSON.stringify({
+            ok: true,
+            result: 'Unsupported assertion',
+            sources: 'https://example.org/report',
+          }),
+          observedSources: [{ toolCallId: 'search-call', urls: ['https://example.org/report'] }],
+        })
+      ).status,
+    ).toBe('REJECTED');
+  });
+});
+
+it.each(['https://example.org/report?q=yes!', 'https://example.org/a(b)'])(
+  'accepts an observed URL with legitimate punctuation: %s',
+  async (url) => {
+    expect(
+      (
+        await deterministicOracle.validate({
+          ...input(),
+          outputContract: 'research-v1',
+          candidate: JSON.stringify({ total: 42, result: `See [source](${url}).`, sources: url }),
+          observedSources: [{ toolCallId: 'search', urls: [url] }],
+        })
+      ).status,
+    ).toBe('VERIFIED');
+  },
+);
+
+it('rejects an extra unobserved citation with an uppercase HTTP scheme', async () => {
+  expect(
+    (
+      await deterministicOracle.validate({
+        ...input(),
+        outputContract: 'research-v1',
+        candidate: JSON.stringify({
+          total: 42,
+          result: 'See https://example.org/report and HTTPS://forged.example/claim',
+          sources: 'https://example.org/report',
+        }),
+        observedSources: [{ toolCallId: 'search', urls: ['https://example.org/report'] }],
+      })
+    ).status,
+  ).toBe('REJECTED');
+});

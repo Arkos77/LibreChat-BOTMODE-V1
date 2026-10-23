@@ -1,7 +1,7 @@
-import { deterministicPlanner } from './planner';
-import { validateMissionTask, assertMissionTaskVerified } from './missionOracle';
-import { prepareBotModeMission } from './output';
 import type { Mission } from './types';
+import { validateMissionTask, assertMissionTaskVerified } from './missionOracle';
+import { deterministicPlanner } from './planner';
+import { prepareBotModeMission } from './output';
 
 const mission: Mission = {
   missionId: 'result-mission',
@@ -93,4 +93,27 @@ it('keeps valid independent completion evidence usable after host admission', as
     ],
   });
   expect(() => assertMissionTaskVerified(result)).not.toThrow();
+});
+
+it('requires observed sources for web-search objectives without imposing them on analysis', () => {
+  const admitted = prepareBotModeMission({
+    ...mission,
+    requiredCapabilities: ['web_search', 'analysis'],
+    objectives: [
+      {
+        key: 'research',
+        objective: 'Find sources',
+        requiredCapabilities: ['web_search'],
+        dependsOn: [],
+      },
+      {
+        key: 'analysis',
+        objective: 'Analyze findings',
+        requiredCapabilities: ['analysis'],
+        dependsOn: ['research'],
+      },
+    ],
+  });
+  expect(admitted.objectives?.[0].validation?.outputContract).toBe('research-v1');
+  expect(admitted.objectives?.[1].validation?.outputContract).toBeUndefined();
 });

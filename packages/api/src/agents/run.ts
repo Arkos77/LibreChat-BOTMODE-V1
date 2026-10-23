@@ -45,6 +45,10 @@ import type { AppConfig, IAgentFadingTier, IUser } from '@librechat/data-schemas
 import type { CallbackHandlerMethods } from '@langchain/core/callbacks/base';
 import type { BaseMessage } from '@librechat/agents/langchain/messages';
 import type { Callbacks } from '@langchain/core/callbacks/manager';
+import type {
+  MissionOracleSourcesResolver,
+  MissionOracleEvidenceResolver,
+} from './orchestrator/native';
 import type { ModelBoundChatModelCallback } from '~/middleware/modelBoundContent';
 import type { MissionOracleResultPersister } from './orchestrator/missionOracle';
 import type { ToolInputValidationError } from '~/agents/toolValidation';
@@ -96,7 +100,6 @@ import {
 } from '~/agents/config';
 import { applyCustomHandoffPromptKeyCompatibility } from '~/agents/handoffPromptKeyCompatibility';
 import { stripIntentFromToolRegistry, stripIntentFromToolDefinitions } from '~/agents/intent';
-import { compileNativePlan, type MissionOracleEvidenceResolver } from './orchestrator/native';
 import { extractDefaultParams, resolveReasoningParams } from '~/endpoints/openai/llm';
 import { getLLMConfig as getAnthropicLLMConfig } from '~/endpoints/anthropic/llm';
 import { CREATE_FILE_TOOL_NAME, EDIT_FILE_TOOL_NAME } from '~/agents/tools';
@@ -109,6 +112,7 @@ import { getPluginHookSource } from '~/agents/hooks/source';
 import { getOpenAIConfig } from '~/endpoints/openai/config';
 import { createStepBudgetHook } from '~/agents/stepBudget';
 import { buildHITLRunWiring } from '~/agents/hitl/runtime';
+import { compileNativePlan } from './orchestrator/native';
 import { buildLangfuseConfig } from '~/langfuse/config';
 import { applyTestRunHook } from '~/agents/testHook';
 import { attachRunOracle } from '~/agents/oracle';
@@ -1473,6 +1477,7 @@ export async function createRun({
   oracle,
   orchestratorPlan,
   resolveMissionOracleEvidence,
+  resolveMissionOracleSources,
   persistMissionOracleResult,
   steering,
   activityLabel,
@@ -1552,6 +1557,7 @@ export async function createRun({
   orchestratorPlan?: MissionPlan;
   /** Host-owned read-only evidence resolver for native dependency-transition QA. */
   resolveMissionOracleEvidence?: MissionOracleEvidenceResolver;
+  resolveMissionOracleSources?: MissionOracleSourcesResolver;
   /** Host-owned durable sink for exact Mission Oracle task results. */
   persistMissionOracleResult?: MissionOracleResultPersister;
   /**
@@ -2013,6 +2019,7 @@ export async function createRun({
       undefined,
       resolveMissionOracleEvidence,
       persistMissionOracleResult,
+      resolveMissionOracleSources,
     );
     // Preserve the cancellation signal on the native SDK graph configuration.
     graphConfig = Object.assign(nativePlan.graphConfig, { signal });

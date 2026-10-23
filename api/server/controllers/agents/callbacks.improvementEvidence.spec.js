@@ -127,3 +127,95 @@ describe('P10 optional tool-end evidence callback', () => {
     ).rejects.toBe(failure);
   });
 });
+
+describe('native research source capture', () => {
+  it('records URLs only from the admitted node native search artifact', async () => {
+    const { createTransientEvidenceBuffer } = require('@librechat/api');
+    const buffer = createTransientEvidenceBuffer();
+    const callback = createToolEndCallback({
+      req: { user: { id: 'user' }, config: {} },
+      res: { headersSent: false },
+      artifactPromises: [],
+      transientEvidenceBuffer: buffer,
+      missionEvidenceContext: {
+        resolve: (node) =>
+          node === 'research-node'
+            ? {
+                taskId: 'research-task',
+                producerAgentId: 'research-agent',
+                traceId: 'trace',
+                declarations: [],
+                collectSources: true,
+              }
+            : undefined,
+      },
+    });
+    const data = {
+      output: {
+        name: 'web_search',
+        tool_call_id: 'call',
+        artifact: {
+          web_search: {
+            references: [{ link: 'https://example.org/report', type: 'link' }],
+          },
+        },
+      },
+    };
+    await callback(data, { executingAgentId: 'other-node' });
+    expect(buffer.snapshot()).toEqual([]);
+    await callback(
+      {
+        output: {
+          name: 'web_search',
+          tool_call_id: 'text-only',
+          content: '{"url":"https://fake.example"}',
+        },
+      },
+      { executingAgentId: 'research-node' },
+    );
+    expect(buffer.snapshot()).toEqual([]);
+    await callback(data, { executingAgentId: 'research-node' });
+    expect(buffer.snapshot()[0]).toMatchObject({
+      taskId: 'research-task',
+      sourceUrls: ['https://example.org/report'],
+    });
+  });
+});
+
+it('keeps both declared criterion evidence and sources from the same native search call', async () => {
+  const { createTransientEvidenceBuffer } = require('@librechat/api');
+  const buffer = createTransientEvidenceBuffer();
+  const callback = createToolEndCallback({
+    req: { user: { id: 'user' }, config: {} },
+    res: { headersSent: false },
+    artifactPromises: [],
+    transientEvidenceBuffer: buffer,
+    missionEvidenceContext: {
+      resolve: () => ({
+        taskId: 'task',
+        producerAgentId: 'agent',
+        collectSources: true,
+        declarations: [{ toolName: 'web_search', criterionId: 'ok', expectedValue: true }],
+      }),
+    },
+  });
+  await callback(
+    {
+      output: {
+        name: 'web_search',
+        tool_call_id: 'call',
+        artifact: {
+          web_search: { references: [{ type: 'link', link: 'https://example.org/report' }] },
+        },
+      },
+    },
+    {},
+  );
+  expect(buffer.snapshot()).toHaveLength(2);
+  expect(buffer.snapshot().find((observation) => observation.criterionId === 'ok')?.value).toBe(
+    true,
+  );
+  expect(buffer.snapshot().find((observation) => observation.sourceUrls)?.sourceUrls).toEqual([
+    'https://example.org/report',
+  ]);
+});

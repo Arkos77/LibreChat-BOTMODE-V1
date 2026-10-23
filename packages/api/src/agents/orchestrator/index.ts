@@ -65,3 +65,7 @@ export * from './modelWatchRunner';
 export * from './modelWatchConfig';
 
 export * from './output';
+
+export * from './sources';
+
+export * from './evidenceContext';
