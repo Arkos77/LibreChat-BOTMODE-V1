@@ -41,6 +41,45 @@ const endpointComponents = {
   default: OtherConfig,
 };
 
+// Explicit allowlist: custom endpoints should never be sent to an unrelated provider portal.
+const providerKeyPortals: Record<string, { name: string; url: string; helpUrl: string }> = {
+  openAI: {
+    name: 'OpenAI',
+    url: 'https://platform.openai.com/api-keys',
+    helpUrl: 'https://platform.openai.com/docs/quickstart',
+  },
+  assistants: {
+    name: 'OpenAI',
+    url: 'https://platform.openai.com/api-keys',
+    helpUrl: 'https://platform.openai.com/docs/quickstart',
+  },
+  google: {
+    name: 'Google Gemini',
+    url: 'https://aistudio.google.com/apikey',
+    helpUrl: 'https://ai.google.dev/gemini-api/docs/api-key',
+  },
+  openrouter: {
+    name: 'OpenRouter',
+    url: 'https://openrouter.ai/settings/keys',
+    helpUrl: 'https://openrouter.ai/docs/quickstart',
+  },
+  anthropic: {
+    name: 'Anthropic',
+    url: 'https://console.anthropic.com/settings/keys',
+    helpUrl: 'https://docs.anthropic.com/en/api/getting-started',
+  },
+  mistral: {
+    name: 'Mistral AI',
+    url: 'https://console.mistral.ai/api-keys',
+    helpUrl: 'https://docs.mistral.ai/getting-started/quickstart/',
+  },
+  deepseek: {
+    name: 'DeepSeek',
+    url: 'https://platform.deepseek.com/api_keys',
+    helpUrl: 'https://api-docs.deepseek.com/',
+  },
+};
+
 const formSet: Set<string> = new Set([
   EModelEndpoint.openAI,
   EModelEndpoint.custom,
@@ -194,6 +233,11 @@ const SetKeyDialog = ({
 
   const expirationOptions = Object.values(EXPIRY);
   const configuredEndpoint = endpointType ?? endpoint;
+  const portal =
+    providerKeyPortals[configuredEndpoint.toLowerCase()] ??
+    providerKeyPortals[configuredEndpoint] ??
+    providerKeyPortals[endpoint.toLowerCase()] ??
+    providerKeyPortals[endpoint];
 
   const handleExpirationChange = (label: string) => {
     setExpiresAtLabel(label);
@@ -374,13 +418,71 @@ const SetKeyDialog = ({
 
   return (
     <OGDialog open={open} onOpenChange={onOpenChange}>
-      <OGDialogContent className="w-11/12 max-w-2xl">
+      <OGDialogContent className="w-11/12 max-w-4xl">
         <OGDialogHeader>
           <OGDialogTitle>
             {`${localize('com_endpoint_config_key_for')} ${alternateName[endpoint] ?? endpoint}`}
           </OGDialogTitle>
+          {portal && (
+            <p className="text-sm text-text-secondary">
+              {localize('com_endpoint_config_key_portal_note')}
+            </p>
+          )}
         </OGDialogHeader>
         <div className="grid w-full items-center gap-2 py-2">
+          {portal && (
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-blue-500 bg-blue-950/30 p-4">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <svg
+                  aria-hidden="true"
+                  className="mt-0.5 h-5 w-5 shrink-0 text-blue-400"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <path
+                    d="M12 10.75v5.5m0-9v.5"
+                    stroke="#071b3e"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <div>
+                  <p className="font-semibold text-blue-300">
+                    {localize('com_endpoint_config_key_portal_prompt')}
+                  </p>
+                  <p className="mt-1 text-sm text-blue-300">
+                    {localize('com_endpoint_config_key_portal_help', { 0: portal.name })}
+                  </p>
+                </div>
+              </div>
+              <a
+                href={portal.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+              >
+                {currentExpiryLabel
+                  ? localize('com_endpoint_config_key_portal_renew')
+                  : localize('com_endpoint_config_key_portal_create')}{' '}
+                {portal.name}
+                <svg
+                  aria-hidden="true"
+                  className="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M14 3h7v7" />
+                  <path d="M10 14 21 3" />
+                  <path d="M21 13v8H3V3h8" />
+                </svg>
+              </a>
+            </div>
+          )}
           {currentExpiryLabel && (
             <small className="text-text-destructive">{currentExpiryLabel}</small>
           )}
@@ -405,6 +507,16 @@ const SetKeyDialog = ({
             />
           </FormProvider>
           <HelpText endpoint={endpoint} />
+          {portal && (
+            <a
+              href={portal.helpUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-fit text-sm text-link underline hover:no-underline focus-visible:outline focus-visible:outline-2"
+            >
+              {localize('com_endpoint_config_key_portal_learn_more', { 0: portal.name })} ↗
+            </a>
+          )}
         </div>
         <OGDialogFooter>
           <RevokeKeysButton

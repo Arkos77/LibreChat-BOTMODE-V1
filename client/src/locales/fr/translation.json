@@ -1590,5 +1590,11 @@
   "com_ui_bot_mode_routing_hint": "Modèles, latence, coût et bascules observés.",
   "com_ui_bot_mode_routing_fallback": "fallback",
   "com_ui_bot_mode_routing_empty": "Aucun receipt de routage disponible pour ce projet.",
-  "com_ui_bot_mode_routing_latency_unit": "ms"
+  "com_ui_bot_mode_routing_latency_unit": "ms",
+  "com_endpoint_config_key_portal_prompt": "Vous n'avez pas encore de clé API ?",
+  "com_endpoint_config_key_portal_help": "Créez votre clé sur le site officiel de {{0}} en quelques secondes.",
+  "com_endpoint_config_key_portal_renew": "Renouveler la clé",
+  "com_endpoint_config_key_portal_create": "Créer une clé API",
+  "com_endpoint_config_key_portal_note": "Votre clé API est stockée de manière sécurisée et n'est utilisée que sur votre instance.",
+  "com_endpoint_config_key_portal_learn_more": "En savoir plus sur les clés API {{0}}"
 }
