@@ -3319,6 +3319,7 @@ class AgentClient extends BaseClient {
     const hostModelUsage = projectHostModelUsage(
       this.options.agent?.hostModelDecision,
       usageEvents,
+      plan,
     );
     if (hostModelUsage) metadata.hostModelUsage = hostModelUsage;
     const usage = aggregateEmittedUsage(usageEvents);
