@@ -57,6 +57,111 @@ describe('bounded read-only HTTP JSON observation', () => {
       expect(JSON.stringify(result)).not.toContain('private-task-id');
     },
   );
+  it.each(['utf8-byte-chunks', 'split-surrogates'])(
+    'counts assembled UTF-8 bytes with deterministic stream chunks for %s',
+    async (mode) => {
+      const original = globalThis.fetch;
+      const records = [];
+      const candidate =
+        mode === 'split-surrogates' ? '🚀'.repeat(20) : '{"ok":true,"label":"été 🚀"}';
+      const deltas = mode === 'split-surrogates' ? candidate.split('') : [candidate];
+      const wire =
+        deltas
+          .map(
+            (content) =>
+              'data: ' +
+              JSON.stringify({ choices: [{ index: 0, delta: { content } }] }) +
+              '\r\n\r\n',
+          )
+          .join('') + 'data: [DONE]';
+      const bytes = Buffer.from(wire);
+      globalThis.fetch = async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              for (let i = 0; i < bytes.length; i++) controller.enqueue(bytes.subarray(i, i + 1));
+              controller.close();
+            },
+          }),
+          { headers: { 'Content-Type': 'text/event-stream' } },
+        );
+      const observer = installJsonObserver({
+        urls: ['https://fixture.invalid'],
+        models: ['fixture'],
+        maxBytes: 100,
+        onRecord: (r) => records.push(r),
+      });
+      try {
+        const response = await fetch('https://fixture.invalid', {
+          method: 'POST',
+          body: '{"model":"fixture"}',
+        });
+        expect(await response.text()).toBe(wire);
+        await observer.flush();
+        expect(records[0].truncated).not.toBe(true);
+        expect(records[0].response.content).toEqual(describeContent(candidate));
+      } finally {
+        await observer.flush();
+        observer.restore();
+        globalThis.fetch = original;
+      }
+    },
+  );
+  it.each(['long-reasoning', 'oversized-event', 'oversized-content'])(
+    'observes bounded visible content across fragmented SSE for %s',
+    async (mode) => {
+      const records = [];
+      const event = (delta) =>
+        'data: ' +
+        JSON.stringify({ model: 'fixture', choices: [{ index: 0, delta }] }) +
+        '\r\n\r\n';
+      const candidate = '{"ok":true,"label":"été 🚀"}';
+      const reasoning = event({
+        reasoning_content: 'private-canary'.repeat(mode === 'oversized-event' ? 300 : 20),
+      });
+      const wire =
+        mode === 'oversized-content'
+          ? Array.from({ length: 100 }, () => event({ content: 'x'.repeat(40) })).join('')
+          : reasoning.repeat(mode === 'long-reasoning' ? 100 : 1) +
+            event({ content: candidate.slice(0, 20) }) +
+            event({ content: candidate.slice(20) });
+      const server = createServer((_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        const bytes = Buffer.from(wire);
+        for (let i = 0; i < bytes.length; i += 7) res.write(bytes.subarray(i, i + 7));
+        res.end('data: [DONE]');
+      });
+      await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const url = `http://127.0.0.1:${server.address().port}/v1/chat/completions`;
+      const observer = installJsonObserver({
+        urls: [url],
+        models: ['fixture'],
+        maxBytes: 1024,
+        onRecord: (r) => records.push(r),
+      });
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          body: JSON.stringify({ model: 'fixture', stream: true }),
+        });
+        expect(await response.text()).toBe(wire + 'data: [DONE]');
+        await observer.flush();
+        if (mode === 'long-reasoning') {
+          expect(Buffer.byteLength(wire)).toBeGreaterThan(1024);
+          expect(records[0].truncated).not.toBe(true);
+          expect(records[0].response.content).toEqual(describeContent(candidate));
+        } else {
+          expect(records[0].truncated).toBe(true);
+          expect(records[0].response).toBeUndefined();
+        }
+        expect(JSON.stringify(records)).not.toContain('private-canary');
+      } finally {
+        await observer.flush();
+        observer.restore();
+        await new Promise((resolve) => server.close(resolve));
+      }
+    },
+  );
   it('bounds UTF-8 request bytes rather than JavaScript string length', async () => {
     const records = [];
     const server = createServer((_req, res) =>
