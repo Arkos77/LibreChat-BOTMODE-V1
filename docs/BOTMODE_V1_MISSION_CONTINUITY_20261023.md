@@ -19,10 +19,21 @@ Un helper pur conserve uniquement le drapeau BOT MODE, le mode explicite, la sé
 - Revue indépendante en lecture seule : un point Important sur le nettoyage de saisie, traité par quatre cas rouges puis verts ; aucune seconde revue prétendue.
 - Neuf blobs source/test contrôlés identiques au commit local testé `fc8b1ff869c5d3b6bb74e3a1c40d6d552413cb5f`.
 
-## Limites et prochaine étape
+## Qualification et publication autorisées
 
-Aucun nouvel appel de modèle externe, construction Docker, publication d'image ou déploiement pour cette source. Le succès d'une mission réelle reste à établir. Ce lot ne prétend pas résoudre la vérité factuelle, l'obéissance de chaque fournisseur, ni la conservation du mode après réouverture depuis la barre latérale sans les paramètres de mission.
+L'accord du propriétaire a couvert la construction et qualification AMD64, la publication candidate publique puis la mise à jour avec sauvegarde et retour arrière.
 
-Périmètre proposé : construire une seule image AMD64 pour la machine cible, vérifier cette image avec fournisseur local synthétique et interface réelle, conserver l'image exacte, publier uniquement sa référence candidate spécifique à cette source sur `ghcr.io/arkos77/librechat-botmode-v1`, puis mettre à jour l'installation autorisée avec sauvegarde et retour arrière. Aucun changement stable/latest ni fusion. Activation soumise à l'accord correspondant.
+- Qualification [39994098756](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39994098756), job 120553016909 : SUCCESS. Une seule construction AMD64.
+- Preuves observées : `CI_BROWSER_MISSION_CONTEXT_RETAINED_AFTER_SETTLEMENT=PASS`, `CI_BROWSER_P6_SAME_STREAM_PUBLISHED_MONGO=PASS`, transport JSON HTTP loopback et rejet agrégé Oracle PASS.
+- Publication de l'archive exacte, sans reconstruction : [39995685909](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39995685909), jobs 120558476576 et 120561360062 : SUCCESS.
+- Config ID AMD64 : `sha256:12ea385daeee0df727729c0e7faaf5950d13f7d0b7955d03d36de5ae6eb77e12`.
+- Manifeste AMD64 : `sha256:aacd8c373f3b40bfa6eec226b4aa45b31c5b4945c8825455114fa0e0ac6688e0`.
+- Index candidate AMD64 : `ghcr.io/arkos77/librechat-botmode-v1@sha256:9ca0e134d139147af3734f8501c97825c5fd07ddcabdf38773c145b5caf4c7cb`.
+- Déploiement local terminé : identité source/image vérifiée, contrôles de santé réussis, données et configuration conservées, sauvegarde cohérente et image de retour arrière disponibles. Réglages gratuits des six agents vérifiés après redémarrage.
+- Aucune publication stable/latest, fusion ou nouvelle inférence externe pour cette qualification et installation.
+
+## Limites
+
+Le succès d'une mission réelle reste à établir. Ce lot ne prétend pas résoudre la vérité factuelle, l'obéissance de chaque fournisseur, ni la conservation du mode après réouverture depuis la barre latérale sans les paramètres de mission. La preuve d'image utilise un fournisseur local synthétique.
 
 Documentation primaire consultée : [React Router, useSearchParams](https://reactrouter.com/api/hooks/useSearchParams), [OpenRouter, protocole tool calling](https://openrouter.ai/blog/tutorials/tool-calling/). Un appel exécutable se transmet dans le protocole `tool_calls`, pas simplement dans le texte de l'assistant.
