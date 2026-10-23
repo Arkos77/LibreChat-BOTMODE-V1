@@ -62,3 +62,6 @@ Avant de lancer un nouveau dispositif de qualification en CI, inventorier toutes
 Chaque réponse du faux fournisseur doit avoir un identifiant unique par appel. Un identifiant constant peut provoquer une déduplication dans le SDK/graphe et donner une fausse panne de l'application.
 
 Prétester le serveur exact du workflow à travers le vrai SDK, le graphe natif, le collecteur et la projection des receipts, avec usage SSE et fin de flux. Un simple healthcheck ou un test HTTP de forme ne suffit pas pour cette frontière. Réutiliser l'image déjà vérifiée après correction du dispositif; ne pas recompiler si le code applicatif est inchangé. Conserver les échecs du dispositif et leurs causes dans le compte rendu, distincts des preuves applicatives.
+
+## Disponibilité des missions
+Attendre explicitement /readyz avant tout POST de mission : /api/config peut déjà répondre pendant que les missions sont encore refusées. Prétester l'attente différée et son expiration bornée ; ne pas rejouer automatiquement le POST. Conserver le code de refus dans une liste autorisée sans exposer corps brut ou secret. Un HTTP 503 seul ne suffit pas à identifier la cause.
