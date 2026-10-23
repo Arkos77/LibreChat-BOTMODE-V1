@@ -9566,6 +9566,56 @@ describe('seedContextMeta', () => {
 });
 
 describe('AgentClient - P11 model invocation evidence', () => {
+  it('persists an explicitly admitted compatibility fallback with separate SDK identity', () => {
+    const client = Object.create(AgentClient.prototype);
+    client.options = {
+      agent: {
+        hostModelDecision: {
+          traceId: 'trace-compat',
+          decisionId: 'decision-compat',
+          agentId: 'agent-primary',
+          selectedProvider: 'OpenRouter',
+          selectedModel: 'primary:free',
+          authorizedBindings: [
+            { provider: 'OpenRouter', model: 'primary:free' },
+            {
+              provider: 'OpenRouterFreeCompatCI',
+              runtimeProvider: 'openAI',
+              model: 'openrouter/free',
+            },
+          ],
+        },
+      },
+    };
+    client.usageEmitSink = [
+      {
+        agentId: 'agent-primary',
+        provider: 'openAI',
+        model: 'openrouter/free',
+        input_tokens: 2,
+        output_tokens: 1,
+      },
+    ];
+    client.collectedThoughtSignatures = {};
+    expect(client.buildResponseMetadata()).toMatchObject({
+      hostModelUsage: {
+        resolvedProvider: 'openrouterfreecompatci',
+        resolvedModel: 'openrouter/free',
+        fallbackUsed: true,
+        modelCalls: [
+          {
+            provider: 'openrouterfreecompatci',
+            runtimeProvider: 'openai',
+            inputTokens: 2,
+            outputTokens: 1,
+          },
+        ],
+        total: { inputTokens: 2, outputTokens: 1 },
+      },
+      usage: { input: 2, output: 1 },
+    });
+  });
+
   it('persists decision-linked primary model-end usage while leaving ordinary runs unchanged', () => {
     const client = Object.create(AgentClient.prototype);
     client.options = {
