@@ -42,6 +42,7 @@ const {
   resolveAgentTurnExecutionPlan,
   resolveRequestTenantId,
   deterministicPlanner,
+  prepareBotModeMission,
 } = require('@librechat/api');
 const {
   authorizeOrchestratorMissionBindings,
@@ -1862,7 +1863,10 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         reachableAgents,
         specialists: plannerContext.specialists,
       });
-      const orchestratorPlan = deterministicPlanner.planMission(mission, plannerContext);
+      const orchestratorPlan = deterministicPlanner.planMission(
+        botModeSettings == null ? mission : prepareBotModeMission(mission),
+        plannerContext,
+      );
       assertAuthorizedOrchestratorTasks(orchestratorPlan.tasks, authorizedAgentIds);
 
       // Record original effective agent capability provenance in the SAME

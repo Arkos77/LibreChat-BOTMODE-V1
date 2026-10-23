@@ -283,6 +283,7 @@ export async function validateMissionTask(
       candidate: input.candidate,
       criteria,
       evidence,
+      ...(requirement.outputContract == null ? {} : { outputContract: requirement.outputContract }),
       ...(requirement.review == null ? {} : { review: structuredClone(requirement.review) }),
     });
     verdicts.push(verdict);

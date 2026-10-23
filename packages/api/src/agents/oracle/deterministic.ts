@@ -32,6 +32,7 @@ function evaluate(input: OracleInput, verdict: OracleVerdict): void {
   const { criteria, evidence, agentId } = input;
   const ids = new Set(criteria.map((criterion) => criterion.id));
   if (
+    (input.outputContract != null && input.outputContract !== 'result-v1') ||
     !input.taskId ||
     !agentId ||
     ids.size !== criteria.length ||
@@ -101,6 +102,15 @@ function evaluate(input: OracleInput, verdict: OracleVerdict): void {
     verdict.status = 'REJECTED';
     verdict.reasons.push({ code: 'INVALID_CANDIDATE' });
     return;
+  }
+
+  if (input.outputContract === 'result-v1') {
+    const passed = typeof parsed.data.result === 'string' && parsed.data.result.trim() !== '';
+    verdict.checks.push({ criterionId: 'output:result', expected: true, actual: passed, passed });
+    verdict.reasons.push({
+      code: passed ? 'CRITERION_MET' : 'CRITERION_FAILED',
+      criterionId: 'output:result',
+    });
   }
 
   for (const criterion of criteria) {

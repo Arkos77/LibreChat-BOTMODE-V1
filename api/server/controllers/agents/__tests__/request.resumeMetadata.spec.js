@@ -259,6 +259,7 @@ jest.mock('@librechat/data-schemas', () => ({
 
 jest.mock('@librechat/api', () => ({
   deterministicPlanner: jest.requireActual('@librechat/api').deterministicPlanner,
+  prepareBotModeMission: jest.requireActual('@librechat/api').prepareBotModeMission,
   resolveRequestTenantId: (req) => req.tenantId ?? req.user?.tenantId,
   createMtoEvent: (...args) => jest.requireActual('@librechat/api').createMtoEvent(...args),
   createStepLimitEvidenceContext: (...args) =>
@@ -1152,6 +1153,11 @@ describe('ResumableAgentController resume metadata', () => {
       ([, patch]) => patch?.orchestratorPlan != null,
     );
     expect(planUpdate).toBeDefined();
+    expect(
+      planUpdate[1].orchestratorPlan.tasks.every((task) =>
+        task.validation.some((requirement) => requirement.outputContract === 'result-v1'),
+      ),
+    ).toBe(true);
     expect(client.botModeSettings).toEqual(req.body.botMode);
     expect(req._botModeSettings).toEqual(req.body.botMode);
     expect(planUpdate[0]).toBe('conversation-123');

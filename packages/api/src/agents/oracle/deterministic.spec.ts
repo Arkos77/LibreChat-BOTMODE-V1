@@ -149,3 +149,32 @@ describe('deterministic Oracle', () => {
     ).toBe('UNKNOWN');
   });
 });
+
+describe('versioned mission result contract', () => {
+  it.each([undefined, '', '  \n  ', null, 42])(
+    'rejects a completed task without a usable result: %s',
+    async (result) => {
+      const candidate = JSON.stringify({ ok: true, result });
+      const verdict = await deterministicOracle.validate({
+        ...input(),
+        candidate,
+        criteria: [{ id: 'completed', field: 'ok', expected: true }],
+        outputContract: 'result-v1',
+      });
+      expect(verdict.status).toBe('REJECTED');
+    },
+  );
+  it('accepts an explicit impossibility conclusion without inventing feasibility', async () => {
+    const verdict = await deterministicOracle.validate({
+      ...input(),
+      candidate: JSON.stringify({
+        ok: true,
+        result: 'Impossible à établir : délais de paiement inconnus.',
+      }),
+      criteria: [{ id: 'completed', field: 'ok', expected: true }],
+      outputContract: 'result-v1',
+    });
+    expect(verdict.status).toBe('VERIFIED');
+    expect(verdict.input.outputContract).toBe('result-v1');
+  });
+});

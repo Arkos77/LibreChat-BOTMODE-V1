@@ -28,6 +28,7 @@ export interface OracleInput {
   agentId: string;
   /** Raw JSON object with scalar fields. Undefined means no candidate was produced. */
   candidate?: string;
+  outputContract?: 'result-v1';
   criteria: OracleCriterion[];
   evidence: OracleEvidence[];
   review?: { required: boolean; reason: 'high_risk' | 'policy' | 'ambiguity' };
