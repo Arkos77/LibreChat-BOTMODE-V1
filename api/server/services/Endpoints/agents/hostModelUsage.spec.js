@@ -7,6 +7,33 @@ describe('P11 model invocation evidence', () => {
     selectedModel: 'b:free',
     agentId: 'agent-primary',
   };
+  it.each(['ambiguous-runtime', 'unapproved-model', 'unapproved-runtime'])(
+    'does not admit ambiguous or unauthorized compatibility usage: %s',
+    (mode) => {
+      const bindings = [{ provider: 'CompatA', runtimeProvider: 'openAI', model: 'm:free' }];
+      if (mode === 'ambiguous-runtime')
+        bindings.push({ provider: 'CompatB', runtimeProvider: 'openAI', model: 'm:free' });
+      expect(
+        projectHostModelUsage(
+          {
+            ...decision,
+            selectedProvider: 'CompatA',
+            selectedModel: 'm:free',
+            authorizedBindings: bindings,
+          },
+          [
+            {
+              agentId: 'agent-primary',
+              provider: mode === 'unapproved-runtime' ? 'other' : 'openAI',
+              model: mode === 'unapproved-model' ? 'other:free' : 'm:free',
+              input_tokens: 1,
+              output_tokens: 1,
+            },
+          ],
+        ),
+      ).toBeUndefined();
+    },
+  );
   it('links the durable decision to bounded primary provider usage', () => {
     const result = projectHostModelUsage(decision, [
       {
