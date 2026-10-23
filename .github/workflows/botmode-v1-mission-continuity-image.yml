@@ -1,0 +1,245 @@
+name: BOTMODE Mission Continuity AMD64 Image and Browser Qualification
+'on':
+  push:
+    branches:
+    - ops/qualify-continuity-d25358c2d71e-001
+permissions:
+  contents: read
+concurrency:
+  group: ops/qualify-continuity-d25358c2d71e-001
+  cancel-in-progress: false
+env:
+  BOTMODE_CANDIDATE_SHA: d25358c2d71ed72ba00e78630bdb2c87d2815e44
+  BOTMODE_IMAGE: botmode-source-built:d25358c2d71ed72ba00e78630bdb2c87d2815e44
+  BOTMODE_PUBLISHED_IMAGE: botmode-source-built:d25358c2d71ed72ba00e78630bdb2c87d2815e44
+  BOTMODE_MONGO_PASSWORD: ci-isolated-only
+  POSTGRES_PASSWORD: ci-isolated-only
+  BOTMODE_HOST_PORT: '3090'
+  DOCKER_BUILD_RECORD_UPLOAD: 'false'
+  PIP_DEFAULT_TIMEOUT: '120'
+  PIP_RETRIES: '5'
+jobs:
+  qualification:
+    if: github.repository == 'Arkos77/LibreChat-BOTMODE-V1' && github.run_attempt == 1 && github.event.before ==
+      'd25358c2d71ed72ba00e78630bdb2c87d2815e44'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - arch: amd64
+          nodeArch: x64
+          runner: ubuntu-latest
+          platform: linux/amd64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 65
+    env:
+      COMPOSE_PROJECT_NAME: botmode-oci-child-${{ github.run_id }}-${{ github.run_attempt }}
+      NODE_ARCH: ${{ matrix.nodeArch }}
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        ref: d25358c2d71ed72ba00e78630bdb2c87d2815e44
+        persist-credentials: false
+        fetch-depth: 2
+    - name: Verify exact frozen composition and record source hashes
+      run: 'set -euo pipefail
+
+        test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+
+        test -z "$(git status --porcelain)"
+
+        git diff-tree --no-commit-id --name-only -r "$BOTMODE_CANDIDATE_SHA" > /tmp/composed-files.txt
+
+        python3 - <<''PY_HASH''
+
+        import hashlib,json
+
+        from pathlib import Path
+
+        paths=[p for p in Path(''/tmp/composed-files.txt'').read_text().splitlines() if not p.startswith(''docs/'')]
+
+        assert len(paths)==9
+
+        hashes={p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in paths}
+
+        Path(''/tmp/composed-hashes.json'').write_text(json.dumps(hashes))
+
+        PY_HASH
+
+        '
+    - uses: docker/setup-buildx-action@v4
+    - name: Build exact native image once; no registry publication
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: Dockerfile
+        target: node
+        platforms: ${{ matrix.platform }}
+        push: false
+        load: true
+        tags: ${{ env.BOTMODE_IMAGE }}
+        cache-from: type=gha,scope=botmode-${{ matrix.arch }}
+        cache-to: type=gha,mode=max,scope=botmode-${{ matrix.arch }}
+        build-args: 'BUILD_COMMIT=${{ env.BOTMODE_CANDIDATE_SHA }}
+
+          BUILD_BRANCH=${{ github.ref_name }}'
+      id: build
+    - name: Verify actual image code, architecture, admission, built key portal and license
+      run: 'set -euo pipefail
+
+        docker image inspect "$BOTMODE_IMAGE" --format ''{{range .Config.Env}}{{println .}}{{end}}'' | grep -Fx
+        "BUILD_COMMIT=$BOTMODE_CANDIDATE_SHA"
+
+        expected_hashes=$(cat /tmp/composed-hashes.json)
+
+        docker run --rm --network none -i -e EXPECTED_HASHES="$expected_hashes" -e EXPECTED_ARCH="$NODE_ARCH" --entrypoint
+        node "$BOTMODE_IMAGE" - <<''NODE_IMAGE''
+
+        const assert=require(''node:assert/strict''),fs=require(''node:fs''),crypto=require(''node:crypto'');
+
+        for(const [p,h] of Object.entries(JSON.parse(process.env.EXPECTED_HASHES))){assert.equal(crypto.createHash(''sha256'').update(fs.readFileSync(''/app/''+p)).digest(''hex''),h)}
+
+        assert.equal(process.arch,process.env.EXPECTED_ARCH);
+
+        const tests=[];global.describe=(_n,f)=>f();global.it=(n,f)=>tests.push([n,f]);
+
+        global.expect=a=>({toEqual:b=>assert.deepEqual(a,b),toThrow:b=>assert.throws(a,typeof b===''string''?e=>e.message.includes(b):undefined),not:{toThrow:()=>assert.doesNotThrow(a)}});
+
+        require(''/app/api/server/controllers/agents/orchestratorMissionBindings.spec.js'');
+
+        for(const [n,f] of tests){f();console.log(''CI_COMPOSED_ADMISSION_TEST=PASS:''+n)}assert.equal(tests.length,5);
+
+        const assets=''/app/client/dist/assets'';const js=fs.readdirSync(assets).filter(p=>p.endsWith(''.js'')).map(p=>fs.readFileSync(assets+''/''+p,''utf8'')).join(''\n'');
+
+        assert.ok(js.includes(''https://platform.openai.com/api-keys'')&&js.includes(''https://openrouter.ai/settings/keys'')&&js.includes(''com_endpoint_config_key_portal_renew''));
+
+        assert.ok(fs.readFileSync(''/app/THIRD_PARTY_NOTICES.md'',''utf8'').includes(''@codesandbox/nodebox@0.1.8''));
+
+        const license=[''/app/THIRD_PARTY_LICENSES/Nodebox-SUL-1.0.txt'',''/app/node_modules/@codesandbox/nodebox/LICENSE'',''/app/client/node_modules/@codesandbox/nodebox/LICENSE''].find(p=>fs.existsSync(p));assert.ok(license);
+
+        assert.equal(crypto.createHash(''sha256'').update(fs.readFileSync(license)).digest(''hex''),''5aca9a36f98d883157f1d1a567347c3d776b7ae60bf93fbb7bfa190f1e3ccf46'');
+
+        console.log(''CI_COMPOSED_SOURCE_HASHES_ARCH_ADMISSION_BUILT_PORTAL_LICENSE=PASS'');
+
+        NODE_IMAGE
+
+        '
+    - name: Verify compiled JSON HTTP transport and aggregated Oracle rejection without external inference
+      run: "set -euo pipefail\ndocker run --rm --network none -i -e USE_REDIS=false --entrypoint node \"$BOTMODE_IMAGE\"\
+        \ - <<'NODE_CONTRACT'\nconst http = require('http');\nconst assert = require('node:assert/strict');\nconst\
+        \ root = '/app';\nconst { deterministicPlanner, compileNativePlan, validateMissionTask, getMissionOracleFailure\
+        \ } = require(root + '/packages/api/dist/index.cjs');\nconst localRequire = require('node:module').createRequire(root\
+        \ + '/package.json');\nconst { Run, Providers } = localRequire('@librechat/agents');\nconst { HumanMessage\
+        \ } = localRequire('@librechat/agents/langchain/messages');\n(async () => {\n  const requests = [];\n  const\
+        \ server = http.createServer(async (req, res) => {\n    let raw = '';\n    for await (const b of req) raw\
+        \ += b;\n    const body = JSON.parse(raw);\n    requests.push(body);\n    const base = { id: 'offline-contract',\
+        \ object: 'chat.completion', created: 1, model: body.model };\n    if (body.stream) {\n      res.writeHead(200,\
+        \ { 'content-type': 'text/event-stream' });\n      for (const choice of [{ delta: { role: 'assistant', content:\
+        \ '{\"ok\":true,\"result\":\"offline checked fixture\"}' }, finish_reason: null }, { delta: {}, finish_reason:\
+        \ 'stop' }]) {\n        res.write('data: ' + JSON.stringify({ ...base, object: 'chat.completion.chunk',\
+        \ choices: [{ index: 0, ...choice }] }) + '\\n\\n');\n      }\n      res.end('data: [DONE]\\n\\n');\n  \
+        \  } else {\n      res.writeHead(200, { 'content-type': 'application/json' });\n      res.end(JSON.stringify({\
+        \ ...base, choices: [{ index: 0, message: { role: 'assistant', content: '{\"ok\":true,\"result\":\"offline\
+        \ checked fixture\"}' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens:\
+        \ 2 } }));\n    }\n  });\n  await new Promise(r => server.listen(0, '127.0.0.1', r));\n  try {\n    const\
+        \ plan = deterministicPlanner.planMission({ missionId: 'offline-wire', taskId: 'wire-root', objective: 'Produce\
+        \ fixture result', constraints: [], requiredCapabilities: ['basic'], validation: { criteria: [{ id: 'complete',\
+        \ field: 'ok', expected: true }] } }, { worker: { id: 'worker', agentId: 'worker', role: 'worker', capabilities:\
+        \ ['basic'], constraints: [] }, specialists: [] });\n    const native = compileNativePlan(plan, new Map([['worker',\
+        \ { agentId: 'worker', provider: Providers.OPENAI, clientOptions: { model: 'fixture-model', apiKey: 'fixture-only',\
+        \ maxRetries: 0, configuration: { baseURL: 'http://127.0.0.1:' + server.address().port + '/v1' } } }]]));\n\
+        \    const run = await Run.create({ runId: 'offline-wire', graphConfig: native.graphConfig });\n    await\
+        \ run.processStream({ messages: [new HumanMessage('Execute fixture only.')] }, { version: 'v2' });\n   \
+        \ assert.equal(requests.length, 1);\n    assert.deepEqual(requests[0].response_format, { type: 'json_object'\
+        \ });\n    const messages = run.getRunMessages();\n    const output = messages.findLast(m => typeof m.content\
+        \ === 'string' && m.content.startsWith('{'));\n    const task = plan.tasks[0];\n    const result = await\
+        \ validateMissionTask({ taskId: task.taskId, nodeId: task.nodeId, agentId: task.agentId, candidate: output.content,\
+        \ requirements: task.validation });\n    assert.equal(result.verdicts[0].status, 'VERIFIED');\n    const\
+        \ broken = deterministicPlanner.planMission({ missionId: 'offline-rejected', taskId: 'rejected-root', objective:\
+        \ 'Check failure propagation', constraints: [], requiredCapabilities: ['basic'], validation: { criteria:\
+        \ [{ id: 'ok', field: 'ok', expected: true }] }, objectives: [{ key: 'research', objective: 'Research',\
+        \ requiredCapabilities: ['basic'], dependsOn: [] }, { key: 'analysis', objective: 'Analyze', requiredCapabilities:\
+        \ ['basic'], dependsOn: ['research'] }, { key: 'writing', objective: 'Write', requiredCapabilities: ['basic'],\
+        \ dependsOn: ['research'] }] }, { worker: { id: 'worker', agentId: 'worker', role: 'worker', capabilities:\
+        \ ['basic'], constraints: [] }, specialists: [] });\n    const state = { evidence: {}, results: {} };\n\
+        \    const rejected = compileNativePlan(broken, new Map([['worker', { agentId: 'worker', provider: Providers.OPENAI\
+        \ }]]), undefined, undefined, async result => { state.results[result.taskId] = result; });\n    const rejectedRun\
+        \ = await Run.create({ runId: 'offline-rejected', graphConfig: rejected.graphConfig });\n    rejectedRun.Graph.overrideTestModel(['##\
+        \ private invalid draft']);\n    await assert.rejects(() => rejectedRun.processStream({ messages: [new HumanMessage('Execute\
+        \ offline fixture.')] }, { version: 'v2' }));\n    const failure = getMissionOracleFailure(broken, state);\n\
+        \    assert.equal(failure.code, 'MISSION_ORACLE_FAILURE');\n    assert.ok(failure.message.includes('INVALID_CANDIDATE'));\n\
+        \    assert.ok(!failure.message.includes('private invalid draft'));\n    assert.equal(Object.keys(state.results).length,\
+        \ 1);\n    assert.equal(requests.length, 1);\n    console.log('REAL_SDK_LOOPBACK_HTTP_RESPONSE_FORMAT_AND_ORACLE=PASS;\
+        \ externalInference=0; requests=1');\n    console.log('REAL_SDK_AGGREGATE_ORACLE_FAILURE_CLASSIFIER=PASS');\n\
+        \  } finally { await new Promise(r => server.close(r)); }\n})().then(() => process.exit(0), e => { console.error(e.name\
+        \ + ': ' + e.message); process.exit(1); });\n\nNODE_CONTRACT\n"
+    - name: Prepare pinned browser dependencies before runtime
+      run: python3 -m pip install --quiet --break-system-packages PyYAML==6.0.3 playwright==1.56.0
+    - name: Exercise changed compiler and analyze plan in native runtime, real UI and same-stream P6
+      if: matrix.arch == 'amd64'
+      run: "set -euo pipefail\npython3 -m pip install --quiet --break-system-packages PyYAML==6.0.3\npython3 - <<'PY_RUNTIME'\n\
+        import os,subprocess,yaml\nfrom pathlib import Path\nworkflow=yaml.safe_load(Path('.github/workflows/botmode-v1-exact-candidate-oci-probe.yml').read_text())\n\
+        steps=workflow['jobs']['current-candidate-runtime']['steps']\nready=\"\"\"mission_ready=0\nfor attempt in\
+        \ $(seq 1 60); do\n if curl -fsS --max-time 4 http://127.0.0.1:3090/readyz >/dev/null 2>&1; then mission_ready=1;\
+        \ break; fi\n sleep 2\ndone\ntest \"$mission_ready\" = 1\necho 'CI_COMPOSED_MISSION_READY=PASS'\n\"\"\"\n\
+        for name in ['Boot current candidate with disposable MongoDB','Browser acceptance \u2014 actual candidate\
+        \ UI and agent selector']:\n matches=[s for s in steps if s.get('name')==name];assert len(matches)==1\n\
+        \ step=matches[0];script=step['run'];assert chr(36)+'{{' not in script\n env={**os.environ,**step.get('env',{})};assert\
+        \ env.get('OPENROUTER_API_KEY','ci-local-fixture-no-real-key')=='ci-local-fixture-no-real-key'\n if name.startswith('Boot\
+        \ '):\n  anchor=\"if endpoint.get('name') == 'OpenRouter':\";assert script.count(anchor)==1;script=script.replace(anchor,'if\
+        \ True:')\n  anchor=\"endpoint['models'] = {'fetch': False, 'default': ['openrouter/free']}\";assert script.count(anchor)==1\n\
+        \  script=script.replace(anchor,anchor+\"\\n        endpoint.setdefault('customParams',{})['defaultParamsEndpoint']='openAI'\"\
+        )\n  anchor='test -s /tmp/botmode-ci-child-id';assert script.count(anchor)==1;script=script.replace(anchor,anchor+'\\\
+        n'+ready)\n else:\n  anchor='valid=(len(tasks)==5 and len(expected)==5 and None not in expected'\n  assert\
+        \ script.count(anchor)==1,'UI_ANALYZE_TASK_COUNT_GUARD'\n  script=script.replace(anchor,\"valid=(len(tasks)==3\
+        \ and len(expected)==3 and {t.get('key') for t in tasks}=={'research','analysis','synthesis'} and None not\
+        \ in expected\")\n  script=script.replace('CI_BROWSER_FIVE_VERDICTS_VALID','CI_BROWSER_ANALYZE_VERDICTS_VALID').replace('CI_BROWSER_FIVE_TASK_VERDICTS_VERIFIED','CI_BROWSER_ANALYZE_TASK_VERDICTS_VERIFIED')\n\
+        \  script=ready+script\n if name.startswith('Browser '):\n  anchor='    page.close()';assert script.count(anchor)==1\n\
+        \  script=script.replace(anchor,'    page.wait_for_function(\"new URLSearchParams(window.location.search).get(\\\
+        'botmode\\') === \\'1\\' && new URLSearchParams(window.location.search).get(\\'botmode_mode\\') === \\'analyze\\\
+        ' && new URLSearchParams(window.location.search).get(\\'botmode_agent_mode\\') === \\'auto\\'\")\\n    print(\\\
+        'CI_BROWSER_MISSION_CONTEXT_RETAINED_AFTER_SETTLEMENT=PASS\\',flush=True)\\n'+anchor)\n print('CI_COMPOSED_HARNESS_STEP='+name,flush=True)\n\
+        \ subprocess.run(['bash','-e','-o','pipefail','-c',script],env=env,check=True)\nprint('CI_MISSION_CONTRACT_NATIVE_FIVE_AND_UI_THREE_ORACLE_P6=PASS',flush=True)\n\
+        PY_RUNTIME\n"
+    - name: Release only this disposable build cache before archiving loaded image
+      run: 'docker buildx prune --all --force
+
+        df -h /
+
+        '
+      if: always() && steps.build.outcome == 'success'
+    - name: Retain the exact image for later authorized qualification or publication
+      run: 'set -euo pipefail
+
+        docker save "$BOTMODE_IMAGE" | gzip -1 > /tmp/final-image.tar.gz
+
+        (cd /tmp && sha256sum final-image.tar.gz > final-image.sha256)
+
+        docker image inspect "$BOTMODE_IMAGE" --format ''{{.Id}}'' > /tmp/final-image-id.txt
+
+        printf ''%s\n'' "$BOTMODE_CANDIDATE_SHA" > /tmp/final-source.txt
+
+        '
+      if: always() && steps.build.outcome == 'success'
+    - uses: actions/upload-artifact@v4
+      with:
+        name: botmode-final-d25358c2d71e-${{ matrix.arch }}-${{ github.run_id }}
+        path: '/tmp/final-image.tar.gz
+
+          /tmp/final-image.sha256
+
+          /tmp/final-image-id.txt
+
+          /tmp/final-source.txt'
+        retention-days: 1
+        compression-level: 0
+      if: always() && steps.build.outcome == 'success'
+    - name: Destroy disposable runner stack
+      if: always()
+      run: 'sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes
+        --remove-orphans || true
+
+        if test -f /tmp/botmode-ci-fixture.pid; then kill "$(cat /tmp/botmode-ci-fixture.pid)" 2>/dev/null || true;
+        fi
+
+        '
