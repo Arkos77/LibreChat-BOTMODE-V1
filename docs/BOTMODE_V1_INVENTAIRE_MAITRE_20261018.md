@@ -1,5 +1,15 @@
 # BOT MODE V1 — INVENTAIRE MAÎTRE DES EXIGENCES ET PREUVES
 
+## Rectification prioritaire — ne pas rouvrir les acquis ni le post-V1
+
+La liste « six blocs restants » du 23 octobre était trop large et mêlait réalisations acquises, rapprochement de la nouvelle candidate et évolutions post-V1.
+- [Issue #66](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/66) : décision propriétaire du 20 octobre, création de spécialistes persistants supplémentaires **hors V1**. La V1 utilise les enfants éphémères ; ne pas imposer une factory persistante comme nouveau bloqueur.
+- [Run 39274101022](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39274101022), job 118133771109, source 80fdfd3a0946b87be6d04434747b178c25fef3b5 : **SUCCESS, 180,44 minutes réellement observées**, Redis aux jalons 30/90/150 min, Oracle VERIFIED, réauthentification propriétaire et publication MongoDB unique. Acquis dans le périmètre modèle simulé sans outils réels ; ne pas relancer par défaut. Justifier tout besoin de requalification par les changements pertinents de la nouvelle composition.
+- [Run D04 39503107999](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39503107999) SUCCESS : la promotion stable historique existe déjà ; le NO-GO courant vise la nouvelle candidate, pas l'annulation de cette release.
+- Conserver les contrats 0/1/N, orchestration/permissions, Oracle/P6, RAG borné, installations/rollback et composants UX déjà implémentés dans leurs périmètres. Les limites ciblées et l'intégration de changements récents ne constituent pas une réouverture générale.
+
+Les paragraphes antérieurs marquant factory persistante et endurance 3h comme manquantes sont rectifiés par ce rapprochement. Aucun test, build, appel fournisseur, merge, tag ou déploiement n'est lancé pour cette correction documentaire.
+
 ## Avancée D01 — contexte enfant self durable, fournisseur local
 
 [Run 39901355206](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39901355206) SUCCESS sur l'image b221 inchangée : contexte enfant self créé à la demande sans spécialiste fourni au planificateur, politique enregistrée conservée, trois appels parent/enfant/parent, Oracle parent VERIFIED et lignée MongoDB canonique avant/après redémarrage. L'essai précédent 39900579819 validait la mission mais son lecteur restait actif à cause des connexions de cache ; cause reproduite puis corrigée uniquement dans le lecteur. [Compte rendu courant](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/fix/host-usage-runtime-alias-20261023/docs/BOTMODE_V1_LOCAL_CHILD_LINEAGE_20261023.md). Enfant enregistré préautorisé également acquis au run 39899705393. Aucun événement enfant SSE observé ; factory de nouveaux spécialistes enregistrés, cas plusieurs enfants, ACL HTTP étrangères, fournisseur externe et autres lots D01 restent ouverts. D02/D03/D04 inchangés, NO-GO stable.
