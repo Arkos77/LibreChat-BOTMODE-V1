@@ -1,5 +1,14 @@
 # BOT MODE V1 — INVENTAIRE MAÎTRE DES EXIGENCES ET PREUVES
 
+## État prioritaire — receipts persistées dans l'image b221, fournisseur local déterministe
+
+[Run 39883796226](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39883796226), job 120187128591 : **SUCCESS** sur image exacte de b2213e9717b879a91181c6ac9d7607124c30258b, réutilisée sans compilation. API + vrai SDK + MongoDB/Redis jetables : cinq verdicts VERIFIED, P6, un message canonique, receipt hostModelUsage présente, fallbackUsed=true, free_only, acteur/binding/identité SDK/modèle/jetons vérifiés. Usages agrégés présents; receipt primaire limitée au Worker. **Cette preuve utilise un fournisseur local déterministe, aucune inférence externe ni clé réelle.** Nettoyage réussi.
+
+L'unique mission externe autorisée du [run 39880864060](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39880864060) s'est arrêtée au Worker : objet JSON HTTP intact mais critère ok absent, Oracle REJECTED/CRITERION_FAILED; lecture P6/receipts SKIPPED. Une seule compilation exécutée; pas de replay externe. Image b221 conservée un jour, audit installé zéro critical/high/moderate. Deux échecs du dispositif local (route bootstrap supplémentaire, identifiant de réponse constant) reproduits/corrigés et consignés, sans changement applicatif ni nouvelle compilation.
+
+[Compte rendu complet et limites](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/779944db70591b4226b0fe653fb47abc776c54c8/docs/BOTMODE_V1_RECEIPT_RUNTIME_QUALIFICATION_20261023.md). La persistance des receipts b221 sous fournisseur externe reste non prouvée. Le succès externe cinq tâches/Oracle/P6 a6 reste acquis sur sa source. D01–D04 et **NO-GO stable** restent inchangés; aucune publication GHCR/fusion/installation.
+
+
 ## Receipts natives — qualification locale complétée le 23 octobre 2026
 
 La vérification SDK→graphe→ModelEndHandler a reproduit un second écart : le graphe émet l'identifiant canonique de la tâche, alors que la receipt attend l'identifiant de l'agent enregistré. Correction liée au plan validé, sans changement des identités du graphe; nœuds étrangers/forgés/ambigus exclus. Source complète **b2213e9717b879a91181c6ac9d7607124c30258b**, branche fix/host-usage-runtime-alias-20261023. **270 tests locaux réussis dans sept suites**, revue indépendante sans constat.
