@@ -54,3 +54,7 @@ Revue indépendante gpt-6-astra de toute la différence d59 → 2c2fa5d : deux c
 Archivage de l'image exacte après construction, même si un contrôle suivant échoue, pour éviter une reconstruction sans raison ; aucune publication autorisée à partir d'une qualification en échec. Images conservées un jour, checksum/source/configuration enregistrés. Syntaxe actionlint 1.7.7 officielle vérifiée par checksum, shell et Python PASS. Le premier script de préparation a eu une erreur de composition de chemin Python, corrigée avant tout workflow ; aucun essai CI ni build n'a été lancé.
 
 [Périmètre public proposé](qualification/BOTMODE_V1_MISSION_CONTRACT_0c3c717a44a0_SCOPE.md) : qualification et publication candidate depuis les images retenues, sans nouvelle inférence réelle, merge ou stable. Les éventuelles opérations locales se préparent séparément en privé ; aucun détail de machine n'est inclus dans ce périmètre public. L'accord de l'ancien d59 ne s'étend pas implicitement à cette nouvelle source.
+
+## Continuité documentaire
+
+L'actualisation de l'ancien inventaire maître a été refusée par le contrôle automatique afin d'éviter de recopier des détails opérationnels privés historiques dans le dépôt public. Aucun contournement ni nouvelle publication de ce contenu n'a été effectué. Le présent rapport est le checkpoint public de ce lot ; l'ancien inventaire demeure inchangé. Le périmètre public lié ci-dessus ne contient que la qualification et la publication d'images ; les opérations sur une installation se traitent en privé.
