@@ -20,6 +20,9 @@ function projectHostModelUsage(decision, usageEvents) {
         .map((binding) => ({
           provider: boundedText(binding?.provider),
           model: boundedText(binding?.model),
+          ...(boundedText(binding?.runtimeProvider)
+            ? { runtimeProvider: boundedText(binding.runtimeProvider) }
+            : {}),
         }))
         .filter((binding) => binding.provider && binding.model)
     : [{ provider: selectedProvider, model: selectedModel }];
@@ -37,14 +40,20 @@ function projectHostModelUsage(decision, usageEvents) {
       continue;
     const usageModel = boundedText(event.model);
     const normalizedProvider = event.provider.toLowerCase();
-    if (
-      !usageModel ||
-      !authorizedBindings.some(
-        (binding) =>
-          binding.provider.toLowerCase() === normalizedProvider && binding.model === usageModel,
-      )
-    )
-      continue;
+    if (!usageModel) continue;
+    // Only the native host admission can bind a configured endpoint to its SDK
+    // provider. Never infer aliases from provider payloads or model names.
+    const matchingBindings = authorizedBindings.filter(
+      (binding) =>
+        binding.model === usageModel &&
+        (binding.provider.toLowerCase() === normalizedProvider ||
+          binding.runtimeProvider?.toLowerCase() === normalizedProvider),
+    );
+    const providers = new Set(matchingBindings.map((binding) => binding.provider.toLowerCase()));
+    // Two custom endpoints may share an SDK provider and model but different
+    // credentials/URLs: an event without a binding ID cannot distinguish them.
+    if (providers.size !== 1) continue;
+    const [resolvedProvider] = providers;
     const inputTokens = tokenCount(event.input_tokens);
     const outputTokens = tokenCount(event.output_tokens);
     const costUsd = usdCost(event.cost);
@@ -61,7 +70,8 @@ function projectHostModelUsage(decision, usageEvents) {
     if (inputTokens == null && outputTokens == null) continue;
     modelCalls.push({
       usageModel,
-      provider: event.provider.toLowerCase(),
+      provider: resolvedProvider,
+      ...(resolvedProvider !== normalizedProvider ? { runtimeProvider: normalizedProvider } : {}),
       ...(inputTokens == null ? {} : { inputTokens }),
       ...(outputTokens == null ? {} : { outputTokens }),
       ...(costUsd == null ? {} : { costUsd }),
