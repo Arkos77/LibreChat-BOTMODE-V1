@@ -1,3 +1,4 @@
+const { nodeIdentity } = require('@librechat/api');
 const boundedText = (value) =>
   typeof value === 'string' && value.trim() !== '' && value.length <= 256 ? value : undefined;
 const tokenCount = (value) => (Number.isSafeInteger(value) && value >= 0 ? value : undefined);
@@ -9,7 +10,7 @@ const latencyMs = (value) =>
     : undefined;
 
 /** Persist a small projection of actual primary model-end usage for an opted-in P11 decision. */
-function projectHostModelUsage(decision, usageEvents) {
+function projectHostModelUsage(decision, usageEvents, missionPlan) {
   const traceId = boundedText(decision?.traceId);
   const decisionId = boundedText(decision?.decisionId);
   const selectedModel = boundedText(decision?.selectedModel);
@@ -29,12 +30,29 @@ function projectHostModelUsage(decision, usageEvents) {
   if (authorizedBindings.length === 0) return undefined;
   if (!traceId || !decisionId || !selectedModel || !agentId || !Array.isArray(usageEvents))
     return undefined;
+  const actorIds = new Set([agentId]);
+  const missionId = boundedText(missionPlan?.mission?.missionId);
+  const tasks = Array.isArray(missionPlan?.tasks) ? missionPlan.tasks : [];
+  if (missionId && tasks.length <= 256) {
+    const owners = new Map();
+    for (const task of tasks) {
+      const key = boundedText(task?.key);
+      const owner = boundedText(task?.agentId);
+      if (!key || !owner || task?.nodeId !== nodeIdentity(missionId, key)) continue;
+      const nodeOwners = owners.get(task.nodeId) ?? new Set();
+      nodeOwners.add(owner);
+      owners.set(task.nodeId, nodeOwners);
+    }
+    for (const [nodeId, nodeOwners] of owners) {
+      if (nodeOwners.size === 1 && nodeOwners.has(agentId)) actorIds.add(nodeId);
+    }
+  }
   const modelCalls = [];
   for (const event of usageEvents) {
     if (modelCalls.length >= 16) break;
     if (
       event?.usage_type != null ||
-      event?.agentId !== agentId ||
+      !actorIds.has(event?.agentId) ||
       typeof event?.provider !== 'string'
     )
       continue;
@@ -70,6 +88,7 @@ function projectHostModelUsage(decision, usageEvents) {
     if (inputTokens == null && outputTokens == null) continue;
     modelCalls.push({
       usageModel,
+      ...(event.agentId !== agentId ? { actorId: event.agentId } : {}),
       provider: resolvedProvider,
       ...(resolvedProvider !== normalizedProvider ? { runtimeProvider: normalizedProvider } : {}),
       ...(inputTokens == null ? {} : { inputTokens }),
