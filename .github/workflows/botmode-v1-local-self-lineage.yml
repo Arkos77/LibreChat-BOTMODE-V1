@@ -1,0 +1,220 @@
+name: BOTMODE Local Ephemeral Self Child Durable Lineage
+'on':
+  push:
+    branches:
+    - ops/self-local-b2213e9717b8-001
+permissions:
+  contents: read
+  actions: read
+env:
+  BOTMODE_CANDIDATE_SHA: b2213e9717b879a91181c6ac9d7607124c30258b
+  BOTMODE_IMAGE: botmode-source-built:b2213e9717b879a91181c6ac9d7607124c30258b
+  BOTMODE_PUBLISHED_IMAGE: botmode-source-built:b2213e9717b879a91181c6ac9d7607124c30258b
+  BOTMODE_MONGO_PASSWORD: ci-isolated-only
+  POSTGRES_PASSWORD: ci-isolated-only
+  DOCKER_BUILD_RECORD_UPLOAD: 'false'
+concurrency:
+  group: ops/self-local-b2213e9717b8-001
+  cancel-in-progress: false
+jobs:
+  amd64-integrated:
+    if: github.repository == 'Arkos77/LibreChat-BOTMODE-V1' && github.run_attempt == 1 && github.event.before ==
+      'b2213e9717b879a91181c6ac9d7607124c30258b'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COMPOSE_PROJECT_NAME: botmode-oci-child-${{ github.run_id }}-${{ github.run_attempt }}
+      BOTMODE_HOST_PORT: '3090'
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        ref: b2213e9717b879a91181c6ac9d7607124c30258b
+        persist-credentials: false
+    - name: Verify pinned pristine source before build
+      run: 'test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+
+        test -z "$(git status --porcelain)"
+
+        echo ''6e59734742daa69251821e2fed6a765febb4e58f9139743a98c91813dff234cf  package-lock.json'' | sha256sum
+        -c -
+
+        '
+    - name: Restore exact already-built b221 image; no compilation
+      uses: actions/download-artifact@v4
+      with:
+        name: botmode-receipts-b2213e9717b8-image-39880864060
+        run-id: 39880864060
+        github-token: ${{ github.token }}
+        path: /tmp
+    - name: Verify retained archive and immutable image before local qualification
+      run: 'set -euo pipefail
+
+        test "$(cat /tmp/botmode-receipts-b2213e9717b8-source.txt)" = "$BOTMODE_CANDIDATE_SHA"
+
+        test "$(cat /tmp/botmode-receipts-b2213e9717b8-image-id.txt)" = ''sha256:6414f7af6cbb235444315ea3c8928fb2476aa2d83fc4c19c313626990c6469db''
+
+        sha256sum -c /tmp/botmode-receipts-b2213e9717b8-image.sha256
+
+        gzip -dc /tmp/botmode-receipts-b2213e9717b8-image.tar.gz | docker load
+
+        test "$(docker image inspect "$BOTMODE_IMAGE" --format ''{{.Id}}'')" = ''sha256:6414f7af6cbb235444315ea3c8928fb2476aa2d83fc4c19c313626990c6469db''
+
+        echo ''CI_SAME_IMAGE_NO_BUILD=PASS''
+
+        '
+    - name: Verify exact source and local image identity
+      run: 'set -euo pipefail
+
+        test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+
+        test -z "$(git status --porcelain)"
+
+        echo ''6e59734742daa69251821e2fed6a765febb4e58f9139743a98c91813dff234cf  package-lock.json'' | sha256sum
+        -c -
+
+        docker image inspect "$BOTMODE_IMAGE" --format ''{{range .Config.Env}}{{println .}}{{end}}'' | grep -Fx
+        "BUILD_COMMIT=$BOTMODE_CANDIDATE_SHA"
+
+        docker image inspect "$BOTMODE_IMAGE" --format ''CI_LOCAL_CLOSEOUT_IMAGE_ID={{.Id}}''
+
+        sha256sum api/server/controllers/agents/client.js api/server/services/Endpoints/agents/hostModelUsage.js
+        api/server/services/Endpoints/agents/hostModelRouting.js package.json api/server/services/Endpoints/agents/initialize.js
+        packages/api/src/endpoints/openai/llm.ts scripts/botmode/ci-live-free-child-preflight.sh > /tmp/closeout-source.sha256
+
+        docker run --rm -i --network none --entrypoint sh "$BOTMODE_IMAGE" -c ''sha256sum -c -'' < /tmp/closeout-source.sha256
+
+        echo ''CI_CLOSEOUT_EXACT_SOURCE=PASS''
+
+        echo ''CI_REGISTRY_PUBLICATION=NONE''
+
+        '
+    - name: Prepare disposable native identities and DB only; prior integrated proof retained
+      run: 'python3 -m pip install --quiet --break-system-packages PyYAML==6.0.3
+
+        python3 - <<''PY_SETUP''
+
+        import os,subprocess,yaml
+
+        from pathlib import Path
+
+        workflow=yaml.safe_load(Path(''.github/workflows/botmode-v1-exact-candidate-oci-probe.yml'').read_text())
+
+        matches=[s for s in workflow[''jobs''][''current-candidate-runtime''][''steps''] if s.get(''name'')==''Boot
+        current candidate with disposable MongoDB'']
+
+        assert len(matches)==1
+
+        step=matches[0]
+
+        assert chr(36)+''{{'' not in step[''run'']
+
+        env={**os.environ,**step.get(''env'',{})}
+
+        assert env.get(''OPENROUTER_API_KEY'')==''ci-local-fixture-no-real-key''
+
+        script=step[''run'']
+
+        # Enforce local-only routes before the first API boot.
+
+        old="if endpoint.get(''name'') == ''OpenRouter'':"
+
+        assert script.count(old)==1
+
+        script=script.replace(old,"if True:")
+
+        model="endpoint[''models''] = {''fetch'': False, ''default'': [''openrouter/free'']}"
+
+        assert script.count(model)==1
+
+        script=script.replace(model,model+"\n        endpoint.setdefault(''customParams'',{})[''defaultParamsEndpoint'']=''openAI''")
+
+
+        anchor=''test -s /tmp/botmode-ci-child-id''
+
+        assert script.count(anchor)==1
+
+        script=script[:script.index(anchor)+len(anchor)]+chr(10)
+
+        subprocess.run([''bash'',''-e'',''-o'',''pipefail'',''-c'',script],env=env,check=True)
+
+        print(''CI_REAL_DISPOSABLE_NATIVE_SETUP=PASS'',flush=True)
+
+        PY_SETUP
+
+        '
+    - name: Fence mission admission on actual readyz before the single POST
+      run: "python3 - <<'PY_READY'\nimport time\nfrom urllib.request import urlopen\nfrom urllib.error import HTTPError,URLError\n\
+        \ndef wait_ready(base, attempts=60, pause=2):\n    for attempt in range(attempts):\n        try:\n     \
+        \       with urlopen(base+'/readyz',timeout=4) as response:\n                if response.status==200 and\
+        \ response.read(16).strip()==b'OK':\n                    return True\n        except (HTTPError,URLError,TimeoutError):\n\
+        \            pass\n        if attempt+1<attempts: time.sleep(pause)\n    return False\n\nif not wait_ready('http://127.0.0.1:3090'):\n\
+        \    raise SystemExit('CI_CHILD_MISSION_READINESS=TIMEOUT_NO_MISSION_STARTED')\nprint('CI_CHILD_MISSION_READINESS=PASS',flush=True)\n\
+        PY_READY\n"
+    - name: Check configured self policy without changing agent permissions
+      run: "set -euo pipefail\nworker_id=$(cat /tmp/botmode-ci-worker-id)\ndocker compose -f docker-compose.botmode.yml\
+        \ -f docker-compose.botmode-lite.yml exec -T -e CI_WORKER_ID=\"$worker_id\" api node - <<'NODE_POLICY'\n\
+        const mongoose=require('mongoose');\n(async()=>{\n await mongoose.connect(process.env.MONGO_URI);\n const\
+        \ a=await mongoose.connection.db.collection('agents').findOne({id:process.env.CI_WORKER_ID});\n if(!a ||\
+        \ a.subagents?.enabled!==true || a.subagents?.allowSelf!==true) throw new Error('SELF_POLICY_NOT_ADMITTED');\n\
+        \ console.log('CI_STORED_FREE_SELF_POLICY_ADMITTED=PASS');\n await mongoose.disconnect();\n})().catch(e=>{console.error('CI_SELF_POLICY=NOT_ADMITTED');mongoose.disconnect().finally(()=>{process.exitCode=1})});\n\
+        NODE_POLICY\n"
+    - name: Require ephemeral self child with durable owner lineage before and after restart
+      run: "set -euo pipefail\npython3 - <<'PY_CHILD'\nimport json,runpy,subprocess,time\nfrom pathlib import Path\n\
+        from urllib.request import Request,urlopen\nchild='self'\nreq=Request('http://127.0.0.1:8088/configure',data=json.dumps({'childId':child}).encode(),headers={'Content-Type':'application/json'})\n\
+        with urlopen(req,timeout=5) as r: assert json.load(r)['ok'] is True\np=Path('scripts/botmode/ci-oracle-delegated-mission-gate.py')\n\
+        s=p.read_text()\n# No preconfigured specialist is supplied to the mission planner.\na='CHILD = Path(\"/tmp/botmode-ci-child-id\"\
+        ).read_text().strip()'\nassert s.count(a)==1\ns=s.replace(a,'CHILD = WORKER')\na='\"specialists\": ([{\"\
+        id\": CHILD, \"agentId\": CHILD, \"role\": \"specialist\", \"capabilities\": [\"basic\"], \"constraints\"\
+        : []}] if not review else []),'\nassert s.count(a)==1\ns=s.replace(a,'\"specialists\": [],')\n\na=\"   \
+        \     fail(label + \\\"_MISSION_START\\\")\"\nassert s.count(a)==1\ns=s.replace(a,\"        try:\\n    \
+        \        refusal=json.loads(raw_start)\\n            code=refusal.get('code')\\n            allowed={'SERVER_NOT_READY','PARENT_STATE_UNAVAILABLE','MISSION_PLAN_INVALID','INVALID_ORCHESTRATOR_MISSION'}\\\
+        n            print('CI_CHILD_ADMISSION_CODE='+ (code if code in allowed else 'OTHER_OR_ABSENT'),flush=True)\\\
+        n        except (ValueError,TypeError,AttributeError):\\n            print('CI_CHILD_ADMISSION_CODE=NON_JSON',flush=True)\\\
+        n\"+a)\n\ns=s.replace(\"{projection: {conversationId: 1, subagentThread: 1}}\",\"{projection: {conversationId:\
+        \ 1, subagentThread: 1, user: 1, agent_id: 1}}\")\na=\"  const findings = [];\"\nassert s.count(a)==1\n\
+        s=s.replace(a,\"  const owner = await db.collection('conversations').findOne({conversationId:parent});\\\
+        n\"+a)\na=\"linked: link.parentConversationId === parent &&\"\nassert s.count(a)==1\ns=s.replace(a,\"linked:\
+        \ Boolean(owner) && String(child.user) === String(owner.user) && child.agent_id === process.env.CI_EXPECTED_CHILD_ID\
+        \ && link.subagentType === 'self' && \"+a[len('linked: '):])\na=\"terminal: statuses.some(s => ['completed','error','cancelled'].includes(s))\"\
+        \nassert s.count(a)==1\ns=s.replace(a,\"terminal: messages.filter(m => m.isCreatedByUser === false && m.subagentTask).length\
+        \ === 1 && messages.some(m => m.isCreatedByUser === false && m.unfinished === false && m.subagentTask?.status\
+        \ === 'completed') && !statuses.some(s => ['error','cancelled','paused','pause_requested'].includes(s))\"\
+        )\ns=s.replace(\"{projection: {subagentTask: 1, messageId: 1}}\", \"{projection: {subagentTask: 1, messageId:\
+        \ 1, isCreatedByUser: 1, unfinished: 1}}\")\na='\"exec\", \"-T\", \"-e\", \"CI_PARENT_CONVERSATION_ID=\"\
+        \ + parent_conversation_id,'\nassert s.count(a)==1\ns=s.replace(a,a+' \"-e\", \"CI_EXPECTED_CHILD_ID=\"\
+        \ + CHILD,')\n\na=\"const mongoose = require('mongoose');\"\nassert s.count(a)==1\ns=s.replace(a,a+\"\\\
+        nconst {nodeIdentity}=require('@librechat/api');\")\na=\"  const parent = process.env.CI_PARENT_CONVERSATION_ID;\"\
+        \nassert s.count(a)==1\ns=s.replace(a,a+\"\\n  const plan=JSON.parse(process.env.CI_NATIVE_PLAN_JSON);\\\
+        n  const task=plan.tasks?.[0];\\n  if(plan.tasks?.length!==1 || task?.agentId!==process.env.CI_EXPECTED_CHILD_ID\
+        \ || !task.key || task.nodeId!==nodeIdentity(plan.missionId,task.key)) throw new Error('NATIVE_ACTOR_NOT_AUTHORIZED');\\\
+        n  const expectedNode=task.nodeId;\")\na=\"child.agent_id === process.env.CI_EXPECTED_CHILD_ID &&\"\nassert\
+        \ s.count(a)==1\ns=s.replace(a,\"child.agent_id === expectedNode && link.parentAgentId === expectedNode\
+        \ &&\")\na='\"-e\", \"CI_EXPECTED_CHILD_ID=\" + CHILD,'\nassert s.count(a)==1\ns=s.replace(a,a+' \"-e\"\
+        , \"CI_NATIVE_PLAN_JSON=\" + EXPECTED_NATIVE_PLAN,')\na=\"  await mongoose.connect(process.env.MONGO_URI);\\\
+        n  const db = mongoose.connection.db;\\n\"\nassert s.count(a)==1\ns=s.replace(a,'')\na=\"  const expectedNode=task.nodeId;\"\
+        \nassert s.count(a)==1\ns=s.replace(a,a+\"\\n  await mongoose.connect(process.env.MONGO_URI);\\n  const\
+        \ db = mongoose.connection.db;\")\n\np.write_text(s)\ng=runpy.run_path(str(p),run_name='local_child_probe')\n\
+        parent=g['verify']('ACCEPT',False,'VERIFIED')\n_,plan_raw,_=g['redis_job'](parent)\nplan=json.loads(plan_raw)\n\
+        tasks=plan.get('tasks')\nassert isinstance(tasks,list) and len(tasks)==1 and tasks[0].get('agentId')==g['WORKER'],'UNIQUE_WORKER_TASK_REQUIRED'\n\
+        minimal={'missionId':plan['mission']['missionId'],'tasks':[{k:tasks[0][k] for k in ('key','agentId','nodeId')}]}\n\
+        g['verify_mongo_child_lineage'].__globals__['EXPECTED_NATIVE_PLAN']=json.dumps(minimal)\n\n# Detached completion\
+        \ is bounded; cancelled/error never qualify.\nfor attempt in range(20):\n try:\n  g['verify_mongo_child_lineage'](parent,'BEFORE_RESTART');break\n\
+        \ except SystemExit:\n  if attempt==19:raise\n  time.sleep(1)\nr=subprocess.run(g['COMPOSE']+['restart','api'],capture_output=True,timeout=120)\n\
+        assert r.returncode==0,'API_RESTART'\ng['verify_mongo_child_lineage'](parent,'AFTER_RESTART')\nprint('CI_LOCAL_SELF_EPHEMERAL_CHILD_COMPLETED_OWNER_LINEAGE_RESTART=PASS',flush=True)\n\
+        print('CI_EPHEMERAL_SELF_RUNTIME_PROVEN=TRUE',flush=True)\nprint('CI_NEW_SAVED_SPECIALIST_CREATION_PROVEN=FALSE',flush=True)\n\
+        print('CI_EXTERNAL_CHILD_PROVEN=FALSE',flush=True)\nPY_CHILD\n"
+    - name: Destroy runner-only stack
+      if: always()
+      run: 'sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes
+        --remove-orphans || true
+
+        if test -f /tmp/ci-primary-429.pid; then kill "$(cat /tmp/ci-primary-429.pid)" 2>/dev/null || true; fi
+
+        docker image rm -f "$BOTMODE_IMAGE" >/dev/null 2>&1 || true
+
+
+        sudo rm -rf "$RUNNER_TEMP/botmode-wire"
+
+        rm -f /tmp/botmode-receipts-b2213e9717b8-image.tar.gz /tmp/botmode-wire-sanitized.jsonl
+
+        '
