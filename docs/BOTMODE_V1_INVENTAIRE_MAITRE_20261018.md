@@ -1,5 +1,15 @@
 # BOT MODE V1 — INVENTAIRE MAÎTRE DES EXIGENCES ET PREUVES
 
+## État prioritaire — assemblage d59 qualifié, publication candidate en attente d'accord
+
+Source applicative **d59dedf071d26503ec9bec5a31ee474f0ccc9724**, branche integration/botmode-final-candidate-20261023 : base b221 plus correctifs déjà développés PR75 et PR73, absents de cette base ; traductions fusionnées sans perte. Reproduction rouge/verte de l'admission native, 5 tests d'autorisation +10 tests panneau projet, typecheck client et contrôles ciblés PASS ; revue indépendante sans constat.
+
+[Run 39923900344](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39923900344) **SUCCESS AMD64/ARM64 natives** : image exacte, empreintes, architecture, cinq tests d'admission exécutés depuis l'image, portail de clés dans les assets compilés, licence complète. Sur AMD64 : spécialiste planifié, cinq verdicts Oracle, UI auto/manuelle et publication P6 MongoDB du même flux. Fournisseur synthétique local, aucune nouvelle inférence externe. Images conservées un jour, une compilation effective par architecture ; pas de publication GHCR/merge/stable/install.
+
+[Résultat exact, limites et artefacts](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/f871e224c34add8d12e6fa5be7f2b19a5110eec0/docs/BOTMODE_V1_FINAL_COMPOSITION_RESULT_20261023.md). [D03 candidate inactive préparée](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/f189ac947311ac3d9b81b2660fbb20c9c493e2bf/docs/qualification/BOTMODE_V1_D03_d59dedf071d2_PROPOSAL.yml) : réutilisation des archives vérifiées, deux tags d'architecture et index propres à d59 uniquement, sans recompilation ni stable/latest. Accord spécifique de publication de cette nouvelle source requis ; ne pas étendre l'accord attaché à une ancienne source.
+
+Acquis conservés : soak180,44min (corps exact/config/faux modèle/streaming/stores/native/planner inchangés), garde de mise à jour et fence RAG identiques à stable595, receipts et enfants b221 dans leurs portées, stable historique. Aucun nouveau chantier factory persistante (#66 post-V1), aucune relance de trois heures. L'installation nécessite une préparation séparée des sauvegardes/configurations/quiescence/espace ; aucun changement utilisateur effectué.
+
 ## Rectification prioritaire — ne pas rouvrir les acquis ni le post-V1
 
 La liste « six blocs restants » du 23 octobre était trop large et mêlait réalisations acquises, rapprochement de la nouvelle candidate et évolutions post-V1.
