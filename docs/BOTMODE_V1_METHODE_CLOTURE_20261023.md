@@ -65,3 +65,6 @@ Prétester le serveur exact du workflow à travers le vrai SDK, le graphe natif,
 
 ## Disponibilité des missions
 Attendre explicitement /readyz avant tout POST de mission : /api/config peut déjà répondre pendant que les missions sont encore refusées. Prétester l'attente différée et son expiration bornée ; ne pas rejouer automatiquement le POST. Conserver le code de refus dans une liste autorisée sans exposer corps brut ou secret. Un HTTP 503 seul ne suffit pas à identifier la cause.
+
+## Lecteurs de preuve et erreurs fatales
+Tester les imports du lecteur avec les mêmes variables de runtime : une bibliothèque peut ouvrir des connexions de cache et maintenir un CLI actif après son calcul. Isoler les effets inutiles uniquement dans le lecteur auxiliaire ; ne pas désactiver les composants de la mission testée. Vérifier la sortie normale du processus et récupérer seulement des diagnostics autorisés en cas de timeout. Une erreur fatale de lecture ou de syntaxe arrête immédiatement le lot ; seuls les états de terminaison réellement encore en attente peuvent être pollés dans une limite fixe. Conserver la cause reproduite et le contrôle rouge/vert.
