@@ -1,0 +1,91 @@
+name: BOTMODE Retained AMD64 Mission UI Qualification Without Rebuild
+'on':
+  push:
+    branches:
+    - ops/qualify-mission-0c3c717a44a0-retained-ui-001
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: ops/qualify-mission-0c3c717a44a0-retained-ui-001
+  cancel-in-progress: false
+env:
+  BOTMODE_CANDIDATE_SHA: 0c3c717a44a044200fe4bdc72174195d5b40d713
+  BOTMODE_IMAGE: botmode-source-built:0c3c717a44a044200fe4bdc72174195d5b40d713
+  BOTMODE_PUBLISHED_IMAGE: botmode-source-built:0c3c717a44a044200fe4bdc72174195d5b40d713
+  BOTMODE_MONGO_PASSWORD: ci-isolated-only
+  POSTGRES_PASSWORD: ci-isolated-only
+  BOTMODE_HOST_PORT: '3090'
+  DOCKER_BUILD_RECORD_UPLOAD: 'false'
+  EXPECTED_CONFIG_ID: sha256:98626be7308b4f06774a0a67921b61f2c532c1412d4767ab0da525fe8924130e
+  PIP_DEFAULT_TIMEOUT: '120'
+  PIP_RETRIES: '5'
+jobs:
+  qualification:
+    if: github.repository == 'Arkos77/LibreChat-BOTMODE-V1' && github.run_attempt == 1 && github.event.before ==
+      '0c3c717a44a044200fe4bdc72174195d5b40d713'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      COMPOSE_PROJECT_NAME: botmode-oci-retained-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        ref: 0c3c717a44a044200fe4bdc72174195d5b40d713
+        persist-credentials: false
+    - name: Install pinned browser dependency with bounded network timeout
+      env:
+        PIP_DEFAULT_TIMEOUT: '120'
+        PIP_RETRIES: '5'
+      run: python3 -m pip install --quiet --break-system-packages PyYAML==6.0.3 playwright==1.56.0
+    - uses: actions/download-artifact@v4
+      with:
+        name: botmode-final-0c3c717a44a0-amd64-39964615363
+        run-id: 39964615363
+        github-token: ${{ github.token }}
+        path: /tmp/retained
+    - name: Restore exact retained image without compiling
+      run: 'set -euo pipefail
+
+        test "$(cat /tmp/retained/final-source.txt)" = "$BOTMODE_CANDIDATE_SHA"
+
+        test "$(cat /tmp/retained/final-image-id.txt)" = "$EXPECTED_CONFIG_ID"
+
+        (cd /tmp/retained && sha256sum -c final-image.sha256)
+
+        gzip -dc /tmp/retained/final-image.tar.gz | docker load
+
+        test "$(docker image inspect "$BOTMODE_IMAGE" --format ''{{.Id}}'')" = "$EXPECTED_CONFIG_ID"
+
+        echo ''RETAINED_EXACT_IMAGE_IDENTITY_NO_REBUILD=PASS''
+
+        '
+    - name: Exercise changed compiler and analyze plan in native runtime, real UI and same-stream P6
+      run: "set -euo pipefail\npython3 -m pip install --quiet --break-system-packages PyYAML==6.0.3\npython3 - <<'PY_RUNTIME'\n\
+        import os,subprocess,yaml\nfrom pathlib import Path\nworkflow=yaml.safe_load(Path('.github/workflows/botmode-v1-exact-candidate-oci-probe.yml').read_text())\n\
+        steps=workflow['jobs']['current-candidate-runtime']['steps']\nready=\"\"\"mission_ready=0\nfor attempt in\
+        \ $(seq 1 60); do\n if curl -fsS --max-time 4 http://127.0.0.1:3090/readyz >/dev/null 2>&1; then mission_ready=1;\
+        \ break; fi\n sleep 2\ndone\ntest \"$mission_ready\" = 1\necho 'CI_COMPOSED_MISSION_READY=PASS'\n\"\"\"\n\
+        for name in ['Boot current candidate with disposable MongoDB','Browser acceptance \u2014 actual candidate\
+        \ UI and agent selector']:\n matches=[s for s in steps if s.get('name')==name];assert len(matches)==1\n\
+        \ step=matches[0];script=step['run'];assert chr(36)+'{{' not in script\n env={**os.environ,**step.get('env',{})};assert\
+        \ env.get('OPENROUTER_API_KEY','ci-local-fixture-no-real-key')=='ci-local-fixture-no-real-key'\n if name.startswith('Boot\
+        \ '):\n  anchor=\"if endpoint.get('name') == 'OpenRouter':\";assert script.count(anchor)==1;script=script.replace(anchor,'if\
+        \ True:')\n  anchor=\"endpoint['models'] = {'fetch': False, 'default': ['openrouter/free']}\";assert script.count(anchor)==1\n\
+        \  script=script.replace(anchor,anchor+\"\\n        endpoint.setdefault('customParams',{})['defaultParamsEndpoint']='openAI'\"\
+        )\n  anchor='test -s /tmp/botmode-ci-child-id';assert script.count(anchor)==1;script=script.replace(anchor,anchor+'\\\
+        n'+ready)\n else:\n  anchor='valid=(len(tasks)==5 and len(expected)==5 and None not in expected'\n  assert\
+        \ script.count(anchor)==1,'UI_ANALYZE_TASK_COUNT_GUARD'\n  script=script.replace(anchor,\"valid=(len(tasks)==3\
+        \ and len(expected)==3 and {t.get('key') for t in tasks}=={'research','analysis','synthesis'} and None not\
+        \ in expected\")\n  script=script.replace('CI_BROWSER_FIVE_VERDICTS_VALID','CI_BROWSER_ANALYZE_VERDICTS_VALID').replace('CI_BROWSER_FIVE_TASK_VERDICTS_VERIFIED','CI_BROWSER_ANALYZE_TASK_VERDICTS_VERIFIED')\n\
+        \  script=ready+script\n print('CI_COMPOSED_HARNESS_STEP='+name,flush=True)\n subprocess.run(['bash','-e','-o','pipefail','-c',script],env=env,check=True)\n\
+        print('CI_MISSION_CONTRACT_NATIVE_FIVE_AND_UI_THREE_ORACLE_P6=PASS',flush=True)\nPY_RUNTIME\n"
+    - name: Destroy disposable runner stack
+      if: always()
+      run: 'sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes
+        --remove-orphans || true
+
+        if test -f /tmp/botmode-ci-fixture.pid; then kill "$(cat /tmp/botmode-ci-fixture.pid)" 2>/dev/null || true;
+        fi
+
+        '
