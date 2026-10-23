@@ -3513,9 +3513,13 @@ describe('AgentClient - startup telemetry', () => {
     });
   });
 
-  it.each([true, false])(
-    'does not swallow a real SDK aggregate (persisted Oracle result: %s)',
-    async (hasPersistedResult) => {
+  it.each([
+    [true, false],
+    [false, false],
+    [true, true],
+  ])(
+    'preserves a real SDK failure/abort (persisted result: %s, Stop wins: %s)',
+    async (hasPersistedResult, stopWins) => {
       jest.clearAllMocks();
       mockIsHITLEnabled.mockReturnValue(false);
       const { Run } = jest.requireActual('@librechat/agents');
@@ -3600,22 +3604,32 @@ describe('AgentClient - startup telemetry', () => {
         graphConfig: native.graphConfig,
       });
       sdkRun.Graph.overrideTestModel(['## private unfinished research']);
+      const abortController = new AbortController();
       mockCreateRun.mockResolvedValue({
         Graph: null,
-        processStream: () =>
-          sdkRun.processStream(
-            { messages: [new HumanMessage('Execute offline.')] },
-            { version: 'v2' },
-          ),
+        processStream: async () => {
+          try {
+            await sdkRun.processStream(
+              { messages: [new HumanMessage('Execute offline.')] },
+              { version: 'v2' },
+            );
+          } catch (error) {
+            if (stopWins) abortController.abort();
+            throw error;
+          }
+        },
         getCalibrationRatio: () => 0,
       });
 
-      await expect(client.chatCompletion({ payload: [] })).rejects.toMatchObject({
-        code: hasPersistedResult ? 'MISSION_ORACLE_FAILURE' : 'MISSION_EXECUTION_FAILURE',
-        message: expect.stringContaining(
-          hasPersistedResult ? 'INVALID_CANDIDATE' : 'not published',
-        ),
-      });
+      const completion = client.chatCompletion({ payload: [], abortController });
+      if (stopWins) await expect(completion).resolves.toBeUndefined();
+      else
+        await expect(completion).rejects.toMatchObject({
+          code: hasPersistedResult ? 'MISSION_ORACLE_FAILURE' : 'MISSION_EXECUTION_FAILURE',
+          message: expect.stringContaining(
+            hasPersistedResult ? 'INVALID_CANDIDATE' : 'not published',
+          ),
+        });
       expect(client.contentParts.some((part) => part.type === ContentTypes.ERROR)).toBe(false);
       expect(Object.keys(client.missionOracleState.results)).toEqual(
         hasPersistedResult ? [plan.tasks[0].taskId] : [],
@@ -8900,9 +8914,13 @@ describe('AgentClient - resumeCompletion content protection', () => {
     require('~/models').getFiles.mockReset().mockResolvedValue([]);
   });
 
-  it.each([true, false])(
-    'does not return a resumed mission draft (persisted Oracle result: %s)',
-    async (hasPersistedResult) => {
+  it.each([
+    [true, false],
+    [false, false],
+    [true, true],
+  ])(
+    'preserves resumed mission failure/abort ownership (persisted result: %s, Stop wins: %s)',
+    async (hasPersistedResult, stopWins) => {
       const { deterministicPlanner, validateMissionTask } = jest.requireActual('@librechat/api');
       const context = makeContext(undefined);
       const plan = deterministicPlanner.planMission(
@@ -8939,21 +8957,29 @@ describe('AgentClient - resumeCompletion content protection', () => {
         results: hasPersistedResult ? { [task.taskId]: result } : {},
       };
       context.contentParts = [{ type: ContentTypes.TEXT, text: 'private resumed draft' }];
+      const abortController = new AbortController();
       mockCreateRun.mockResolvedValue({
         resume: async () => {
+          if (stopWins) abortController.abort();
           throw new Error('Multiple errors occurred during superstep 2.');
         },
         getCalibrationRatio: () => 0,
       });
 
-      await expect(
-        AgentClient.prototype.resumeCompletion.call(context, { resumeValue: {} }),
-      ).rejects.toMatchObject({
-        code: hasPersistedResult ? 'MISSION_ORACLE_FAILURE' : 'MISSION_EXECUTION_FAILURE',
-        message: expect.stringContaining(
-          hasPersistedResult ? 'INVALID_CANDIDATE' : 'not published',
-        ),
+      const resumed = AgentClient.prototype.resumeCompletion.call(context, {
+        resumeValue: {},
+        abortController,
       });
+      if (stopWins) {
+        await expect(resumed).resolves.toBeUndefined();
+        expect(abortController.signal.aborted).toBe(true);
+      } else
+        await expect(resumed).rejects.toMatchObject({
+          code: hasPersistedResult ? 'MISSION_ORACLE_FAILURE' : 'MISSION_EXECUTION_FAILURE',
+          message: expect.stringContaining(
+            hasPersistedResult ? 'INVALID_CANDIDATE' : 'not published',
+          ),
+        });
       expect(context.contentParts.some((part) => part.type === ContentTypes.ERROR)).toBe(false);
     },
   );

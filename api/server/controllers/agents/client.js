@@ -4805,7 +4805,7 @@ class AgentClient extends BaseClient {
         throw err;
       }
       const missionOracleFailure =
-        this.orchestratorPlan == null
+        this.orchestratorPlan == null || abortController.signal.aborted
           ? undefined
           : getMissionOracleFailure(this.orchestratorPlan, this.missionOracleState);
       if (err?.code === 'MISSION_ORACLE_FAILURE' || missionOracleFailure != null) {
@@ -5588,7 +5588,7 @@ class AgentClient extends BaseClient {
         throw err;
       }
       const missionOracleFailure =
-        this.orchestratorPlan == null
+        this.orchestratorPlan == null || abortController.signal.aborted
           ? undefined
           : getMissionOracleFailure(this.orchestratorPlan, this.missionOracleState);
       if (err?.code === 'MISSION_ORACLE_FAILURE' || missionOracleFailure != null) {

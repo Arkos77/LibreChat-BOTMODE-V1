@@ -598,6 +598,13 @@ export default function useChatFunctions({
     };
 
     const submissionFiles = overrideFiles ?? targetParentMessage?.files;
+    const reuseFiles =
+      (isRegenerate || (overrideFiles != null && overrideFiles.length)) &&
+      submissionFiles &&
+      submissionFiles.length > 0;
+    const hasSubmissionFiles =
+      setFiles != null &&
+      (reuseFiles === true || (overrideFiles == null && (files?.size ?? 0) > 0));
     const botModeMode = getBotModeExecutionMode(searchParams, text);
     if (shouldUseBotModeMission(searchParams, text) && isAgentsEndpoint(endpoint)) {
       const botModeAgentId = conversation?.agent_id;
@@ -657,10 +664,7 @@ export default function useChatFunctions({
           constraints: [],
         }));
         const mode = botModeMode;
-        let objectives = getBotModeObjectives(
-          mode,
-          (submissionFiles?.length ?? 0) > 0 || (!isRegenerate && (files?.size ?? 0) > 0),
-        );
+        let objectives = getBotModeObjectives(mode, hasSubmissionFiles);
         if (manualAgentIds != null) {
           objectives = selectedDefinitions.map(([id, , role, capabilities], index) => ({
             key: `selected_${index + 1}`,
@@ -728,11 +732,6 @@ export default function useChatFunctions({
       }
       Object.assign(currentMsg, { orchestratorMission });
     }
-
-    const reuseFiles =
-      (isRegenerate || (overrideFiles != null && overrideFiles.length)) &&
-      submissionFiles &&
-      submissionFiles.length > 0;
 
     if (setFiles && reuseFiles === true) {
       currentMsg.files = [...submissionFiles];
