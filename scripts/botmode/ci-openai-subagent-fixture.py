@@ -147,7 +147,7 @@ class Handler(BaseHTTPRequestHandler):
             if message.get("tool_calls"):
                 tc=message["tool_calls"][0]
                 event({"tool_calls":[{"index":0,"id":tc["id"],"type":"function",
-                    "function":{"name":"subagent","arguments":tc["function"]["arguments"]}}]})
+                    "function":{"name":tc["function"]["name"],"arguments":tc["function"]["arguments"]}}]})
             else:
                 event({"content":message["content"]})
             event({},reason)
