@@ -42,3 +42,10 @@ jobs:
       - name: Run Go tests
         working-directory: otel/langfuse-fanout
         run: go test ./...
+
+      - name: Build optional fanout image without registry push
+        run: |
+          set -euo pipefail
+          docker build --file otel/langfuse-fanout/Dockerfile --tag botmode-langfuse-fanout:ci .
+          test "$(docker image inspect botmode-langfuse-fanout:ci --format '{{.Architecture}}')" = amd64
+          echo 'BOTMODE_LANGFUSE_FANOUT_IMAGE_BUILD=PASS'
