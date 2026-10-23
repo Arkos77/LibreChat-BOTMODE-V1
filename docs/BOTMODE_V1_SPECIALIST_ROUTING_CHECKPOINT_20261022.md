@@ -1,5 +1,16 @@
 # BOT MODE V1 — routage des spécialistes — checkpoint du 22 octobre 2026
 
+## État prioritaire vérifié — 23 octobre 2026 : cinq tâches + Oracle + P6 acquis
+
+**Cette mise à jour remplace les anciens blocages du parcours à cinq tâches; les rapports précédents restent historiques.** Publication documentaire autorisée explicitement par l'utilisateur.
+
+Run [39877163780](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39877163780), job 120165439617 : **SUCCESS**, source applicative a6f6fee3c7dcfb5877fe798f759966774a046a58. Image exacte réutilisée sans recompilation. Worker + quatre spécialistes : cinq verdicts VERIFIED. P6 durable de la même mission : un seul message assistant canonique MongoDB, publication engagée et terminal complete. Dix requêtes observées : cinq 429 contrôlés puis cinq réponses réelles de fallback acceptées; JSON objet et require_parameters transmis. Nettoyage réussi. Aucun nouveau build ni image publiée.
+
+**Limites :** les cinq contenus identiques empêchent une attribution HTTP→tâche unique; les traces prouvent les correspondances au niveau du lot. Receipts hostModelUsage/fallbackUsed absentes du message canonique; leur persistance reste à établir, sans nier la bascule HTTP réellement observée. Child externe imbriqué/dynamique non observé. D01 et les autres obligations de l'inventaire restent ouverts; D02 non renouvelé; D03 nouvelle image et D04 fusion/stable/latest/installation non autorisés. **NO-GO stable maintenu.** L'autorisation de mission est consommée; ne pas rejouer ce parcours acquis sans nouvelle raison.
+
+[Compte rendu complet, preuves et limites](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/07b462f07aee835f1c43cc0e77b2d15ac9bd0fc6/docs/BOTMODE_V1_FIVE_TASK_P6_SUCCESS_20261023.md). Cinq tests locaux de projection des receipts réussis; ils ne prouvent pas leur présence dans cette mission réelle. Suite technique : identifier la condition manquante dans les événements d'usage avant tout correctif; poursuivre les obligations restantes de l'inventaire sans rouvrir ce parcours validé.
+
+
 ## Source et périmètre
 
 Source figée **a6f6fee3c7dcfb5877fe798f759966774a046a58**, branche fix/specialist-host-fallback-20261022, issue de **64248339750f9e0f86e01530eb7067027cec8f6b**. Aucun changement du verrou sécurité SHA256 **6e59734742daa69251821e2fed6a765febb4e58f9139743a98c91813dff234cf**, des modèles, des prix autorisés ou de la barrière Oracle/P6. Les commits applicatifs sont b1b82007d09c2256d8ed0ce1354400665942934f (routage partagé) et a6f6fee3c7dcfb5877fe798f759966774a046a58 (portée du choix de modèle primaire) ; les autres commits ajoutent/corrigent les tests et leur workflow. Ces commits de source sont distincts des ajouts documentaires.
