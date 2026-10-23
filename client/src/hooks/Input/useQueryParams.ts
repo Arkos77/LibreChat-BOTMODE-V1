@@ -21,6 +21,7 @@ import {
 import { useAuthContext, useAgentsMap, useDefaultConvo, useSubmitMessage } from '~/hooks';
 import { startupConfigKey, useGetAgentByIdQuery } from '~/data-provider';
 import { useChatContext, useChatFormContext } from '~/Providers';
+import { getBotModeSearchParams } from '~/hooks/Chat/mission';
 import store from '~/store';
 
 const PROJECT_ID_SEARCH_PARAM = 'projectId';
@@ -75,7 +76,7 @@ export default function useQueryParams({
   const { data: urlAgent } = useGetAgentByIdQuery(urlAgentId);
 
   const getPreservedSearchParams = useCallback(() => {
-    const preservedParams = new URLSearchParams();
+    const preservedParams = getBotModeSearchParams(searchParams);
     const projectId = searchParams.get(PROJECT_ID_SEARCH_PARAM);
     if (projectId) {
       preservedParams.set(PROJECT_ID_SEARCH_PARAM, projectId);

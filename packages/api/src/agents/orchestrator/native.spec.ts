@@ -141,6 +141,54 @@ describe('validated native output contract', () => {
 });
 
 describe('native plan compilation', () => {
+  it('blocks plain-text delegation arguments instead of treating them as completed work', async () => {
+    const plan = deterministicPlanner.planMission(
+      {
+        ...base,
+        validation: { criteria: [{ id: 'completed', field: 'ok', expected: true }] },
+        objectives: [
+          {
+            key: 'research',
+            objective: 'Research',
+            requiredCapabilities: ['basic'],
+            dependsOn: [],
+          },
+          {
+            key: 'synthesis',
+            objective: 'Synthesize',
+            requiredCapabilities: ['basic'],
+            dependsOn: ['research'],
+          },
+        ],
+      },
+      context,
+    );
+    const outcomes: Array<{ taskId: string; statuses: string[] }> = [];
+    const native = compileNativePlan(plan, bindings, undefined, undefined, async (result) => {
+      outcomes.push({ taskId: result.taskId, statuses: result.verdicts.map((v) => v.status) });
+    });
+    const run = await Run.create({
+      runId: 'delegation-text-only',
+      graphConfig: native.graphConfig,
+    });
+    if (!run.Graph) throw new Error('Graph missing');
+    run.Graph.overrideTestModel([
+      JSON.stringify({
+        intent: 'Delegate research',
+        description: 'Produce a sourced result',
+        subagent_type: 'research-agent',
+        run_in_background: false,
+      }),
+    ]);
+    await expect(
+      run.processStream(
+        { messages: [new HumanMessage('Research and synthesize.')] },
+        { version: 'v2' },
+      ),
+    ).rejects.toThrow('REJECTED');
+    expect(outcomes).toEqual([{ taskId: plan.tasks[0].taskId, statuses: ['REJECTED'] }]);
+  });
+
   it('executes the zero-specialist configuration on the real StandardGraph', async () => {
     const plan = deterministicPlanner.planMission(base, context);
     const native = compileNativePlan(plan, bindings);

@@ -42,7 +42,7 @@ import useGetSender from '~/hooks/Conversations/useGetSender';
 import store, { useGetEphemeralAgent } from '~/store';
 import { startupConfigKey } from '~/data-provider';
 import useUserKey from '~/hooks/Input/useUserKey';
-import { getBotModeObjectives } from './mission';
+import { getBotModeObjectives, getBotModeSearchParams } from './mission';
 import { useAuthContext } from '~/hooks';
 
 /** A revalidating cache younger than this is locally authoritative (the run
@@ -509,7 +509,9 @@ export default function useChatFunctions({
       parentMessageId = Constants.NO_PARENT;
       currentMessages = [];
       conversationId = null;
-      const projectSearch = chatProjectId ? `?projectId=${encodeURIComponent(chatProjectId)}` : '';
+      const nextParams = getBotModeSearchParams(searchParams);
+      if (chatProjectId) nextParams.set('projectId', chatProjectId);
+      const projectSearch = nextParams.size ? `?${nextParams.toString()}` : '';
       requestChatFocus();
       navigate(`/c/new${projectSearch}`);
     }
