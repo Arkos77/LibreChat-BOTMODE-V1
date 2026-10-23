@@ -259,6 +259,9 @@ jest.mock('@librechat/data-schemas', () => ({
 
 jest.mock('@librechat/api', () => ({
   deterministicPlanner: jest.requireActual('@librechat/api').deterministicPlanner,
+  prepareBotModeMission: jest.requireActual('@librechat/api').prepareBotModeMission,
+  assertResearchToolAvailability:
+    jest.requireActual('@librechat/api').assertResearchToolAvailability,
   resolveRequestTenantId: (req) => req.tenantId ?? req.user?.tenantId,
   createMtoEvent: (...args) => jest.requireActual('@librechat/api').createMtoEvent(...args),
   createStepLimitEvidenceContext: (...args) =>
@@ -1062,121 +1065,145 @@ describe('ResumableAgentController resume metadata', () => {
     expect(initializeClient).not.toHaveBeenCalled();
   });
 
-  it('persists and verifies an exact authorized orchestrator plan before sendMessage', async () => {
-    const sendMessage = jest.fn(() => new Promise(() => {}));
-    const publicationBarrier = { activate: jest.fn() };
-    const client = {
-      options: { agent: { id: 'agent-primary' } },
-      agentConfigs: new Map([['agent-specialist', { id: 'agent-specialist' }]]),
-      publicationBarrier,
-      sendMessage,
-    };
-    const initializeClient = jest.fn().mockResolvedValue({ client });
-    const missionRequest = {
-      mission: {
-        missionId: 'mission-p6-host',
-        taskId: 'root-task',
-        objective: 'Execute the approved mission',
-        constraints: ['bounded'],
-        requiredCapabilities: ['research'],
-        objectives: [
-          {
-            key: 'research',
-            objective: 'Research the input',
-            requiredCapabilities: ['research'],
-            dependsOn: [],
-          },
-        ],
-      },
-      plannerContext: {
-        worker: {
-          id: 'worker',
-          agentId: 'agent-primary',
-          role: 'primary',
-          capabilities: ['basic'],
-          constraints: [],
+  it.each([false, true])(
+    'persists authorized plan and research source scopes=%s before sendMessage',
+    async (research) => {
+      const sendMessage = jest.fn(() => new Promise(() => {}));
+      const publicationBarrier = { activate: jest.fn() };
+      const client = {
+        options: { agent: { id: 'agent-primary' } },
+        agentConfigs: new Map([
+          ['agent-specialist', { id: 'agent-specialist', tools: ['web_search'] }],
+        ]),
+        publicationBarrier,
+        sendMessage,
+      };
+      const configure = jest.fn();
+      const initializeClient = jest
+        .fn()
+        .mockResolvedValue({ client, missionEvidenceContext: { configure } });
+      const missionRequest = {
+        mission: {
+          missionId: 'mission-p6-host',
+          taskId: 'root-task',
+          objective: 'Execute the approved mission',
+          constraints: ['bounded'],
+          requiredCapabilities: [research ? 'web_search' : 'research'],
+          objectives: [
+            {
+              key: 'research',
+              objective: 'Research the input',
+              requiredCapabilities: [research ? 'web_search' : 'research'],
+              dependsOn: [],
+            },
+          ],
         },
-        specialists: [
-          {
-            id: 'researcher',
+        plannerContext: {
+          worker: {
+            id: 'worker',
+            agentId: 'agent-primary',
+            role: 'primary',
+            capabilities: ['basic'],
+            constraints: [],
+          },
+          specialists: [
+            {
+              id: 'researcher',
+              agentId: 'agent-specialist',
+              role: 'research',
+              capabilities: [research ? 'web_search' : 'research'],
+              constraints: ['bounded'],
+            },
+          ],
+        },
+      };
+      const req = {
+        user: { id: 'user-123' },
+        body: {
+          text: 'Run the structured mission.',
+          messageId: 'user-message',
+          conversationId: 'conversation-123',
+          orchestratorMission: missionRequest,
+          botMode: {
+            version: 1,
+            mode: 'analyze',
+            selectionMode: 'auto',
+            workerAgentId: 'agent-primary',
+            agents: [{ id: 'agent-specialist', name: 'RECHERCHE' }],
+          },
+          endpointOption: {
+            endpoint: 'agents',
+            agent_id: 'agent-primary',
+            modelOptions: { model: 'gpt-4.1' },
+          },
+        },
+        config: {},
+      };
+      const res = createResumableResponse();
+
+      mockGenerationJobManager.updateMetadata.mockImplementation(async (_streamId, patch) => {
+        if (patch.orchestratorPlan) {
+          mockGenerationJobManager.getJob.mockResolvedValue({
+            createdAt: 1000,
+            metadata: {
+              orchestratorPlan: structuredClone(patch.orchestratorPlan),
+              nativeMissionCapabilityAttestation: structuredClone(
+                patch.nativeMissionCapabilityAttestation,
+              ),
+            },
+          });
+        }
+      });
+
+      await AgentController(req, res, jest.fn(), initializeClient, null);
+      await nextTick();
+
+      const planUpdate = mockGenerationJobManager.updateMetadata.mock.calls.find(
+        ([, patch]) => patch?.orchestratorPlan != null,
+      );
+      expect(planUpdate).toBeDefined();
+      expect(
+        planUpdate[1].orchestratorPlan.tasks.every((task) =>
+          task.validation.some((requirement) => requirement.outputContract === 'result-v1'),
+        ),
+      ).toBe(true);
+      if (research)
+        expect(configure).toHaveBeenCalledWith(
+          expect.objectContaining({
+            sourceTasks: [
+              expect.objectContaining({
+                taskId: 'root-task/research',
+                producerAgentId: 'agent-specialist',
+              }),
+            ],
+          }),
+        );
+      expect(client.botModeSettings).toEqual(req.body.botMode);
+      expect(req._botModeSettings).toEqual(req.body.botMode);
+      expect(planUpdate[0]).toBe('conversation-123');
+      expect(planUpdate[2]).toBe(1000);
+      expect(planUpdate[1].orchestratorPlan).toMatchObject({
+        mission: missionRequest.mission,
+        strategy: 'SINGLE',
+        tasks: [
+          expect.objectContaining({
             agentId: 'agent-specialist',
-            role: 'research',
-            capabilities: ['research'],
-            constraints: ['bounded'],
-          },
+            taskId: 'root-task/research',
+          }),
         ],
-      },
-    };
-    const req = {
-      user: { id: 'user-123' },
-      body: {
-        text: 'Run the structured mission.',
-        messageId: 'user-message',
-        conversationId: 'conversation-123',
-        orchestratorMission: missionRequest,
-        botMode: {
-          version: 1,
-          mode: 'analyze',
-          selectionMode: 'auto',
-          workerAgentId: 'agent-primary',
-          agents: [{ id: 'agent-specialist', name: 'RECHERCHE' }],
-        },
-        endpointOption: {
-          endpoint: 'agents',
-          agent_id: 'agent-primary',
-          modelOptions: { model: 'gpt-4.1' },
-        },
-      },
-      config: {},
-    };
-    const res = createResumableResponse();
-
-    mockGenerationJobManager.updateMetadata.mockImplementation(async (_streamId, patch) => {
-      if (patch.orchestratorPlan) {
-        mockGenerationJobManager.getJob.mockResolvedValue({
-          createdAt: 1000,
-          metadata: {
-            orchestratorPlan: structuredClone(patch.orchestratorPlan),
-            nativeMissionCapabilityAttestation: structuredClone(
-              patch.nativeMissionCapabilityAttestation,
-            ),
-          },
-        });
-      }
-    });
-
-    await AgentController(req, res, jest.fn(), initializeClient, null);
-    await nextTick();
-
-    const planUpdate = mockGenerationJobManager.updateMetadata.mock.calls.find(
-      ([, patch]) => patch?.orchestratorPlan != null,
-    );
-    expect(planUpdate).toBeDefined();
-    expect(client.botModeSettings).toEqual(req.body.botMode);
-    expect(req._botModeSettings).toEqual(req.body.botMode);
-    expect(planUpdate[0]).toBe('conversation-123');
-    expect(planUpdate[2]).toBe(1000);
-    expect(planUpdate[1].orchestratorPlan).toMatchObject({
-      mission: missionRequest.mission,
-      strategy: 'SINGLE',
-      tasks: [
-        expect.objectContaining({
-          agentId: 'agent-specialist',
-          taskId: 'root-task/research',
-        }),
-      ],
-    });
-    expect(mockGenerationJobManager.updateMetadata.mock.invocationCallOrder.at(-1)).toBeLessThan(
-      sendMessage.mock.invocationCallOrder[0],
-    );
-    expect(publicationBarrier.activate).toHaveBeenCalledTimes(1);
-    expect(mockGenerationJobManager.getJob.mock.invocationCallOrder.at(-1)).toBeLessThan(
-      publicationBarrier.activate.mock.invocationCallOrder[0],
-    );
-    expect(publicationBarrier.activate.mock.invocationCallOrder[0]).toBeLessThan(
-      sendMessage.mock.invocationCallOrder[0],
-    );
-  });
+      });
+      expect(mockGenerationJobManager.updateMetadata.mock.invocationCallOrder.at(-1)).toBeLessThan(
+        sendMessage.mock.invocationCallOrder[0],
+      );
+      expect(publicationBarrier.activate).toHaveBeenCalledTimes(1);
+      expect(mockGenerationJobManager.getJob.mock.invocationCallOrder.at(-1)).toBeLessThan(
+        publicationBarrier.activate.mock.invocationCallOrder[0],
+      );
+      expect(publicationBarrier.activate.mock.invocationCallOrder[0]).toBeLessThan(
+        sendMessage.mock.invocationCallOrder[0],
+      );
+    },
+  );
 
   it('activates exact mission tool evidence declarations only after durable plan readback', async () => {
     const sendMessage = jest.fn(() => new Promise(() => {}));

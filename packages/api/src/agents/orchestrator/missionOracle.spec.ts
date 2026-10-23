@@ -468,3 +468,91 @@ describe('terminal mission Oracle', () => {
     ).resolves.toBeUndefined();
   });
 });
+
+it('promotes native research sources, persists task scope and verifies the cited result', async () => {
+  const plan = terminalPlan();
+  plan.tasks[0].validation[0].outputContract = 'research-v1';
+  const state = missionOracle.promoteTransientMissionOracleEvidence(plan, undefined, {
+    source: 'native_tool_end',
+    toolCallId: 'search-call',
+    toolName: 'web_search',
+    producerAgentId: 'worker',
+    taskId: 'task-terminal',
+    sourceUrls: ['https://example.org/report'],
+  });
+  const restored = missionOracle.normalizeMissionOracleState(JSON.parse(JSON.stringify(state)));
+  const result = await missionOracle.validateMissionTask({
+    taskId: 'task-terminal',
+    nodeId: 'node-terminal',
+    agentId: 'worker',
+    requirements: plan.tasks[0].validation,
+    candidate: JSON.stringify({
+      ok: true,
+      result: 'See https://example.org/report',
+      sources: 'https://example.org/report',
+    }),
+    observedSources: restored.sources?.['task-terminal'],
+  });
+  expect(() => missionOracle.assertMissionTaskVerified(result)).not.toThrow();
+  expect(restored.sources?.['foreign-task']).toBeUndefined();
+});
+
+it('denies a foreign task source, a wrong producer and conflicting native replay', () => {
+  const plan = terminalPlan();
+  plan.tasks[0].validation[0].outputContract = 'research-v1';
+  const observation = {
+    source: 'native_tool_end' as const,
+    toolCallId: 'search-call',
+    toolName: 'web_search',
+    producerAgentId: 'worker',
+    taskId: 'task-terminal',
+    sourceUrls: ['https://example.org/report'],
+  };
+  expect(() =>
+    missionOracle.promoteTransientMissionOracleEvidence(plan, undefined, {
+      ...observation,
+      taskId: 'foreign',
+    }),
+  ).toThrow();
+  expect(() =>
+    missionOracle.promoteTransientMissionOracleEvidence(plan, undefined, {
+      ...observation,
+      producerAgentId: 'foreign',
+    }),
+  ).toThrow();
+  const state = missionOracle.promoteTransientMissionOracleEvidence(plan, undefined, observation);
+  expect(() =>
+    missionOracle.promoteTransientMissionOracleEvidence(plan, state, {
+      ...observation,
+      sourceUrls: ['https://fake.example'],
+    }),
+  ).toThrow(/replay conflict/);
+  expect(missionOracle.promoteTransientMissionOracleEvidence(plan, state, observation)).toEqual(
+    state,
+  );
+});
+
+it('promotes criterion evidence and sources from separate observations of one native call', () => {
+  const plan = terminalPlan();
+  plan.tasks[0].validation[0].outputContract = 'research-v1';
+  const call = {
+    source: 'native_tool_end' as const,
+    toolName: 'web_search',
+    toolCallId: 'search',
+    taskId: 'task-terminal',
+    producerAgentId: 'worker',
+  };
+  const state = missionOracle.promoteTransientMissionOracleEvidence(plan, undefined, {
+    ...call,
+    criterionId: 'ok',
+    value: true,
+  });
+  const combined = missionOracle.promoteTransientMissionOracleEvidence(plan, state, {
+    ...call,
+    sourceUrls: ['https://example.org/report'],
+  });
+  expect(combined.evidence['task-terminal']).toHaveLength(1);
+  expect(combined.sources?.['task-terminal']).toEqual([
+    { toolCallId: 'search', urls: ['https://example.org/report'] },
+  ]);
+});

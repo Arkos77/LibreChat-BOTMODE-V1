@@ -4570,6 +4570,10 @@ class AgentClient extends BaseClient {
             ? {}
             : {
                 orchestratorPlan: this.orchestratorPlan,
+                resolveMissionOracleSources: async (taskId) => {
+                  await this.persistTransientMissionOracleEvidence(streamId);
+                  return this.missionOracleState?.sources?.[taskId] ?? [];
+                },
                 resolveMissionOracleEvidence: async (taskId) => {
                   await this.persistTransientMissionOracleEvidence(streamId);
                   return this.missionOracleState?.evidence?.[taskId] ?? [];
@@ -5229,6 +5233,8 @@ class AgentClient extends BaseClient {
           conversationId: this.conversationId,
           parentMessageId: this.parentMessageId,
         }),
+      resolveMissionOracleSources: async (taskId) =>
+        this.missionOracleState?.sources?.[taskId] ?? [],
       resolveMissionOracleEvidence: async (taskId) => {
         // The model-only cold initializer rejects all tools. A hidden tool
         // observation must not fall back to an epoch-only Redis write.
@@ -5439,6 +5445,10 @@ class AgentClient extends BaseClient {
           ? {}
           : {
               orchestratorPlan: this.orchestratorPlan,
+              resolveMissionOracleSources: async (taskId) => {
+                await this.persistTransientMissionOracleEvidence(streamId);
+                return this.missionOracleState?.sources?.[taskId] ?? [];
+              },
               resolveMissionOracleEvidence: async (taskId) => {
                 await this.persistTransientMissionOracleEvidence(streamId);
                 return this.missionOracleState?.evidence?.[taskId] ?? [];

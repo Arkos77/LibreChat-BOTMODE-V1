@@ -3,6 +3,7 @@ import type { OracleInput } from '../oracle/types';
 /** Requirements only. Evidence and verdicts belong to Oracle at execution time. */
 export interface OracleRequirement {
   criteria: OracleInput['criteria'];
+  outputContract?: OracleInput['outputContract'];
   review?: OracleInput['review'];
   requireIndependentEvidence?: boolean;
 }

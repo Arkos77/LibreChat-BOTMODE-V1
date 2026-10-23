@@ -22,12 +22,19 @@ export interface OracleEvidence {
   confidence?: number;
 }
 
+export interface OracleSourceObservation {
+  toolCallId: string;
+  urls: string[];
+}
+
 export interface OracleInput {
   taskId: string;
   runId?: string;
   agentId: string;
   /** Raw JSON object with scalar fields. Undefined means no candidate was produced. */
   candidate?: string;
+  outputContract?: 'result-v1' | 'research-v1';
+  observedSources?: OracleSourceObservation[];
   criteria: OracleCriterion[];
   evidence: OracleEvidence[];
   review?: { required: boolean; reason: 'high_risk' | 'policy' | 'ambiguity' };

@@ -56,10 +56,17 @@ export type MissionOracleEvidenceResolver = (
   | Promise<NonNullable<MissionOracleTaskInput['evidence']>>
   | NonNullable<MissionOracleTaskInput['evidence']>;
 
+export type MissionOracleSourcesResolver = (
+  taskId: string,
+) =>
+  | NonNullable<MissionOracleTaskInput['observedSources']>
+  | Promise<NonNullable<MissionOracleTaskInput['observedSources']>>;
+
 function requirePredecessorOutputs(
   sourceTasks: readonly PlannedTask[],
   resolveMissionOracleEvidence?: MissionOracleEvidenceResolver,
   persistMissionOracleResult?: MissionOracleResultPersister,
+  resolveMissionOracleSources?: MissionOracleSourcesResolver,
 ) {
   const sourceNodeIds = sourceTasks.map((task) => task.nodeId);
   return async (state: BaseGraphState): Promise<void> => {
@@ -80,6 +87,8 @@ function requirePredecessorOutputs(
         agentId: task.agentId,
         candidate: messageCandidate(state.agentOutputs?.[task.nodeId]),
         requirements: task.validation,
+        observedSources:
+          resolveMissionOracleSources == null ? [] : await resolveMissionOracleSources(task.taskId),
         evidence:
           resolveMissionOracleEvidence == null
             ? []
@@ -102,6 +111,7 @@ export function compileNativePlan(
   compileOptions?: MultiAgentGraphConfig['compileOptions'],
   resolveMissionOracleEvidence?: MissionOracleEvidenceResolver,
   persistMissionOracleResult?: MissionOracleResultPersister,
+  resolveMissionOracleSources?: MissionOracleSourcesResolver,
 ): NativeMissionPlan {
   getTaskLevels(plan.tasks);
   const tasks = new Map(plan.tasks.map((task) => [task.key, task]));
@@ -136,6 +146,7 @@ export function compileNativePlan(
           : [
               'Required task output: return exactly one JSON object, without Markdown fences or surrounding prose. Use scalar fields only; put detailed findings and source citations in a result string.',
               'The validation criteria above are checks, not values to copy. Report completion honestly; never claim a criterion is met when the requested work or evidence is missing.',
+              'For research-v1, include a sources string of newline-separated absolute HTTP(S) URLs returned by completed web_search calls. Cite these same direct URLs in result. Invented URLs and search arguments are not source observations.',
               'Respect the mission deadline and other constraints. Distinguish sourced facts from estimates and unknowns. Do not invent amounts, payment delays or citations; state when a source does not establish a claim.',
             ]),
       ]
@@ -156,6 +167,7 @@ export function compileNativePlan(
           sourceTasks,
           resolveMissionOracleEvidence,
           persistMissionOracleResult,
+          resolveMissionOracleSources,
         ),
       };
     });

@@ -589,3 +589,56 @@ describe('native plan compilation', () => {
     expect(() => compileNativePlan(plan, bindings)).toThrow('identity');
   });
 });
+
+it('passes same-task observed sources into dependency-transition Oracle validation', async () => {
+  const plan = deterministicPlanner.planMission(
+    {
+      ...base,
+      objectives: [
+        {
+          key: 'research',
+          objective: 'Research',
+          requiredCapabilities: ['x'],
+          dependsOn: [],
+          validation: {
+            criteria: [{ id: 'ok', field: 'ok', expected: true }],
+            outputContract: 'research-v1',
+          },
+        },
+        {
+          key: 'use',
+          objective: 'Use research',
+          requiredCapabilities: ['basic'],
+          dependsOn: ['research'],
+        },
+      ],
+    },
+    context,
+  );
+  const checked = plan.tasks[0];
+  const native = compileNativePlan(
+    plan,
+    bindings,
+    undefined,
+    undefined,
+    undefined,
+    async (taskId) =>
+      taskId === checked.taskId
+        ? [{ toolCallId: 'search', urls: ['https://example.org/report'] }]
+        : [],
+  );
+  if (native.graphConfig.type !== 'multi-agent') throw new Error('Expected multi-agent');
+  const output = new AIMessage(
+    JSON.stringify({
+      ok: true,
+      result: 'See https://example.org/report',
+      sources: 'https://example.org/report',
+    }),
+  );
+  await expect(
+    native.graphConfig.edges[0].beforeTransition?.({
+      messages: [output],
+      agentOutputs: { [checked.nodeId]: output },
+    } as BaseGraphState),
+  ).resolves.toBeUndefined();
+});

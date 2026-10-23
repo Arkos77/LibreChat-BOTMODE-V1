@@ -42,6 +42,8 @@ const {
   resolveAgentTurnExecutionPlan,
   resolveRequestTenantId,
   deterministicPlanner,
+  prepareBotModeMission,
+  assertResearchToolAvailability,
 } = require('@librechat/api');
 const {
   authorizeOrchestratorMissionBindings,
@@ -1862,8 +1864,12 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         reachableAgents,
         specialists: plannerContext.specialists,
       });
-      const orchestratorPlan = deterministicPlanner.planMission(mission, plannerContext);
+      const orchestratorPlan = deterministicPlanner.planMission(
+        botModeSettings == null ? mission : prepareBotModeMission(mission),
+        plannerContext,
+      );
       assertAuthorizedOrchestratorTasks(orchestratorPlan.tasks, authorizedAgentIds);
+      assertResearchToolAvailability(orchestratorPlan, reachableAgents);
 
       // Record original effective agent capability provenance in the SAME
       // epoch-scoped Redis write as the immutable plan, before models/tools
@@ -1895,7 +1901,17 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       client.orchestratorPlan = persistedPlanJob.metadata.orchestratorPlan;
       client.publicationBarrier?.activate?.();
 
-      const evidenceDeclarations = orchestratorMission?.evidenceDeclarations;
+      const sourceTasks = orchestratorPlan.tasks
+        .filter((task) =>
+          task.validation.some((requirement) => requirement.outputContract === 'research-v1'),
+        )
+        .map((task) => ({
+          nodeId: task.nodeId,
+          taskId: task.taskId,
+          producerAgentId: task.agentId,
+        }));
+      const evidenceDeclarations =
+        orchestratorMission?.evidenceDeclarations ?? (sourceTasks.length > 0 ? [] : undefined);
       if (evidenceDeclarations != null) {
         if (!Array.isArray(evidenceDeclarations)) {
           throw new Error('Orchestrator mission evidence declarations must be an array');
@@ -1963,6 +1979,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         result.missionEvidenceContext.configure({
           traceId: mtoTraceId,
           declarations: configuredDeclarations,
+          ...(sourceTasks.length > 0 && { sourceTasks }),
         });
       }
     }
