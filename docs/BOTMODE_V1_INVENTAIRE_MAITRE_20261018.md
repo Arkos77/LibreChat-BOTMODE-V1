@@ -1,5 +1,14 @@
 # BOT MODE V1 — INVENTAIRE MAÎTRE DES EXIGENCES ET PREUVES
 
+## Receipts — correctif local qualifié le 23 octobre 2026
+
+Un défaut de correspondance entre fournisseur configuré et fournisseur SDK est reproduit par initialisation native + appels SDK HTTP locaux (429→200) : OpenRouterFreeCompatCI est exécuté sous openAI et la projection rejetait son usage. Correction enregistrée dans la source **0f4691410fe614207001c8ff091a026325db2418**, branche fix/host-usage-runtime-alias-20261023. Le lien runtimeProvider vient uniquement de l'admission hôte; les modèles/fournisseurs inconnus et les alias ambigus restent exclus. Les identités configurée et SDK sont conservées séparément.
+
+**264 tests locaux réussis dans sept suites**, revue indépendante sans constat restant. Aucun build ni mission réelle supplémentaire. [Preuves et limites](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/fd0121331403654898b73ea8dfd7671b6e78a2c3/docs/BOTMODE_V1_HOST_USAGE_RUNTIME_ALIAS_20261023.md).
+
+Ce résultat ne clôt pas la persistance réelle des receipts, ne prouve pas l'unique cause de leur absence dans l'ancien run, et ne transfère pas les preuves a6 à la nouvelle source. Le parcours cinq tâches/Oracle/P6 du run 39877163780 reste acquis sur a6; D01–D04 et NO-GO stable restent inchangés.
+
+
 ## État prioritaire vérifié — 23 octobre 2026 : cinq tâches + Oracle + P6 acquis
 
 **Cette mise à jour remplace les anciens blocages du parcours à cinq tâches; les rapports précédents restent historiques.** Publication documentaire autorisée explicitement par l'utilisateur.
