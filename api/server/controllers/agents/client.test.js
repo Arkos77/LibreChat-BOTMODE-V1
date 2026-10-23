@@ -1559,6 +1559,15 @@ describe('AgentClient - interrupt discovery persistence', () => {
     client.conversationId = streamId;
     client.jobCreatedAt = job.createdAt;
     client.orchestratorPlan = { planId: 'plan-concurrent-results' };
+    const sources = {
+      'task-a': [{ toolCallId: 'native-search', urls: ['https://ci-source.invalid/report'] }],
+    };
+    client.missionOracleState = { evidence: {}, results: {}, sources };
+    await GenerationJobManager.updateMetadata(
+      streamId,
+      { missionOracleState: client.missionOracleState },
+      job.createdAt,
+    );
 
     await Promise.all([
       client.persistMissionOracleResult(
@@ -1576,6 +1585,7 @@ describe('AgentClient - interrupt discovery persistence', () => {
       'task-a',
       'task-b',
     ]);
+    expect(persisted?.metadata.missionOracleState?.sources).toEqual(sources);
     expect(client.missionOracleState).toEqual(persisted?.metadata.missionOracleState);
   });
 

@@ -29,6 +29,20 @@ def tool_name(request):
             return "subagent"
     return None
 
+def planned_output_contract(messages):
+    marker='Mission planning context (not execution permission):'
+    for message in reversed(messages):
+        if not isinstance(message,dict) or message.get('role') not in ('system','developer'): continue
+        content=message.get('content')
+        if not isinstance(content,str) or marker not in content: continue
+        try: context,_=json.JSONDecoder().raw_decode(content.split(marker,1)[1].lstrip())
+        except ValueError: continue
+        if not isinstance(context,dict) or not isinstance(context.get('validation'),list): continue
+        contracts={v.get('outputContract') for v in context['validation'] if isinstance(v,dict)}
+        if 'research-v1' in contracts: return 'research-v1'
+        if 'result-v1' in contracts: return 'result-v1'
+    return None
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     def log_message(self, *_):
@@ -90,8 +104,13 @@ class Handler(BaseHTTPRequestHandler):
         web_advertised=any(item.get('function',{}).get('name')=='web_search' for item in req.get('tools',[]) if isinstance(item,dict))
         web_calls={tc.get('id') for m in messages if isinstance(m,dict) for tc in m.get('tool_calls',[]) if isinstance(tc,dict) and tc.get('function',{}).get('name')=='web_search'}
         web_completed=any(m.get('role')=='tool' and m.get('tool_call_id') in web_calls for m in messages if isinstance(m,dict))
-        research_contract=any(isinstance(m.get('content'),str) and re.search(r'"outputContract"\s*:\s*"research-v1"',m['content']) for m in messages if isinstance(m,dict))
-        if SOURCE_MODE and research_contract and web_advertised and not web_completed:
+        planned_contract=planned_output_contract(messages)
+        research_contract=planned_contract=='research-v1' or planned_contract is None and any(isinstance(m.get('content'),str) and re.search(r'"outputContract"\s*:\s*"research-v1"',m['content']) for m in messages if isinstance(m,dict))
+        if SOURCE_MODE and planned_contract=='result-v1':
+            with lock: calls['planned_final']=calls.get('planned_final',0)+1
+            message={'role':'assistant','content':SOURCE_RESULT}
+            reason='stop'
+        elif SOURCE_MODE and research_contract and web_advertised and not web_completed:
             with lock: calls['source_tool_requests']=calls.get('source_tool_requests',0)+1
             message={'role':'assistant','content':None,'tool_calls':[{'id':'call_ci_search_'+str(number),'type':'function','function':{'name':'web_search','arguments':json.dumps({'query':'CI synthetic source'})}}]}
             reason='tool_calls'
