@@ -5039,7 +5039,7 @@ class AgentClient extends BaseClient {
       return;
     }
     const nextState = {
-      evidence: currentState.evidence,
+      ...currentState,
       results: {
         ...currentState.results,
         [result.taskId]: result,
