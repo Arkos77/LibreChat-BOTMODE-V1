@@ -24,8 +24,11 @@ it('resolves task nodes through the authorized plan to existing tool contexts', 
   const context = { tools: ['web_search'] };
   const contexts = new Map([['worker', context]]);
   expect(contexts.get(plan.tasks[0].nodeId)).toBeUndefined();
-  expect(contexts.get(resolveNativeMissionToolAgentId(plan, plan.tasks[0].nodeId))).toBe(context);
-  expect(contexts.get(resolveNativeMissionToolAgentId(plan, 'foreign-node'))).toBeUndefined();
+  const owner = resolveNativeMissionToolAgentId(plan, plan.tasks[0].nodeId);
+  expect(owner).toBe('worker');
+  expect(owner == null ? undefined : contexts.get(owner)).toBe(context);
+  const foreign = resolveNativeMissionToolAgentId(plan, 'foreign-node');
+  expect(foreign == null ? undefined : contexts.get(foreign)).toBeUndefined();
   expect(resolveNativeMissionToolAgentId(undefined, 'worker')).toBe('worker');
   expect(resolveNativeMissionToolAgentId(plan, undefined)).toBeUndefined();
   expect(() =>
