@@ -1,5 +1,9 @@
 # BOT MODE V1 — INVENTAIRE MAÎTRE DES EXIGENCES ET PREUVES
 
+## Avancée D01 — contexte enfant self durable, fournisseur local
+
+[Run 39901355206](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39901355206) SUCCESS sur l'image b221 inchangée : contexte enfant self créé à la demande sans spécialiste fourni au planificateur, politique enregistrée conservée, trois appels parent/enfant/parent, Oracle parent VERIFIED et lignée MongoDB canonique avant/après redémarrage. L'essai précédent 39900579819 validait la mission mais son lecteur restait actif à cause des connexions de cache ; cause reproduite puis corrigée uniquement dans le lecteur. [Compte rendu courant](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/fix/host-usage-runtime-alias-20261023/docs/BOTMODE_V1_LOCAL_CHILD_LINEAGE_20261023.md). Enfant enregistré préautorisé également acquis au run 39899705393. Aucun événement enfant SSE observé ; factory de nouveaux spécialistes enregistrés, cas plusieurs enfants, ACL HTTP étrangères, fournisseur externe et autres lots D01 restent ouverts. D02/D03/D04 inchangés, NO-GO stable.
+
 ## Avancée D01 — enfant autorisé durable, fournisseur local
 
 [Run 39899705393](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39899705393) SUCCESS sur la même image b221, sans reconstruction : parent → enfant autorisé → parent, Oracle VERIFIED, propriétaire et liens MongoDB avant/après redémarrage acquis. [Compte rendu et limites](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/f2d882ba08c1ff3187da6f1d35a7728bd4c98a0e/docs/BOTMODE_V1_LOCAL_CHILD_LINEAGE_20261023.md). L'essai précédent 39886327976 s'est arrêté au POST HTTP 503, avant admission ; le second attend /readyz. Aucun événement enfant SSE observé. Création dynamique/runtime self, enfant externe et autres lots D01 restent ouverts. D02/D03/D04 et NO-GO stable inchangés.
