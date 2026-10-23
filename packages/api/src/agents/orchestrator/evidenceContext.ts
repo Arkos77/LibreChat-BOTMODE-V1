@@ -1,3 +1,5 @@
+import type { MissionPlan } from './types';
+import { nodeIdentity } from './planner';
 import type { ToolEvidenceIntentDeclaration } from './toolEvidenceIntent';
 
 interface TaskScope {
@@ -70,4 +72,20 @@ export function createMissionEvidenceContext() {
       return scope == null ? undefined : structuredClone(scope);
     },
   };
+}
+
+/** Translate a native task identity only through the host-authorized immutable plan.
+ * Unknown identities remain unknown to the existing per-agent permission map. */
+export function resolveNativeMissionToolAgentId(
+  plan: MissionPlan | undefined,
+  executionId?: string,
+): string | undefined {
+  if (typeof executionId !== 'string') return undefined;
+  if (plan == null) return executionId;
+  const task = plan.tasks.find((candidate) => candidate.nodeId === executionId);
+  if (task == null) return executionId;
+  if (task.nodeId !== nodeIdentity(plan.mission.missionId, task.key)) {
+    throw new Error('Invalid native task identity');
+  }
+  return task.agentId;
 }

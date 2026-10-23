@@ -1,6 +1,7 @@
 const {
   createTransientEvidenceBuffer,
   createMissionEvidenceContext,
+  resolveNativeMissionToolAgentId,
   getDetachedSubagentTaskId,
   getDetachedSubagentProducerAgentId,
 } = require('@librechat/api');
@@ -373,6 +374,11 @@ const initializeClient = async ({
    * }>}
    */
   const agentToolContexts = new Map();
+  let initializedMissionClient;
+  const resolveToolAgentId = (executionId) =>
+    resolveNativeMissionToolAgentId(initializedMissionClient?.orchestratorPlan, executionId);
+  const getAgentToolContext = (executionId) =>
+    agentToolContexts.get(resolveToolAgentId(executionId));
   const parsePositiveNumber = (value, fallback) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -396,7 +402,7 @@ const initializeClient = async ({
     if (job.status !== 'running') {
       throw new Error('EXECUTION_GRANT_JOB_NOT_RUNNABLE');
     }
-    const context = typeof agentId === 'string' ? agentToolContexts.get(agentId) : undefined;
+    const context = typeof agentId === 'string' ? getAgentToolContext(agentId) : undefined;
     if (!context?.toolRegistry?.has?.(toolName)) {
       throw new Error('EXECUTION_GRANT_TOOL_NOT_REGISTERED');
     }
@@ -446,7 +452,7 @@ const initializeClient = async ({
     if (typeof toolName !== 'string' || typeof agentId !== 'string') {
       return undefined;
     }
-    const context = agentToolContexts.get(agentId);
+    const context = getAgentToolContext(agentId);
     const registered = context?.toolRegistry?.get?.(toolName);
     if (typeof registered?.mcpRawServerName === 'string') {
       return normalizeServerName(registered.mcpRawServerName);
@@ -489,7 +495,7 @@ const initializeClient = async ({
     const soleContext =
       agentToolContexts.size === 1 ? agentToolContexts.values().next().value : null;
     const trustedContext =
-      (typeof executingAgentId === 'string' ? agentToolContexts.get(executingAgentId) : null) ??
+      (typeof executingAgentId === 'string' ? getAgentToolContext(executingAgentId) : null) ??
       soleContext;
     const callbackMetadata = { ...metadata };
     delete callbackMetadata.codeExecutionContext;
@@ -507,7 +513,7 @@ const initializeClient = async ({
     executionGrantResolver,
     executionGrantJobId: streamId,
     loadTools: async (toolNames, agentId, _configurable, callerCapabilityProjection) => {
-      const ctx = agentToolContexts.get(agentId) ?? {};
+      const ctx = getAgentToolContext(agentId) ?? {};
       logger.debug(`[ON_TOOL_EXECUTE] ctx found: ${!!ctx.userMCPAuthMap}, agent: ${ctx.agent?.id}`);
       logger.debug(`[ON_TOOL_EXECUTE] toolRegistry size: ${ctx.toolRegistry?.size ?? 'undefined'}`);
 
@@ -1969,7 +1975,7 @@ const initializeClient = async ({
    *  `metadata.usage.cost` matches the per-agent balance transaction. */
   usageCost.resolveEndpointTokenConfig = (usage) =>
     resolveAgentTokenConfig({
-      agentId: usage?.agentId,
+      agentId: resolveToolAgentId(usage?.agentId),
       byAgentId: endpointTokenConfigByAgentId,
       fallback: usageCost.endpointTokenConfig,
     });
@@ -2069,6 +2075,7 @@ const initializeClient = async ({
     executionGrantJobId: streamId,
     dockerExecutionProfile,
   });
+  initializedMissionClient = client;
   client.publicationBarrier = publicationBarrier;
   if (streamId) {
     GenerationJobManager.setCollectedUsage(streamId, collectedUsage, jobCreatedAt);
