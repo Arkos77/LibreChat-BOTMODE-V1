@@ -67,3 +67,17 @@ Jobs AMD64 120323371123, ARM64 120323371494, index 120329380382 : SUCCESS. Le jo
 Le transfert ARM64 a pris plus longtemps ; aucune relance ni seconde compilation. Stable/latest, releases, fusion et installation restent inchangés. D03 est clos uniquement pour cette candidate ; ceci ne transforme pas les limites de qualification en preuves supplémentaires ni en GO stable global.
 
 Installation suivante à préparer séparément : préserver les modifications locales, sauvegarder configurations et données, vérifier espace et quiescence, utiliser le digest immuable, garder un retour arrière. Aucun effacement, arrêt ou basculement du Chromebook autorisé par cet accord D03.
+
+## Installation locale de la candidate — 23 octobre 2026
+
+Après accord de poursuite de l'installation puis nettoyage ciblé autorisé, la candidate d59 est installée sur l'instance de travail locale, port 3081, via le digest immuable sha256:2eb9e3714beda2603ce7efdff2c9fde581ab236dc0b4495a6156856f0757f685. La stable publique n'est pas promue et l'ancienne instance locale du port 3080 reste intacte.
+
+Préparation : configurations et modifications locales sauvegardées ; copie locale d'une image historique inutilisée supprimée seulement après vérification de sa disponibilité publique par digest ; cache de téléchargements npm vidé. Aucun dossier de travail, volume, donnée ou conteneur ancien supprimé. Environ 5,2 Go libérés, puis image candidate récupérée ; environ 4,0 Go restent libres après installation.
+
+Docker local utilise le magasin containerd : image inspect Id est ici le digest d'index, pas le digest de configuration attendu en CI. Le premier contrôle fondé sur cette égalité a donc échoué avant toute bascule. Vérification corrigée dans le seul dispositif d'installation, sans changement applicatif : SHA256 index et manifest AMD64, blob de configuration 0944fb0d… attendu, toutes les diff_ids RootFS locales, environnement, Entrypoint, Cmd, architecture et BUILD_COMMIT correspondent exactement. Aucun relâchement de provenance.
+
+Seule l'API de travail a été arrêtée ; garde update-quiescence PASS, Redis non configuré. Sauvegarde MongoDB sous arrêt de l'API et archive des volumes applicatifs effectuées et vérifiées en lecture, empreintes conservées localement. Remplacement de l'API seule, mêmes volumes et port ; épinglage du digest dans BOTMODE_IMAGE, librechat.yaml et modification locale du bootstrap préservés. Image précédente conservée pour retour arrière.
+
+Contrôles après démarrage : /readyz, /health, /api/config et page d'accueil HTTP 200 ; conteneur actif sur la référence exacte ; comptes/conversations/messages/agents inchangés. Cette vérification HTTP ne revendique ni nouveau parcours navigateur authentifié ni mission fournisseur réelle. Aucun appel modèle, reconstruction, fusion, tag stable/latest ou promotion globale. Les sauvegardes et métadonnées privées restent sur la machine ; aucune clé/configuration personnelle publiée.
+
+Cet état remplace les mentions précédentes d'installation en attente pour cette instance uniquement. Les limites fonctionnelles et décisions globales de release restent celles de l'inventaire.
