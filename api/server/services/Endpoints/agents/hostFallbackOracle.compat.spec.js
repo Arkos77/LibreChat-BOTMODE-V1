@@ -1,6 +1,12 @@
+jest.mock('~/server/services/Files/Citations', () => ({}));
+jest.mock('~/server/services/Files/Code/process', () => ({}));
+jest.mock('~/server/services/Files/Code/preflight', () => ({}));
+jest.mock('~/server/services/Files/process', () => ({}));
+const { ModelEndHandler } = require('~/server/controllers/agents/callbacks');
+const { projectHostModelUsage } = require('./hostModelUsage');
 const path = require('node:path');
 const { createServer } = require('node:http');
-const { Run } = require('@librechat/agents');
+const { Run, GraphEvents } = require('@librechat/agents');
 const { HumanMessage } = require('@librechat/agents/langchain/messages');
 const {
   initializeAgent,
@@ -29,6 +35,8 @@ describe('HTTP fallback output through the native graph and Oracle', () => {
       const requests = [];
       const results = [];
       const decisions = [];
+      const hostDecisions = new Map();
+      const usageEvents = [];
       const server = createServer(async (req, res) => {
         let body = '';
         for await (const chunk of req) body += chunk;
@@ -67,6 +75,15 @@ describe('HTTP fallback output through the native graph and Oracle', () => {
                 '\n\n',
             );
           }
+          res.write(
+            'data: ' +
+              JSON.stringify({
+                ...base,
+                choices: [],
+                usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+              }) +
+              '\n\n',
+          );
           res.end('data: [DONE]\n\n');
           return;
         }
@@ -173,6 +190,7 @@ describe('HTTP fallback output through the native graph and Oracle', () => {
             user: 'fixture-user',
             timestamp: '2026-10-23T00:00:00.000Z',
           });
+          hostDecisions.set(id, resolved.hostModelDecision);
           bindings.set(id, {
             agentId: id,
             provider: resolved.provider,
@@ -220,6 +238,11 @@ describe('HTTP fallback output through the native graph and Oracle', () => {
         const run = await Run.create({
           runId: `wire-oracle-${streaming}-${valid}`,
           graphConfig: native.graphConfig,
+          customHandlers: {
+            [GraphEvents.CHAT_MODEL_END]: new ModelEndHandler([], null, (event) =>
+              usageEvents.push(event),
+            ),
+          },
         });
         const execution = run.processStream(
           { messages: [new HumanMessage('Return only JSON: {"ok":true}')] },
@@ -243,6 +266,20 @@ describe('HTTP fallback output through the native graph and Oracle', () => {
           expect(results[0].verdicts[0].reasons).toContainEqual({ code: 'INVALID_CANDIDATE' });
           expect(requests).toHaveLength(2);
         }
+        const workerReceipt = projectHostModelUsage(hostDecisions.get('worker'), usageEvents, plan);
+        expect(workerReceipt).toMatchObject({
+          fallbackUsed: true,
+          resolvedProvider: 'freecompat',
+          resolvedModel: 'openrouter/free',
+        });
+        expect(workerReceipt.modelCalls).toHaveLength(1);
+        expect(workerReceipt.modelCalls[0]).toMatchObject({
+          actorId: plan.tasks[0].nodeId,
+          runtimeProvider: 'openai',
+          inputTokens: 1,
+          outputTokens: 1,
+        });
+        expect(usageEvents).toHaveLength(valid ? 5 : 1);
         expect(results.map((result) => result.verdicts[0].input.candidate)).toEqual(supplied);
         expect(results.every((result) => result.verdicts[0].input.candidate.length === 59)).toBe(
           true,
