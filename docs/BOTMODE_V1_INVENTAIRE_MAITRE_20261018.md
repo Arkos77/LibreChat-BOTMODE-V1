@@ -1,5 +1,14 @@
 # BOT MODE V1 — INVENTAIRE MAÎTRE DES EXIGENCES ET PREUVES
 
+## État prioritaire — candidate d59 installée et nettoyage ciblé terminé
+
+La candidate publiée d59 est maintenant installée sur l'instance de travail locale (port 3081), épinglée au digest sha256:2eb9e3714beda2603ce7efdff2c9fde581ab236dc0b4495a6156856f0757f685. Provenance index/manifest/configuration et couches locales vérifiée ; quiescence PASS, sauvegardes cohérentes effectuées, configuration locale et volumes conservés. HTTP readyz/health/config/accueil 200, données utilisateur et agents inchangés. Ancienne instance port 3080 et image de retour arrière conservées.
+
+Nettoyage autorisé : seule la copie locale d'une image historique sans conteneur et le cache npm ont été supprimés, après vérification de disponibilité publique de l'image. Environ 5,2 Go récupérés ; environ 4,0 Go libres après installation. Aucun ancien dossier de travail ni volume supprimé.
+
+[Rapport exact et limites](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/9f39536c78f44d990edeff25e35ccc87072bd894/docs/BOTMODE_V1_FINAL_COMPOSITION_RESULT_20261023.md). Aucun nouvel appel modèle, test de mission, build, fusion ou promotion stable/latest. L'installation de cette candidate ne constitue pas un GO stable global. Les mentions d'installation en attente ci-dessous sont désormais historiques pour cette instance.
+
+
 ## D03 candidate autorisée et publiée — 23 octobre 2026
 
 Accord utilisateur reçu après présentation de la proposition figée f189ac947311ac3d9b81b2660fbb20c9c493e2bf. Activation exacte sur ops/publish-d59dedf071d2-approved, commit pilote eb20b62342d5848880e145d419f1c5f9de8558d9, départ de la source applicative d59dedf071d26503ec9bec5a31ee474f0ccc9724.
