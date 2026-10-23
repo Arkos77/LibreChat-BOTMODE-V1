@@ -53,3 +53,12 @@ Donner des mises à jour utiles sur les faits nouveaux, l'incertitude restante e
 ## Point de départ au 23 octobre
 
 Source applicative a6f6fee3c7dcfb5877fe798f759966774a046a58 : routage spécialiste corrigé et 109 tests ciblés verts. Image AMD64 locale contrôlée, audit production zéro au dernier constat. Mission réelle 39857859228 : worker REJECTED / INVALID_CANDIDATE (INVALID_JSON, 59 caractères), spécialistes non atteints, P6 non qualifié, nettoyage SUCCESS. L'accord d'une mission est consommé. Huit tests supplémentaires HTTP loopback montrent que le paramètre JSON peut traverser le fallback en streaming et sans streaming ; ils n'expliquent pas la sortie réelle. Aucun nouvel appel réel autorisé par ce rappel méthodologique seul. Lire le checkpoint détaillé pour les identités et limites.
+
+
+## Garde supplémentaire sur les faux fournisseurs — 23 octobre 2026
+
+Avant de lancer un nouveau dispositif de qualification en CI, inventorier toutes les routes présentes dans le bootstrap réel. Un test limité aux deux routes attendues ne suffit pas si une troisième route est installée. Pour un fournisseur synthétique, forcer explicitement toutes les routes vers le serveur local et interdire les secrets réels.
+
+Chaque réponse du faux fournisseur doit avoir un identifiant unique par appel. Un identifiant constant peut provoquer une déduplication dans le SDK/graphe et donner une fausse panne de l'application.
+
+Prétester le serveur exact du workflow à travers le vrai SDK, le graphe natif, le collecteur et la projection des receipts, avec usage SSE et fin de flux. Un simple healthcheck ou un test HTTP de forme ne suffit pas pour cette frontière. Réutiliser l'image déjà vérifiée après correction du dispositif; ne pas recompiler si le code applicatif est inchangé. Conserver les échecs du dispositif et leurs causes dans le compte rendu, distincts des preuves applicatives.
