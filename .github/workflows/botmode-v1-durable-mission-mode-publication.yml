@@ -1,0 +1,165 @@
+name: BOTMODE Approved AMD64 Durable Mission Mode Publication From Qualified Image
+'on':
+  push:
+    branches:
+    - ops/publish-a0aa5bde3e6f-approved
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: publish-a0aa5bde3e6f-once
+  cancel-in-progress: false
+env:
+  APP_SOURCE: a0aa5bde3e6f9803ec385fbddcb334c4fbd5e817
+  LOCAL_IMAGE: botmode-source-built:a0aa5bde3e6f9803ec385fbddcb334c4fbd5e817
+  REPOSITORY: ghcr.io/arkos77/librechat-botmode-v1
+jobs:
+  publish-arch:
+    if: github.repository == 'Arkos77/LibreChat-BOTMODE-V1' && github.run_attempt == 1 && github.event.before ==
+      'a0aa5bde3e6f9803ec385fbddcb334c4fbd5e817'
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - arch: amd64
+          runner: ubuntu-latest
+          configId: sha256:8a3f0082cf5e0201b8a82be17e55cfa49855f16f77a13edd4ec3e7fd918dea90
+    env:
+      PUBLISH_ARCH: ${{ matrix.arch }}
+      EXPECTED_CONFIG_ID: ${{ matrix.configId }}
+    steps:
+    - name: Require successful exact qualification before publication
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: 'python3 - <<''PY_PROOF''
+
+        import json,os,urllib.request
+
+        url=''https://api.github.com/repos/Arkos77/LibreChat-BOTMODE-V1/actions/runs/40011847074''
+
+        req=urllib.request.Request(url,headers={''Authorization'':''Bearer ''+os.environ[''GH_TOKEN''],''Accept'':''application/vnd.github+json''})
+
+        run=json.load(urllib.request.urlopen(req,timeout=30))
+
+        assert run[''head_sha'']==''560c48d403b1040f5701a17323713cca222ea4ba''
+
+        assert run[''status'']==''completed'' and run[''conclusion'']==''success'' and run[''run_attempt'']==1
+
+        print(''EXACT_QUALIFICATION_SUCCESS_REQUIRED=PASS'')
+
+        PY_PROOF
+
+        '
+    - uses: actions/download-artifact@v4
+      with:
+        name: botmode-final-a0aa5bde3e6f-${{ matrix.arch }}-40011847074
+        run-id: 40011847074
+        github-token: ${{ github.token }}
+        path: /tmp/retained
+    - name: Restore exact already-qualified source image; no compilation
+      run: 'set -euo pipefail
+
+        test "$(cat /tmp/retained/final-source.txt)" = "$APP_SOURCE"
+
+        test "$(cat /tmp/retained/final-image-id.txt)" = "$EXPECTED_CONFIG_ID"
+
+        (cd /tmp/retained && sha256sum -c final-image.sha256)
+
+        gzip -dc /tmp/retained/final-image.tar.gz | docker load
+
+        test "$(docker image inspect "$LOCAL_IMAGE" --format ''{{.Id}}'')" = "$EXPECTED_CONFIG_ID"
+
+        test "$(docker image inspect "$LOCAL_IMAGE" --format ''{{.Architecture}}'')" = "$PUBLISH_ARCH"
+
+        docker image inspect "$LOCAL_IMAGE" --format ''{{range .Config.Env}}{{println .}}{{end}}'' | grep -Fx "BUILD_COMMIT=$APP_SOURCE"
+
+        echo ''CANDIDATE_RESTORED_VERIFIED_IMAGE_NO_BUILD=PASS''
+
+        '
+    - name: Publish only source-specific architecture candidate
+      env:
+        GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: 'set -euo pipefail
+
+        printf ''%s'' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+        docker tag "$LOCAL_IMAGE" "$REPOSITORY:sha-a0aa5bde3e6f-$PUBLISH_ARCH"
+
+        docker push "$REPOSITORY:sha-a0aa5bde3e6f-$PUBLISH_ARCH" | tee /tmp/candidate-push.txt
+
+        python3 - <<''PY_PUSH''
+
+        import json,os,re
+
+        from pathlib import Path
+
+        found=re.findall(r''digest: (sha256:[0-9a-f]{64})'',Path(''/tmp/candidate-push.txt'').read_text())
+
+        assert len(set(found))==1,''PUSH_DIGEST_UNAMBIGUOUS_REQUIRED''
+
+        Path(''/tmp/''+os.environ[''PUBLISH_ARCH'']+''.json'').write_text(json.dumps({''arch'':os.environ[''PUBLISH_ARCH''],''digest'':found[0],''configId'':os.environ[''EXPECTED_CONFIG_ID''],''source'':os.environ[''APP_SOURCE'']}))
+
+        print(''CANDIDATE_ARCH_PUSH_DIGEST=''+found[0])
+
+        PY_PUSH
+
+        '
+    - uses: actions/upload-artifact@v4
+      with:
+        name: published-metadata-${{ matrix.arch }}
+        path: /tmp/${{ matrix.arch }}.json
+        retention-days: 1
+    - name: Remove runner authentication
+      if: always()
+      run: docker logout ghcr.io || true
+  publish-index:
+    needs: publish-arch
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EXPECTED_IDS: '{"amd64": "sha256:8a3f0082cf5e0201b8a82be17e55cfa49855f16f77a13edd4ec3e7fd918dea90"}'
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: published-metadata-*
+        merge-multiple: true
+        path: /tmp/metadata
+    - name: Login for candidate index publication only
+      env:
+        GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: 'printf ''%s'' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+        '
+    - name: Publish digest-pinned candidate index and verify anonymous visibility
+      run: "set -euo pipefail\npython3 - <<'PY_INDEX'\nimport json,os,subprocess\nfrom pathlib import Path\nproof=[json.loads(Path('/tmp/metadata/'+a+'.json').read_text())\
+        \ for a in ['amd64']]\nexpected=json.loads(os.environ['EXPECTED_IDS'])\nfor p in proof:\n assert p['source']==os.environ['APP_SOURCE']\
+        \ and p['configId']==expected[p['arch']]\n reference=os.environ['REPOSITORY']+'@'+p['digest']\n raw=subprocess.check_output(['docker','buildx','imagetools','inspect','--raw',reference],text=True)\n\
+        \ assert json.loads(raw)['config']['digest']==p['configId'],'REMOTE_CONFIG_ID_MISMATCH'\nrefs=[os.environ['REPOSITORY']+'@'+p['digest']\
+        \ for p in proof]\nsubprocess.run(['docker','buildx','imagetools','create','--tag',os.environ['REPOSITORY']+':sha-a0aa5bde3e6f',*refs],check=True)\n\
+        PY_INDEX\ndocker logout ghcr.io\n# Public, anonymous verification of only the newly approved candidate tag.\n\
+        docker buildx imagetools inspect --raw \"$REPOSITORY:sha-a0aa5bde3e6f\" > /tmp/candidate-index.json\npython3\
+        \ - <<'PY_VERIFY'\nimport json\nfrom pathlib import Path\nindex=json.loads(Path('/tmp/candidate-index.json').read_text())\n\
+        platforms={m.get('platform',{}).get('architecture') for m in index.get('manifests',[]) if m.get('platform',{}).get('os')=='linux'}\n\
+        assert platforms=={'amd64'},'NATIVE_ARCHITECTURES_REQUIRED'\nprint('CANDIDATE_PUBLIC_AMD64_INDEX=PASS')\n\
+        PY_VERIFY\ndocker buildx imagetools inspect \"$REPOSITORY:sha-a0aa5bde3e6f\" --format '{{.Manifest.Digest}}'\
+        \ > /tmp/candidate-digest.txt\ncat /tmp/candidate-digest.txt\necho 'STABLE_LATEST_RELEASE_MERGE_INSTALL_CHANGED=FALSE'\n"
+    - uses: actions/upload-artifact@v4
+      with:
+        name: candidate-a0aa5bde3e6f-publication-proof
+        path: '/tmp/candidate-digest.txt
+
+          /tmp/candidate-index.json'
+        retention-days: 7
+    - name: Remove runner authentication
+      if: always()
+      run: docker logout ghcr.io || true
