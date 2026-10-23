@@ -1,8 +1,9 @@
 import { memo, useMemo } from 'react';
 import { useRecoilValue } from 'recoil';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   getConfigDefaults,
+  resolveBotModeSearchParams,
   Constants,
   PermissionTypes,
   Permissions,
@@ -15,10 +16,10 @@ import { TemporaryChat, TemporaryChatIndicator } from './TemporaryChat';
 import ModelSelector from './Menus/Endpoints/ModelSelector';
 import ExportAndShareMenu from './ExportAndShareMenu';
 import SubagentThreadLink from './SubagentThreadLink';
+import { useHasAccess, useLocalize } from '~/hooks';
 import { useAgentsMapContext } from '~/Providers';
 import BookmarkMenu from './Menus/BookmarkMenu';
 import AddMultiConvo from './AddMultiConvo';
-import { useHasAccess } from '~/hooks';
 import { cn } from '~/utils';
 import store from '~/store';
 
@@ -44,6 +45,18 @@ function Header({
   botMode?: boolean;
 }) {
   const { data: startupConfig } = useGetStartupConfig();
+  const localize = useLocalize();
+  const [searchParams] = useSearchParams();
+  const effectiveParams = resolveBotModeSearchParams(searchParams, conversation);
+  const modeLabels = {
+    auto: 'com_ui_botmode_mode_auto',
+    fast: 'com_ui_botmode_mode_fast',
+    analyze: 'com_ui_botmode_mode_analyze',
+    develop: 'com_ui_botmode_mode_develop',
+    watch: 'com_ui_botmode_mode_watch',
+  } as const;
+  const mode = effectiveParams.get('botmode_mode') ?? 'auto';
+  const modeLabel = modeLabels[mode as keyof typeof modeLabels];
   const agentsMap = useAgentsMapContext();
   const selectedAgentId = useRecoilValue(store.conversationAgentIdByIndex(0));
   const activeAgentId = conversation?.agent_id ?? selectedAgentId;
@@ -102,6 +115,14 @@ function Header({
           <SubagentThreadLink threadId={parentConversationId} labelClassName="hidden lg:inline" />
         )}
         {!readOnly && <ModelSelector startupConfig={startupConfig} />}
+        {!readOnly &&
+          conversation?.endpoint === 'agents' &&
+          effectiveParams.get('botmode') === '1' &&
+          modeLabel && (
+            <span role="status" className="truncate text-xs text-text-secondary">
+              {localize(modeLabel)}
+            </span>
+          )}
         {!readOnly && interfaceConfig.presets === true && interfaceConfig.modelSelect === true && (
           <PresetsMenu />
         )}

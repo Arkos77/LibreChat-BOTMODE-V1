@@ -44,6 +44,30 @@ const convoSchema: Schema<IConversation> = new Schema(
     agent_id: {
       type: String,
     },
+    botMode: {
+      type: new Schema(
+        {
+          version: { type: Number, enum: [1], required: true },
+          mode: { type: String, enum: ['fast', 'analyze', 'develop', 'watch'], required: true },
+          selectionMode: { type: String, enum: ['auto', 'manual'], required: true },
+          workerAgentId: { type: String, required: true },
+          agents: {
+            type: [
+              new Schema(
+                {
+                  id: { type: String, required: true },
+                  name: { type: String, required: true },
+                },
+                { _id: false },
+              ),
+            ],
+            default: [],
+          },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
     subagentThread: {
       type: {
         rootConversationId: { type: String, required: true },
