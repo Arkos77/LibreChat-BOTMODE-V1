@@ -20,8 +20,37 @@ L’en-tête affiche le mode effectif. Lorsque seule l’activation BOT MODE est
 - Une revue indépendante en lecture seule a trouvé un point Important sur l’affichage FAST d’un mode inféré. Il est traité par les tests du vrai en-tête, la restauration du mode admis et les tests de réouverture avec/sans drapeau ; aucune seconde revue prétendue.
 - Le binaire de build natif tsdown n’est pas disponible dans les dépendances locales de cet hôte. Le runtime data-provider utilisé par les tests est assemblé localement avec Rollup et TypeScript ; ce n’est pas un build de release. Un premier lancement large du contrôleur a été interrompu sans résultat exploitable ; la vérification instrumentée et bornée de la suite complète du contrôleur a ensuite passé ses 143 tests.
 
+## Qualification de l’image exacte
+
+Source applicative figée : `a0aa5bde3e6f9803ec385fbddcb334c4fbd5e817` (22 blobs vérifiés contre le commit local `22a2a7a0c662825f880a341bb83c4ff48b05b513`).
+
+Le [run de qualification 40011847074](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/40011847074), job `120613949010`, est terminé avec succès. Une seule image AMD64 a été construite avec le build canonique. Sa configuration est `sha256:8a3f0082cf5e0201b8a82be17e55cfa49855f16f77a13edd4ec3e7fd918dea90`. L’artefact conserve cette image exacte pour une publication sans reconstruction.
+
+Les contrôles exécutés couvrent le code compilé, le refus de perte du contexte, le transport JSON, la persistance Mongo des réglages, la réouverture sans paramètres, une nouvelle mission après réouverture et la publication P6 sur le même flux. Les essais navigateur et les sondes utilisent un modèle local synthétique : **aucune inférence externe**. Cela ne valide pas la qualité factuelle d’un modèle réel.
+
 ## Limites et suite
 
-Aucune nouvelle inférence externe, image, publication publique, fusion, stable ou installation n’a été réalisée pour ce lot. Les réglages ne sont enregistrés que pour les nouveaux envois explicites de la version corrigée : les conversations historiques ne sont pas migrées silencieusement.
+Aucune nouvelle inférence externe, fusion ou promotion stable/latest n’a été réalisée pour ce lot. Les réglages ne sont enregistrés que pour les nouveaux envois explicites de la version corrigée : les conversations historiques ne sont pas migrées silencieusement.
 
-Le contrat Oracle, la qualité des sources, le routage gratuit et la reprise automatique à froid ne sont pas élargis par ce correctif. La qualification de l’image exacte et son installation restent à effectuer avant de déclarer ce comportement actif chez l’utilisateur. Les autres gates de release conservent leur portée et leur statut.
+Le contrat Oracle, la qualité des sources, le routage gratuit et la reprise automatique à froid ne sont pas élargis par ce correctif. La qualification, la publication et l’installation de l’image exacte sont acquises pour ce correctif, selon les preuves ci-dessous. Les autres gates de release conservent leur portée et leur statut.
+
+## Publication candidate
+
+Le [run de publication 40013465446](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/40013465446), piloté par `c69dfa49651716bd0e3ed03e737a96e22d11282e`, a réussi. Il vérifie d’abord la réussite de la qualification exacte, restaure son artefact, compare l’identité de configuration et publie sans reconstruire.
+
+- Dépôt : `ghcr.io/arkos77/librechat-botmode-v1`.
+- Index candidat AMD64 : `sha256:9da2960177d093889033f9b24d2b9b4490933539f1c7f0c9f9771c8c61a28d6d`.
+- Manifest AMD64 : `sha256:8d61074f047be068d076abb5acda104a64131835b9318c87cd00f41da942209a`.
+- Configuration : `sha256:8a3f0082cf5e0201b8a82be17e55cfa49855f16f77a13edd4ec3e7fd918dea90`.
+
+Une vérification anonyme depuis la cible a recalculé les empreintes index/manifest/configuration et confirmé l’architecture AMD64 et le `BUILD_COMMIT` exact. Aucun tag stable/latest, release ou branche principale n’a été modifié.
+
+## Installation contrôlée
+
+L’image candidate épinglée par digest est installée sur la cible autorisée. Avant le basculement, la configuration a été sauvegardée ; après arrêt contrôlé de l’application, les archives de la base et des volumes applicatifs ont été créées et vérifiées. Le téléchargement et l’identité locale ont été vérifiés avant l’arrêt.
+
+Les contrôles après installation ont réussi : source active exacte, quatre réponses HTTP 200 (disponibilité, santé, configuration et page d’accueil), mêmes montages, mêmes nombres de documents avant/après, configuration YAML inchangée et ancienne installation conservée. La référence précédente reste disponible pour un retour arrière. Seule une ancienne image sans référence de conteneur a été supprimée pour libérer de l’espace ; aucun volume n’a été supprimé.
+
+Une sonde exécutée dans l’application installée confirme la restauration du mode enregistré avec et sans paramètres d’URL, la priorité de FAST explicite, le refus de perte silencieuse du contexte et la conservation des six politiques et six agents configurés en modèles gratuits. Elle ne lance aucune génération externe et ne modifie pas les conversations.
+
+Le correctif de conservation du mode est actif. Les anciennes conversations sans réglages enregistrés nécessitent un nouvel envoi explicite en mode mission. La qualité factuelle et les sources d’une vraie mission restent une validation distincte ; cette installation ne constitue pas une promotion stable/latest ni une validation globale de BOT MODE.
