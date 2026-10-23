@@ -7,7 +7,7 @@ Source corrigée b2213e9717b879a91181c6ac9d7607124c30258b. Persistance des recei
 
 | Lot | État dans le registre actuel | Contrôle attendu | Portée à ne pas inventer |
 |---|---|---|---|
-| Enfant imbriqué et création dynamique | Non prouvés par les cinq tâches planifiées | Création/sélection par l'orchestrateur, ACL centralisées, lignée enfant durable, résultat et Oracle/P6 | Un spécialiste du graphe ne suffit pas; aucune nouvelle mission externe autorisée |
+| Enfant imbriqué et création dynamique | Enfant préautorisé durable local acquis (39899705393) ; création dynamique/runtime self et enfant externe restent ouverts | Création/sélection par l'orchestrateur, ACL centralisées, lignée enfant durable, résultat et Oracle/P6 | Un spécialiste du graphe ne suffit pas; aucune nouvelle mission externe autorisée |
 | Endurance modèle seul, 180 minutes | Nouvelle preuve exacte b221 à obtenir | Workflow existant botmode-v1-mission-soak.yml, durée explicitement 180, temps réel observé, Redis/checkpoints/plan, pas de publication anticipée, Oracle puis un message MongoDB | Le défaut du workflow est 3 minutes; ce mode court ne clôt pas trois heures |
 | HITL 30 minutes | Pause/reprise courte existante, durée complète non acquise dans le registre | Vraie interruption persistée, 30 minutes chronométrées, réauthentification si nécessaire, reprise unique sans duplication | Un simple sommeil ou des horloges simulées ne prouvent pas la reprise |
 | Compaction, budget, watchdog et outils sur longue mission | Non couverts par le seul soak modèle | Scénario borné avec appels d'outils, croissance et compaction, budget/retries, arrêt et reprise observés | Trois heures d'un flux modèle ne qualifient pas ces fonctions |
@@ -27,3 +27,6 @@ Le test affirme explicitement ne pas couvrir les outils réels, les fournisseurs
 4. Rapprocher la source finale et les manifestes des PR, puis qualifier cette composition exacte avant D03/D04. Aucune fusion ou publication implicite.
 
 Aucun nouveau test long, build, appel fournisseur ou changement d'installation n'a été lancé pour établir ce plan. Aucun périmètre V1 n'est réduit; D01 reste ouvert, ainsi que les autres gates de release. NO-GO stable.
+
+## Avancée locale — enfant autorisé
+Le [lot enfant local](BOTMODE_V1_LOCAL_CHILD_LINEAGE_20261023.md), run 39899705393 sur image b221 conservée, établit un cycle parent/enfant/parent, Oracle VERIFIED, propriétaire/agent autorisés et lignée MongoDB avant/après redémarrage. Zéro événement enfant SSE observé : progression UI non validée. Fournisseur local et host routing désactivé ; aucun transfert à une mission externe. Le cas self passe en contrat SDK local mais sa durabilité dans l'application reste à établir. D01 reste ouvert.
