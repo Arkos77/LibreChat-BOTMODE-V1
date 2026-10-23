@@ -70,6 +70,11 @@ if os.environ.get('CI_LIVE_FREE_FIVE_TASKS')=='true':
         compat=copy.deepcopy(allowed[0])
         compat['name']='OpenRouterFreeCompatCI'
         compat.pop('provider',None)
+        # New opt-in: preserve the same authorized OpenRouter API URL/key
+        # while selecting the canonical OpenAI-compatible SDK constructor.
+        # A virtual free-only route is not a second account/provider.
+        compat['customParams']=dict(compat.get('customParams') or {})
+        compat['customParams']['defaultParamsEndpoint']='openAI'
         compat['models']={'fetch':False,'default':['openrouter/free']}
         data['endpoints']['custom'].append(compat)
         print('CI_LIVE_FREE_COMPAT_FREE_ENDPOINT_ISOLATED=PASS',flush=True)

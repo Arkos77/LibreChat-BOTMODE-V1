@@ -115,10 +115,18 @@ export function getOpenAIConfig(
   const isAnthropic = options.customParams?.defaultParamsEndpoint === EModelEndpoint.anthropic;
   const isGoogle = options.customParams?.defaultParamsEndpoint === EModelEndpoint.google;
   const isOpenRouter = options.customParams?.defaultParamsEndpoint === KnownEndpoints.openrouter;
+  // Explicit compatibility endpoint choice is authoritative. OpenRouter's
+  // API is OpenAI-compatible, but its URL/name normally auto-selects the
+  // OpenRouter-specific SDK model. An opted-in custom fallback binding needs
+  // the canonical OpenAI model constructor, while keeping its independently
+  // authorized OpenRouter URL and key. Default behavior is unchanged.
+  const forceOpenAICompatible =
+    options.customParams?.defaultParamsEndpoint === EModelEndpoint.openAI;
 
   const useOpenRouter =
     !isAnthropic &&
     !isGoogle &&
+    !forceOpenAICompatible &&
     (isOpenRouter || includesOpenRouter(baseURL) || includesOpenRouter(endpoint));
   const isVercel =
     !isAnthropic &&
