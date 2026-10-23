@@ -7,6 +7,42 @@ describe('P11 model invocation evidence', () => {
     selectedModel: 'b:free',
     agentId: 'agent-primary',
   };
+  it.each(['own', 'foreign', 'forged', 'ambiguous', 'missing-mission'])(
+    'attributes only canonical actors of the selected agent: %s',
+    (mode) => {
+      const { nodeIdentity } = require('@librechat/api');
+      const nodeId = nodeIdentity('fixture-mission', 'task');
+      const plan = {
+        mission: { missionId: mode === 'missing-mission' ? undefined : 'fixture-mission' },
+        tasks: [
+          {
+            key: 'task',
+            nodeId: mode === 'forged' ? 'forged-node' : nodeId,
+            agentId: mode === 'foreign' ? 'foreign-agent' : 'agent-primary',
+          },
+        ],
+      };
+      if (mode === 'ambiguous') plan.tasks.push({ ...plan.tasks[0], agentId: 'foreign-agent' });
+      const receipt = projectHostModelUsage(
+        decision,
+        [
+          {
+            agentId: nodeId,
+            provider: 'openrouter',
+            model: 'b:free',
+            input_tokens: 2,
+            output_tokens: 1,
+          },
+        ],
+        plan,
+      );
+      if (mode === 'own')
+        expect(receipt.modelCalls).toMatchObject([
+          { actorId: nodeId, inputTokens: 2, outputTokens: 1 },
+        ]);
+      else expect(receipt).toBeUndefined();
+    },
+  );
   it.each(['ambiguous-runtime', 'unapproved-model', 'unapproved-runtime'])(
     'does not admit ambiguous or unauthorized compatibility usage: %s',
     (mode) => {
