@@ -1,6 +1,7 @@
 import { renderHook, act } from '@testing-library/react';
 import { Constants, EModelEndpoint } from 'librechat-data-provider';
 import type { TConversation, TMessage, TSubmission } from 'librechat-data-provider';
+import type { ExtendedFile } from '~/common';
 import useChatFunctions from '../useChatFunctions';
 import { isPasteSubmitted } from '~/utils';
 
@@ -13,9 +14,10 @@ const mockGetSender = jest.fn(() => 'Assistant');
 const mockGetExpiry = jest.fn(() => 'expiry-key');
 const mockGetQueryData = jest.fn(() => ({}));
 const mockLoggerWarn = jest.fn();
+let mockSearchParams = new URLSearchParams();
 
 jest.mock('react-router-dom', () => ({
-  useSearchParams: () => [new URLSearchParams(), jest.fn()],
+  useSearchParams: () => [mockSearchParams, jest.fn()],
   useNavigate: () => mockNavigate,
 }));
 
@@ -102,7 +104,11 @@ const conversation = (conversationId: string) =>
 function renderAsk(
   messages: TMessage[] | undefined,
   conversationId = 'conversation-1',
-  options: { endpoint?: TConversation['endpoint']; isSubmitting?: boolean } = {},
+  options: {
+    endpoint?: TConversation['endpoint'];
+    isSubmitting?: boolean;
+    files?: Map<string, ExtendedFile>;
+  } = {},
 ) {
   const setMessages = jest.fn();
   const setSubmission = jest.fn();
@@ -119,6 +125,8 @@ function renderAsk(
       getMessages,
       setMessages,
       setSubmission,
+      files: options.files,
+      setFiles: jest.fn(),
     }),
   );
 
@@ -129,7 +137,59 @@ describe('useChatFunctions ask', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetQueryData.mockReturnValue({});
+    mockSearchParams = new URLSearchParams();
   });
+
+  it.each([false, true])(
+    'keeps empty file overrides authoritative for BOT MODE (regenerate: %s)',
+    (isRegenerate) => {
+      mockSearchParams = new URLSearchParams({
+        botmode: '1',
+        botmode_mode: 'analyze',
+        botmode_agent_mode: 'auto',
+        botmode_agent_bindings: JSON.stringify([
+          { id: 'research-agent', name: 'RECHERCHE' },
+          { id: 'analysis-agent', name: 'ANALYSE' },
+          { id: 'documents-agent', name: 'DOCUMENTS' },
+          { id: 'writing-agent', name: 'RÉDACTION' },
+        ]),
+      });
+      const parent = {
+        ...userMessage('user-files'),
+        files: [{ file_id: 'old-parent-file' }],
+      } as TMessage;
+      const { result, setSubmission } = renderAsk(
+        [parent, assistantMessage('response-files', parent.messageId)],
+        'conversation-1',
+        {
+          files: new Map([
+            [
+              'next-draft-file',
+              {
+                file_id: 'next-draft-file',
+                filename: 'next.pdf',
+                type: 'application/pdf',
+              } as ExtendedFile,
+            ],
+          ]),
+        },
+      );
+      act(() => {
+        result.current.ask(
+          { text: 'Analyze this request', parentMessageId: parent.messageId },
+          { isRegenerate, overrideFiles: [] },
+        );
+      });
+      expect(setSubmission).toHaveBeenCalledTimes(1);
+      const submission = setSubmission.mock.calls[0][0] as TSubmission & {
+        userMessage: { orchestratorMission: { mission: { objectives: Array<{ key: string }> } } };
+      };
+      expect(submission.userMessage.files ?? []).toEqual([]);
+      expect(
+        submission.userMessage.orchestratorMission.mission.objectives.map((task) => task.key),
+      ).toEqual(['research', 'analysis', 'synthesis']);
+    },
+  );
 
   it('refuses to send to an existing conversation before its history loads', () => {
     const { result, getMessages, setMessages, setSubmission } = renderAsk(undefined);

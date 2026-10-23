@@ -1,6 +1,7 @@
 import type {
   AgentInputs,
   BaseGraphState,
+  OpenAIClientOptions,
   MultiAgentGraphConfig,
   StandardGraphConfig,
 } from '@librechat/agents';
@@ -15,6 +16,30 @@ export interface NativeMissionPlan {
   graphConfig: StandardGraphConfig | MultiAgentGraphConfig;
   actors: Array<{ nodeId: string; agentId: string; taskId: string }>;
   validation: Array<{ taskId: string; nodeId: string; requirements: OracleRequirement[] }>;
+}
+
+function validatedClientOptions(binding: AgentInputs, task: PlannedTask) {
+  if (
+    task.validation.length === 0 ||
+    !['openai', 'openrouter'].includes(binding.provider.toLowerCase())
+  ) {
+    return binding.clientOptions;
+  }
+  const options = binding.clientOptions as OpenAIClientOptions | undefined;
+  if (options?.useResponsesApi === true) {
+    return binding.clientOptions;
+  }
+  const format = options?.modelKwargs?.response_format;
+  if (format?.type === 'json_schema' || format?.type === 'json_object') {
+    return binding.clientOptions;
+  }
+  return {
+    ...options,
+    modelKwargs: {
+      ...options?.modelKwargs,
+      response_format: { type: 'json_object' },
+    },
+  };
 }
 
 function messageCandidate(
@@ -91,6 +116,9 @@ export function compileNativePlan(
     return {
       ...binding,
       agentId: task.nodeId,
+      ...(task.validation.length > 0 && {
+        clientOptions: validatedClientOptions(binding, task),
+      }),
       instructions: [
         binding.instructions,
         'Mission planning context (not execution permission):',
@@ -101,7 +129,15 @@ export function compileNativePlan(
           objective: task.objective,
           constraints: task.constraints,
           requiredCapabilities: task.requiredCapabilities,
+          ...(task.validation.length > 0 && { validation: task.validation }),
         }),
+        ...(task.validation.length === 0
+          ? []
+          : [
+              'Required task output: return exactly one JSON object, without Markdown fences or surrounding prose. Use scalar fields only; put detailed findings and source citations in a result string.',
+              'The validation criteria above are checks, not values to copy. Report completion honestly; never claim a criterion is met when the requested work or evidence is missing.',
+              'Respect the mission deadline and other constraints. Distinguish sourced facts from estimates and unknowns. Do not invent amounts, payment delays or citations; state when a source does not establish a claim.',
+            ]),
       ]
         .filter(Boolean)
         .join('\n'),
