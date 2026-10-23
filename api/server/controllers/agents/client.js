@@ -156,6 +156,7 @@ const {
   assertTerminalMissionTasksVerified,
   areMissionOracleResultsEquivalent,
   normalizeMissionOracleState,
+  getMissionOracleFailure,
   promoteTransientMissionOracleEvidence,
 } = require('@librechat/api');
 const {
@@ -4803,12 +4804,32 @@ class AgentClient extends BaseClient {
         );
         throw err;
       }
-      if (err?.code === 'MISSION_ORACLE_FAILURE') {
+      const missionOracleFailure =
+        this.orchestratorPlan == null
+          ? undefined
+          : getMissionOracleFailure(this.orchestratorPlan, this.missionOracleState);
+      if (err?.code === 'MISSION_ORACLE_FAILURE' || missionOracleFailure != null) {
         logger.warn(
           '[api/server/controllers/agents/client.js #sendCompletion] Mission Oracle blocked terminal publication',
           { conversationId: this.conversationId },
         );
-        throw err;
+        throw missionOracleFailure ?? err;
+      }
+      if (
+        this.orchestratorPlan != null &&
+        !abortController.signal.aborted &&
+        !isStepLimitError(err)
+      ) {
+        logger.warn(
+          '[api/server/controllers/agents/client.js #sendCompletion] Mission execution failed before publication',
+          getSafeErrorMetadata(err),
+        );
+        throw Object.assign(
+          new Error('Mission execution failed; a final answer was not published.'),
+          {
+            code: 'MISSION_EXECUTION_FAILURE',
+          },
+        );
       }
       if (abortController.signal.aborted) {
         logger.debug(
@@ -5566,12 +5587,32 @@ class AgentClient extends BaseClient {
         );
         throw err;
       }
-      if (err?.code === 'MISSION_ORACLE_FAILURE') {
+      const missionOracleFailure =
+        this.orchestratorPlan == null
+          ? undefined
+          : getMissionOracleFailure(this.orchestratorPlan, this.missionOracleState);
+      if (err?.code === 'MISSION_ORACLE_FAILURE' || missionOracleFailure != null) {
         logger.warn(
           '[api/server/controllers/agents/client.js #resumeCompletion] Mission Oracle blocked terminal publication',
           { conversationId: this.conversationId },
         );
-        throw err;
+        throw missionOracleFailure ?? err;
+      }
+      if (
+        this.orchestratorPlan != null &&
+        !abortController.signal.aborted &&
+        !isStepLimitError(err)
+      ) {
+        logger.warn(
+          '[api/server/controllers/agents/client.js #resumeCompletion] Mission execution failed before publication',
+          getSafeErrorMetadata(err),
+        );
+        throw Object.assign(
+          new Error('Mission execution failed; a final answer was not published.'),
+          {
+            code: 'MISSION_EXECUTION_FAILURE',
+          },
+        );
       }
       if (abortController.signal.aborted) {
         logger.debug(

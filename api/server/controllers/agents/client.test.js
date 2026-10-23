@@ -3513,6 +3513,116 @@ describe('AgentClient - startup telemetry', () => {
     });
   });
 
+  it.each([true, false])(
+    'does not swallow a real SDK aggregate (persisted Oracle result: %s)',
+    async (hasPersistedResult) => {
+      jest.clearAllMocks();
+      mockIsHITLEnabled.mockReturnValue(false);
+      const { Run } = jest.requireActual('@librechat/agents');
+      const { HumanMessage } = require('@librechat/agents/langchain/messages');
+      const { deterministicPlanner, compileNativePlan } = jest.requireActual('@librechat/api');
+      const plan = deterministicPlanner.planMission(
+        {
+          missionId: 'offline-research-failure',
+          taskId: 'root',
+          objective: 'Check a time-bounded request',
+          requiredCapabilities: ['basic'],
+          constraints: [],
+          validation: { criteria: [{ id: 'complete', field: 'ok', expected: true }] },
+          objectives: [
+            {
+              key: 'research',
+              objective: 'Find sources',
+              requiredCapabilities: ['basic'],
+              dependsOn: [],
+            },
+            {
+              key: 'analysis',
+              objective: 'Check feasibility',
+              requiredCapabilities: ['basic'],
+              dependsOn: ['research'],
+            },
+            {
+              key: 'documents',
+              objective: 'Check documents',
+              requiredCapabilities: ['basic'],
+              dependsOn: ['research'],
+            },
+          ],
+        },
+        {
+          worker: {
+            id: 'worker',
+            agentId: 'worker',
+            role: 'worker',
+            capabilities: ['basic'],
+            constraints: [],
+          },
+          specialists: [],
+        },
+      );
+      const client = new AgentClient({
+        req: {
+          user: { id: 'user-123' },
+          body: {},
+          config: { endpoints: { [EModelEndpoint.agents]: {} } },
+        },
+        res: {},
+        agent: {
+          id: 'worker',
+          endpoint: EModelEndpoint.openAI,
+          provider: EModelEndpoint.openAI,
+          model_parameters: { model: 'offline' },
+        },
+        endpointTokenConfig: {},
+        eventHandlers: {},
+        collectedUsage: [],
+        artifactPromises: [],
+        contentParts: [{ type: ContentTypes.TEXT, text: 'private unfinished research' }],
+      });
+      client.orchestratorPlan = plan;
+      client.missionOracleState = { evidence: {}, results: {} };
+      client.conversationId = 'offline-research-failure';
+      client.responseMessageId = 'offline-response';
+      client.parentMessageId = 'offline-parent';
+      client.recordCollectedUsage = jest.fn().mockResolvedValue();
+      const native = compileNativePlan(
+        plan,
+        new Map([['worker', { agentId: 'worker', provider: Providers.OPENAI }]]),
+        undefined,
+        undefined,
+        async (result) => {
+          if (hasPersistedResult) client.missionOracleState.results[result.taskId] = result;
+        },
+      );
+      const sdkRun = await Run.create({
+        runId: 'offline-aggregate',
+        graphConfig: native.graphConfig,
+      });
+      sdkRun.Graph.overrideTestModel(['## private unfinished research']);
+      mockCreateRun.mockResolvedValue({
+        Graph: null,
+        processStream: () =>
+          sdkRun.processStream(
+            { messages: [new HumanMessage('Execute offline.')] },
+            { version: 'v2' },
+          ),
+        getCalibrationRatio: () => 0,
+      });
+
+      await expect(client.chatCompletion({ payload: [] })).rejects.toMatchObject({
+        code: hasPersistedResult ? 'MISSION_ORACLE_FAILURE' : 'MISSION_EXECUTION_FAILURE',
+        message: expect.stringContaining(
+          hasPersistedResult ? 'INVALID_CANDIDATE' : 'not published',
+        ),
+      });
+      expect(client.contentParts.some((part) => part.type === ContentTypes.ERROR)).toBe(false);
+      expect(Object.keys(client.missionOracleState.results)).toEqual(
+        hasPersistedResult ? [plan.tasks[0].taskId] : [],
+      );
+    },
+  );
+
   it('fails chatCompletion closed when terminal Mission Oracle returns UNKNOWN', async () => {
     jest.clearAllMocks();
     mockIsHITLEnabled.mockReturnValue(false);
@@ -8789,6 +8899,64 @@ describe('AgentClient - resumeCompletion content protection', () => {
       ]);
     require('~/models').getFiles.mockReset().mockResolvedValue([]);
   });
+
+  it.each([true, false])(
+    'does not return a resumed mission draft (persisted Oracle result: %s)',
+    async (hasPersistedResult) => {
+      const { deterministicPlanner, validateMissionTask } = jest.requireActual('@librechat/api');
+      const context = makeContext(undefined);
+      const plan = deterministicPlanner.planMission(
+        {
+          missionId: 'resumed-failure',
+          taskId: 'resumed-root',
+          objective: 'Resume checked work',
+          requiredCapabilities: ['basic'],
+          constraints: [],
+          validation: { criteria: [{ id: 'ok', field: 'ok', expected: true }] },
+        },
+        {
+          worker: {
+            id: 'worker',
+            agentId: 'agent-123',
+            role: 'worker',
+            capabilities: ['basic'],
+            constraints: [],
+          },
+          specialists: [],
+        },
+      );
+      const task = plan.tasks[0];
+      const result = await validateMissionTask({
+        taskId: task.taskId,
+        nodeId: task.nodeId,
+        agentId: task.agentId,
+        candidate: 'private resumed draft',
+        requirements: task.validation,
+      });
+      context.orchestratorPlan = plan;
+      context.missionOracleState = {
+        evidence: {},
+        results: hasPersistedResult ? { [task.taskId]: result } : {},
+      };
+      context.contentParts = [{ type: ContentTypes.TEXT, text: 'private resumed draft' }];
+      mockCreateRun.mockResolvedValue({
+        resume: async () => {
+          throw new Error('Multiple errors occurred during superstep 2.');
+        },
+        getCalibrationRatio: () => 0,
+      });
+
+      await expect(
+        AgentClient.prototype.resumeCompletion.call(context, { resumeValue: {} }),
+      ).rejects.toMatchObject({
+        code: hasPersistedResult ? 'MISSION_ORACLE_FAILURE' : 'MISSION_EXECUTION_FAILURE',
+        message: expect.stringContaining(
+          hasPersistedResult ? 'INVALID_CANDIDATE' : 'not published',
+        ),
+      });
+      expect(context.contentParts.some((part) => part.type === ContentTypes.ERROR)).toBe(false);
+    },
+  );
 
   it('wires binding-specific balance admission to the final model payload on resume', async () => {
     const api = require('@librechat/api');

@@ -35,6 +35,111 @@ const base = {
   constraints: ['offline'],
 };
 
+describe('validated native output contract', () => {
+  const validatedPlan = () =>
+    deterministicPlanner.planMission(
+      {
+        ...base,
+        validation: { criteria: [{ id: 'complete', field: 'complete', expected: true }] },
+      },
+      context,
+    );
+
+  it.each([Providers.OPENAI, 'openrouter'])(
+    'gives the producer the validation contract and JSON transport for %s',
+    (provider) => {
+      const input = new Map(bindings);
+      input.set('worker', {
+        ...bindings.get('worker')!,
+        provider: provider as AgentInputs['provider'],
+        clientOptions: { model: 'offline-model', temperature: 0.2 },
+      });
+      const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
+      const machineContext = JSON.parse(
+        String(agent.instructions)
+          .split('\n')
+          .find((line) => line.startsWith('{'))!,
+      );
+      expect(machineContext.validation).toEqual([
+        { criteria: [{ id: 'complete', field: 'complete', expected: true }] },
+      ]);
+      expect(agent.clientOptions).toMatchObject({
+        model: 'offline-model',
+        temperature: 0.2,
+        modelKwargs: { response_format: { type: 'json_object' } },
+      });
+      expect(input.get('worker')!.clientOptions).toEqual({
+        model: 'offline-model',
+        temperature: 0.2,
+      });
+    },
+  );
+
+  it('does not inject Chat Completions kwargs into the Responses API', () => {
+    const input = new Map(bindings);
+    input.set('worker', {
+      ...bindings.get('worker')!,
+      clientOptions: { model: 'offline-response-model', useResponsesApi: true },
+    });
+    const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
+    expect(agent.clientOptions).toEqual({ model: 'offline-response-model', useResponsesApi: true });
+  });
+
+  it('keeps an explicit structured JSON schema and unrelated provider options', () => {
+    const schema = {
+      type: 'json_schema',
+      json_schema: { name: 'task', schema: { type: 'object' } },
+    };
+    const input = new Map(bindings);
+    input.set('worker', {
+      ...bindings.get('worker')!,
+      clientOptions: {
+        modelKwargs: { response_format: schema, provider: { require_parameters: true } },
+      },
+    });
+    const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
+    expect(agent.clientOptions).toEqual(input.get('worker')!.clientOptions);
+  });
+
+  it('replaces explicit text output for a task that Oracle requires to be JSON', () => {
+    const input = new Map(bindings);
+    input.set('worker', {
+      ...bindings.get('worker')!,
+      clientOptions: { modelKwargs: { response_format: { type: 'text' } } },
+    });
+    expect(
+      compileNativePlan(validatedPlan(), input).graphConfig.agents[0].clientOptions,
+    ).toMatchObject({
+      modelKwargs: { response_format: { type: 'json_object' } },
+    });
+  });
+
+  it('does not inject OpenAI transport fields into another provider', () => {
+    const input = new Map(bindings);
+    input.set('worker', {
+      agentId: 'worker',
+      provider: Providers.ANTHROPIC,
+      clientOptions: { model: 'offline-model' },
+    });
+    const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
+    expect(agent.clientOptions).toEqual({ model: 'offline-model' });
+    const machineContext = JSON.parse(
+      String(agent.instructions)
+        .split('\n')
+        .find((line) => line.startsWith('{'))!,
+    );
+    expect(machineContext.validation).toEqual([
+      { criteria: [{ id: 'complete', field: 'complete', expected: true }] },
+    ]);
+  });
+
+  it('leaves a legacy task without validation transport unchanged', () => {
+    const agent = compileNativePlan(deterministicPlanner.planMission(base, context), bindings)
+      .graphConfig.agents[0];
+    expect(agent.clientOptions).toBeUndefined();
+  });
+});
+
 describe('native plan compilation', () => {
   it('executes the zero-specialist configuration on the real StandardGraph', async () => {
     const plan = deterministicPlanner.planMission(base, context);

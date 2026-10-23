@@ -42,6 +42,7 @@ import useGetSender from '~/hooks/Conversations/useGetSender';
 import store, { useGetEphemeralAgent } from '~/store';
 import { startupConfigKey } from '~/data-provider';
 import useUserKey from '~/hooks/Input/useUserKey';
+import { getBotModeObjectives } from './mission';
 import { useAuthContext } from '~/hooks';
 
 /** A revalidating cache younger than this is locally authoritative (the run
@@ -596,6 +597,7 @@ export default function useChatFunctions({
       quotes: quotes.length > 0 ? quotes : undefined,
     };
 
+    const submissionFiles = overrideFiles ?? targetParentMessage?.files;
     const botModeMode = getBotModeExecutionMode(searchParams, text);
     if (shouldUseBotModeMission(searchParams, text) && isAgentsEndpoint(endpoint)) {
       const botModeAgentId = conversation?.agent_id;
@@ -655,96 +657,10 @@ export default function useChatFunctions({
           constraints: [],
         }));
         const mode = botModeMode;
-        const analyzeObjectives = [
-          {
-            key: 'research',
-            objective:
-              'Rechercher en profondeur les informations, alternatives, sources et concurrents.',
-            requiredCapabilities: ['web_search'],
-            dependsOn: [],
-          },
-          {
-            key: 'analysis',
-            objective: 'Analyser la faisabilité, les risques, les opportunités et les scénarios.',
-            requiredCapabilities: ['analysis'],
-            dependsOn: ['research'],
-          },
-          {
-            key: 'engineering',
-            objective: 'Évaluer l’architecture et tester les éléments techniques pertinents.',
-            requiredCapabilities: ['execute_code'],
-            dependsOn: ['analysis'],
-          },
-          {
-            key: 'documentation',
-            objective: 'Vérifier les documents, données et preuves disponibles.',
-            requiredCapabilities: ['file_search'],
-            dependsOn: ['research'],
-          },
-          {
-            key: 'synthesis',
-            objective:
-              'Produire une synthèse consolidée avec conclusions et pistes de développement.',
-            requiredCapabilities: ['writing'],
-            dependsOn: ['analysis', 'engineering', 'documentation'],
-          },
-        ];
-        const developObjectives = [
-          {
-            key: 'research',
-            objective:
-              'Rechercher les solutions, références et contraintes techniques pertinentes.',
-            requiredCapabilities: ['web_search'],
-            dependsOn: [],
-          },
-          {
-            key: 'analysis',
-            objective: 'Évaluer la faisabilité, les risques, les coûts et les scénarios.',
-            requiredCapabilities: ['analysis'],
-            dependsOn: ['research'],
-          },
-          {
-            key: 'engineering',
-            objective: 'Concevoir et tester le volet technique de la solution.',
-            requiredCapabilities: ['execute_code'],
-            dependsOn: ['analysis'],
-          },
-          {
-            key: 'documentation',
-            objective: 'Rassembler les éléments documentaires et preuves utiles.',
-            requiredCapabilities: ['file_search'],
-            dependsOn: ['research'],
-          },
-          {
-            key: 'synthesis',
-            objective: 'Consolider le plan de développement et les prochaines étapes.',
-            requiredCapabilities: ['writing'],
-            dependsOn: ['engineering', 'documentation'],
-          },
-        ];
-        const watchObjectives = [
-          {
-            key: 'research',
-            objective: 'Effectuer une veille approfondie et recueillir les sources pertinentes.',
-            requiredCapabilities: ['web_search'],
-            dependsOn: [],
-          },
-          {
-            key: 'analysis',
-            objective: 'Analyser les évolutions, signaux, risques et opportunités.',
-            requiredCapabilities: ['analysis'],
-            dependsOn: ['research'],
-          },
-          {
-            key: 'synthesis',
-            objective: 'Synthétiser les résultats de la veille avec des conclusions vérifiables.',
-            requiredCapabilities: ['writing'],
-            dependsOn: ['analysis'],
-          },
-        ];
-        let objectives = analyzeObjectives;
-        if (mode === 'develop') objectives = developObjectives;
-        else if (mode === 'watch') objectives = watchObjectives;
+        let objectives = getBotModeObjectives(
+          mode,
+          (submissionFiles?.length ?? 0) > 0 || (!isRegenerate && (files?.size ?? 0) > 0),
+        );
         if (manualAgentIds != null) {
           objectives = selectedDefinitions.map(([id, , role, capabilities], index) => ({
             key: `selected_${index + 1}`,
@@ -813,7 +729,6 @@ export default function useChatFunctions({
       Object.assign(currentMsg, { orchestratorMission });
     }
 
-    const submissionFiles = overrideFiles ?? targetParentMessage?.files;
     const reuseFiles =
       (isRegenerate || (overrideFiles != null && overrideFiles.length)) &&
       submissionFiles &&

@@ -36,6 +36,73 @@ const terminalPlan = (candidateExpected = true): MissionPlan => ({
   reasons: [{ code: 'WORKER_CAPABLE' }],
 });
 
+describe('persisted mission failure classification', () => {
+  it('recovers a scoped rejection without exposing the private candidate', async () => {
+    const plan = terminalPlan();
+    const result = await missionOracle.validateMissionTask({
+      taskId: 'task-terminal',
+      nodeId: 'node-terminal',
+      agentId: 'worker',
+      candidate: 'private draft that must never be published',
+      requirements: plan.tasks[0].validation,
+    });
+    const failure = missionOracle.getMissionOracleFailure(plan, {
+      evidence: {},
+      results: { 'task-terminal': result },
+    });
+    expect(failure).toMatchObject({ code: 'MISSION_ORACLE_FAILURE' });
+    expect(failure?.message).toContain('REJECTED');
+    expect(failure?.message).toContain('INVALID_CANDIDATE');
+    expect(failure?.message).not.toContain('private draft');
+  });
+
+  it('does not mistake another task or a verified result for a current rejection', async () => {
+    const plan = terminalPlan();
+    const valid = await missionOracle.validateMissionTask({
+      taskId: 'task-terminal',
+      nodeId: 'node-terminal',
+      agentId: 'worker',
+      candidate: '{"ok":true}',
+      requirements: plan.tasks[0].validation,
+    });
+    const foreign = await missionOracle.validateMissionTask({
+      taskId: 'foreign-task',
+      nodeId: 'foreign-node',
+      agentId: 'worker',
+      candidate: 'private foreign draft',
+      requirements: plan.tasks[0].validation,
+    });
+    expect(missionOracle.getMissionOracleFailure(plan)).toBeUndefined();
+    expect(
+      missionOracle.getMissionOracleFailure(plan, {
+        evidence: {},
+        results: { 'task-terminal': valid, 'foreign-task': foreign },
+      }),
+    ).toBeUndefined();
+  });
+
+  it.each(['UNKNOWN', 'HUMAN_REVIEW'] as const)(
+    'also blocks %s instead of certifying it',
+    async (status) => {
+      const plan = terminalPlan();
+      const result = await missionOracle.validateMissionTask({
+        taskId: 'task-terminal',
+        nodeId: 'node-terminal',
+        agentId: 'worker',
+        candidate: '{"ok":true}',
+        requirements: plan.tasks[0].validation,
+      });
+      result.verdicts[0].status = status;
+      expect(
+        missionOracle.getMissionOracleFailure(plan, {
+          evidence: {},
+          results: { 'task-terminal': result },
+        }),
+      ).toMatchObject({ code: 'MISSION_ORACLE_FAILURE', message: expect.stringContaining(status) });
+    },
+  );
+});
+
 describe('normalizeMissionOracleState', () => {
   it('returns a detached clone for valid durable state', () => {
     const state = {

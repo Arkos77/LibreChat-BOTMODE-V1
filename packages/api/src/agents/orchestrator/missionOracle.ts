@@ -300,6 +300,31 @@ export function assertMissionTaskVerified(result: MissionOracleTaskResult): void
   }
 }
 
+/** Recover the host's QA outcome when a graph wraps transition errors in an aggregate. */
+export function getMissionOracleFailure(
+  plan: MissionPlan,
+  state?: MissionOracleState,
+): (Error & { code: 'MISSION_ORACLE_FAILURE' }) | undefined {
+  for (const task of plan.tasks) {
+    const result = state?.results[task.taskId];
+    if (result?.taskId !== task.taskId || result.nodeId !== task.nodeId) {
+      continue;
+    }
+    const blocked = result.verdicts.find((verdict) => verdict.status !== 'VERIFIED');
+    if (blocked == null) {
+      continue;
+    }
+    const reasons = [...new Set(blocked.reasons.map((reason) => reason.code))].join(', ');
+    return Object.assign(
+      new Error(
+        `Native mission Oracle blocked task ${task.taskId} (${task.nodeId}): ${blocked.status}${reasons ? ` [${reasons}]` : ''}`,
+      ),
+      { code: 'MISSION_ORACLE_FAILURE' as const },
+    );
+  }
+  return undefined;
+}
+
 function messageCandidate(output: BaseMessage | undefined): string | undefined {
   return typeof output?.content === 'string' && output.content.trim() !== ''
     ? output.content

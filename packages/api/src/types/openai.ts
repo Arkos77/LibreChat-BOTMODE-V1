@@ -3,6 +3,7 @@ import { openAISchema } from 'librechat-data-provider';
 import type { BindToolsInput } from '@librechat/agents/langchain/language_models/chat_models';
 import type { OpenAIClientOptions, Providers } from '@librechat/agents';
 import type { TConfig } from 'librechat-data-provider';
+import type { OpenAI } from 'openai';
 import type { AzureOptions } from './azure';
 
 export type OpenAIParameters = z.infer<typeof openAISchema>;
@@ -31,6 +32,7 @@ export interface OpenAIConfigOptions {
 export type OpenAIConfiguration = OpenAIClientOptions['configuration'];
 
 export type OAIClientOptions = Omit<OpenAIClientOptions, 'verbosity'> & {
+  response_format?: OpenAI.Chat.Completions.ChatCompletionCreateParams['response_format'];
   include_reasoning?: boolean;
   /** Replays `reasoning_content` on tool-bearing turns (DeepSeek thinking-mode, #13366). */
   includeReasoningContent?: boolean;
