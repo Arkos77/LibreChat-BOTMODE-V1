@@ -1,3 +1,4 @@
+const { projectHostModelUsage } = require('./hostModelUsage');
 const { initializeAgent, getProviderConfig, decideHostModel } = require('@librechat/api');
 const { resolveHostModelRouting } = require('./hostModelRouting');
 const { createServer } = require('node:http');
@@ -217,6 +218,32 @@ describe('OpenRouter compatibility binding through native initialization', () =>
         expect(JSON.stringify(result)).toContain('fallback verified');
         expect(calls.map((request) => request.model)).toEqual(['primary:free', 'openrouter/free']);
         expect(calls[1].response_format).toEqual({ type: 'json_object' });
+        if (!streaming) {
+          const usage = result.messages[0].usage_metadata;
+          expect(usage).toMatchObject({ input_tokens: 1, output_tokens: 1 });
+          const receipt = projectHostModelUsage(resolved.hostModelDecision, [
+            {
+              ...usage,
+              agentId: resolved.id,
+              provider: fallback.provider,
+              model: fallback.clientOptions.model,
+            },
+          ]);
+          expect(receipt).toMatchObject({
+            fallbackUsed: true,
+            selectedProvider: 'OpenRouter',
+            resolvedProvider: 'openrouterfreecompatci',
+            resolvedModel: 'openrouter/free',
+            modelCalls: [
+              {
+                provider: 'openrouterfreecompatci',
+                runtimeProvider: 'openai',
+                inputTokens: 1,
+                outputTokens: 1,
+              },
+            ],
+          });
+        }
       } finally {
         await new Promise((resolve) => server.close(resolve));
       }
