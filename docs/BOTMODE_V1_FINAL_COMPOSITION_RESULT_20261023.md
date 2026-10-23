@@ -43,7 +43,27 @@ Images conservées un jour pour éviter toute reconstruction :
 - AMD64 : artefact 12488284884, botmode-final-d59dedf071d2-amd64-39923900344, expire le 24 octobre 2026 à 10:30:45 Paris.
 Chaque archive contient final-image.tar.gz, checksum, ID image et source. Nettoyage des stacks/volumes de runners SUCCESS.
 
-## Point d'arrêt concret : D03 de cette nouvelle source
+## Proposition D03 présentée avant autorisation (historique)
 [Proposition inactive](BOTMODE_V1_D03_d59dedf071d2_PROPOSAL.yml), hors Actions : réutiliser seulement ces archives, vérifier source/checksum/config ID/architecture, publier deux tags d'architecture propres à d59 puis l'index sha-d59dedf071d2 à partir de leurs digests immuables, vérifier sa visibilité anonyme. Aucun build, modèle, stable/latest, fusion ni installation dans cette proposition. Syntaxe Actions, shell et Python PASS.
 
-Une autorisation antérieure rattachée à une autre source n'est pas réutilisée pour cette publication. L'installation Chromebook reste séparée : préparer sauvegarde, quiescence, espace et conservation des configurations locales avant toute bascule. Cette qualification ne retire pas la stable historique et ne constitue pas un GO stable global de la nouvelle candidate.
+L'accord spécifique de cette source a ensuite été reçu et exécuté ci-dessous. L'installation Chromebook reste séparée : préparer sauvegarde, quiescence, espace et conservation des configurations locales avant toute bascule. Cette qualification ne retire pas la stable historique et ne constitue pas un GO stable global de la nouvelle candidate.
+
+## D03 candidate autorisée et publiée — 23 octobre 2026
+
+Accord utilisateur reçu après présentation de la proposition figée f189ac947311ac3d9b81b2660fbb20c9c493e2bf. Activation exacte sur ops/publish-d59dedf071d2-approved, commit pilote eb20b62342d5848880e145d419f1c5f9de8558d9, départ de la source applicative d59dedf071d26503ec9bec5a31ee474f0ccc9724.
+
+[Publication 39926287063](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39926287063) **SUCCESS** : restauration des archives déjà qualifiées 39923900344, checksum/source/configuration/architecture contrôlés, aucune reconstruction ni inférence.
+
+| Objet publié | Digest immuable |
+|---|---|
+| Index sha-d59dedf071d2 | sha256:2eb9e3714beda2603ce7efdff2c9fde581ab236dc0b4495a6156856f0757f685 |
+| AMD64 sha-d59dedf071d2-amd64 | sha256:c14d9192a01877fd6de06053cc0d0a3d504b3653358d65c4d30662dcfe4611ff |
+| ARM64 sha-d59dedf071d2-arm64 | sha256:d8d282d6d8fea5af02d7482661093f3046de8a92ef13f2703315c49282885f9f |
+
+Référence : ghcr.io/arkos77/librechat-botmode-v1@sha256:2eb9e3714beda2603ce7efdff2c9fde581ab236dc0b4495a6156856f0757f685.
+
+Jobs AMD64 120323371123, ARM64 120323371494, index 120329380382 : SUCCESS. Le job index vérifie les configurations distantes des deux manifests contre les ID qualifiés, assemble leurs digests, supprime l'authentification puis vérifie publiquement les plateformes Linux AMD64 et ARM64 : CANDIDATE_PUBLIC_TWO_ARCH_INDEX=PASS. Nettoyage d'authentification réussi. Preuve index/digest : artefact 12490147943, candidate-d59dedf071d2-publication-proof, conservé jusqu'au 30 octobre 2026 à 08:55:35 UTC.
+
+Le transfert ARM64 a pris plus longtemps ; aucune relance ni seconde compilation. Stable/latest, releases, fusion et installation restent inchangés. D03 est clos uniquement pour cette candidate ; ceci ne transforme pas les limites de qualification en preuves supplémentaires ni en GO stable global.
+
+Installation suivante à préparer séparément : préserver les modifications locales, sauvegarder configurations et données, vérifier espace et quiescence, utiliser le digest immuable, garder un retour arrière. Aucun effacement, arrêt ou basculement du Chromebook autorisé par cet accord D03.
