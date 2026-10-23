@@ -19,35 +19,91 @@ function describeContent(content) {
   return result;
 }
 
-function responseSummary(text, streaming, allowedModels = new Set()) {
-  const payloads = streaming
-    ? text
-        .split(/\r?\n/)
-        .filter((line) => line.startsWith('data:'))
-        .map((line) => line.slice(5).trim())
-        .filter((line) => line && line !== '[DONE]')
-    : [text];
+function responseCollector(streaming, allowedModels, maxBytes = Infinity) {
   let content = '';
+  let contentBytes = 0;
   let model;
   let finishReason;
   let protocolError = false;
-  for (const payload of payloads) {
-    try {
-      const parsed = JSON.parse(payload);
-      if (typeof parsed.model === 'string' && allowedModels.has(parsed.model)) model = parsed.model;
-      const choice = parsed.choices?.find((item) => item.index === 0);
+  return {
+    consume(payload) {
+      let parsed;
+      try {
+        parsed = JSON.parse(payload);
+      } catch {
+        protocolError = true;
+        return;
+      }
+      if (typeof parsed?.model === 'string' && allowedModels.has(parsed.model))
+        model = parsed.model;
+      const choice = parsed?.choices?.find((item) => item.index === 0);
       const delta = streaming ? choice?.delta?.content : choice?.message?.content;
-      if (typeof delta === 'string') content += delta;
+      if (typeof delta === 'string') {
+        contentBytes += Buffer.byteLength(delta, 'utf8');
+        // JSON deltas may split a surrogate pair: together it encodes as four bytes,
+        // whereas counting each isolated surrogate accounts for six replacement bytes.
+        const previous = content.charCodeAt(content.length - 1);
+        const next = delta.charCodeAt(0);
+        if (previous >= 0xd800 && previous <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) {
+          contentBytes -= 2;
+        }
+        if (contentBytes > maxBytes) throw new Error('OBSERVATION_BOUND');
+        content += delta;
+      }
       if (
         ['stop', 'length', 'tool_calls', 'content_filter', 'error'].includes(choice?.finish_reason)
       ) {
         finishReason = choice.finish_reason;
       }
-    } catch {
-      protocolError = true;
+    },
+    result: () => ({ model, finishReason, protocolError, content: describeContent(content) }),
+  };
+}
+
+function responseSummary(text, streaming, allowedModels = new Set()) {
+  const collector = responseCollector(streaming, allowedModels);
+  if (streaming) {
+    for (const line of text.split(/\r?\n/)) {
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (payload && payload !== '[DONE]') collector.consume(payload);
+    }
+  } else collector.consume(text);
+  return collector.result();
+}
+
+// Keep only one bounded SSE line plus bounded visible output, never the full stream.
+function sseCollector(allowedModels, maxBytes) {
+  const decoder = new (require('node:string_decoder').StringDecoder)('utf8');
+  const collector = responseCollector(true, allowedModels, maxBytes);
+  let line = '';
+  let lineBytes = 0;
+  function consume(text) {
+    let start = 0;
+    for (let i = 0; i <= text.length; i++) {
+      if (i !== text.length && text[i] !== '\n') continue;
+      const part = text.slice(start, i);
+      lineBytes += Buffer.byteLength(part, 'utf8');
+      if (lineBytes > maxBytes) throw new Error('OBSERVATION_BOUND');
+      line += part;
+      if (i !== text.length) {
+        if (line.startsWith('data:')) {
+          const payload = line.slice(5).trim();
+          if (payload && payload !== '[DONE]') collector.consume(payload);
+        }
+        line = '';
+        lineBytes = 0;
+      }
+      start = i + 1;
     }
   }
-  return { model, finishReason, protocolError, content: describeContent(content) };
+  return {
+    push: (chunk) => consume(decoder.write(chunk)),
+    finish() {
+      consume(decoder.end() + '\n');
+      return collector.result();
+    },
+  };
 }
 
 function installJsonObserver({
@@ -106,29 +162,31 @@ function installJsonObserver({
       const reader = clone.body?.getReader();
       let bytes = 0;
       const chunks = [];
+      const streaming = clone.headers.get('content-type')?.includes('text/event-stream') === true;
+      const stream = streaming ? sseCollector(allowedResponseModels, maxBytes) : undefined;
       try {
         if (reader) {
           while (true) {
             const next = await reader.read();
             if (next.done) break;
-            bytes += next.value.byteLength;
-            if (bytes > maxBytes) {
-              record.truncated = true;
-              void reader.cancel().catch(() => {});
-              break;
+            if (stream) {
+              stream.push(Buffer.from(next.value));
+            } else {
+              bytes += next.value.byteLength;
+              if (bytes > maxBytes) throw new Error('OBSERVATION_BOUND');
+              chunks.push(Buffer.from(next.value));
             }
-            chunks.push(Buffer.from(next.value));
           }
         }
         if (!record.truncated) {
-          record.response = responseSummary(
-            Buffer.concat(chunks).toString('utf8'),
-            clone.headers.get('content-type')?.includes('text/event-stream') === true,
-            allowedResponseModels,
-          );
+          record.response = stream
+            ? stream.finish()
+            : responseSummary(Buffer.concat(chunks).toString('utf8'), false, allowedResponseModels);
         }
-      } catch {
-        record.observationError = true;
+      } catch (error) {
+        if (error.message === 'OBSERVATION_BOUND') record.truncated = true;
+        else record.observationError = true;
+        void reader?.cancel().catch(() => {});
       }
       try {
         onRecord(record);
