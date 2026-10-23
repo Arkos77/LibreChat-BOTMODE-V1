@@ -140,6 +140,46 @@ describe('useChatFunctions ask', () => {
     mockSearchParams = new URLSearchParams();
   });
 
+  it.each(['auto', 'manual'])(
+    'keeps the %s mission active after the initial navigation',
+    (mode) => {
+      const bindings = JSON.stringify([
+        { id: 'research-agent', name: 'RECHERCHE' },
+        { id: 'analysis-agent', name: 'ANALYSE' },
+        { id: 'writing-agent', name: 'RÉDACTION' },
+      ]);
+      mockSearchParams = new URLSearchParams({
+        botmode: '1',
+        botmode_mode: 'analyze',
+        botmode_agent_mode: mode,
+        botmode_agent_bindings: bindings,
+        agent_id: 'agent-1',
+        prompt: 'one-shot launch prompt',
+        submit: 'true',
+      });
+      const initial = renderAsk([], Constants.NEW_CONVO);
+      act(() => {
+        initial.result.current.ask({ text: 'Investigate the request' });
+      });
+      const destination = new URL(mockNavigate.mock.calls.at(-1)![0], 'http://localhost');
+      expect(destination.searchParams.get('botmode_mode')).toBe('analyze');
+      expect(destination.searchParams.get('botmode_agent_mode')).toBe(mode);
+      expect(destination.searchParams.get('botmode_agent_bindings')).toBe(bindings);
+      expect(destination.searchParams.has('prompt')).toBe(false);
+      expect(destination.searchParams.has('submit')).toBe(false);
+
+      mockSearchParams = destination.searchParams;
+      initial.unmount();
+      const followUp = renderAsk([], 'saved-mission');
+      act(() => {
+        followUp.result.current.ask({ text: 'Continue after the failure' });
+      });
+      const next = followUp.setSubmission.mock.calls[0][0];
+      expect(next.userMessage.orchestratorMission).toBeDefined();
+      expect(next.userMessage.orchestratorMission.plannerContext.specialists).toHaveLength(3);
+    },
+  );
+
   it.each([false, true])(
     'keeps empty file overrides authoritative for BOT MODE (regenerate: %s)',
     (isRegenerate) => {
