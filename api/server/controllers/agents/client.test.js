@@ -9566,6 +9566,61 @@ describe('seedContextMeta', () => {
 });
 
 describe('AgentClient - P11 model invocation evidence', () => {
+  it('builds durable receipt metadata for a canonical mission actor without counting other agents', () => {
+    const { nodeIdentity } = jest.requireActual('@librechat/api');
+    const nodeId = nodeIdentity('receipt-mission', 'worker');
+    const otherNodeId = nodeIdentity('receipt-mission', 'specialist');
+    const client = Object.create(AgentClient.prototype);
+    client.orchestratorPlan = {
+      mission: { missionId: 'receipt-mission' },
+      tasks: [
+        { key: 'worker', nodeId, agentId: 'worker' },
+        { key: 'specialist', nodeId: otherNodeId, agentId: 'specialist' },
+      ],
+    };
+    client.options = {
+      agent: {
+        hostModelDecision: {
+          traceId: 'fixture-trace',
+          decisionId: 'fixture-decision',
+          agentId: 'worker',
+          selectedModel: 'primary:free',
+          selectedProvider: 'OpenRouter',
+          authorizedBindings: [
+            { provider: 'OpenRouter', model: 'primary:free' },
+            { provider: 'Compat', runtimeProvider: 'openAI', model: 'openrouter/free' },
+          ],
+        },
+      },
+    };
+    client.usageEmitSink = [
+      {
+        agentId: nodeId,
+        provider: 'openAI',
+        model: 'openrouter/free',
+        input_tokens: 2,
+        output_tokens: 1,
+      },
+      {
+        agentId: otherNodeId,
+        provider: 'openAI',
+        model: 'openrouter/free',
+        input_tokens: 40,
+        output_tokens: 20,
+      },
+    ];
+    const metadata = client.buildResponseMetadata();
+    expect(metadata.hostModelUsage).toMatchObject({
+      fallbackUsed: true,
+      resolvedProvider: 'compat',
+      modelCalls: [{ actorId: nodeId, runtimeProvider: 'openai', inputTokens: 2, outputTokens: 1 }],
+      total: { inputTokens: 2, outputTokens: 1 },
+    });
+    expect(metadata.hostModelUsage.modelCalls).toHaveLength(1);
+    expect(JSON.parse(JSON.stringify(metadata)).hostModelUsage).toEqual(metadata.hostModelUsage);
+    expect(metadata.usage).toMatchObject({ input: 42, output: 21 });
+  });
+
   it('persists an explicitly admitted compatibility fallback with separate SDK identity', () => {
     const client = Object.create(AgentClient.prototype);
     client.options = {
