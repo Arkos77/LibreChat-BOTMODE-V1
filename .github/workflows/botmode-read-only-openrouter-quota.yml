@@ -1,0 +1,51 @@
+name: BOTMODE Read Only OpenRouter Quota
+on:
+  push:
+    branches: [ops/check-openrouter-quota-20261023-001]
+permissions: {}
+jobs:
+  quota:
+    if: github.repository == 'Arkos77/LibreChat-BOTMODE-V1' && github.run_attempt == 1 && github.event.before == 'a6f6fee3c7dcfb5877fe798f759966774a046a58'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: One read-only key quota request; no model inference
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json,os,urllib.request,urllib.error
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs):
+                  return None
+          def summarize(raw):
+              quota=json.loads(raw).get('data',{}).get('free_model_daily_requests')
+              if not isinstance(quota,dict):
+                  return {'kind':'OPENROUTER_FREE_QUOTA','available':False}
+              clean={k:quota.get(k) for k in ('used','limit','remaining')}
+              if any(type(v) is not int or v<0 for v in clean.values()):
+                  raise ValueError('INVALID_QUOTA')
+              if clean['remaining']!=max(0,clean['limit']-clean['used']):
+                  raise ValueError('INCONSISTENT_QUOTA')
+              return {'kind':'OPENROUTER_FREE_QUOTA','available':True,**clean}
+          def main():
+              key=os.environ.get('OPENROUTER_API_KEY','')
+              if not key:
+                  print('CI_QUOTA_KEY_MISSING=TRUE');return 1
+              request=urllib.request.Request('https://openrouter.ai/api/v1/key',headers={'Authorization':'Bearer '+key,'Accept':'application/json'},method='GET')
+              try:
+                  with urllib.request.build_opener(NoRedirect()).open(request,timeout=20) as response:
+                      raw=response.read(65537)
+                      if len(raw)>65536:raise ValueError('BOUND')
+                      result=summarize(raw)
+                  print(json.dumps(result))
+                  return 0
+              except urllib.error.HTTPError as error:
+                  print('CI_QUOTA_HTTP_STATUS='+str(error.code));return 1
+              except Exception:
+                  print('CI_QUOTA_UNAVAILABLE=TRUE');return 1
+          if __name__=='__main__':
+              raise SystemExit(main())
+          
+          PY
+          
