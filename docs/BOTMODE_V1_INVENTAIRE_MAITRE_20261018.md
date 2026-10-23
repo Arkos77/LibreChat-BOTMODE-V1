@@ -1,5 +1,12 @@
 # BOT MODE V1 — INVENTAIRE MAÎTRE DES EXIGENCES ET PREUVES
 
+## Receipts natives — qualification locale complétée le 23 octobre 2026
+
+La vérification SDK→graphe→ModelEndHandler a reproduit un second écart : le graphe émet l'identifiant canonique de la tâche, alors que la receipt attend l'identifiant de l'agent enregistré. Correction liée au plan validé, sans changement des identités du graphe; nœuds étrangers/forgés/ambigus exclus. Source complète **b2213e9717b879a91181c6ac9d7607124c30258b**, branche fix/host-usage-runtime-alias-20261023. **270 tests locaux réussis dans sept suites**, revue indépendante sans constat.
+
+[Checkpoint et limites](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/d3ae434787b4a9d63e59eb5695962b6c05ffbfcf/docs/BOTMODE_V1_NATIVE_ACTOR_RECEIPTS_20261023.md). Une proposition inactive impose la présence et la validité de la receipt dans MongoDB pour réussir. Nouvelle image nécessaire car trois fichiers applicatifs ont changé depuis a6; une seule compilation et une seule mission gratuite proposées, en attente d'accord précis. Aucun nouveau build ni appel réel engagé. Le succès cinq verdicts/P6 a6 reste acquis; persistance réelle des nouvelles receipts, D01–D04 et NO-GO stable restent ouverts.
+
+
 ## Receipts — correctif local qualifié le 23 octobre 2026
 
 Un défaut de correspondance entre fournisseur configuré et fournisseur SDK est reproduit par initialisation native + appels SDK HTTP locaux (429→200) : OpenRouterFreeCompatCI est exécuté sous openAI et la projection rejetait son usage. Correction enregistrée dans la source **0f4691410fe614207001c8ff091a026325db2418**, branche fix/host-usage-runtime-alias-20261023. Le lien runtimeProvider vient uniquement de l'admission hôte; les modèles/fournisseurs inconnus et les alias ambigus restent exclus. Les identités configurée et SDK sont conservées séparément.
