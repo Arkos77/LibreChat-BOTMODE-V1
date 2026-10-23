@@ -6,6 +6,7 @@ tool schema and a configured authorized child ID are required. No secrets logged
 """
 import json
 import os
+import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -15,6 +16,9 @@ calls = {"parent_tool_requests": 0, "child_responses": 0, "parent_final": 0,
          "missing_tool": 0, "completion_calls": 0}
 child_id = os.environ.get("CI_AUTHORIZED_CHILD_ID", "").strip()
 MODEL = "openrouter/free"
+SOURCE_MODE = os.environ.get("CI_MISSION_SOURCE_MODE") == "1"
+SOURCE_URL = "https://ci-source.invalid/report"
+SOURCE_RESULT = json.dumps({"ok":True,"result":"Synthetic CI observation: "+SOURCE_URL,"sources":SOURCE_URL})
 
 def tool_name(request):
     for item in request.get("tools") or []:
@@ -37,6 +41,9 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
     def do_GET(self):
+        if SOURCE_MODE and self.path.startswith('/search?'):
+            with lock: calls['source_search_calls']=calls.get('source_search_calls',0)+1
+            return self.send({'query':'CI synthetic source','results':[{'url':SOURCE_URL,'title':'Synthetic CI source','content':'This is controlled fixture data, not a real-world financial claim.'}]})
         if self.path == "/health": return self.send({"status":"ok","configured":bool(child_id)})
         if self.path == "/metrics":
             with lock: snapshot=dict(calls)
@@ -46,6 +53,12 @@ class Handler(BaseHTTPRequestHandler):
         return self.send({"error":"not_found"},404)
     def do_POST(self):
         global child_id
+        if SOURCE_MODE and self.path.rstrip('/').endswith('/scrape'):
+            length=int(self.headers.get('Content-Length','0'))
+            if length < 2 or length > 1048576: return self.send({'error':'size'},400)
+            self.rfile.read(length)
+            with lock: calls['source_scrape_calls']=calls.get('source_scrape_calls',0)+1
+            return self.send({'success':True,'data':{'markdown':'Controlled synthetic CI evidence only.','metadata':{'sourceURL':SOURCE_URL,'title':'Synthetic CI source'}}})
         if self.path == "/configure":
             # A runner-local control endpoint. Expose only on ephemeral private CI runners.
             length=int(self.headers.get("Content-Length","0"))
@@ -74,7 +87,19 @@ class Handler(BaseHTTPRequestHandler):
         with lock:
             calls["completion_calls"]+=1
             number=calls["completion_calls"]
-        if has_tool_result and already_requested:
+        web_advertised=any(item.get('function',{}).get('name')=='web_search' for item in req.get('tools',[]) if isinstance(item,dict))
+        web_calls={tc.get('id') for m in messages if isinstance(m,dict) for tc in m.get('tool_calls',[]) if isinstance(tc,dict) and tc.get('function',{}).get('name')=='web_search'}
+        web_completed=any(m.get('role')=='tool' and m.get('tool_call_id') in web_calls for m in messages if isinstance(m,dict))
+        research_contract=any(isinstance(m.get('content'),str) and re.search(r'"outputContract"\s*:\s*"research-v1"',m['content']) for m in messages if isinstance(m,dict))
+        if SOURCE_MODE and research_contract and web_advertised and not web_completed:
+            with lock: calls['source_tool_requests']=calls.get('source_tool_requests',0)+1
+            message={'role':'assistant','content':None,'tool_calls':[{'id':'call_ci_search_'+str(number),'type':'function','function':{'name':'web_search','arguments':json.dumps({'query':'CI synthetic source'})}}]}
+            reason='tool_calls'
+        elif SOURCE_MODE and research_contract and web_advertised and web_completed:
+            with lock: calls['source_final']=calls.get('source_final',0)+1
+            message={'role':'assistant','content':SOURCE_RESULT}
+            reason='stop'
+        elif has_tool_result and already_requested:
             with lock: calls["parent_final"]+=1
             message={"role":"assistant","content":'{"ok":true}'}
             reason="stop"
@@ -99,6 +124,8 @@ class Handler(BaseHTTPRequestHandler):
             # No eligible parent tool or recognizable child continuation: fail closed.
             message={"role":"assistant","content":"CI_SUBAGENT_UNRECOGNIZED_MODEL_TURN"}
             reason="stop"
+        if SOURCE_MODE and message.get('content') is not None and reason=='stop' and message['content']!='CI_SUBAGENT_UNRECOGNIZED_MODEL_TURN':
+            message['content']=SOURCE_RESULT
         model=str(req.get("model") or MODEL)
         usage={"prompt_tokens":8,"completion_tokens":8,"total_tokens":16}
         if not req.get("stream"):

@@ -19,3 +19,9 @@ Le buffer existant conserve séparément preuve de critère et URL pour un même
 ## Portée du verdict
 
 La présence d’un résultat et la provenance d’un lien sont vérifiables. Elles ne prouvent pas qu’une page confirme chaque affirmation, qu’un paiement arrivera sous quatre jours ou qu’une synthèse ne contient aucune erreur. Les contrats scalaires historiques restent compatibles ; les critères spécifiques aux livrables et la recette réelle restent des validations distinctes. Aucune promotion stable/latest ni validation globale de BOT MODE n’est décidée.
+
+## Préparation du harnais d’image
+
+Le mode CI opt-in du service synthétique peut maintenant exposer une recherche SearXNG et un scraping Firecrawl locaux, avec une URL réservée .invalid. Le vrai outil SDK web_search a exécuté une recherche et un scraping contrôlés et produit l’artefact attendu. Le protocole modèle local a vérifié l’appel web_search suivi de son résultat et la conservation de la délégation historique.
+
+Un essai isolé de Run hors application n’a pas exécuté l’outil (compteurs locaux nuls) et a atteint sa limite de récursion ; il n’est pas retenu comme preuve d’intégration. La qualification doit utiliser les callbacks de l’application réelle dans l’image exacte. Aucun quota fournisseur réel consommé par ces sondes.
