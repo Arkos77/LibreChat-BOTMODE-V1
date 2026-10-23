@@ -1,4 +1,9 @@
 {
+  "com_ui_botmode_mode_auto": "BOT MODE · Automatic mode",
+  "com_ui_botmode_mode_fast": "BOT MODE · Fast chat",
+  "com_ui_botmode_mode_analyze": "BOT MODE · Analysis mission",
+  "com_ui_botmode_mode_develop": "BOT MODE · Development mission",
+  "com_ui_botmode_mode_watch": "BOT MODE · Research watch mission",
   "com_ui_skill_improvement_review": "Skill improvement review",
   "com_ui_skill_improvement_loading": "Loading the exact diff…",
   "com_ui_skill_improvement_unavailable": "This proposal is unavailable or inaccessible.",

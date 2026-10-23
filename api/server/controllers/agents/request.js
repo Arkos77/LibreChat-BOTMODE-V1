@@ -47,6 +47,7 @@ const {
   authorizeOrchestratorMissionBindings,
   assertAuthorizedOrchestratorTasks,
 } = require('./orchestratorMissionBindings');
+const { prepareBotModeSettings } = require('./botModeSettings');
 const { disposeClient } = require('~/server/cleanup');
 const { observeMtoEvent } = require('~/server/services/Endpoints/agents/mtoObservation');
 const {
@@ -430,7 +431,11 @@ async function saveErrorTurn(
       : {};
     await saveConvo(
       reqCtx,
-      { conversationId, ...convoFields },
+      {
+        conversationId,
+        ...convoFields,
+        ...(req._botModeSettings != null && { botMode: req._botModeSettings }),
+      },
       seedConvo ? { context } : { context, noUpsert: true },
     );
   } catch (err) {
@@ -1675,6 +1680,13 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       startupTelemetry?.mark('conversation_resolved'),
     );
 
+    const botModeSettings = prepareBotModeSettings({
+      requested: req.body?.botMode,
+      saved: req.resolvedConversation?.botMode,
+      agentId: endpointOption?.agent_id ?? req.body?.agent_id,
+      mission: req.body?.orchestratorMission,
+    });
+
     // Note: We no longer use res.on('close') to abort since we send JSON immediately.
     // The response closes normally after res.json(), which is not an abort condition.
     // Abort handling is done through GenerationJobManager via the SSE stream connection.
@@ -1788,6 +1800,23 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
     });
     startupTelemetry?.mark('client_initialized');
     client = result.client;
+    if (botModeSettings != null) {
+      const primaryAgentId = client?.options?.agent?.id;
+      if (primaryAgentId !== botModeSettings.workerAgentId) {
+        throw new Error('BOT MODE settings must match the authorized primary agent');
+      }
+      const reachableAgents =
+        typeof client.getReachableMissionAgents === 'function'
+          ? client.getReachableMissionAgents()
+          : [client.options.agent, ...(client.agentConfigs?.values?.() ?? [])];
+      authorizeOrchestratorMissionBindings({
+        primaryAgentId,
+        reachableAgents,
+        specialists: botModeSettings.agents.map((agent) => ({ agentId: agent.id })),
+      });
+      client.botModeSettings = botModeSettings;
+      req._botModeSettings = botModeSettings;
+    }
 
     /**
      * P6 native mission planning is an explicit opt-in. The planner consumes

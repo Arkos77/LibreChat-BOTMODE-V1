@@ -9908,3 +9908,18 @@ describe('AgentClient - P11 model invocation evidence', () => {
     expect(client.buildResponseMetadata()).not.toHaveProperty('hostModelUsage');
   });
 });
+
+describe('AgentClient - durable BOT MODE save options', () => {
+  it('passes only the host-admitted settings to normal conversation persistence', () => {
+    const client = Object.create(AgentClient.prototype);
+    client.options = { endpoint: 'agents', agent: { id: 'worker' } };
+    client.botModeSettings = {
+      version: 1,
+      mode: 'analyze',
+      selectionMode: 'auto',
+      workerAgentId: 'worker',
+      agents: [{ id: 'research', name: 'RECHERCHE' }],
+    };
+    expect(client.getSaveOptions()).toHaveProperty('botMode', client.botModeSettings);
+  });
+});

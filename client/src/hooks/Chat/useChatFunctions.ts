@@ -11,6 +11,8 @@ import {
   getEndpointField,
   isAgentsEndpoint,
   parseCompactConvo,
+  botModeSettingsSchema,
+  resolveBotModeSearchParams,
   replaceSpecialVars,
   isAssistantsEndpoint,
   getDefaultParamsEndpoint,
@@ -37,12 +39,12 @@ import {
   stripStreamedIndexStamps,
 } from '~/utils';
 import useFocusRegeneratedResponse from '~/hooks/Chat/useFocusRegeneratedResponse';
+import { getBotModeObjectives, getBotModeSearchParams } from './mission';
 import useSetFilesToDelete from '~/hooks/Files/useSetFilesToDelete';
 import useGetSender from '~/hooks/Conversations/useGetSender';
 import store, { useGetEphemeralAgent } from '~/store';
 import { startupConfigKey } from '~/data-provider';
 import useUserKey from '~/hooks/Input/useUserKey';
-import { getBotModeObjectives, getBotModeSearchParams } from './mission';
 import { useAuthContext } from '~/hooks';
 
 /** A revalidating cache younger than this is locally authoritative (the run
@@ -607,8 +609,24 @@ export default function useChatFunctions({
     const hasSubmissionFiles =
       setFiles != null &&
       (reuseFiles === true || (overrideFiles == null && (files?.size ?? 0) > 0));
-    const botModeMode = getBotModeExecutionMode(searchParams, text);
-    if (shouldUseBotModeMission(searchParams, text) && isAgentsEndpoint(endpoint)) {
+    const botModeParams = resolveBotModeSearchParams(searchParams, conversation);
+    const botModeMode = getBotModeExecutionMode(botModeParams, text);
+    if (botModeParams.get('botmode') === '1' && isAgentsEndpoint(endpoint)) {
+      try {
+        const botMode = botModeSettingsSchema.parse({
+          version: 1,
+          mode: botModeMode,
+          selectionMode: botModeParams.get('botmode_agent_mode') ?? 'auto',
+          workerAgentId: conversation?.agent_id,
+          agents: JSON.parse(botModeParams.get('botmode_agent_bindings') ?? '[]'),
+        });
+        Object.assign(currentMsg, { botMode });
+      } catch (_error) {
+        console.error('Invalid BOT MODE conversation settings');
+        return false;
+      }
+    }
+    if (shouldUseBotModeMission(botModeParams, text) && isAgentsEndpoint(endpoint)) {
       const botModeAgentId = conversation?.agent_id;
       if (typeof botModeAgentId !== 'string' || botModeAgentId.length === 0) {
         console.error('BOT MODE mission requires a selected agent');
@@ -622,8 +640,8 @@ export default function useChatFunctions({
           ['DOCUMENTS', 'botmode-documents', 'documents', ['file_search']],
           ['RÉDACTION', 'botmode-r-daction', 'writing', ['writing']],
         ];
-        const rawBindings = searchParams.get('botmode_agent_bindings');
-        const selectionMode = searchParams.get('botmode_agent_mode');
+        const rawBindings = botModeParams.get('botmode_agent_bindings');
+        const selectionMode = botModeParams.get('botmode_agent_mode') ?? 'auto';
         let boundAgents: Array<{ id: string; name: string }> = [];
         try {
           const parsed: unknown = JSON.parse(rawBindings ?? '[]');

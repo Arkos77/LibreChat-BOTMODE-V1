@@ -1029,6 +1029,39 @@ describe('ResumableAgentController resume metadata', () => {
     );
   });
 
+  it('refuses a silent downgrade of a saved mission before initializing models', async () => {
+    mockGetConvo.mockResolvedValue({
+      conversationId: 'conversation-123',
+      user: 'user-123',
+      agent_id: 'agent-primary',
+      createdAt: new Date(),
+      botMode: {
+        version: 1,
+        mode: 'analyze',
+        selectionMode: 'auto',
+        workerAgentId: 'agent-primary',
+        agents: [{ id: 'agent-specialist', name: 'RECHERCHE' }],
+      },
+    });
+    const initializeClient = jest.fn().mockRejectedValue(new Error('unexpected initialization'));
+    const req = {
+      user: { id: 'user-123' },
+      config: {},
+      body: {
+        text: 'Continue',
+        messageId: 'user-message',
+        conversationId: 'conversation-123',
+        endpointOption: {
+          endpoint: 'agents',
+          agent_id: 'agent-primary',
+          modelOptions: { model: 'test' },
+        },
+      },
+    };
+    await AgentController(req, createResumableResponse(), jest.fn(), initializeClient, null);
+    expect(initializeClient).not.toHaveBeenCalled();
+  });
+
   it('persists and verifies an exact authorized orchestrator plan before sendMessage', async () => {
     const sendMessage = jest.fn(() => new Promise(() => {}));
     const publicationBarrier = { activate: jest.fn() };
@@ -1081,7 +1114,18 @@ describe('ResumableAgentController resume metadata', () => {
         messageId: 'user-message',
         conversationId: 'conversation-123',
         orchestratorMission: missionRequest,
-        endpointOption: { endpoint: 'agents', modelOptions: { model: 'gpt-4.1' } },
+        botMode: {
+          version: 1,
+          mode: 'analyze',
+          selectionMode: 'auto',
+          workerAgentId: 'agent-primary',
+          agents: [{ id: 'agent-specialist', name: 'RECHERCHE' }],
+        },
+        endpointOption: {
+          endpoint: 'agents',
+          agent_id: 'agent-primary',
+          modelOptions: { model: 'gpt-4.1' },
+        },
       },
       config: {},
     };
@@ -1108,6 +1152,8 @@ describe('ResumableAgentController resume metadata', () => {
       ([, patch]) => patch?.orchestratorPlan != null,
     );
     expect(planUpdate).toBeDefined();
+    expect(client.botModeSettings).toEqual(req.body.botMode);
+    expect(req._botModeSettings).toEqual(req.body.botMode);
     expect(planUpdate[0]).toBe('conversation-123');
     expect(planUpdate[2]).toBe(1000);
     expect(planUpdate[1].orchestratorPlan).toMatchObject({
@@ -4120,6 +4166,37 @@ describe('ResumableAgentController resume metadata', () => {
         'provider exploded',
         1000,
         expect.objectContaining({ beforeErrorPublication: expect.any(Function) }),
+      );
+    });
+
+    it('preserves admitted FAST settings when the first provider call fails', async () => {
+      const botMode = {
+        version: 1,
+        mode: 'fast',
+        selectionMode: 'auto',
+        workerAgentId: 'worker',
+        agents: [],
+      };
+      const client = {
+        options: { agent: { id: 'worker' } },
+        sendMessage: jest.fn().mockRejectedValue(new Error('provider unavailable')),
+      };
+      const req = createFailedRequest({
+        botMode,
+        endpointOption: { endpoint: 'agents', agent_id: 'worker', modelOptions: { model: 'test' } },
+      });
+      await AgentController(
+        req,
+        createResumableResponse(),
+        jest.fn(),
+        jest.fn().mockResolvedValue({ client }),
+        null,
+      );
+      await flushBackgroundGeneration();
+      expect(mockSaveConvo).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'user-123' }),
+        expect.objectContaining({ conversationId, botMode }),
+        expect.any(Object),
       );
     });
 

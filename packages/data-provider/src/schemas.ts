@@ -4,6 +4,7 @@ import type { SearchResultData } from './types/web';
 import type { TFile } from './types/files';
 import { userSubmittedMessageFieldPathSchema } from './filters';
 import { TFeedback, feedbackSchema } from './feedback';
+import { botModeSettingsSchema } from './botMode';
 import { Tools } from './types/assistants';
 
 export const isUUID = z.string().uuid();
@@ -1145,6 +1146,7 @@ export const tConversationSchema = z.object({
   assistant_id: z.string().optional(),
   /* agents */
   agent_id: z.string().optional(),
+  botMode: botModeSettingsSchema.optional(),
   /** Durable parent/child navigation for a subagent thread. */
   subagentThread: subagentThreadLineageSchema.optional(),
   /* AWS Bedrock */
@@ -1175,6 +1177,7 @@ export const tConversationSchema = z.object({
 
 export const tPresetSchema = tConversationSchema
   .omit({
+    botMode: true,
     conversationId: true,
     chatProjectId: true,
     createdAt: true,
