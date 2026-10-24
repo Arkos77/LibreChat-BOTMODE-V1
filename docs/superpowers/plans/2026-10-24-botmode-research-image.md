@@ -61,6 +61,10 @@ Le Chromebook penguin était en ligne. La candidate sur le port 3081 utilise tou
 
 ### Prochaine action concrète sous autorisation correspondante
 
-Publier uniquement cette branche de qualification, puis déclencher une seule fois le workflow manuel `.github/workflows/botmode-native-research-candidate.yml` sur son SHA exact. Il n'emploie aucune clé fournisseur et ne publie aucune image. Conserver l'artefact `botmode-native-research-<SHA>` et ses empreintes si le run réussit ; sa publication candidate, une mission réelle, l'installation et une promotion stable sont des actions distinctes. Ne pas déclencher une CI existante supposée équivalente ni construire sur le Chromebook.
+Publier uniquement cette branche de qualification, puis déclencher une seule fois le workflow manuel `.github/workflows/botmode-v1-pr77-source-built.yml` avec `native_research_only=true` sur son SHA exact. Il n'emploie aucune clé fournisseur et ne publie aucune image. Conserver l'artefact `botmode-native-research-<SHA>` et ses empreintes si le run réussit ; sa publication candidate, une mission réelle, l'installation et une promotion stable sont des actions distinctes. Ne pas déclencher une CI existante supposée équivalente ni construire sur le Chromebook.
 
 Aucun push, lancement CI, build Docker, publication, fusion ou installation n'a été effectué dans ce lot.
+
+### Ajustement avant lancement autorisé
+
+L’autorisation du propriétaire couvre l’envoi de la branche et un seul run candidat. Le précontrôle GitHub constate que le nouveau nom de workflow n’est pas enregistré ; GitHub exige un workflow connu pour le dispatch manuel. Le harnais est donc ajouté comme job optionnel au workflow déjà enregistré `botmode-v1-pr77-source-built.yml` (ID 393172640). Le paramètre booléen `native_research_only=true` sélectionne exclusivement le nouveau job ; les deux anciens jobs sont ignorés pour ce run. En dehors de ce paramètre, leurs définitions sont structurellement identiques. Aucun run ni build n’a été consommé avant cet ajustement. Le nom de fichier initial est supprimé pour éviter deux définitions divergentes.
