@@ -1,5 +1,133 @@
 const { createToolEndCallback } = require('./callbacks');
 
+it('persists sources captured by the real event tool callback before the research result model', async () => {
+  const { Run, Providers } = require('@librechat/agents');
+  const { AIMessageChunk, HumanMessage } = require('@librechat/agents/langchain/messages');
+  const { DynamicStructuredTool } = require('@librechat/agents/langchain/tools');
+  const { z } = require('zod');
+  const {
+    compileNativePlan,
+    deterministicPlanner,
+    prepareBotModeMission,
+    createMissionEvidenceContext,
+    createTransientEvidenceBuffer,
+    promoteTransientMissionOracleEvidence,
+    normalizeMissionOracleState,
+    researchObservationNodeId,
+    createToolExecuteHandler,
+  } = require('@librechat/api');
+  const plan = deterministicPlanner.planMission(
+    prepareBotModeMission({
+      missionId: 'host-source-barrier',
+      taskId: 'root',
+      objective: 'Research',
+      requiredCapabilities: ['web_search'],
+      constraints: [],
+    }),
+    {
+      worker: {
+        id: 'worker',
+        agentId: 'saved',
+        role: 'worker',
+        capabilities: ['web_search'],
+        constraints: [],
+      },
+      specialists: [],
+    },
+  );
+  const task = plan.tasks[0];
+  const buffer = createTransientEvidenceBuffer();
+  const context = createMissionEvidenceContext();
+  context.configure({
+    traceId: 'host-trace',
+    declarations: [],
+    sourceTasks: [{ nodeId: task.nodeId, taskId: task.taskId, producerAgentId: task.agentId }],
+  });
+  const callback = createToolEndCallback({
+    req: { user: { id: 'host-user' }, config: {} },
+    res: { headersSent: false },
+    artifactPromises: [],
+    streamId: null,
+    transientEvidenceBuffer: buffer,
+    missionEvidenceContext: context,
+  });
+  let saved = { evidence: {}, results: {} };
+  let effects = 0,
+    results = 0;
+  const tool = new DynamicStructuredTool({
+    name: 'web_search',
+    description: 'Synthetic search',
+    schema: z.object({ query: z.string() }),
+    responseFormat: 'content_and_artifact',
+    func: async () => {
+      effects++;
+      return [
+        'Synthetic result',
+        { web_search: { organic: [{ link: 'https://example.invalid/report' }] } },
+      ];
+    },
+  });
+  const handler = createToolExecuteHandler({
+    loadTools: async (names, agentId) => {
+      expect(names).toEqual(['web_search']);
+      expect(agentId).toBe(researchObservationNodeId(task.nodeId));
+      return { loadedTools: [tool] };
+    },
+    toolEndCallback: callback,
+  });
+  const compiled = compileNativePlan(
+    plan,
+    new Map([
+      [
+        'saved',
+        {
+          agentId: 'saved',
+          provider: Providers.OPENAI,
+          toolDefinitions: [{ name: 'web_search' }],
+          clientOptions: { model: 'synthetic', apiKey: 'not-a-real-key' },
+        },
+      ],
+    ]),
+    undefined,
+    undefined,
+    undefined,
+    async (taskId) => {
+      for (const observation of buffer.snapshot()) {
+        saved = normalizeMissionOracleState(
+          promoteTransientMissionOracleEvidence(plan, saved, observation),
+        );
+      }
+      buffer.clear();
+      return saved.sources?.[taskId] ?? [];
+    },
+  );
+  const run = await Run.create({
+    runId: 'host-source-barrier',
+    graphConfig: compiled.graphConfig,
+    customHandlers: { on_tool_execute: handler },
+  });
+  run.Graph.overrideModel = {
+    invoke: async (_messages, config) => {
+      if (config?.metadata?.agentId === researchObservationNodeId(task.nodeId)) {
+        return new AIMessageChunk({
+          id: 'host-observation',
+          content: '',
+          tool_calls: [{ id: 'host-search', name: 'web_search', args: { query: 'local' } }],
+        });
+      }
+      results++;
+      expect(saved.sources?.[task.taskId]).toEqual([
+        { toolCallId: 'host-search', urls: ['https://example.invalid/report'] },
+      ]);
+      return new AIMessageChunk({ id: 'host-result', content: '{"ok":true,"result":"synthetic"}' });
+    },
+  };
+  await run.processStream({ messages: [new HumanMessage('Research')] }, { version: 'v2' });
+  expect(effects).toBe(1);
+  expect(results).toBe(1);
+  expect(buffer.size).toBe(0);
+});
+
 describe('P10 optional tool-end evidence callback', () => {
   function makeCallback(improvementEvidenceCallback) {
     return createToolEndCallback({

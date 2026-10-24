@@ -18,6 +18,7 @@ async function check(mode) {
   const primary = [];
   const observed = [];
   let effects = 0;
+  let sourcesReady = false;
   const candidate = JSON.stringify({
     ok: true,
     result: 'Synthetic source https://example.invalid/report',
@@ -33,6 +34,8 @@ async function check(mode) {
         format: input.response_format,
         hasToolResult: input.messages.some((message) => message.role === 'tool'),
       };
+      if (shape.hasToolResult)
+        assert.equal(sourcesReady, true, 'source barrier must precede result HTTP');
       if (req.url.startsWith('/primary/')) {
         primary.push(shape);
         res.writeHead(429, { 'content-type': 'application/json' });
@@ -140,7 +143,18 @@ async function check(mode) {
           : {}),
       },
     };
-    const compiled = compileNativePlan(plan, new Map([['saved', binding]]));
+    const compiled = compileNativePlan(
+      plan,
+      new Map([['saved', binding]]),
+      undefined,
+      undefined,
+      undefined,
+      async (taskId) => {
+        assert.equal(taskId, plan.tasks[0].taskId);
+        sourcesReady = observed.length > 0;
+        return structuredClone(observed);
+      },
+    );
     assert.equal(compiled.actors.length, 2, 'compiled research must have two phases');
     const run = await Run.create({ runId: `image-${mode}`, graphConfig: compiled.graphConfig });
     const execute = () =>

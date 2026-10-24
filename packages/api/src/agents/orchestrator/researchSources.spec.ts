@@ -16,7 +16,7 @@ import { compileNativePlan } from './native';
 
 type Mode = 'success' | 'write-failed' | 'missing' | 'foreign-call' | 'tool-error' | 'resume';
 
-function fixture(mode: Mode) {
+function fixture(mode: Mode, beforeWrite?: () => Promise<void>) {
   const plan = deterministicPlanner.planMission(
     prepareBotModeMission({
       missionId: `source-barrier-${mode}`,
@@ -88,6 +88,7 @@ function fixture(mode: Mode) {
         if (mode === 'missing') return [];
         if (mode === 'foreign-call') return [{ ...observed, toolCallId: 'old-search' }];
         if (buffer.size > 0) {
+          await beforeWrite?.();
           for (const item of buffer.snapshot()) {
             restored = promoteTransientMissionOracleEvidence(plan, restored, item);
           }
@@ -144,6 +145,35 @@ it('saves native tool observations before invoking the result model', async () =
   await run.processStream(input(), config);
   expect(f.counts()).toMatchObject({ effects: 1, resultCalls: 1, sourceReads: 1, sourceWrites: 1 });
   expect(f.saved().sources?.[f.task.taskId]).toEqual([f.observed]);
+});
+
+it('keeps the result model blocked until asynchronous source persistence completes', async () => {
+  let release: () => void = () => {};
+  let entered: () => void = () => {};
+  const pendingWrite = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const writeStarted = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const f = fixture('success', async () => {
+    entered();
+    await pendingWrite;
+  });
+  const run = await f.create();
+  const completion = run.processStream(input(), config).then(
+    () => undefined,
+    (error: Error) => error,
+  );
+  try {
+    await writeStarted;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(f.counts()).toMatchObject({ effects: 1, resultCalls: 0, sourceWrites: 0 });
+  } finally {
+    release();
+  }
+  expect(await completion).toBeUndefined();
+  expect(f.counts()).toMatchObject({ resultCalls: 1, sourceWrites: 1 });
 });
 
 it.each(['write-failed', 'missing', 'foreign-call', 'tool-error'] as const)(
