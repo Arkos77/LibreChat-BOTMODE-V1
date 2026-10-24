@@ -1,4 +1,4 @@
-const { nodeIdentity } = require('@librechat/api');
+const { nodeIdentity, researchObservationNodeId } = require('@librechat/api');
 const boundedText = (value) =>
   typeof value === 'string' && value.trim() !== '' && value.length <= 256 ? value : undefined;
 const tokenCount = (value) => (Number.isSafeInteger(value) && value >= 0 ? value : undefined);
@@ -44,7 +44,19 @@ function projectHostModelUsage(decision, usageEvents, missionPlan) {
       owners.set(task.nodeId, nodeOwners);
     }
     for (const [nodeId, nodeOwners] of owners) {
-      if (nodeOwners.size === 1 && nodeOwners.has(agentId)) actorIds.add(nodeId);
+      if (nodeOwners.size !== 1 || !nodeOwners.has(agentId)) continue;
+      actorIds.add(nodeId);
+      if (
+        missionPlan.mission.researchExecutionVersion === 1 &&
+        tasks.some(
+          (task) =>
+            task?.nodeId === nodeId &&
+            Array.isArray(task.validation) &&
+            task.validation.some((requirement) => requirement?.outputContract === 'research-v1'),
+        )
+      ) {
+        actorIds.add(researchObservationNodeId(nodeId));
+      }
     }
   }
   const modelCalls = [];

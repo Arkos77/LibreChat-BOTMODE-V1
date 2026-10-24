@@ -4,6 +4,7 @@ export * from './planner';
 export * from './objectives';
 export * from './admission';
 export * from './native';
+export { researchObservationNodeId } from './research';
 export * from './routing';
 export * from './mto';
 export * from './improvement';
