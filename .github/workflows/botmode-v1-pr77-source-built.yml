@@ -11,13 +11,17 @@ on:
         description: 'Run only the compiled native research candidate gate (one image, no publication)'
         type: boolean
         default: false
+      host_research:
+        description: 'Qualify actual native web tool, HTTP/SSE, Oracle and Mongo on an isolated internal network'
+        type: boolean
+        default: false
 permissions:
   contents: read
 env:
   BOTMODE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 jobs:
   binding-regression:
-    if: ${{ !inputs.native_research_only }}
+    if: ${{ !inputs.native_research_only && !inputs.host_research }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -38,7 +42,7 @@ jobs:
         working-directory: packages/api
         run: npx jest src/endpoints/openai/config.spec.ts src/agents/orchestrator/hostModelDecision.spec.ts --runInBand --coverage=false
   source-built-runtime:
-    if: ${{ !inputs.native_research_only }}
+    if: ${{ !inputs.native_research_only && !inputs.host_research }}
     needs: binding-regression
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -118,12 +122,13 @@ jobs:
         run: sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
 
   compiled-research:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.native_research_only }}
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.native_research_only || inputs.host_research) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
       CANDIDATE_SHA: ${{ github.sha }}
       CANDIDATE_IMAGE: botmode-native-research:${{ github.sha }}
+      HOST_RESEARCH_PROJECT: botmode-research-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -141,16 +146,20 @@ jobs:
       - name: Cheap source gates before Docker
         run: |
           set -euo pipefail
+          python3 -m unittest discover -s scripts/botmode/tests -p test_source_fixture.py
+          python3 -m unittest discover -s scripts/botmode/tests -p test_host_research_guard.py
+          python3 -m py_compile scripts/botmode/ci-host-research.py
           npm ci --no-audit --no-fund
           npm run build:data-provider
           npm run build:data-schemas
           npm run build:api
           NODE_OPTIONS=--max-old-space-size=6144 npm exec --workspace=packages/api tsc -- --noEmit
-          npm exec --workspace=packages/api jest -- --runInBand --coverage=false --runTestsByPath src/agents/orchestrator/research.spec.ts src/agents/orchestrator/nativeToolChoiceTransport.spec.ts src/agents/orchestrator/admission.spec.ts
-          npm exec --workspace=api jest -- --runInBand --coverage=false --runTestsByPath server/services/Endpoints/agents/hostModelUsage.spec.js server/services/Endpoints/agents/hostModelRouting.compat.spec.js server/controllers/agents/callbacks.improvementEvidence.spec.js
+          npm exec --workspace=packages/api jest -- --runInBand --coverage=false --runTestsByPath src/agents/orchestrator/research.spec.ts src/agents/orchestrator/researchSources.spec.ts src/agents/orchestrator/nativeToolChoiceTransport.spec.ts src/agents/orchestrator/admission.spec.ts
+          npm exec --workspace=api jest -- --runInBand --coverage=false --runTestsByPath server/services/Endpoints/agents/hostModelUsage.spec.js server/services/Endpoints/agents/nativeMissionRecoveredOracleSources.spec.js server/services/Endpoints/agents/hostModelRouting.compat.spec.js server/controllers/agents/callbacks.improvementEvidence.spec.js
           node scripts/botmode/native-research-image-regression.cjs
       - uses: docker/setup-buildx-action@v4
       - name: Build one exact AMD64 image without publication
+        id: candidate_build
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -166,6 +175,7 @@ jobs:
             BUILD_COMMIT=${{ env.CANDIDATE_SHA }}
             BUILD_BRANCH=${{ github.ref_name }}
       - name: Check and exercise the exact compiled image without external network
+        id: compiled_image
         run: |
           set -euo pipefail
           mkdir -p candidate-evidence
@@ -173,12 +183,33 @@ jobs:
           docker image inspect "$CANDIDATE_IMAGE" --format '{{.Id}}' > candidate-evidence/image-id.txt
           printf '%s\n' "$CANDIDATE_SHA" > candidate-evidence/source-sha.txt
           docker run --rm --network none --entrypoint node "$CANDIDATE_IMAGE" scripts/botmode/native-research-image-regression.cjs | tee candidate-evidence/research.log
-      - name: Retain this tested image for reuse without rebuilding
+      - name: Actual host web research on an isolated internal network
+        id: host_research
+        if: ${{ inputs.host_research }}
+        run: python3 scripts/botmode/ci-host-research.py
+      - name: Retain built image and explicit qualification outcomes
+        id: archive
+        if: ${{ always() && steps.candidate_build.outcome == 'success' }}
+        env:
+          COMPILED_OUTCOME: ${{ steps.compiled_image.outcome }}
+          HOST_OUTCOME: ${{ steps.host_research.outcome }}
         run: |
           set -euo pipefail
+          mkdir -p candidate-evidence
+          docker image inspect "$CANDIDATE_IMAGE" --format '{{.Id}}' > candidate-evidence/image-id.txt
+          printf '%s\n' "$CANDIDATE_SHA" > candidate-evidence/source-sha.txt
+          python3 - <<'PY_STATUS'
+          import json,os
+          from pathlib import Path
+          Path('candidate-evidence/qualification-status.json').write_text(json.dumps({
+            'source_sha':os.environ['CANDIDATE_SHA'],
+            'compiled':os.environ['COMPILED_OUTCOME'],
+            'host':os.environ['HOST_OUTCOME']}))
+          PY_STATUS
           docker save "$CANDIDATE_IMAGE" | gzip -1 > candidate-evidence/image.tar.gz
           (cd candidate-evidence && sha256sum image.tar.gz > image.tar.gz.sha256)
       - uses: actions/upload-artifact@v4
+        if: ${{ always() && steps.archive.outcome == 'success' }}
         with:
           name: botmode-native-research-${{ github.sha }}
           path: candidate-evidence/
@@ -187,4 +218,4 @@ jobs:
       - name: Record qualification boundary
         if: always()
         run: |
-          echo 'Synthetic compiled SDK research proof only. No host/browser, Mongo/Redis restart, real provider, installation or stable promotion proof.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Qualification outcomes are recorded in the artifact. Optional host test uses synthetic model/search/scrape on an internal network. No browser, crash restart, real provider, installation or stable proof.' >> "$GITHUB_STEP_SUMMARY"

@@ -126,7 +126,7 @@ async function check(mode) {
     });
     const binding = {
       agentId: 'saved',
-      provider: Providers.OPENAI,
+      provider: mode === 'native-openrouter' ? Providers.OPENROUTER : Providers.OPENAI,
       tools: [tool],
       clientOptions: {
         ...options(mode === 'fallback429' ? 'primary/v1' : 'v1'),
@@ -202,7 +202,8 @@ async function check(mode) {
 }
 
 (async () => {
-  for (const mode of ['success', 'prose', 'tool-error', 'fallback429']) await check(mode);
+  for (const mode of ['success', 'prose', 'tool-error', 'fallback429', 'native-openrouter'])
+    await check(mode);
   console.log(
     'SCOPE=compiled API and native SDK; synthetic loopback only; no host/browser/cold recovery proof',
   );

@@ -106,11 +106,15 @@ class Handler(BaseHTTPRequestHandler):
         web_completed=any(m.get('role')=='tool' and m.get('tool_call_id') in web_calls for m in messages if isinstance(m,dict))
         planned_contract=planned_output_contract(messages)
         research_contract=planned_contract=='research-v1' or planned_contract is None and any(isinstance(m.get('content'),str) and re.search(r'"outputContract"\s*:\s*"research-v1"',m['content']) for m in messages if isinstance(m,dict))
-        if SOURCE_MODE and planned_contract=='result-v1':
+        choice=req.get('tool_choice')
+        forced_web=isinstance(choice,dict) and choice.get('type')=='function' and isinstance(choice.get('function'),dict) and choice['function'].get('name')=='web_search'
+        if SOURCE_MODE and forced_web and not web_advertised:
+            return self.send({'error':'fixture_tool_choice_schema_mismatch'},400)
+        if SOURCE_MODE and planned_contract=='result-v1' and not forced_web:
             with lock: calls['planned_final']=calls.get('planned_final',0)+1
             message={'role':'assistant','content':SOURCE_RESULT}
             reason='stop'
-        elif SOURCE_MODE and research_contract and web_advertised and not web_completed:
+        elif SOURCE_MODE and web_advertised and (forced_web or research_contract and not web_completed):
             with lock: calls['source_tool_requests']=calls.get('source_tool_requests',0)+1
             message={'role':'assistant','content':None,'tool_calls':[{'id':'call_ci_search_'+str(number),'type':'function','function':{'name':'web_search','arguments':json.dumps({'query':'CI synthetic source'})}}]}
             reason='tool_calls'

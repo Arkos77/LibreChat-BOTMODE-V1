@@ -1,0 +1,274 @@
+"""Disposable hosted-runner HTTP/SSE research qualification; never an installer."""
+import json
+import os
+import re
+import secrets
+import subprocess
+import tempfile
+import time
+import uuid
+from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+ROOT = Path(__file__).resolve().parents[2]
+SOURCE_URL = 'https://ci-source.invalid/report'
+
+
+def validate_target(env, actual_sha):
+    sha = env.get('CANDIDATE_SHA', '')
+    project = env.get('HOST_RESEARCH_PROJECT', '')
+    if env.get('GITHUB_ACTIONS') != 'true' or env.get('RUNNER_ENVIRONMENT') != 'github-hosted':
+        raise RuntimeError('HOST_RESEARCH_HOSTED_RUNNER_REQUIRED')
+    if not re.fullmatch(r'[0-9a-f]{40}', sha) or sha != actual_sha:
+        raise RuntimeError('HOST_RESEARCH_EXACT_SOURCE_REQUIRED')
+    if env.get('CANDIDATE_IMAGE') != 'botmode-native-research:' + sha:
+        raise RuntimeError('HOST_RESEARCH_LOCAL_IMAGE_REQUIRED')
+    if not re.fullmatch(r'botmode-research-[0-9]+-[0-9]+', project):
+        raise RuntimeError('HOST_RESEARCH_ISOLATED_PROJECT_REQUIRED')
+    return sha, env['CANDIDATE_IMAGE'], project
+
+
+def run(args, *, env=None, data=None, timeout=180):
+    return subprocess.check_output(args, input=data, text=True, env=env, timeout=timeout)
+
+
+def main():
+    sha, image, project = validate_target(os.environ, run(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip())
+    image_env = run(['docker', 'image', 'inspect', image, '--format', '{{json .Config.Env}}'])
+    if 'BUILD_COMMIT=' + sha not in json.loads(image_env):
+        raise RuntimeError('HOST_RESEARCH_EMBEDDED_SOURCE_MISMATCH')
+    evidence = ROOT / 'candidate-evidence'
+    evidence.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='botmode-host-research-') as temporary:
+        directory = Path(temporary)
+        for name in ('docker-compose.botmode.yml', 'docker-compose.botmode-lite.yml'):
+            (directory / name).write_bytes((ROOT / name).read_bytes())
+        (directory / 'fixture.py').write_bytes((ROOT / 'scripts/botmode/ci-openai-subagent-fixture.py').read_bytes())
+        config = json.loads((ROOT / 'librechat.yaml').read_text())
+        config['endpoints']['agents'].pop('hostModelRouting', None)
+        found = False
+        for endpoint in config['endpoints']['custom']:
+            endpoint.setdefault('models', {})['fetch'] = False
+            if endpoint.get('name') == 'OpenRouter':
+                found = True
+                endpoint.update(apiKey='ci-local-fixture-no-real-key', baseURL='http://fixture:8088/v1')
+                endpoint['models'] = {'fetch': False, 'default': ['openrouter/free']}
+        if not found:
+            raise RuntimeError('HOST_RESEARCH_SAVED_PROVIDER_MISSING')
+        config['webSearch'] = {
+            'searchProvider': 'searxng', 'scraperProvider': 'firecrawl', 'rerankerType': 'none',
+            'searxngInstanceUrl': 'http://fixture:8088', 'searxngApiKey': 'ci-fixture',
+            'firecrawlApiUrl': 'http://fixture:8088', 'firecrawlApiKey': 'ci-fixture',
+            'allowedAddresses': ['fixture:8088'],
+        }
+        (directory / 'librechat.yaml').write_text(json.dumps(config, ensure_ascii=False))
+        values = {'JWT_SECRET': secrets.token_hex(48), 'JWT_REFRESH_SECRET': secrets.token_hex(48),
+                  'CREDS_KEY': secrets.token_hex(32), 'CREDS_IV': secrets.token_hex(16),
+                  'BOTMODE_MONGO_PASSWORD': secrets.token_hex(16), 'POSTGRES_PASSWORD': secrets.token_hex(16),
+                  'ALLOW_REGISTRATION': 'false', 'REDIS_KEY_PREFIX': ''}
+        text = (ROOT / '.env.example').read_text()
+        for key, value in values.items():
+            pattern = r'^' + re.escape(key) + r'=.*$'
+            if re.search(pattern, text, re.M):
+                text = re.sub(pattern, lambda _match: key + '=' + value, text, flags=re.M)
+            else:
+                text += '\n' + key + '=' + value
+        env_path = directory / '.env'
+        env_path.write_text(text)
+        env_path.chmod(0o640)
+        run(['sudo', 'chown', f'1000:{os.getgid()}', str(env_path)])
+        (directory / 'qualification.yml').write_text('''services:
+  api:
+    environment:
+      USE_REDIS: "true"
+      USE_REDIS_STREAMS: "true"
+      REDIS_URI: redis://redis:6379
+      STREAM_KEEP_COMPLETED_JOBS: "true"
+  redis:
+    image: redis:7-alpine
+    command: [redis-server, --save, "", --appendonly, "no"]
+  fixture:
+    image: python:3.12-alpine
+    command: [python3, /fixture.py]
+    environment:
+      CI_MISSION_SOURCE_MODE: "1"
+    volumes:
+      - ./fixture.py:/fixture.py:ro
+networks:
+  default:
+    internal: true
+''')
+        env = {**os.environ, 'BOTMODE_IMAGE': image, 'BOTMODE_HOST_PORT': '3090', **values}
+        compose = ['docker', 'compose', '--project-name', project, '--project-directory', str(directory)]
+        for name in ('docker-compose.botmode.yml', 'docker-compose.botmode-lite.yml', 'qualification.yml'):
+            compose += ['-f', str(directory / name)]
+
+        def dc(*args, data=None, timeout=180):
+            return run(compose + list(args), env=env, data=data, timeout=timeout)
+
+        def node(code):
+            return json.loads(dc('exec', '-T', 'api', 'node', '-', data=code))
+
+        token = None
+        sid = None
+        stage = 'startup'
+        passed = False
+
+        def request(path, body=None, authenticated=True, timeout=120):
+            headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) Chrome/131.0.0.0 Safari/537.36'}
+            if authenticated and token:
+                headers['Authorization'] = 'Bearer ' + token
+            if body is not None:
+                headers['Content-Type'] = 'application/json'
+            req = Request('http://127.0.0.1:3090' + path,
+                          data=None if body is None else json.dumps(body).encode(), headers=headers)
+            try:
+                with urlopen(req, timeout=timeout) as response:
+                    return response.status, response.read().decode()
+            except HTTPError as error:
+                return error.code, error.read().decode()
+
+        attempted = False
+        try:
+            attempted = True
+            dc('up', '-d', 'mongodb', 'redis', 'fixture', 'api', timeout=240)
+            deadline = time.monotonic() + 180
+            while True:
+                try:
+                    if request('/api/config', authenticated=False, timeout=3)[0] == 200:
+                        break
+                except (URLError, TimeoutError):
+                    pass
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('HOST_RESEARCH_API_NOT_READY')
+                time.sleep(1)
+            assert request('/api/agents/botmode/setup', {}, authenticated=False)[0] == 401
+            stage = 'principal'
+            principal = node('''const fs=require('fs'),m=require('mongoose'),jwt=require('jsonwebtoken');
+(async()=>{await m.connect(process.env.MONGO_URI);const id=new m.Types.ObjectId();
+await m.connection.db.collection('users').insertOne({_id:id,name:'Research CI',username:'research-ci',email:'research-ci@example.invalid',role:'ADMIN',provider:'local',createdAt:new Date(),updatedAt:new Date()});
+const secret=fs.readFileSync('/app/.env','utf8').match(/^JWT_SECRET=(.+)$/m)[1];
+console.log(JSON.stringify({id:String(id),token:jwt.sign({id:String(id)},secret,{expiresIn:'15m'})}));await m.disconnect();
+})().catch(()=>process.exit(1));''')
+            token = principal['token']
+            stage = 'native_setup'
+            setup = {'provider': 'OpenRouter', 'model': 'openrouter/free'}
+            for _ in range(2):
+                status, body = request('/api/agents/botmode/setup', setup)
+                assert status in (200, 201), 'HOST_RESEARCH_NATIVE_SETUP_DENIED'
+            status, body = request('/api/agents/botmode/setup-status')
+            inventory = json.loads(body)
+            assert status == 200 and all(inventory.get(k) is True for k in
+                ('inventoryComplete', 'permissionsComplete', 'delegationConfigured'))
+            agents = node('''const m=require('mongoose');(async()=>{await m.connect(process.env.MONGO_URI);
+console.log(JSON.stringify(await m.connection.db.collection('agents').find({name:{$in:['BOT MODE Worker','RECHERCHE','ANALYSE','CODE','DOCUMENTS','RÉDACTION']}},{projection:{id:1,name:1,author:1}}).toArray()));await m.disconnect();})().catch(()=>process.exit(1));''')
+            assert len(agents) == 6 and len({a['name'] for a in agents}) == 6
+            assert all(str(a['author']) == principal['id'] for a in agents)
+            by_name = {a['name']: a for a in agents}
+            sid = str(uuid.uuid4())
+            payload = {'endpoint': 'agents', 'agent_id': by_name['BOT MODE Worker']['id'],
+                'conversationId': sid, 'messageId': str(uuid.uuid4()),
+                'parentMessageId': '00000000-0000-0000-0000-000000000000', 'isNewConvo': True,
+                'text': 'Rechercher la source CI et produire une analyse puis une synthèse.',
+                'botMode': {'version': 1, 'mode': 'analyze', 'selectionMode': 'auto',
+                    'workerAgentId': by_name['BOT MODE Worker']['id'],
+                    'agents': [{'id': by_name[n]['id'], 'name': n} for n in ('RECHERCHE','ANALYSE','RÉDACTION')]},
+                'orchestratorMission': {'mission': {'missionId': 'host-' + sid, 'taskId': sid,
+                    'objective': 'Synthetic source research, analysis and synthesis.',
+                    'constraints': [], 'requiredCapabilities': []}}}
+            # Retry only a server's explicit pre-admission startup refusal. Never replay an ambiguous POST.
+            stage = 'admission'
+            for attempt in range(6):
+                status, body = request('/api/agents/chat/agents', payload)
+                envelope = json.loads(body)
+                if status != 503 or envelope.get('code') != 'SERVER_NOT_READY':
+                    break
+                time.sleep(1)
+            assert status == 200 and envelope.get('status') == 'started' and envelope.get('streamId') == sid
+            stage = 'stream'
+            status, stream = request('/api/agents/chat/stream/' + sid + '?resume=true')
+            frames = [line[5:].strip() for line in stream.splitlines() if line.startswith('data:')]
+            events = [json.loads(frame) for frame in frames if frame and frame != '[DONE]']
+            finals = [event for event in events if event.get('final') is True]
+            assert status == 200 and len(finals) == 1, 'HOST_RESEARCH_SINGLE_FINAL_REQUIRED'
+            assert not any(e.get('type') == 'error' or e.get('event') == 'error' for e in events)
+            key = '::stream:{' + sid + '}:job'
+
+            def field(name):
+                return dc('exec', '-T', 'redis', 'redis-cli', '--raw', 'HGET', key, name).strip()
+
+            deadline = time.monotonic() + 30
+            while field('status') != 'complete' or field('terminalPersistencePending') not in ('0', 'false', 'False'):
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('HOST_RESEARCH_TERMINAL_NOT_COMMITTED')
+                time.sleep(0.5)
+            plan = json.loads(field('orchestratorPlan'))
+            state = json.loads(field('missionOracleState'))
+            stage = 'oracle'
+            tasks = {t['key']: t for t in plan['tasks']}
+            assert set(tasks) == {'research', 'analysis', 'synthesis'}
+            assert tasks['analysis']['dependsOn'] == ['research'] and tasks['synthesis']['dependsOn'] == ['analysis']
+            assert set(state['results']) == {t['taskId'] for t in tasks.values()}
+            for task in tasks.values():
+                verdicts = state['results'][task['taskId']]['verdicts']
+                assert len(verdicts) == len(task['validation']) and all(v['status'] == 'VERIFIED' for v in verdicts)
+            sources = state.get('sources', {}).get(tasks['research']['taskId'], [])
+            assert sources and any(SOURCE_URL in item['urls'] for item in sources)
+            assert field('status') == 'complete' and field('terminalPersistencePending') in ('0', 'false', 'False')
+            response_id = field('responseMessageId')
+            stage = 'mongo_publication'
+            mongo = node('''const m=require('mongoose');(async()=>{await m.connect(process.env.MONGO_URI);
+const sid=''' + json.dumps(sid) + ''',mid=''' + json.dumps(response_id) + ''';
+const db=m.connection.db,conversation=await db.collection('conversations').findOne({conversationId:sid});
+const messages=await db.collection('messages').find({conversationId:sid,messageId:mid,isCreatedByUser:false}).toArray();
+console.log(JSON.stringify({conversation:!!conversation,count:messages.length,complete:messages[0]?.unfinished===false,content:messages[0]?.content}));await m.disconnect();})().catch(()=>process.exit(1));''')
+            assert mongo['conversation'] and mongo['count'] == 1 and mongo['complete']
+            assert any(p.get('type') == 'text' and SOURCE_URL in p.get('text', '') for p in mongo['content'])
+            metrics = json.loads(dc('exec', '-T', 'fixture', 'python3', '-c',
+                'import json,urllib.request;print(urllib.request.urlopen("http://127.0.0.1:8088/metrics").read().decode())'))
+            assert metrics.get('source_search_calls', 0) >= 1 and metrics.get('source_scrape_calls', 0) >= 1
+            assert metrics.get('source_tool_requests', 0) >= 1
+            component_images = {}
+            for service in ('api', 'mongodb', 'redis', 'fixture'):
+                container_id = dc('ps', '-q', service).strip()
+                component_images[service] = run(['docker', 'inspect', container_id, '--format', '{{.Image}}']).strip()
+            summary = {'source_sha': sha, 'scenario': 'native HTTP/SSE analyze', 'task_keys': list(tasks),
+                       'verdict_counts': {k: len(state['results'][t['taskId']]['verdicts']) for k,t in tasks.items()},
+                       'source_observations': len(sources), 'mongo_final_count': mongo['count'],
+                       'fixture_metrics': metrics, 'component_images': component_images}
+            (evidence / 'host-research.json').write_text(json.dumps(summary, indent=2))
+            passed = True
+            stage = 'complete'
+            print('HOST_RESEARCH_NATIVE_TOOL_ORACLE_MONGO=PASS', flush=True)
+        finally:
+            if attempted:
+                diagnostics = {'source_sha': sha, 'passed': passed, 'last_stage': stage}
+                if not passed:
+                    try:
+                        metrics = json.loads(dc('exec', '-T', 'fixture', 'python3', '-c',
+                            'import urllib.request;print(urllib.request.urlopen("http://127.0.0.1:8088/metrics").read().decode())', timeout=10))
+                        diagnostics['fixture_metrics'] = {k: v for k, v in metrics.items() if isinstance(v, int)}
+                    except Exception:
+                        diagnostics['fixture_metrics_available'] = False
+                    try:
+                        logs = subprocess.run(compose + ['logs', '--no-color', '--tail', '120', 'api'],
+                                              env=env, capture_output=True, text=True, timeout=15)
+                        sanitized = logs.stdout + logs.stderr
+                        for secret in [*values.values(), token, 'ci-local-fixture-no-real-key', 'ci-fixture']:
+                            if secret and len(secret) >= 8:
+                                sanitized = sanitized.replace(secret, '[redacted]')
+                        (evidence / 'host-research-failure.log').write_text(sanitized)
+                    except Exception:
+                        diagnostics['logs_available'] = False
+                cleanup = subprocess.run(compose + ['down', '--volumes', '--remove-orphans'], env=env,
+                                         capture_output=True, text=True, timeout=120)
+                diagnostics['cleanup_passed'] = cleanup.returncode == 0
+                (evidence / 'host-research-outcome.json').write_text(json.dumps(diagnostics, indent=2))
+                print('HOST_RESEARCH_CLEANUP=' + ('PASS' if cleanup.returncode == 0 else 'FAIL'), flush=True)
+                if cleanup.returncode:
+                    raise RuntimeError('HOST_RESEARCH_CLEANUP_FAILED')
+
+
+if __name__ == '__main__':
+    main()
