@@ -129,6 +129,7 @@ jobs:
       CANDIDATE_SHA: ${{ github.sha }}
       CANDIDATE_IMAGE: botmode-native-research:${{ github.sha }}
       HOST_RESEARCH_PROJECT: botmode-research-${{ github.run_id }}-${{ github.run_attempt }}
+      PYTHONPYCACHEPREFIX: ${{ runner.temp }}/botmode-python-cache
     steps:
       - uses: actions/checkout@v5
         with:

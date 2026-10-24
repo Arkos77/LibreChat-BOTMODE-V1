@@ -99,7 +99,10 @@ networks:
   default:
     internal: true
 ''')
-        env = {**os.environ, 'BOTMODE_IMAGE': image, 'BOTMODE_HOST_PORT': '3090', **values}
+        env = {**os.environ, 'BOTMODE_IMAGE': image, 'BOTMODE_HOST_PORT': '127.0.0.1:3090', **values}
+        for key in ('PROXY', 'HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy'):
+            env[key] = ''
+        env['NO_PROXY'] = env['no_proxy'] = 'localhost,127.0.0.1,api,mongodb,redis,fixture'
         compose = ['docker', 'compose', '--project-name', project, '--project-directory', str(directory)]
         for name in ('docker-compose.botmode.yml', 'docker-compose.botmode-lite.yml', 'qualification.yml'):
             compose += ['-f', str(directory / name)]
@@ -228,7 +231,7 @@ console.log(JSON.stringify({conversation:!!conversation,count:messages.length,co
             metrics = json.loads(dc('exec', '-T', 'fixture', 'python3', '-c',
                 'import json,urllib.request;print(urllib.request.urlopen("http://127.0.0.1:8088/metrics").read().decode())'))
             assert metrics.get('source_search_calls', 0) >= 1 and metrics.get('source_scrape_calls', 0) >= 1
-            assert metrics.get('source_tool_requests', 0) >= 1
+            assert metrics.get('source_tool_requests') == 1
             component_images = {}
             for service in ('api', 'mongodb', 'redis', 'fixture'):
                 container_id = dc('ps', '-q', service).strip()
