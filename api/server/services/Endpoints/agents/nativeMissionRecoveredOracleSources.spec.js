@@ -165,13 +165,12 @@ describe('native recovered Oracle source observations', () => {
     'refuses %s observations before persistence',
     async (mode) => {
       const f = fixture();
-      f.setSources(
-        mode === 'missing'
-          ? {}
-          : mode === 'foreign'
-            ? { foreign: [f.observation] }
-            : { [f.task.taskId]: [{ ...f.observation, urls: ['javascript:invalid'] }] },
-      );
+      const sources = {
+        missing: {},
+        foreign: { foreign: [f.observation] },
+        malformed: { [f.task.taskId]: [{ ...f.observation, urls: ['javascript:invalid'] }] },
+      };
+      f.setSources(sources[mode]);
       await expect(f.verify()).rejects.toThrow();
       expect(f.writes()).toBe(0);
       expect(f.job().missionOracleState.results).toEqual({});
