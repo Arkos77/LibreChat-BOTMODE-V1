@@ -30,14 +30,25 @@ function validatedClientOptions(binding: AgentInputs, task: PlannedTask) {
     return binding.clientOptions;
   }
   const format = options?.modelKwargs?.response_format;
-  if (format?.type === 'json_schema' || format?.type === 'json_object') {
+  const hasJsonFormat = format?.type === 'json_schema' || format?.type === 'json_object';
+  const hasTools = Boolean(
+    binding.tools?.length ||
+      binding.graphTools?.length ||
+      binding.toolDefinitions?.some((tool) => tool.defer_loading !== true),
+  );
+  // Some OpenAI-compatible providers require tools and tool_choice together.
+  // Keep explicit choices (including "none") and allow the model to finish
+  // after tool results; forcing "required" on every turn would prevent that.
+  const needsToolChoice = hasTools && options?.modelKwargs?.tool_choice == null;
+  if (hasJsonFormat && !needsToolChoice) {
     return binding.clientOptions;
   }
   return {
     ...options,
     modelKwargs: {
       ...options?.modelKwargs,
-      response_format: { type: 'json_object' },
+      ...(!hasJsonFormat && { response_format: { type: 'json_object' } }),
+      ...(needsToolChoice && { tool_choice: 'auto' }),
     },
   };
 }

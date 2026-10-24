@@ -1,5 +1,7 @@
 import { Run, Providers } from '@librechat/agents';
 import { AIMessage, HumanMessage } from '@librechat/agents/langchain/messages';
+import { DynamicStructuredTool } from '@librechat/agents/langchain/tools';
+import { z } from 'zod';
 import type { AgentInputs, BaseGraphState } from '@librechat/agents';
 import { deterministicPlanner } from './planner';
 import { compileNativePlan } from './native';
@@ -44,6 +46,64 @@ describe('validated native output contract', () => {
       },
       context,
     );
+
+  it.each(['tools', 'toolDefinitions', 'graphTools'] as const)(
+    'enables an explicit automatic choice for authorized %s without changing the binding',
+    (field) => {
+      const input = new Map(bindings);
+      const options = { modelKwargs: { response_format: { type: 'json_object' } } };
+      const tool = new DynamicStructuredTool({
+        name: 'web_search',
+        description: 'Authorized search',
+        schema: z.object({ query: z.string() }),
+        func: async () => '',
+      });
+      let toolFields: Pick<AgentInputs, 'tools' | 'toolDefinitions' | 'graphTools'>;
+      if (field === 'toolDefinitions') {
+        toolFields = { toolDefinitions: [{ name: 'web_search' }] };
+      } else if (field === 'graphTools') {
+        toolFields = { graphTools: [tool] };
+      } else {
+        toolFields = { tools: [tool] };
+      }
+      input.set('worker', {
+        ...bindings.get('worker')!,
+        clientOptions: options,
+        ...toolFields,
+      });
+      const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
+      expect(agent.clientOptions).toMatchObject({ modelKwargs: { tool_choice: 'auto' } });
+      expect(input.get('worker')!.clientOptions).toBe(options);
+      expect(options.modelKwargs).not.toHaveProperty('tool_choice');
+    },
+  );
+
+  it.each(['none', { type: 'function', function: { name: 'authorized_tool' } }])(
+    'preserves an explicitly configured tool choice',
+    (choice) => {
+      const input = new Map(bindings);
+      input.set('worker', {
+        ...bindings.get('worker')!,
+        toolDefinitions: [{ name: 'authorized_tool' }],
+        clientOptions: { modelKwargs: { tool_choice: choice } },
+      });
+      const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
+      expect(agent.clientOptions).toMatchObject({ modelKwargs: { tool_choice: choice } });
+    },
+  );
+
+  it('does not enable a tool from capability or registry metadata alone', () => {
+    const input = new Map(bindings);
+    input.set('worker', {
+      ...bindings.get('worker')!,
+      tools: [],
+      toolDefinitions: [{ name: 'deferred', defer_loading: true }],
+      toolRegistry: new Map([['web_search', { name: 'web_search' }]]),
+    });
+    expect(
+      compileNativePlan(validatedPlan(), input).graphConfig.agents[0].clientOptions,
+    ).not.toHaveProperty('modelKwargs.tool_choice');
+  });
 
   it.each([Providers.OPENAI, 'openrouter'])(
     'gives the producer the validation contract and JSON transport for %s',
