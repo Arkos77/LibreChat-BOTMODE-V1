@@ -37,6 +37,52 @@ const terminalPlan = (candidateExpected = true): MissionPlan => ({
 });
 
 describe('persisted mission failure classification', () => {
+  it.each([
+    ['result-v1', { ok: true, result: '', sources: '' }, 'EMPTY_RESULT'],
+    [
+      'research-v1',
+      {
+        ok: true,
+        result: 'Private draft https://example.invalid/unobserved',
+        sources: 'https://example.invalid/unobserved',
+      },
+      'UNVERIFIED_SOURCES',
+    ],
+  ] as const)(
+    'explains a %s rejection without publishing the candidate',
+    async (contract, candidate, detail) => {
+      const plan = terminalPlan();
+      plan.tasks[0].validation[0].outputContract = contract;
+      const result = await missionOracle.validateMissionTask({
+        taskId: 'task-terminal',
+        nodeId: 'node-terminal',
+        agentId: 'worker',
+        candidate: JSON.stringify(candidate),
+        requirements: plan.tasks[0].validation,
+      });
+      let direct: unknown;
+      try {
+        missionOracle.assertMissionTaskVerified(result);
+      } catch (error) {
+        direct = error;
+      }
+      const recovered = missionOracle.getMissionOracleFailure(plan, {
+        evidence: {},
+        results: { 'task-terminal': result },
+      });
+      for (const failure of [direct, recovered]) {
+        expect(failure).toMatchObject({ code: 'MISSION_ORACLE_FAILURE', failureDetails: [detail] });
+        expect((failure as Error).message).toContain(
+          detail === 'EMPTY_RESULT'
+            ? 'résultat est absent ou vide'
+            : 'sources ne sont pas vérifiées',
+        );
+        expect((failure as Error).message).not.toContain('Private draft');
+        expect((failure as Error).message).not.toContain('https://example.invalid');
+      }
+    },
+  );
+
   it('recovers a scoped rejection without exposing the private candidate', async () => {
     const plan = terminalPlan();
     const result = await missionOracle.validateMissionTask({

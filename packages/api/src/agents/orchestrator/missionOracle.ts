@@ -352,12 +352,30 @@ export async function validateMissionTask(
   return { taskId, nodeId, verdicts };
 }
 
+function missionOracleFailure(result: MissionOracleTaskResult, blocked: OracleVerdict) {
+  const failureDetails: Array<'EMPTY_RESULT' | 'UNVERIFIED_SOURCES'> = [];
+  const explanations: string[] = [];
+  if (blocked.checks.some((check) => check.criterionId === 'output:result' && !check.passed)) {
+    failureDetails.push('EMPTY_RESULT');
+    explanations.push('Le résultat est absent ou vide.');
+  }
+  if (blocked.checks.some((check) => check.criterionId === 'output:sources' && !check.passed)) {
+    failureDetails.push('UNVERIFIED_SOURCES');
+    explanations.push('Les sources ne sont pas vérifiées par la recherche native.');
+  }
+  const reasons = [...new Set(blocked.reasons.map((reason) => reason.code))].join(', ');
+  return Object.assign(
+    new Error(
+      `Native mission Oracle blocked task ${result.taskId} (${result.nodeId}): ${blocked.status}${reasons ? ` [${reasons}]` : ''}${explanations.length ? ` ${explanations.join(' ')}` : ''}`,
+    ),
+    { code: 'MISSION_ORACLE_FAILURE' as const, failureDetails },
+  );
+}
+
 export function assertMissionTaskVerified(result: MissionOracleTaskResult): void {
   const blocked = result.verdicts.find((verdict) => verdict.status !== 'VERIFIED');
   if (blocked != null) {
-    throw new Error(
-      `Native mission Oracle blocked task ${result.taskId} (${result.nodeId}): ${blocked.status}`,
-    );
+    throw missionOracleFailure(result, blocked);
   }
 }
 
@@ -365,7 +383,7 @@ export function assertMissionTaskVerified(result: MissionOracleTaskResult): void
 export function getMissionOracleFailure(
   plan: MissionPlan,
   state?: MissionOracleState,
-): (Error & { code: 'MISSION_ORACLE_FAILURE' }) | undefined {
+): ReturnType<typeof missionOracleFailure> | undefined {
   for (const task of plan.tasks) {
     const result = state?.results[task.taskId];
     if (result?.taskId !== task.taskId || result.nodeId !== task.nodeId) {
@@ -375,13 +393,7 @@ export function getMissionOracleFailure(
     if (blocked == null) {
       continue;
     }
-    const reasons = [...new Set(blocked.reasons.map((reason) => reason.code))].join(', ');
-    return Object.assign(
-      new Error(
-        `Native mission Oracle blocked task ${task.taskId} (${task.nodeId}): ${blocked.status}${reasons ? ` [${reasons}]` : ''}`,
-      ),
-      { code: 'MISSION_ORACLE_FAILURE' as const },
-    );
+    return missionOracleFailure(result, blocked);
   }
   return undefined;
 }
