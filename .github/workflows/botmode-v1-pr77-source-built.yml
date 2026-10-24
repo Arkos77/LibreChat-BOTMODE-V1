@@ -129,7 +129,6 @@ jobs:
       CANDIDATE_SHA: ${{ github.sha }}
       CANDIDATE_IMAGE: botmode-native-research:${{ github.sha }}
       HOST_RESEARCH_PROJECT: botmode-research-${{ github.run_id }}-${{ github.run_attempt }}
-      PYTHONPYCACHEPREFIX: ${{ runner.temp }}/botmode-python-cache
     steps:
       - uses: actions/checkout@v5
         with:
@@ -145,6 +144,8 @@ jobs:
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           test -z "$(git status --porcelain)"
       - name: Cheap source gates before Docker
+        env:
+          PYTHONPYCACHEPREFIX: ${{ runner.temp }}/botmode-python-cache
         run: |
           set -euo pipefail
           python3 -m unittest discover -s scripts/botmode/tests -p test_source_fixture.py
