@@ -41,3 +41,11 @@ Ces preuves utilisent un fournisseur de modèle et des services de recherche loc
 - Les références stable/latest et les branches de release n'ont pas été modifiées.
 
 La validation d'un scénario avec fournisseur réel et l'approbation d'une release stable restent distinctes. Les limites préexistantes des intégrations non activées et de la reprise complète sans Redis ne sont pas levées par ce lot.
+
+## Recette avec fournisseur réel — 24 octobre 2026
+
+Une seule mission a été autorisée puis admise sur cette image exacte, avec les politiques gratuites existantes et le fournisseur OpenRouter réel. Admission HTTP 200 et abonnement SSE réussis. Le service a terminé avec un statut erreur, sans mission encore active. Aucune relance n’a été effectuée.
+
+La réponse de RECHERCHE, relue dans le checkpoint MongoDB natif, est exactement `{"ok":true,"result":"","sources":""}` ; aucun appel natif `web_search` n’a été observé. Le premier contrat `result-v1` refuse donc correctement le résultat vide, même si le champ `ok` vaut vrai. Les étapes analyse et synthèse ne sont pas atteintes et aucune publication P6 réussie n’est établie pour cette mission réelle. La consommation rapportée par le flux est de 3 412 jetons sur la route `openrouter/free` ; aucun modèle payant n’a été sélectionné par le routage configuré.
+
+Les consignes enregistrées de l’agent ne contiennent pas de modèle de réponse vide. Ces observations établissent l’échec de la sortie transmise à Oracle après le SDK ; elles ne distinguent pas encore la réponse HTTP brute du fournisseur de ses transformations par le SDK. Il ne faut ni assouplir le contrat, ni convertir ce refus en réussite, ni annoncer une validation complète en production à partir des tests simulés.
