@@ -153,6 +153,7 @@ jobs:
           python3 -m py_compile scripts/botmode/ci-host-research.py
           npm ci --no-audit --no-fund
           npm run build:data-provider
+          python3 scripts/botmode/ci-host-research.py --check-config
           npm run build:data-schemas
           npm run build:api
           NODE_OPTIONS=--max-old-space-size=6144 npm exec --workspace=packages/api tsc -- --noEmit

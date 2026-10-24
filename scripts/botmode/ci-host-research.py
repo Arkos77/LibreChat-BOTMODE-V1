@@ -1,4 +1,6 @@
 """Disposable hosted-runner HTTP/SSE research qualification; never an installer."""
+import argparse
+import copy
 import json
 import os
 import re
@@ -33,8 +35,36 @@ def run(args, *, env=None, data=None, timeout=180):
     return subprocess.check_output(args, input=data, text=True, env=env, timeout=timeout)
 
 
+def build_config(source):
+    config = copy.deepcopy(source)
+    config['endpoints']['agents'].pop('hostModelRouting', None)
+    endpoints = [e for e in config['endpoints']['custom'] if e.get('name') == 'OpenRouter']
+    if not endpoints:
+        raise RuntimeError('HOST_RESEARCH_SAVED_PROVIDER_MISSING')
+    if len(endpoints) != 1:
+        raise RuntimeError('HOST_RESEARCH_SAVED_PROVIDER_AMBIGUOUS')
+    endpoint = endpoints[0]
+    endpoint.update(apiKey='ci-local-fixture-no-real-key', baseURL='http://fixture:8088/v1')
+    endpoint['models'] = {'fetch': False, 'default': ['openrouter/free']}
+    config['endpoints']['custom'] = endpoints
+    config['webSearch'] = {
+        'searchProvider': 'searxng', 'scraperProvider': 'firecrawl', 'rerankerType': 'none',
+        'searxngInstanceUrl': 'http://fixture:8088', 'searxngApiKey': 'ci-fixture',
+        'firecrawlApiUrl': 'http://fixture:8088', 'firecrawlApiKey': 'ci-fixture',
+        'allowedAddresses': ['fixture:8088'],
+    }
+    return config
+
+
+def check_config(config):
+    print(run(['node', str(ROOT / 'scripts/botmode/validate-host-research-config.cjs')],
+              data=json.dumps(config), timeout=30).strip(), flush=True)
+
+
 def main():
     sha, image, project = validate_target(os.environ, run(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip())
+    config = build_config(json.loads((ROOT / 'librechat.yaml').read_text()))
+    check_config(config)
     image_env = run(['docker', 'image', 'inspect', image, '--format', '{{json .Config.Env}}'])
     if 'BUILD_COMMIT=' + sha not in json.loads(image_env):
         raise RuntimeError('HOST_RESEARCH_EMBEDDED_SOURCE_MISMATCH')
@@ -45,23 +75,6 @@ def main():
         for name in ('docker-compose.botmode.yml', 'docker-compose.botmode-lite.yml'):
             (directory / name).write_bytes((ROOT / name).read_bytes())
         (directory / 'fixture.py').write_bytes((ROOT / 'scripts/botmode/ci-openai-subagent-fixture.py').read_bytes())
-        config = json.loads((ROOT / 'librechat.yaml').read_text())
-        config['endpoints']['agents'].pop('hostModelRouting', None)
-        found = False
-        for endpoint in config['endpoints']['custom']:
-            endpoint.setdefault('models', {})['fetch'] = False
-            if endpoint.get('name') == 'OpenRouter':
-                found = True
-                endpoint.update(apiKey='ci-local-fixture-no-real-key', baseURL='http://fixture:8088/v1')
-                endpoint['models'] = {'fetch': False, 'default': ['openrouter/free']}
-        if not found:
-            raise RuntimeError('HOST_RESEARCH_SAVED_PROVIDER_MISSING')
-        config['webSearch'] = {
-            'searchProvider': 'searxng', 'scraperProvider': 'firecrawl', 'rerankerType': 'none',
-            'searxngInstanceUrl': 'http://fixture:8088', 'searxngApiKey': 'ci-fixture',
-            'firecrawlApiUrl': 'http://fixture:8088', 'firecrawlApiKey': 'ci-fixture',
-            'allowedAddresses': ['fixture:8088'],
-        }
         (directory / 'librechat.yaml').write_text(json.dumps(config, ensure_ascii=False))
         values = {'JWT_SECRET': secrets.token_hex(48), 'JWT_REFRESH_SECRET': secrets.token_hex(48),
                   'CREDS_KEY': secrets.token_hex(32), 'CREDS_IV': secrets.token_hex(16),
@@ -274,4 +287,9 @@ console.log(JSON.stringify({conversation:!!conversation,count:messages.length,co
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check-config', action='store_true', help='Validate fixture config offline; no Docker or provider calls')
+    if parser.parse_args().check_config:
+        check_config(build_config(json.loads((ROOT / 'librechat.yaml').read_text())))
+    else:
+        main()
