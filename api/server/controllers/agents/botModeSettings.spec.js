@@ -33,6 +33,17 @@ describe('BOT MODE turn admission', () => {
       settings,
     );
   });
+  it('accepts a minimal mission intent without client-owned topology', () => {
+    expect(
+      prepareBotModeSettings({
+        requested: settings,
+        agentId: 'worker',
+        mission: {
+          mission: { missionId: 'new-mission', taskId: 'new-task', objective: 'Analyze' },
+        },
+      }),
+    ).toEqual(settings);
+  });
   it('allows an explicit FAST turn without an old mission', () => {
     expect(
       prepareBotModeSettings({

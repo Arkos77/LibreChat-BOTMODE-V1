@@ -39,7 +39,7 @@ import {
   stripStreamedIndexStamps,
 } from '~/utils';
 import useFocusRegeneratedResponse from '~/hooks/Chat/useFocusRegeneratedResponse';
-import { getBotModeObjectives, getBotModeSearchParams } from './mission';
+import { getBotModeSearchParams } from './mission';
 import useSetFilesToDelete from '~/hooks/Files/useSetFilesToDelete';
 import useGetSender from '~/hooks/Conversations/useGetSender';
 import store, { useGetEphemeralAgent } from '~/store';
@@ -606,9 +606,6 @@ export default function useChatFunctions({
       (isRegenerate || (overrideFiles != null && overrideFiles.length)) &&
       submissionFiles &&
       submissionFiles.length > 0;
-    const hasSubmissionFiles =
-      setFiles != null &&
-      (reuseFiles === true || (overrideFiles == null && (files?.size ?? 0) > 0));
     const botModeParams = resolveBotModeSearchParams(searchParams, conversation);
     const botModeMode = getBotModeExecutionMode(botModeParams, text);
     if (botModeParams.get('botmode') === '1' && isAgentsEndpoint(endpoint)) {
@@ -632,125 +629,19 @@ export default function useChatFunctions({
         console.error('BOT MODE mission requires a selected agent');
         return false;
       }
-      const orchestratorMission = (() => {
-        const specialistDefinitions: Array<[string, string, string, string[]]> = [
-          ['RECHERCHE', 'botmode-recherche', 'research', ['web_search']],
-          ['ANALYSE', 'botmode-analyse', 'analysis', ['analysis']],
-          ['CODE', 'botmode-code', 'engineering', ['execute_code']],
-          ['DOCUMENTS', 'botmode-documents', 'documents', ['file_search']],
-          ['RÉDACTION', 'botmode-r-daction', 'writing', ['writing']],
-        ];
-        const rawBindings = botModeParams.get('botmode_agent_bindings');
-        const selectionMode = botModeParams.get('botmode_agent_mode') ?? 'auto';
-        let boundAgents: Array<{ id: string; name: string }> = [];
-        try {
-          const parsed: unknown = JSON.parse(rawBindings ?? '[]');
-          if (Array.isArray(parsed)) {
-            boundAgents = parsed.filter(
-              (item): item is { id: string; name: string } =>
-                item != null &&
-                typeof item.id === 'string' &&
-                item.id.length > 0 &&
-                typeof item.name === 'string' &&
-                item.name.length > 0,
-            );
-          }
-        } catch (_error) {
-          console.error('Invalid BOT MODE agent bindings');
-        }
-        const uniqueBindings = boundAgents.filter(
-          (agent, index) => boundAgents.findIndex((other) => other.id === agent.id) === index,
-        );
-        const selectedDefinitions: Array<[string, string, string, string[]]> =
-          selectionMode === 'auto'
-            ? specialistDefinitions.flatMap(([id, , role, capabilities]) => {
-                const matching = uniqueBindings.find((agent) => agent.name === id);
-                return matching
-                  ? [[id, matching.id, role, capabilities] as [string, string, string, string[]]]
-                  : [];
-              })
-            : uniqueBindings.map((agent, index) => [
-                `MANUAL_${index + 1}`,
-                agent.id,
-                'specialist',
-                [`selected_agent_${index + 1}`],
-              ]);
-        const manualAgentIds = selectionMode === 'manual' ? uniqueBindings.map((a) => a.id) : null;
-        const specialists = selectedDefinitions.map(([id, agentId, role, capabilities]) => ({
-          id,
-          agentId,
-          role,
-          capabilities,
-          constraints: [],
-        }));
-        const mode = botModeMode;
-        let objectives = getBotModeObjectives(mode, hasSubmissionFiles);
-        if (manualAgentIds != null) {
-          objectives = selectedDefinitions.map(([id, , role, capabilities], index) => ({
-            key: `selected_${index + 1}`,
-            objective: `Exécuter la partie ${index + 1} de la mission avec le spécialiste sélectionné (${id}, ${role}).`,
-            requiredCapabilities: [capabilities[0] ?? `selected_agent_${index + 1}`],
-            dependsOn: [],
-          }));
-        } else {
-          const available = new Set(specialists.flatMap((agent) => agent.capabilities));
-          objectives = objectives.filter((objective) =>
-            objective.requiredCapabilities.every((capability) => available.has(capability)),
-          );
-          const retained = new Set(objectives.map((objective) => objective.key));
-          objectives = objectives.map((objective) => ({
-            ...objective,
-            dependsOn: objective.dependsOn.filter((dependency) => retained.has(dependency)),
-          }));
-          const required = new Set(
-            objectives.flatMap((objective) => objective.requiredCapabilities),
-          );
-          specialists.splice(
-            0,
-            specialists.length,
-            ...specialists.filter(({ capabilities }) =>
-              capabilities.some((capability) => required.has(capability)),
-            ),
-          );
-        }
-        if (objectives.length === 0) return null;
-        return {
+      // The server resolves complete objectives, dependencies and native actors.
+      // Selection lives in botMode settings; it never filters the work in the browser.
+      Object.assign(currentMsg, {
+        orchestratorMission: {
           mission: {
             missionId: `botmode-${clientRequestId}`,
             taskId: clientRequestId,
             objective: text,
-            constraints: [
-              'mission_idée: privilégier profondeur et preuves plutôt que rapidité',
-              'Chaque spécialiste doit retourner un objet JSON strict contenant ok=true et un champ result décrivant précisément son travail et ses preuves. Ne pas déclarer ok=true si le travail demandé n’est pas terminé.',
-            ],
-            // Host-owned, deterministic baseline contract. This is a machine-readable
-            // completion check, not proof that external factual claims are true.
-            // It must be inherited by every planned objective, including manual mode.
-            validation: {
-              criteria: [{ id: 'task-completed', field: 'ok', expected: true }],
-            },
-            requiredCapabilities: [
-              ...new Set(objectives.flatMap((objective) => objective.requiredCapabilities)),
-            ],
-            objectives,
+            constraints: ['mission_idée: privilégier profondeur et preuves plutôt que rapidité'],
+            requiredCapabilities: [],
           },
-          plannerContext: {
-            worker: {
-              id: 'worker',
-              agentId: botModeAgentId,
-              role: 'worker',
-              capabilities: ['basic'],
-              constraints: [],
-            },
-            specialists,
-          },
-        };
-      })();
-      if (orchestratorMission == null) {
-        console.error('BOT MODE mission has no authorized specialist for the requested objectives');
-        return false;
-      }
-      Object.assign(currentMsg, { orchestratorMission });
+        },
+      });
     }
 
     if (setFiles && reuseFiles === true) {

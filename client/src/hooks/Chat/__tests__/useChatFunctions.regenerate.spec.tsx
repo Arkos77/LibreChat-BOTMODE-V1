@@ -168,11 +168,9 @@ describe('useChatFunctions ask', () => {
       const submitted = first.setSubmission.mock.calls[0][0];
       expect(submitted.userMessage.orchestratorMission).toBeDefined();
       expect(submitted.userMessage.botMode).toEqual(saved);
-      expect(
-        submitted.userMessage.orchestratorMission.plannerContext.specialists.map(
-          (agent: { agentId: string }) => agent.agentId,
-        ),
-      ).toEqual(['research-agent', 'analysis-agent', 'writing-agent']);
+      expect(submitted.userMessage.botMode.agents.map((agent: { id: string }) => agent.id)).toEqual(
+        ['research-agent', 'analysis-agent', 'writing-agent'],
+      );
       const firstMissionId = submitted.userMessage.orchestratorMission.mission.missionId;
       first.unmount();
       const reopened = renderAsk([], 'saved-mission', { botMode: saved });
@@ -182,6 +180,29 @@ describe('useChatFunctions ask', () => {
       expect(
         reopened.setSubmission.mock.calls[0][0].userMessage.orchestratorMission.mission.missionId,
       ).not.toBe(firstMissionId);
+    },
+  );
+
+  it.each(['auto', 'manual'] as const)(
+    'sends %s intent without a client-owned or reduced plan',
+    (selectionMode) => {
+      const hook = renderAsk([], 'saved-minimal', {
+        botMode: {
+          version: 1,
+          mode: 'analyze',
+          selectionMode,
+          workerAgentId: 'agent-1',
+          agents: [{ id: 'only-research', name: 'RECHERCHE' }],
+        },
+      });
+      act(() => {
+        hook.result.current.ask({ text: 'Compare with sources' });
+      });
+      const message = hook.setSubmission.mock.calls[0][0].userMessage;
+      expect(message.botMode.agents).toEqual([{ id: 'only-research', name: 'RECHERCHE' }]);
+      expect(message.orchestratorMission.mission.objective).toBe('Compare with sources');
+      expect(message.orchestratorMission.mission.objectives).toBeUndefined();
+      expect(message.orchestratorMission.plannerContext).toBeUndefined();
     },
   );
 
@@ -248,7 +269,7 @@ describe('useChatFunctions ask', () => {
       });
       const next = followUp.setSubmission.mock.calls[0][0];
       expect(next.userMessage.orchestratorMission).toBeDefined();
-      expect(next.userMessage.orchestratorMission.plannerContext.specialists).toHaveLength(3);
+      expect(next.userMessage.botMode.agents).toHaveLength(3);
     },
   );
 
@@ -297,9 +318,7 @@ describe('useChatFunctions ask', () => {
         userMessage: { orchestratorMission: { mission: { objectives: Array<{ key: string }> } } };
       };
       expect(submission.userMessage.files ?? []).toEqual([]);
-      expect(
-        submission.userMessage.orchestratorMission.mission.objectives.map((task) => task.key),
-      ).toEqual(['research', 'analysis', 'synthesis']);
+      expect(submission.userMessage.orchestratorMission.mission.objectives).toBeUndefined();
     },
   );
 

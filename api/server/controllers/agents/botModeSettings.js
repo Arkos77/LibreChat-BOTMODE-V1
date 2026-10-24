@@ -22,7 +22,9 @@ function prepareBotModeSettings({ requested, saved, agentId, mission }) {
   if ((settings.mode !== 'fast') !== (mission != null)) {
     throw new Error('BOT MODE settings must match the mission execution mode');
   }
-  if (mission != null) {
+  // Legacy clients may still send topology hints. New clients send intent only;
+  // the initialized host resolves and authorizes the complete selected graph.
+  if (mission?.plannerContext != null) {
     const selected = new Set(settings.agents.map((agent) => agent.id));
     const specialists = mission.plannerContext?.specialists;
     if (

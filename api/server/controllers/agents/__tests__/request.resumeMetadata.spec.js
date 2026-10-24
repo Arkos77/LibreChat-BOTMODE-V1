@@ -260,6 +260,7 @@ jest.mock('@librechat/data-schemas', () => ({
 jest.mock('@librechat/api', () => ({
   deterministicPlanner: jest.requireActual('@librechat/api').deterministicPlanner,
   prepareBotModeMission: jest.requireActual('@librechat/api').prepareBotModeMission,
+  prepareBotModePlan: jest.requireActual('@librechat/api').prepareBotModePlan,
   assertResearchToolAvailability:
     jest.requireActual('@librechat/api').assertResearchToolAvailability,
   resolveRequestTenantId: (req) => req.tenantId ?? req.user?.tenantId,
@@ -1065,109 +1066,127 @@ describe('ResumableAgentController resume metadata', () => {
     expect(initializeClient).not.toHaveBeenCalled();
   });
 
-  it.each([false, true])(
-    'persists authorized plan and research source scopes=%s before sendMessage',
-    async (research) => {
+  describe('canonical BOT MODE admission', () => {
+    function requestFixture({ selectionMode = 'auto', minimal = false, files = false } = {}) {
+      const agents = [
+        { id: 'agent-primary', name: 'Worker' },
+        { id: 'agent-specialist', name: 'RECHERCHE', tools: ['web_search'] },
+        { id: 'agent-analysis', name: 'ANALYSE' },
+        { id: 'agent-writing', name: 'RÉDACTION' },
+        { id: 'agent-documents', name: 'DOCUMENTS' },
+      ];
+      const settings = {
+        version: 1,
+        mode: 'analyze',
+        selectionMode,
+        workerAgentId: 'agent-primary',
+        agents: agents.slice(1).map(({ id, name }) => ({ id, name })),
+      };
+      const mission = {
+        missionId: 'mission-host',
+        taskId: 'root-task',
+        objective: 'Analyze with sources',
+        constraints: ['bounded'],
+        requiredCapabilities: ['writing'],
+        objectives: [
+          {
+            key: 'synthesis',
+            objective: 'only writing',
+            requiredCapabilities: ['writing'],
+            dependsOn: [],
+          },
+        ],
+      };
+      const envelope = { mission };
+      if (!minimal)
+        envelope.plannerContext = {
+          worker: {
+            id: 'worker',
+            agentId: 'agent-primary',
+            role: 'worker',
+            capabilities: ['basic'],
+            constraints: [],
+          },
+          specialists: agents.slice(1).map((agent, index) => ({
+            id: `selected_${index}`,
+            agentId: agent.id,
+            role: 'specialist',
+            capabilities: ['writing'],
+            constraints: [],
+          })),
+        };
+      const req = {
+        user: { id: 'user-123' },
+        config: {},
+        body: {
+          text: mission.objective,
+          messageId: 'user-message',
+          conversationId: 'conversation-123',
+          orchestratorMission: envelope,
+          botMode: settings,
+          endpointOption: {
+            endpoint: 'agents',
+            agent_id: 'agent-primary',
+            modelOptions: { model: 'test' },
+          },
+          ...(files && { files: [{ file_id: 'current-file' }] }),
+        },
+      };
       const sendMessage = jest.fn(() => new Promise(() => {}));
-      const publicationBarrier = { activate: jest.fn() };
       const client = {
-        options: { agent: { id: 'agent-primary' } },
-        agentConfigs: new Map([
-          ['agent-specialist', { id: 'agent-specialist', tools: ['web_search'] }],
-        ]),
-        publicationBarrier,
+        options: { agent: agents[0] },
+        agentConfigs: new Map(agents.slice(1).map((agent) => [agent.id, agent])),
+        publicationBarrier: { activate: jest.fn() },
         sendMessage,
       };
       const configure = jest.fn();
       const initializeClient = jest
         .fn()
         .mockResolvedValue({ client, missionEvidenceContext: { configure } });
-      const missionRequest = {
-        mission: {
-          missionId: 'mission-p6-host',
-          taskId: 'root-task',
-          objective: 'Execute the approved mission',
-          constraints: ['bounded'],
-          requiredCapabilities: [research ? 'web_search' : 'research'],
-          objectives: [
-            {
-              key: 'research',
-              objective: 'Research the input',
-              requiredCapabilities: [research ? 'web_search' : 'research'],
-              dependsOn: [],
-            },
-          ],
-        },
-        plannerContext: {
-          worker: {
-            id: 'worker',
-            agentId: 'agent-primary',
-            role: 'primary',
-            capabilities: ['basic'],
-            constraints: [],
-          },
-          specialists: [
-            {
-              id: 'researcher',
-              agentId: 'agent-specialist',
-              role: 'research',
-              capabilities: [research ? 'web_search' : 'research'],
-              constraints: ['bounded'],
-            },
-          ],
-        },
-      };
-      const req = {
-        user: { id: 'user-123' },
-        body: {
-          text: 'Run the structured mission.',
-          messageId: 'user-message',
-          conversationId: 'conversation-123',
-          orchestratorMission: missionRequest,
-          botMode: {
-            version: 1,
-            mode: 'analyze',
-            selectionMode: 'auto',
-            workerAgentId: 'agent-primary',
-            agents: [{ id: 'agent-specialist', name: 'RECHERCHE' }],
-          },
-          endpointOption: {
-            endpoint: 'agents',
-            agent_id: 'agent-primary',
-            modelOptions: { model: 'gpt-4.1' },
-          },
-        },
-        config: {},
-      };
-      const res = createResumableResponse();
-
       mockGenerationJobManager.updateMetadata.mockImplementation(async (_streamId, patch) => {
-        if (patch.orchestratorPlan) {
+        if (patch.orchestratorPlan)
           mockGenerationJobManager.getJob.mockResolvedValue({
             createdAt: 1000,
-            metadata: {
-              orchestratorPlan: structuredClone(patch.orchestratorPlan),
-              nativeMissionCapabilityAttestation: structuredClone(
-                patch.nativeMissionCapabilityAttestation,
-              ),
-            },
+            metadata: structuredClone(patch),
           });
-        }
       });
+      return { req, client, sendMessage, initializeClient, configure };
+    }
 
-      await AgentController(req, res, jest.fn(), initializeClient, null);
-      await nextTick();
-
-      const planUpdate = mockGenerationJobManager.updateMetadata.mock.calls.find(
-        ([, patch]) => patch?.orchestratorPlan != null,
-      );
-      expect(planUpdate).toBeDefined();
-      expect(
-        planUpdate[1].orchestratorPlan.tasks.every((task) =>
-          task.validation.some((requirement) => requirement.outputContract === 'result-v1'),
-        ),
-      ).toBe(true);
-      if (research)
+    it.each([
+      ['auto', false, false],
+      ['manual', false, false],
+      ['auto', true, false],
+      ['manual', true, false],
+      ['auto', true, true],
+      ['manual', true, true],
+    ])(
+      'restores full %s topology (minimal=%s files=%s) before execution',
+      async (selectionMode, minimal, files) => {
+        const { req, client, sendMessage, initializeClient, configure } = requestFixture({
+          selectionMode,
+          minimal,
+          files,
+        });
+        await AgentController(req, createResumableResponse(), jest.fn(), initializeClient, null);
+        await nextTick();
+        const write = mockGenerationJobManager.updateMetadata.mock.calls.find(
+          ([, patch]) => patch.orchestratorPlan,
+        );
+        expect(write).toBeDefined();
+        const plan = write[1].orchestratorPlan;
+        expect(plan.tasks.map((task) => task.key)).toEqual(
+          files
+            ? ['research', 'analysis', 'documentation', 'synthesis']
+            : ['research', 'analysis', 'synthesis'],
+        );
+        expect(plan.tasks.find((task) => task.key === 'analysis').dependsOn).toEqual(['research']);
+        expect(plan.tasks.at(-1).dependsOn).toEqual(
+          files ? ['analysis', 'documentation'] : ['analysis'],
+        );
+        expect(plan.tasks[0].agentId).toBe('agent-specialist');
+        expect(plan.tasks[0].validation.some((v) => v.outputContract === 'research-v1')).toBe(true);
+        expect(client.orchestratorPlan).toEqual(plan);
         expect(configure).toHaveBeenCalledWith(
           expect.objectContaining({
             sourceTasks: [
@@ -1178,32 +1197,56 @@ describe('ResumableAgentController resume metadata', () => {
             ],
           }),
         );
-      expect(client.botModeSettings).toEqual(req.body.botMode);
-      expect(req._botModeSettings).toEqual(req.body.botMode);
-      expect(planUpdate[0]).toBe('conversation-123');
-      expect(planUpdate[2]).toBe(1000);
-      expect(planUpdate[1].orchestratorPlan).toMatchObject({
-        mission: missionRequest.mission,
-        strategy: 'SINGLE',
-        tasks: [
-          expect.objectContaining({
-            agentId: 'agent-specialist',
-            taskId: 'root-task/research',
-          }),
-        ],
-      });
-      expect(mockGenerationJobManager.updateMetadata.mock.invocationCallOrder.at(-1)).toBeLessThan(
-        sendMessage.mock.invocationCallOrder[0],
-      );
-      expect(publicationBarrier.activate).toHaveBeenCalledTimes(1);
-      expect(mockGenerationJobManager.getJob.mock.invocationCallOrder.at(-1)).toBeLessThan(
-        publicationBarrier.activate.mock.invocationCallOrder[0],
-      );
-      expect(publicationBarrier.activate.mock.invocationCallOrder[0]).toBeLessThan(
-        sendMessage.mock.invocationCallOrder[0],
-      );
-    },
-  );
+        expect(mockGenerationJobManager.getJob.mock.invocationCallOrder.at(-1)).toBeLessThan(
+          client.publicationBarrier.activate.mock.invocationCallOrder[0],
+        );
+        expect(client.publicationBarrier.activate.mock.invocationCallOrder[0]).toBeLessThan(
+          sendMessage.mock.invocationCallOrder[0],
+        );
+        expect(write[2]).toBe(1000);
+      },
+    );
+
+    it.each(['auto', 'manual'])(
+      'refuses an incomplete %s selection before sendMessage',
+      async (selectionMode) => {
+        const f = requestFixture({ selectionMode });
+        f.req.body.botMode.agents = f.req.body.botMode.agents.filter(
+          (agent) => agent.id === 'agent-writing',
+        );
+        f.req.body.orchestratorMission.plannerContext.specialists =
+          f.req.body.orchestratorMission.plannerContext.specialists.filter(
+            (agent) => agent.agentId === 'agent-writing',
+          );
+        await AgentController(
+          f.req,
+          createResumableResponse(),
+          jest.fn(),
+          f.initializeClient,
+          null,
+        );
+        await nextTick();
+        expect(f.sendMessage).not.toHaveBeenCalled();
+        expect(
+          mockGenerationJobManager.updateMetadata.mock.calls.some(
+            ([, patch]) => patch.orchestratorPlan,
+          ),
+        ).toBe(false);
+      },
+    );
+
+    it('uses initialized roles rather than forged request names', async () => {
+      const f = requestFixture({ minimal: false });
+      f.client.agentConfigs.get('agent-specialist').name = 'CUSTOM';
+      await AgentController(f.req, createResumableResponse(), jest.fn(), f.initializeClient, null);
+      expect(f.sendMessage).not.toHaveBeenCalled();
+      expect(
+        mockGenerationJobManager.updateMetadata.mock.calls.some(
+          ([, patch]) => patch.orchestratorPlan,
+        ),
+      ).toBe(false);
+    });
+  });
 
   it('activates exact mission tool evidence declarations only after durable plan readback', async () => {
     const sendMessage = jest.fn(() => new Promise(() => {}));

@@ -42,7 +42,7 @@ const {
   resolveAgentTurnExecutionPlan,
   resolveRequestTenantId,
   deterministicPlanner,
-  prepareBotModeMission,
+  prepareBotModePlan,
   assertResearchToolAvailability,
 } = require('@librechat/api');
 const {
@@ -1833,7 +1833,13 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
     const orchestratorMission = req.body?.orchestratorMission;
     if (orchestratorMission != null) {
       const mission = orchestratorMission?.mission;
-      const plannerContext = orchestratorMission?.plannerContext;
+      const plannerContext =
+        botModeSettings == null
+          ? orchestratorMission?.plannerContext
+          : {
+              worker: { agentId: botModeSettings.workerAgentId },
+              specialists: botModeSettings.agents.map(({ id }) => ({ agentId: id })),
+            };
       if (
         mission == null ||
         plannerContext == null ||
@@ -1864,10 +1870,15 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         reachableAgents,
         specialists: plannerContext.specialists,
       });
-      const orchestratorPlan = deterministicPlanner.planMission(
-        botModeSettings == null ? mission : prepareBotModeMission(mission),
-        plannerContext,
-      );
+      const orchestratorPlan =
+        botModeSettings == null
+          ? deterministicPlanner.planMission(mission, plannerContext)
+          : prepareBotModePlan({
+              mission,
+              settings: botModeSettings,
+              reachableAgents,
+              hasAttachments: Array.isArray(req.body.files) && req.body.files.length > 0,
+            });
       assertAuthorizedOrchestratorTasks(orchestratorPlan.tasks, authorizedAgentIds);
       assertResearchToolAvailability(orchestratorPlan, reachableAgents);
 
