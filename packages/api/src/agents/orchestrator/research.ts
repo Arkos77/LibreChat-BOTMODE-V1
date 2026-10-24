@@ -100,7 +100,10 @@ export function researchPhaseBinding(binding: AgentInputs, phase: Phase): AgentI
 }
 
 /** Only checkpointed, current-phase AI/tool pairs can unlock the result phase. */
-export function requireResearchObservation(task: PlannedTask) {
+export function requireResearchObservation(
+  task: PlannedTask,
+  onObserved?: (toolCallIds: readonly string[]) => Promise<void>,
+) {
   const phaseId = researchObservationNodeId(task.nodeId);
   return async (state: BaseGraphState): Promise<void> => {
     const ai = state.agentOutputs?.[phaseId] as AIMessage | undefined;
@@ -135,5 +138,6 @@ export function requireResearchObservation(task: PlannedTask) {
       )
         reject();
     }
+    await onObserved?.(calls.map((call) => call.id!));
   };
 }

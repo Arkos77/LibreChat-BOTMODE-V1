@@ -222,7 +222,21 @@ export function compileNativePlan(
       from: researchObservationNodeId(task.nodeId),
       to: task.nodeId,
       edgeType: 'direct',
-      beforeTransition: requireResearchObservation(task),
+      beforeTransition: requireResearchObservation(
+        task,
+        resolveMissionOracleSources == null
+          ? undefined
+          : async (toolCallIds) => {
+              const sources = await resolveMissionOracleSources(task.taskId);
+              if (
+                !sources.some(
+                  (source) => toolCallIds.includes(source.toolCallId) && source.urls.length > 0,
+                )
+              ) {
+                throw new Error('BOTMODE_RESEARCH_SOURCES_REQUIRED');
+              }
+            },
+      ),
     });
   }
   return {
