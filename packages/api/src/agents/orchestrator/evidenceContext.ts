@@ -1,5 +1,6 @@
 import type { MissionPlan } from './types';
 import { nodeIdentity } from './planner';
+import { isResearchTask, researchObservationNodeId } from './research';
 import type { ToolEvidenceIntentDeclaration } from './toolEvidenceIntent';
 
 interface TaskScope {
@@ -63,7 +64,13 @@ export function createMissionEvidenceContext() {
           expectedValue: declaration.expectedValue,
         });
       }
-      for (const task of sourceTasks) add(task).collectSources = true;
+      for (const task of sourceTasks) {
+        const scope = add(task);
+        scope.collectSources = true;
+        const phase = add({ ...task, nodeId: researchObservationNodeId(task.nodeId) });
+        phase.collectSources = true;
+        phase.declarations = structuredClone(scope.declarations);
+      }
       scopes = next;
     },
     resolve(nodeId?: string): Scope | undefined {
@@ -82,10 +89,42 @@ export function resolveNativeMissionToolAgentId(
 ): string | undefined {
   if (typeof executionId !== 'string') return undefined;
   if (plan == null) return executionId;
-  const task = plan.tasks.find((candidate) => candidate.nodeId === executionId);
+  const task = plan.tasks.find(
+    (candidate) =>
+      candidate.nodeId === executionId ||
+      (plan.mission.researchExecutionVersion === 1 &&
+        isResearchTask(candidate) &&
+        researchObservationNodeId(candidate.nodeId) === executionId),
+  );
   if (task == null) return executionId;
   if (task.nodeId !== nodeIdentity(plan.mission.missionId, task.key)) {
     throw new Error('Invalid native task identity');
   }
   return task.agentId;
+}
+
+/** Phase narrowing is checked before the native host loads executable tools.
+ * Model-visible schemas alone do not constrain an event-driven tool request. */
+export function assertNativeMissionPhaseTools(
+  plan: MissionPlan | undefined,
+  executionId: string | undefined,
+  toolNames: readonly string[],
+): void {
+  const task = plan?.tasks.find(
+    (candidate) =>
+      isResearchTask(candidate) && researchObservationNodeId(candidate.nodeId) === executionId,
+  );
+  if (task == null) {
+    if (executionId?.startsWith('p6r_')) {
+      throw new Error('BOTMODE_RESEARCH_PHASE_CONTEXT_REQUIRED');
+    }
+    return;
+  }
+  if (plan?.mission.researchExecutionVersion !== 1) {
+    throw new Error('BOTMODE_RESEARCH_PHASE_CONTEXT_REQUIRED');
+  }
+  resolveNativeMissionToolAgentId(plan, executionId);
+  if (toolNames.some((name) => name !== 'web_search')) {
+    throw new Error('BOTMODE_RESEARCH_TOOL_POLICY_CONFLICT');
+  }
 }

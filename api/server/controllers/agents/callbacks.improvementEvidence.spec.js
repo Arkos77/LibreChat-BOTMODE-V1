@@ -129,6 +129,85 @@ describe('P10 optional tool-end evidence callback', () => {
 });
 
 describe('native research source capture', () => {
+  it('captures a native observation-phase source under the canonical task identity', async () => {
+    const {
+      createMissionEvidenceContext,
+      createTransientEvidenceBuffer,
+      deterministicPlanner,
+      prepareBotModeMission,
+      compileNativePlan,
+    } = require('@librechat/api');
+    const plan = deterministicPlanner.planMission(
+      prepareBotModeMission({
+        missionId: 'source-phase',
+        taskId: 'source-root',
+        objective: 'Research',
+        constraints: [],
+        requiredCapabilities: ['web_search'],
+      }),
+      {
+        worker: {
+          id: 'worker',
+          agentId: 'saved-source-agent',
+          role: 'worker',
+          capabilities: ['web_search'],
+          constraints: [],
+        },
+        specialists: [],
+      },
+    );
+    const task = plan.tasks[0];
+    const native = compileNativePlan(
+      plan,
+      new Map([
+        [
+          'saved-source-agent',
+          {
+            agentId: 'saved-source-agent',
+            provider: 'openai',
+            toolDefinitions: [{ name: 'web_search' }],
+          },
+        ],
+      ]),
+    );
+    const phase = native.actors.find((actor) => actor.nodeId !== task.nodeId);
+    expect(phase).toBeDefined();
+    const context = createMissionEvidenceContext();
+    context.configure({
+      traceId: 'phase-trace',
+      declarations: [],
+      sourceTasks: [{ nodeId: task.nodeId, taskId: task.taskId, producerAgentId: task.agentId }],
+    });
+    const buffer = createTransientEvidenceBuffer();
+    const callback = createToolEndCallback({
+      req: { user: { id: 'user' }, config: {} },
+      res: { headersSent: false },
+      artifactPromises: [],
+      transientEvidenceBuffer: buffer,
+      missionEvidenceContext: context,
+    });
+    await callback(
+      {
+        output: {
+          name: 'web_search',
+          status: 'success',
+          tool_call_id: 'phase-call',
+          artifact: {
+            web_search: { references: [{ type: 'link', link: 'https://example.org/phase' }] },
+          },
+        },
+      },
+      { agentId: phase.nodeId },
+    );
+    expect(buffer.snapshot()).toEqual([
+      expect.objectContaining({
+        taskId: task.taskId,
+        producerAgentId: task.agentId,
+        toolCallId: 'phase-call',
+        sourceUrls: ['https://example.org/phase'],
+      }),
+    ]);
+  });
   it.each([{ executingAgentId: 'research-node' }, { agentId: 'research-node' }])(
     'records native search sources with SDK identity %j',
     async (admittedMetadata) => {

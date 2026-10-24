@@ -654,6 +654,7 @@ it('passes same-task observed sources into dependency-transition Oracle validati
   const plan = deterministicPlanner.planMission(
     {
       ...base,
+      researchExecutionVersion: 1,
       objectives: [
         {
           key: 'research',
@@ -678,7 +679,10 @@ it('passes same-task observed sources into dependency-transition Oracle validati
   const checked = plan.tasks[0];
   const native = compileNativePlan(
     plan,
-    bindings,
+    new Map([
+      ...bindings,
+      ['x', { ...bindings.get('x')!, toolDefinitions: [{ name: 'web_search' }] }],
+    ]),
     undefined,
     undefined,
     undefined,

@@ -32,5 +32,11 @@ export function prepareBotModeMission(mission: Mission): Mission {
         }
       : objective,
   );
+  if (
+    admitted.validation.outputContract === 'research-v1' ||
+    admitted.objectives?.some((task) => task.validation?.outputContract === 'research-v1')
+  ) {
+    admitted.researchExecutionVersion = 1;
+  }
   return admitted;
 }

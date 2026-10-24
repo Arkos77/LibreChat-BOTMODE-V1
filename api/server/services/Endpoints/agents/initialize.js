@@ -2,6 +2,7 @@ const {
   createTransientEvidenceBuffer,
   createMissionEvidenceContext,
   resolveNativeMissionToolAgentId,
+  assertNativeMissionPhaseTools,
   getDetachedSubagentTaskId,
   getDetachedSubagentProducerAgentId,
 } = require('@librechat/api');
@@ -513,6 +514,7 @@ const initializeClient = async ({
     executionGrantResolver,
     executionGrantJobId: streamId,
     loadTools: async (toolNames, agentId, _configurable, callerCapabilityProjection) => {
+      assertNativeMissionPhaseTools(initializedMissionClient?.orchestratorPlan, agentId, toolNames);
       const ctx = getAgentToolContext(agentId) ?? {};
       logger.debug(`[ON_TOOL_EXECUTE] ctx found: ${!!ctx.userMCPAuthMap}, agent: ${ctx.agent?.id}`);
       logger.debug(`[ON_TOOL_EXECUTE] toolRegistry size: ${ctx.toolRegistry?.size ?? 'undefined'}`);

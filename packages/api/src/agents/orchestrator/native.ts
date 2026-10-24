@@ -9,6 +9,12 @@ import type { MissionOracleResultPersister, MissionOracleTaskInput } from './mis
 import type { MissionPlan, OracleRequirement, PlannedTask } from './types';
 import { assertMissionTaskVerified, validateMissionTask } from './missionOracle';
 import { getTaskLevels, nodeIdentity } from './planner';
+import {
+  isResearchTask,
+  researchObservationNodeId,
+  researchPhaseBinding,
+  requireResearchObservation,
+} from './research';
 
 export interface NativeMissionPlan {
   planId: string;
@@ -125,8 +131,11 @@ export function compileNativePlan(
   resolveMissionOracleSources?: MissionOracleSourcesResolver,
 ): NativeMissionPlan {
   getTaskLevels(plan.tasks);
+  if (plan.tasks.some(isResearchTask) && plan.mission.researchExecutionVersion !== 1) {
+    throw new Error('BOTMODE_RESEARCH_PLAN_VERSION_UNSUPPORTED');
+  }
   const tasks = new Map(plan.tasks.map((task) => [task.key, task]));
-  const agents = plan.tasks.map((task): AgentInputs => {
+  const agents = plan.tasks.flatMap((task): AgentInputs[] => {
     const binding = bindings.get(task.agentId);
     if (!binding || binding.agentId !== task.agentId) {
       throw new Error(`Missing or mismatched authorized binding for ${task.agentId}`);
@@ -134,7 +143,7 @@ export function compileNativePlan(
     if (task.nodeId !== nodeIdentity(plan.mission.missionId, task.key)) {
       throw new Error('Invalid native task identity');
     }
-    return {
+    const result: AgentInputs = {
       ...binding,
       agentId: task.nodeId,
       ...(task.validation.length > 0 && {
@@ -164,6 +173,32 @@ export function compileNativePlan(
         .filter(Boolean)
         .join('\n'),
     };
+    if (!isResearchTask(task)) return [result];
+    const observationId = researchObservationNodeId(task.nodeId);
+    if (plan.tasks.some((other) => other.nodeId === observationId)) {
+      throw new Error('Ambiguous native research phase identity');
+    }
+    return [
+      researchPhaseBinding(
+        {
+          ...binding,
+          agentId: observationId,
+          instructions: [
+            binding.instructions,
+            'Internal web observation phase: call web_search for the mission below. Produce no final answer; JSON completion belongs to the following phase.',
+            JSON.stringify({
+              mission: plan.mission.objective,
+              objective: task.objective,
+              constraints: task.constraints,
+            }),
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        },
+        'observation',
+      ),
+      researchPhaseBinding(result, 'result'),
+    ];
   });
   const edges: MultiAgentGraphConfig['edges'] = plan.tasks
     .filter((task) => task.dependsOn.length > 0)
@@ -172,7 +207,7 @@ export function compileNativePlan(
       const sourceNodeIds = sourceTasks.map((sourceTask) => sourceTask.nodeId);
       return {
         from: sourceNodeIds,
-        to: task.nodeId,
+        to: isResearchTask(task) ? researchObservationNodeId(task.nodeId) : task.nodeId,
         edgeType: 'direct',
         beforeTransition: requirePredecessorOutputs(
           sourceTasks,
@@ -182,10 +217,29 @@ export function compileNativePlan(
         ),
       };
     });
+  for (const task of plan.tasks.filter(isResearchTask)) {
+    edges.push({
+      from: researchObservationNodeId(task.nodeId),
+      to: task.nodeId,
+      edgeType: 'direct',
+      beforeTransition: requireResearchObservation(task),
+    });
+  }
   return {
     planId: plan.planId,
     missionId: plan.mission.missionId,
-    actors: plan.tasks.map(({ nodeId, agentId, taskId }) => ({ nodeId, agentId, taskId })),
+    actors: plan.tasks.flatMap((task) => [
+      ...(isResearchTask(task)
+        ? [
+            {
+              nodeId: researchObservationNodeId(task.nodeId),
+              agentId: task.agentId,
+              taskId: task.taskId,
+            },
+          ]
+        : []),
+      { nodeId: task.nodeId, agentId: task.agentId, taskId: task.taskId },
+    ]),
     graphConfig:
       agents.length === 1
         ? { type: 'standard', agents, compileOptions }
