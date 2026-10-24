@@ -30,11 +30,33 @@
 
 Interfaces : requireResearchObservation(task, onObserved?) reçoit un callback facultatif avec les IDs validés ; native.ts le lie au résolveur de sources hôte déjà fourni.
 
-- [ ] Ajouter researchSources.spec.ts avec vrais Run/ToolNode/tampon/promotion/normalisation ; succès, échec écriture, sources absentes, autre appel, outil en erreur et reconstruction avec preuves sauvegardées.
-- [ ] Observer les échecs rouges : le résultat démarre avant sauvegarde et les erreurs de stockage ne le bloquent pas.
-- [ ] Ajouter le callback après validation des messages et appeler le résolveur à la transition, en vérifiant au moins une source liée à un appel courant.
-- [ ] Tests API et voisins ciblés, typecheck API, lint, build local pour JS, régression de reprise sources du lot 3. Une revue, correction Important/Critical une fois si nécessaire, bilan et limites.
+- [x] Ajouter researchSources.spec.ts avec vrais Run/ToolNode/tampon/promotion/normalisation ; succès, échec écriture, sources absentes, autre appel, outil en erreur et reconstruction avec preuves sauvegardées.
+- [x] Observer les échecs rouges : le résultat démarre avant sauvegarde et les erreurs de stockage ne le bloquent pas.
+- [x] Ajouter le callback après validation des messages et appeler le résolveur à la transition, en vérifiant au moins une source liée à un appel courant.
+- [x] Tests API et voisins ciblés, typecheck API, lint, build local pour JS, régression de reprise sources du lot 3. Une revue, correction Important/Critical une fois si nécessaire, bilan et limites.
 
 ## Résultat
 
-En cours. Aucune extension de la reprise automatique hôte avec outils.
+Correction source terminée le 24 octobre 2026. Cœur produit : `03d8aa97a56780d245d9801b52d3e18239ca3e54`. Tests complémentaires et harnais : `cc18d0a276c718f88bbf0b0d85723d698b22f565`. Branche locale conservée : `fix/botmode-research-source-barrier-20261024`.
+
+## Vérifications terminées
+
+- RED avant correction : **5 échecs, 1 succès**. Modèle résultat invoqué avant sauvegarde ; échec de stockage ou sources absentes/ancien appel ne l'arrêtaient pas. L'outil en erreur était déjà refusé.
+- API : **98 tests, 6 suites PASS**, dont sept cas de la nouvelle barrière et ses voisins natifs/Oracle/tampon.
+- JavaScript : **28 tests, 4 suites PASS**, dont le vrai callback de collecte, createToolExecuteHandler et Run SDK en mode événementiel. La source est capturée sous l'identité canonique et sauvegardée avant le modèle résultat.
+- **Total : 126 tests, 10 suites**, plus quatre scénarios HTTP du harnais compilé (succès/prose/outil en erreur/429), tous réussis. Le harnais fournit maintenant aussi le résolveur et refuse une requête HTTP de résultat avant passage de la barrière.
+- Un test à promesse contrôlée garde l'écriture en attente : zéro appel résultat avant libération, un seul ensuite. Aucun sleep arbitraire.
+- Reconstruction après échec contrôlé du modèle résultat avec le même MemorySaver et un nouveau tampon : effet web1, appel observation1, appels résultat2, écriture de sources1. État des sources restauré via le vrai normaliseur.
+- Typecheck API incrémental6Go, ESLint ciblé, build local API et diff-check réussis. Aucun build Docker ni modèle externe.
+
+## Revue et décisions
+
+Une revue indépendante unique du cœur03d8aa9 : aucun Critical/Important. Suggestion **Minor différée** : ajouter un espion de callback aux anciens cas unitaires d'observations invalides/ambiguës, pour expliciter le non-appel. Le flot de contrôle garde déjà la validation avant callback, et le cas outil en erreur démontre zéro lecture de sources. Les tests d'attente, le callback hôte et le harnais HTTP ont ensuite renforcé la vérification, sans nouveau changement produit ni seconde revue.
+
+1. Réutiliser le résolveur hôte existant, qui promeut, sauvegarde et relit les observations ; aucun second stockage ou scheduler. Une simple citation du modèle ne suffit pas.
+2. Exiger au moins une source non vide associée à un appel validé de cette phase. Un bucket d'un ancien tool_call ne suffit pas. Les usages génériques sans résolveur gardent leur comportement : ils n'obtiennent pas une garantie de persistance hôte.
+3. La barrière protège la transition lorsqu'elle est traversée. Aucun checkpoint déjà au-delà de ce point n'est migré, rejoué ou implicitement qualifié.
+4. Le magasin durable du test reste simulé. La revue ne valide ni Redis/Mongo, ni SIGKILL, ni l'atomicité outil/sauvegarde/checkpoint. L'initialisation/reprise automatique hôte avec outils reste refusée et à qualifier séparément.
+5. L'image e40f1e5 du run40122921364 ne contient ni ce correctif ni ceux du lot3. Aucun push, CI, build Docker, publication ou installation dans ce lot. Conserver les preuves de l'image dans leur périmètre exact ; regrouper les changements avant une nouvelle construction.
+
+La fermeture de cette fenêtre avant réponse ne vaut pas garantie générale d'exécution exactement une fois ou de redémarrage complet. Stable reste NO-GO.
