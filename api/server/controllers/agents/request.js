@@ -1877,6 +1877,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
               mission,
               settings: botModeSettings,
               reachableAgents,
+              legacyContext: orchestratorMission.plannerContext,
               hasAttachments: Array.isArray(req.body.files) && req.body.files.length > 0,
             });
       assertAuthorizedOrchestratorTasks(orchestratorPlan.tasks, authorizedAgentIds);

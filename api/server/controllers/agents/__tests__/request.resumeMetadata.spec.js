@@ -1235,6 +1235,38 @@ describe('ResumableAgentController resume metadata', () => {
       },
     );
 
+    it('persists additive legacy task and specialist requirements', async () => {
+      const f = requestFixture();
+      const validation = {
+        criteria: [{ id: 'extra-check', field: 'checked', expected: true }],
+        requireIndependentEvidence: true,
+      };
+      f.req.body.orchestratorMission.mission.objectives = [
+        {
+          key: 'research',
+          objective: 'Research',
+          requiredCapabilities: ['web_search'],
+          dependsOn: [],
+          constraints: ['official sources only'],
+          validation,
+        },
+      ];
+      const specialist = f.req.body.orchestratorMission.plannerContext.specialists[0];
+      specialist.constraints = ['no personal data'];
+      specialist.validation = { criteria: [{ id: 'quality', field: 'quality', expected: true }] };
+      await AgentController(f.req, createResumableResponse(), jest.fn(), f.initializeClient, null);
+      await nextTick();
+      const task = f.client.orchestratorPlan.tasks[0];
+      expect(task.constraints).toEqual(
+        expect.arrayContaining(['official sources only', 'no personal data']),
+      );
+      expect(task.validation).toEqual(
+        expect.arrayContaining([expect.objectContaining(validation), specialist.validation]),
+      );
+      expect(task.validation.some((v) => v.outputContract === 'research-v1')).toBe(true);
+      expect(f.sendMessage).toHaveBeenCalledTimes(1);
+    });
+
     it('uses initialized roles rather than forged request names', async () => {
       const f = requestFixture({ minimal: false });
       f.client.agentConfigs.get('agent-specialist').name = 'CUSTOM';

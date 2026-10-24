@@ -103,6 +103,141 @@ describe('BOT MODE canonical admission', () => {
     );
   });
 
+  it('preserves additive legacy objective and authorized specialist obligations', () => {
+    const input = fixture();
+    const objectiveValidation = {
+      criteria: [{ id: 'independent', field: 'verified', expected: true }],
+      requireIndependentEvidence: true,
+    };
+    input.mission.objectives = [
+      {
+        key: 'research',
+        objective: 'Research',
+        requiredCapabilities: ['web_search'],
+        dependsOn: [],
+        constraints: ['sources officielles'],
+        validation: objectiveValidation,
+      },
+    ];
+    const legacyContext = {
+      worker: {
+        id: 'worker',
+        agentId: 'worker',
+        role: 'worker',
+        capabilities: ['basic'],
+        constraints: [],
+      },
+      specialists: [
+        {
+          id: 'custom-hint',
+          agentId: 'research',
+          role: 'forged-role',
+          capabilities: ['fabricated'],
+          constraints: ['sans données personnelles'],
+          validation: { criteria: [{ id: 'custom', field: 'checked', expected: true }] },
+        },
+      ],
+    };
+    const before = structuredClone({ input, legacyContext });
+    const plan = prepareBotModePlan({ ...input, legacyContext });
+    const task = plan.tasks[0];
+    expect(task.constraints).toEqual(
+      expect.arrayContaining(['sans achat', 'sources officielles', 'sans données personnelles']),
+    );
+    expect(task.validation).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining(objectiveValidation),
+        legacyContext.specialists[0].validation,
+      ]),
+    );
+    expect(task.validation.some((v) => v.outputContract === 'research-v1')).toBe(true);
+    expect(task.requiredCapabilities).toEqual(['web_search']);
+    expect({ input, legacyContext }).toEqual(before);
+  });
+
+  it('refuses to discard obligations on an unmappable legacy task', () => {
+    const input = fixture();
+    input.mission.objectives = [
+      {
+        key: 'selected_1',
+        objective: 'custom task',
+        requiredCapabilities: [],
+        dependsOn: [],
+        constraints: ['required check'],
+      },
+    ];
+    expect(() => prepareBotModePlan(input)).toThrow('BOTMODE_LEGACY_TASK_REQUIREMENTS_UNMAPPED');
+  });
+
+  it('refuses to discard obligations on an unselected legacy specialist', () => {
+    const input = fixture();
+    const legacyContext = {
+      worker: {
+        id: 'worker',
+        agentId: 'worker',
+        role: 'worker',
+        capabilities: [],
+        constraints: [],
+      },
+      specialists: [
+        {
+          id: 'extra',
+          agentId: 'outside',
+          role: 'research',
+          capabilities: [],
+          constraints: ['must check'],
+        },
+      ],
+    };
+    expect(() => prepareBotModePlan({ ...input, legacyContext })).toThrow(
+      'BOTMODE_LEGACY_AGENT_REQUIREMENTS_UNMAPPED',
+    );
+  });
+
+  it('rejects ambiguous legacy task obligations', () => {
+    const input = fixture();
+    input.mission.objectives = [
+      input.mission.objectives![0],
+      { ...input.mission.objectives![0], constraints: ['extra'] },
+    ];
+    expect(() => prepareBotModePlan(input)).toThrow('BOTMODE_LEGACY_TASK_IDENTITIES_INVALID');
+  });
+
+  it('rejects ambiguous legacy specialist obligations', () => {
+    const input = fixture();
+    const specialist = {
+      id: 'research',
+      agentId: 'research',
+      role: 'research',
+      capabilities: [],
+      constraints: ['extra'],
+    };
+    const legacyContext = {
+      worker: { ...specialist, id: 'worker', agentId: 'worker', constraints: [] },
+      specialists: [specialist, specialist],
+    };
+    expect(() => prepareBotModePlan({ ...input, legacyContext })).toThrow(
+      'BOTMODE_LEGACY_AGENT_REQUIREMENTS_UNMAPPED',
+    );
+  });
+
+  it('refuses unsupported worker-only legacy obligations explicitly', () => {
+    const input = fixture();
+    const legacyContext = {
+      worker: {
+        id: 'worker',
+        agentId: 'worker',
+        role: 'worker',
+        capabilities: [],
+        constraints: ['worker-only obligation'],
+      },
+      specialists: [],
+    };
+    expect(() => prepareBotModePlan({ ...input, legacyContext })).toThrow(
+      'BOTMODE_LEGACY_WORKER_REQUIREMENTS_UNSUPPORTED',
+    );
+  });
+
   it('rejects FAST rather than converting it to a mission', () => {
     const input = fixture();
     input.settings.mode = 'fast';
