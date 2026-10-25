@@ -134,17 +134,24 @@ def run_probe(transport, report):
     if len(matches) != 1: raise ProbeError('EXACT_FREE_MODEL_NOT_LISTED')
     entry = matches[0]
     price = entry.get('pricing')
+    report['catalog'] = {'id': MODEL, 'pricing_observed': {
+        k: price[k] for k in ('prompt', 'completion', 'request') if isinstance(price, dict) and k in price}}
+    # The observed :free catalog omits request. Free-variant policy supplies the
+    # no-cost contract; never invent an observed zero for an absent price field.
+    # https://openrouter.ai/docs/guides/routing/model-variants/free
     try:
-        if not isinstance(price, dict) or any(
-                Decimal(str(price.get(k, '1'))) != 0
-                for k in ('prompt', 'completion', 'request')):
+        fields = ('prompt', 'completion') + (('request',) if isinstance(price, dict) and 'request' in price else ())
+        if (not MODEL.endswith(':free') or not isinstance(price, dict) or any(
+                Decimal(str(price.get(k, 'unknown'))) != 0 for k in fields)):
             raise ProbeError('NONZERO_OR_UNKNOWN_PRICE')
     except InvalidOperation: raise ProbeError('NONZERO_OR_UNKNOWN_PRICE') from None
     parameters = entry.get('supported_parameters')
     if not isinstance(parameters, list) or not {'tools', 'tool_choice', 'response_format', 'reasoning'}.issubset(parameters):
         raise ProbeError('REQUIRED_CAPABILITIES_MISSING')
-    report['catalog'] = {'id': MODEL, 'prompt_price': 0, 'completion_price': 0, 'request_price': 0,
-                         'required_parameters': ['tools', 'tool_choice', 'response_format', 'reasoning']}
+    report['catalog'].update({'prompt_price': 0, 'completion_price': 0,
+        'request_price': 0 if 'request' in price else None, 'request_price_declared': 'request' in price,
+        'free_variant_policy': 'https://openrouter.ai/docs/guides/routing/model-variants/free',
+        'required_parameters': ['tools', 'tool_choice', 'response_format', 'reasoning']})
     messages = [{'role': 'system', 'content': 'Use the named tool for the controlled report. Keep requests and answers brief.'},
                 {'role': 'user', 'content': 'Find the controlled CI report using web_search.'}]
     finish, message, record = generate(transport, report, 'named_tool', {

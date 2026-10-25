@@ -36,6 +36,9 @@ class FixedFreePreflightTests(unittest.TestCase):
                     'supported_parameters': ['tools', 'tool_choice'] if mode == 'caps'
                         else ['tools', 'tool_choice', 'response_format', 'reasoning']}
                 if mode == 'missing_request': del entry['pricing']['request']
+                if mode == 'missing_prompt': del entry['pricing']['prompt']
+                if mode == 'missing_completion': del entry['pricing']['completion']
+                if mode == 'invalid_request': entry['pricing']['request'] = None
                 catalog = [entry]
                 if mode == 'large_catalog':
                     catalog += [{'id': f'other/model-{i}', 'description': 'x' * 1000} for i in range(100)]
@@ -121,12 +124,23 @@ class FixedFreePreflightTests(unittest.TestCase):
         self.assertEqual(len(received), 2)
 
     def test_price_and_capability_failures_stop_before_any_generation(self):
-        for mode in ('price', 'request_price', 'missing_request', 'caps'):
+        for mode in ('price', 'request_price', 'missing_prompt', 'missing_completion', 'invalid_request', 'caps'):
             with self.subTest(mode=mode):
                 module, transport, report, received, _ = self.start(mode)
                 with self.assertRaises(module.ProbeError): module.run_probe(transport, report)
                 self.assertEqual(transport.requests, 0)
                 self.assertEqual(received, [])
+
+    def test_observed_free_catalog_without_request_fee_is_accepted_without_inventing_price(self):
+        module, transport, report, received, _ = self.start('missing_request')
+        module.run_probe(transport, report)
+        self.assertTrue(report['passed'])
+        self.assertEqual(len(received), 2)
+        self.assertIsNone(report['catalog']['request_price'])
+        self.assertFalse(report['catalog']['request_price_declared'])
+        self.assertEqual(report['catalog']['pricing_observed'], {'prompt': '0', 'completion': '0'})
+        self.assertEqual(report['catalog']['free_variant_policy'],
+                         'https://openrouter.ai/docs/guides/routing/model-variants/free')
 
     def test_first_tool_failure_or_http_error_stops_without_retry(self):
         for mode in ('tool', 'http', 'cost'):
