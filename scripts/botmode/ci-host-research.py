@@ -19,6 +19,8 @@ from urllib.request import ProxyHandler, Request, build_opener
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_URL = 'https://ci-source.invalid/report'
 FIXED_FREE_MODEL = 'nvidia/nemotron-3.5-super-vl:free'
+MISSION_OBJECTIVE = ('Rechercher les faits publiés dans le rapport CI contrôlé : identifiant, date et contrôles enregistrés. '
+                     'Analyser puis synthétiser ces observations dans le seul périmètre du jeu de test.')
 FIXTURE_WEB_ENV = {'BOTMODE_CI_WEB_URL': 'http://fixture:8088', 'BOTMODE_CI_WEB_KEY': 'ci-fixture'}
 HARNESS_ONLY_PATHS = {
     '.github/workflows/botmode-v1-live-provider-preflight.yml',
@@ -306,12 +308,12 @@ console.log(JSON.stringify(await m.connection.db.collection('agents').find({name
             payload = {'endpoint': 'agents', 'agent_id': by_name['BOT MODE Worker']['id'],
                 'conversationId': sid, 'messageId': str(uuid.uuid4()),
                 'parentMessageId': '00000000-0000-0000-0000-000000000000', 'isNewConvo': True,
-                'text': 'Rechercher la source CI et produire une analyse puis une synthèse.',
+                'text': MISSION_OBJECTIVE,
                 'botMode': {'version': 1, 'mode': 'analyze', 'selectionMode': 'auto',
                     'workerAgentId': by_name['BOT MODE Worker']['id'],
                     'agents': [{'id': by_name[n]['id'], 'name': n} for n in ('RECHERCHE','ANALYSE','RÉDACTION')]},
                 'orchestratorMission': {'mission': {'missionId': 'host-' + sid, 'taskId': sid,
-                    'objective': 'Synthetic source research, analysis and synthesis.',
+                    'objective': MISSION_OBJECTIVE,
                     'constraints': [], 'requiredCapabilities': []}}}
             # Retry only a server's explicit pre-admission startup refusal. Never replay an ambiguous POST.
             stage = 'admission'

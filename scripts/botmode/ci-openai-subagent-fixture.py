@@ -31,6 +31,17 @@ class NoProviderRedirect(HTTPRedirectHandler):
 
 provider_opener = build_opener(ProxyHandler({}), NoProviderRedirect())
 SOURCE_URL = "https://ci-source.invalid/report"
+SOURCE_FACTS = {
+    'report_id': 'CI-FIXTURE-001', 'published_at': '2026-10-25T00:00:00Z',
+    'publisher': 'BOTMODE qualification fixture', 'synthetic': True,
+    'scope': 'Controlled test report only; no claim about a real service or release.',
+    'checks': [{'id': 'search_endpoint', 'status': 'passed'},
+               {'id': 'scrape_endpoint', 'status': 'passed'},
+               {'id': 'report_available', 'status': 'passed'}],
+}
+SOURCE_MARKDOWN = ('# Controlled CI report CI-FIXTURE-001\n\n'
+    'Synthetic test data. Reported observations apply only to this fixture.\n\n'
+    '```json\n' + json.dumps(SOURCE_FACTS, ensure_ascii=False) + '\n```\n')
 SOURCE_RESULT = json.dumps({"ok":True,"result":"Synthetic CI observation: "+SOURCE_URL,"sources":SOURCE_URL})
 
 def bounded_real_request(request):
@@ -180,7 +191,8 @@ class Handler(BaseHTTPRequestHandler):
                               'local_rejections': rejections})
         if SOURCE_MODE and self.path.startswith('/search?'):
             with lock: calls['source_search_calls']=calls.get('source_search_calls',0)+1
-            return self.send({'query':'CI synthetic source','results':[{'url':SOURCE_URL,'title':'Synthetic CI source','content':'This is controlled fixture data, not a real-world financial claim.'}]})
+            return self.send({'query':'CI synthetic source','results':[{'url':SOURCE_URL,'title':'Controlled CI report CI-FIXTURE-001',
+                'content':'Synthetic test report CI-FIXTURE-001, published 2026-10-25T00:00:00Z by the BOTMODE qualification fixture: three recorded checks passed. Scope: fixture only.'}]})
         if self.path == "/health": return self.send({"status":"ok","configured":bool(child_id)})
         if self.path == "/metrics":
             with lock: snapshot=dict(calls)
@@ -195,7 +207,7 @@ class Handler(BaseHTTPRequestHandler):
             if length < 2 or length > 1048576: return self.send({'error':'size'},400)
             self.rfile.read(length)
             with lock: calls['source_scrape_calls']=calls.get('source_scrape_calls',0)+1
-            return self.send({'success':True,'data':{'markdown':'Controlled synthetic CI evidence only.','metadata':{'sourceURL':SOURCE_URL,'title':'Synthetic CI source'}}})
+            return self.send({'success':True,'data':{'markdown':SOURCE_MARKDOWN,'metadata':{'sourceURL':SOURCE_URL,'title':'Controlled CI report CI-FIXTURE-001'}}})
         if self.path == "/configure":
             # A runner-local control endpoint. Expose only on ephemeral private CI runners.
             length=int(self.headers.get("Content-Length","0"))

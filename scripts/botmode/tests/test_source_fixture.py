@@ -54,6 +54,25 @@ class SourceFixtureTests(unittest.TestCase):
         self.assertEqual(choice['finish_reason'], 'tool_calls')
         self.assertEqual(choice['message']['tool_calls'][0]['function']['name'], 'web_search')
 
+    def test_observed_source_contains_a_dated_substantive_controlled_report(self):
+        base = self.start()
+        with urlopen(base + '/search?q=CI-report', timeout=3) as response:
+            search = json.load(response)['results'][0]
+        self.assertEqual(search['url'], 'https://ci-source.invalid/report')
+        self.assertIn('CI-FIXTURE-001', search['content'])
+        status, scraped = self.post(base, {'url': search['url']}, '/scrape')
+        self.assertEqual(status, 200)
+        self.assertEqual(scraped['data']['metadata']['sourceURL'], search['url'])
+        markdown = scraped['data']['markdown']
+        facts = json.loads(markdown.split('```json\n', 1)[1].split('```', 1)[0])
+        self.assertEqual(facts['report_id'], 'CI-FIXTURE-001')
+        self.assertEqual(facts['published_at'], '2026-10-25T00:00:00Z')
+        self.assertEqual(len(facts['checks']), 3)
+        self.assertTrue(all(c['status'] == 'passed' for c in facts['checks']))
+        self.assertTrue(facts['synthetic'])
+        self.assertIn('fixture', facts['publisher'].lower())
+        self.assertIn('test', facts['scope'].lower())
+
     def test_named_search_without_json_contract(self):
         self.assert_search(self.post(self.start(), self.body()))
 
