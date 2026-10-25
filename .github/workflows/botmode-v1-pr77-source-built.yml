@@ -165,7 +165,7 @@ jobs:
           npm run build:data-schemas
           npm run build:api
           NODE_OPTIONS=--max-old-space-size=6144 npm exec --workspace=packages/api tsc -- --noEmit
-          npm exec --workspace=packages/api jest -- --runInBand --coverage=false --runTestsByPath src/agents/orchestrator/research.spec.ts src/agents/orchestrator/researchSources.spec.ts src/agents/orchestrator/nativeToolChoiceTransport.spec.ts src/agents/orchestrator/admission.spec.ts
+          npm exec --workspace=packages/api jest -- --runInBand --coverage=false --runTestsByPath src/agents/orchestrator/research.spec.ts src/agents/orchestrator/researchSources.spec.ts src/agents/orchestrator/nativeToolChoiceTransport.spec.ts src/agents/orchestrator/admission.spec.ts src/agents/orchestrator/schema.spec.ts
           npm exec --workspace=api jest -- --runInBand --coverage=false --runTestsByPath server/services/Endpoints/agents/hostModelUsage.spec.js server/services/Endpoints/agents/nativeMissionRecoveredOracleSources.spec.js server/services/Endpoints/agents/hostModelRouting.compat.spec.js server/controllers/agents/callbacks.improvementEvidence.spec.js
           node scripts/botmode/native-research-image-regression.cjs
       - uses: docker/setup-buildx-action@v4

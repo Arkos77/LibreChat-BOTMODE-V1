@@ -100,7 +100,7 @@ describe('native structured output transport', () => {
     expect(schema.properties).toMatchObject({
       state: { type: ['string', 'null'] },
       count: { type: ['number', 'null'] },
-      unknown: { type: 'null' },
+      unknown: { type: ['string', 'number', 'boolean', 'null'] },
       ok: { type: ['boolean', 'null'] },
     });
     expect(JSON.stringify(schema)).not.toMatch(/"(?:const|enum)"/);
@@ -194,6 +194,30 @@ describe('native structured output transport', () => {
       { ...binding, provider: Providers.ANTHROPIC, clientOptions: { model: 'saved' } },
     ]) {
       expect(resultOptions(input)).toEqual(input.clientOptions);
+    }
+  });
+
+  it('lets a null expectation report actual non-null outcomes that Oracle must reject', async () => {
+    const validation: OracleRequirement = {
+      criteria: [{ id: 'no-error', field: 'error', expected: null }],
+    };
+    const options = resultOptions(binding, false, validation);
+    const types = options.modelKwargs?.response_format.json_schema.schema.properties.error.type;
+    expect(types).toEqual(expect.arrayContaining(['string', 'number', 'boolean', 'null']));
+    const task = planFor(false, validation).tasks[0];
+    for (const error of ['Observed failure', 1, false]) {
+      const actual = await validateMissionTask({
+        taskId: task.taskId,
+        nodeId: task.nodeId,
+        agentId: task.agentId,
+        candidate: JSON.stringify({ ok: true, result: 'Actual outcome', error }),
+        requirements: task.validation,
+      });
+      expect(actual.verdicts[0].status).toBe('REJECTED');
+      expect(actual.verdicts[0].reasons).toContainEqual({
+        code: 'CRITERION_FAILED',
+        criterionId: 'no-error',
+      });
     }
   });
 

@@ -41,10 +41,11 @@ function taskFormat(requirements: readonly OracleRequirement[]) {
   for (const requirement of requirements) {
     for (const { field, expected } of requirement.criteria) {
       if (field === 'result' || (research && field === 'sources')) continue;
-      const type = expected === null ? 'null' : typeof expected;
+      const allowedTypes =
+        expected === null ? ['string', 'number', 'boolean', 'null'] : [typeof expected, 'null'];
       const existing = properties.get(field)?.type ?? [];
-      const types = new Set([...[existing].flat(), type, 'null']);
-      properties.set(field, { type: types.size === 1 ? 'null' : [...types] });
+      const types = new Set([...[existing].flat(), ...allowedTypes]);
+      properties.set(field, { type: [...types] });
     }
   }
   return {
