@@ -9,6 +9,7 @@ import os
 import re
 import threading
 import time
+from http.client import HTTPException
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
@@ -295,13 +296,13 @@ class Handler(BaseHTTPRequestHandler):
                 update_provider_phase(provider_number, 'reading_body', error.code)
                 try:
                     status, content_type, payload = error.code, 'application/json', error.read(65536)
-                except (URLError, TimeoutError, OSError) as read_error:
+                except (URLError, TimeoutError, OSError, HTTPException) as read_error:
                     cause = read_error.reason if isinstance(read_error, URLError) else read_error
                     transport_error_type = type(cause).__name__
                     status, content_type, payload = 502, 'application/json', b'{"error":"UPSTREAM_TRANSPORT_FAILED"}'
                 finally:
                     error.close()
-            except (URLError, TimeoutError, OSError) as error:
+            except (URLError, TimeoutError, OSError, HTTPException) as error:
                 cause = error.reason if isinstance(error, URLError) else error
                 transport_error_type = type(cause).__name__
                 status, content_type, payload = 502, 'application/json', b'{"error":"UPSTREAM_TRANSPORT_FAILED"}'

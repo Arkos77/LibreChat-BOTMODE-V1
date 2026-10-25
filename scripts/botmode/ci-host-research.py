@@ -110,6 +110,16 @@ def capture_job_state(read_field, sensitive_values):
     return json.loads(text)
 
 
+def preserve_job_state(path, read_field, sensitive_values):
+    # Diagnostic failure must not prevent the existing mandatory stack cleanup.
+    try:
+        state = capture_job_state(read_field, sensitive_values)
+        path.write_text(json.dumps(state, indent=2))
+    except Exception as error:
+        return type(error).__name__
+    return None
+
+
 def check_free_catalog():
     spec = importlib.util.spec_from_file_location('fixed_profile_catalog', ROOT / 'scripts/botmode/ci-fixed-free-preflight.py')
     probe = importlib.util.module_from_spec(spec)
@@ -427,10 +437,12 @@ console.log(JSON.stringify({conversation:!!conversation,count:messages.length,co
                 diagnostics['admission'] = admission_observation
                 diagnostics['real_free_provider'] = real
                 if sid is not None:
-                    state = capture_job_state(lambda name: dc('exec', '-T', 'redis', 'redis-cli', '--raw',
-                        'HGET', '::stream:{' + sid + '}:job', name, timeout=5).strip(),
+                    capture_error = preserve_job_state(evidence / 'host-job-state.json',
+                        lambda name: dc('exec', '-T', 'redis', 'redis-cli', '--raw',
+                            'HGET', '::stream:{' + sid + '}:job', name, timeout=5).strip(),
                         [*values.values(), token, os.environ.get('CI_REAL_OPENROUTER_KEY')])
-                    (evidence / 'host-job-state.json').write_text(json.dumps(state, indent=2))
+                    if capture_error is not None:
+                        diagnostics['job_state_capture_error'] = capture_error
                 if not passed:
                     if real:
                         try:

@@ -4,6 +4,7 @@ import os
 import threading
 import time
 import unittest
+from http.client import IncompleteRead
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
@@ -253,7 +254,9 @@ class SourceFixtureTests(unittest.TestCase):
     def test_transport_error_retains_only_error_type_and_no_retry(self):
         http_error = HTTPError('http://127.0.0.1/fake', 429, 'controlled', {}, None)
         http_error.read = unittest.mock.Mock(side_effect=TimeoutError('private-provider-detail'))
-        for failure in (URLError(TimeoutError('private-provider-detail')), http_error):
+        chunk_error = HTTPError('http://127.0.0.1/fake', 429, 'controlled', {}, None)
+        chunk_error.read = unittest.mock.Mock(side_effect=IncompleteRead(b'private-provider-detail', 10))
+        for failure in (URLError(TimeoutError('private-provider-detail')), http_error, chunk_error):
             with self.subTest(failure=type(failure).__name__):
                 base = self.start(real=True)
                 with patch.object(self.last_module.provider_opener, 'open', side_effect=failure):
@@ -262,8 +265,27 @@ class SourceFixtureTests(unittest.TestCase):
                 with urlopen(base + '/provider-diagnostics') as response: evidence = json.load(response)
                 self.assertEqual(len(evidence['records']), 1)
                 self.assertEqual(evidence['records'][0]['phase'], 'transport_error')
-                self.assertEqual(evidence['records'][0]['transport_error_type'], 'TimeoutError')
+                self.assertEqual(evidence['records'][0]['transport_error_type'],
+                                 'IncompleteRead' if failure is chunk_error else 'TimeoutError')
                 self.assertNotIn('private-provider-detail', json.dumps(evidence))
+
+    def test_truncated_success_response_becomes_terminal_transport_error(self):
+        base = self.start(real=True)
+        response = unittest.mock.MagicMock()
+        response.__enter__.return_value = response
+        response.status = 200
+        response.headers = {'Content-Type': 'application/json'}
+        response.read.side_effect = IncompleteRead(b'private-partial-body', 10)
+        with patch.object(self.last_module.provider_opener, 'open', return_value=response):
+            status, _ = self.post(base, self.body(real=True))
+        self.assertEqual(status, 502)
+        with urlopen(base + '/provider-diagnostics') as reply: evidence = json.load(reply)
+        self.assertEqual(len(evidence['records']), 1)
+        record = evidence['records'][0]
+        self.assertEqual(record['phase'], 'transport_error')
+        self.assertEqual(record['transport_error_type'], 'IncompleteRead')
+        self.assertEqual(record['upstream_headers_status'], 200)
+        self.assertNotIn('private-partial-body', json.dumps(evidence))
 
     def test_real_budget_reservation_stops_at_four(self):
         spec = importlib.util.spec_from_file_location('bounded_relay_budget', FIXTURE)

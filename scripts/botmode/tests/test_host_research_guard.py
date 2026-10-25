@@ -181,6 +181,13 @@ class HostResearchConfigTests(unittest.TestCase):
         self.assertEqual(snapshot['orchestratorPlan'], {'omitted': 'size_limit', 'characters': 65537})
         self.assertEqual(snapshot['missionOracleState'], {'invalid_json': True})
 
+    def test_evidence_write_failure_cannot_escape_the_pre_cleanup_capture(self):
+        path = unittest.mock.Mock()
+        path.write_text.side_effect = OSError('private-local-path')
+        reader = lambda name: '{}' if name in ('orchestratorPlan', 'missionOracleState') else 'error'
+        self.assertEqual(MODULE.preserve_job_state(path, reader, []), 'OSError')
+        path.write_text.assert_called_once()
+
 
 
 class HostResearchTargetTests(unittest.TestCase):
