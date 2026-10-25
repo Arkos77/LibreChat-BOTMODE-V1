@@ -142,7 +142,7 @@ class HostResearchTargetTests(unittest.TestCase):
     def test_reuse_product_drift_stops_before_schema_or_docker(self):
         sha, env = self.target()
         env['HARNESS_SHA'] = 'b' * 40
-        with patch.dict(MODULE.os.environ, env), patch.object(
+        with patch.dict(MODULE.os.environ, env, clear=True), patch.object(
             MODULE, 'run', side_effect=['b' * 40, 'api/server/index.js\n']
         ) as runner:
             with self.assertRaisesRegex(RuntimeError, 'REUSED_PRODUCT_SOURCE_DRIFT'):
@@ -166,7 +166,7 @@ class HostResearchTargetTests(unittest.TestCase):
     def test_schema_refusal_stops_before_any_docker_command(self):
         sha, env = self.target()
         failure = subprocess.CalledProcessError(1, ['node', 'schema-validator'])
-        with patch.dict(MODULE.os.environ, env), patch.object(
+        with patch.dict(MODULE.os.environ, env, clear=True), patch.object(
             MODULE, 'run', side_effect=[sha, failure]
         ) as runner:
             with self.assertRaises(subprocess.CalledProcessError):
