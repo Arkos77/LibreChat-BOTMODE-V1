@@ -38,8 +38,8 @@ def bounded_real_request(request):
     if request.get('n', 1) != 1:
         raise ValueError('REAL_SINGLE_CHOICE_REQUIRED')
     for tool in request.get('tools') or []:
-        if not isinstance(tool, dict) or tool.get('type') != 'function' or tool.get('function', {}).get('name') != 'web_search':
-            raise ValueError('REAL_WEB_FUNCTION_ONLY')
+        if not isinstance(tool, dict) or tool.get('type') != 'function' or tool.get('function', {}).get('name') not in ('web_search', 'subagent'):
+            raise ValueError('REAL_NATIVE_FUNCTION_ONLY')
     result = dict(request)
     for key in ('max_tokens', 'max_completion_tokens'):
         value = result.get(key)

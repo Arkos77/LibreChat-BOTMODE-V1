@@ -156,7 +156,9 @@ class SourceFixtureTests(unittest.TestCase):
         base = self.start(real=True)
         cases = [({'model': 'paid-secret-marker'}, 'REAL_FREE_ROUTE_REQUIRED'),
                  ({'n': 2}, 'REAL_SINGLE_CHOICE_REQUIRED'),
-                 ({'tools': [{'type': 'web_search'}]}, 'REAL_WEB_FUNCTION_ONLY'),
+                 ({'tools': [{'type': 'web_search'}]}, 'REAL_NATIVE_FUNCTION_ONLY'),
+                 ({'tools': [{'type': 'function', 'function': {'name': 'execute_code'}}]},
+                  'REAL_NATIVE_FUNCTION_ONLY'),
                  ({'max_tokens': 2049}, 'REAL_TOKEN_LIMIT_REQUIRED')]
         for changes, expected in cases:
             status, response = self.post(base, {**self.body(), **changes})
@@ -207,14 +209,23 @@ class SourceFixtureTests(unittest.TestCase):
         body = self.body()
         self.assertEqual(self.post(base, {**body, 'model': 'paid/model'})[0], 400)
         self.assertEqual(received, [])
-        for _ in range(4):
-            status, response = self.post(base, body)
+        for index in range(4):
+            request_body = body if index == 0 else {**body, 'tool_choice': 'auto',
+                'response_format': {'type': 'json_object'},
+                'tools': body['tools'] + [{'type': 'function', 'function': {
+                    'name': 'subagent', 'description': 'Native authorized child context',
+                    'parameters': {'type': 'object'}}}]}
+            status, response = self.post(base, request_body)
             self.assertEqual(status, 200)
             self.assertEqual(response['model'], 'upstream-fixture')
         status, response = self.post(base, body)
         self.assertEqual(status, 400)
         self.assertEqual(response['error'], 'REAL_REQUEST_BUDGET_EXHAUSTED')
         self.assertEqual(len(received), 4)
+        self.assertEqual([t['function']['name'] for t in received[1][1]['tools']],
+                         ['web_search', 'subagent'])
+        self.assertEqual(received[1][1]['tool_choice'], 'auto')
+        self.assertEqual(received[1][1]['response_format'], {'type': 'json_object'})
         self.assertTrue(all(auth == 'Bearer ' + key and b['max_tokens'] == 2048 for auth, b in received))
         with urlopen(base + '/provider-diagnostics', timeout=3) as response:
             evidence = json.load(response)
