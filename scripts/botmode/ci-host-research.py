@@ -29,6 +29,7 @@ HARNESS_ONLY_PATHS = {
     '.github/workflows/botmode-v1-pr77-source-built.yml',
     'scripts/botmode/ci-host-research.py',
     'scripts/botmode/tests/test_host_research_guard.py',
+    'scripts/botmode/tests/test_publication_evidence.py',
     'scripts/botmode/ci-openai-subagent-fixture.py',
     'scripts/botmode/tests/test_source_fixture.py',
 }
@@ -87,6 +88,21 @@ def validate_provider_evidence(evidence):
                 or type(cost) not in (int, float) or not math.isfinite(cost) or cost != 0
                 or type(completion) is not int or not 0 <= completion <= 2048):
             raise RuntimeError('HOST_RESEARCH_PROVIDER_PROFILE_MISMATCH')
+
+
+def validate_publication(final, mongo, conversation_id, response_id, expected_text):
+    response = final.get('responseMessage', {})
+    content = response.get('content')
+    text_parts = [p.get('text') for p in content if isinstance(p, dict) and p.get('type') == 'text'] if isinstance(content, list) else []
+    if (final.get('final') is not True or not conversation_id or not response_id
+            or response.get('conversationId') != conversation_id or response.get('messageId') != response_id
+            or not mongo.get('conversation') or mongo.get('count') != 1 or mongo.get('complete') is not True
+            or content != mongo.get('content') or text_parts != [expected_text]
+            or not isinstance(expected_text, str) or not expected_text.strip()
+            or len(json.dumps(content, ensure_ascii=False).encode()) > 65536):
+        raise RuntimeError('HOST_RESEARCH_PUBLICATION_EVIDENCE_MISMATCH')
+    return {'conversation_id': conversation_id, 'response_message_id': response_id,
+            'sse_mongo_content_equal': True, 'rendered_sources_checked': True, 'content': content}
 
 
 def capture_job_state(read_field, sensitive_values):
@@ -403,6 +419,10 @@ const messages=await db.collection('messages').find({conversationId:sid,messageI
 console.log(JSON.stringify({conversation:!!conversation,count:messages.length,complete:messages[0]?.unfinished===false,content:messages[0]?.content}));await m.disconnect();})().catch(()=>process.exit(1));''')
             assert mongo['conversation'] and mongo['count'] == 1 and mongo['complete']
             assert any(p.get('type') == 'text' and SOURCE_URL in p.get('text', '') for p in mongo['content'])
+            synthesis_candidate = json.loads(state['results'][tasks['synthesis']['taskId']]['verdicts'][0]['input']['candidate'])
+            expected_text = synthesis_candidate['result'] + '\n\nSources\n- <' + SOURCE_URL + '>'
+            publication = validate_publication(finals[0], mongo, sid, response_id, expected_text)
+            (evidence / 'host-publication.json').write_text(json.dumps(publication, ensure_ascii=False, indent=2))
             metrics = json.loads(dc('exec', '-T', 'fixture', 'python3', '-c',
                 'import json,urllib.request;print(urllib.request.urlopen("http://127.0.0.1:8088/metrics").read().decode())'))
             assert metrics.get('source_search_calls', 0) >= 1 and metrics.get('source_scrape_calls', 0) >= 1

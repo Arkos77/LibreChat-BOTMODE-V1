@@ -16,7 +16,7 @@ on:
         type: boolean
         default: false
       reuse_host_candidate:
-        description: 'Reuse the verified image from run40178091054; refuse product-source drift and never rebuild'
+        description: 'Reuse the verified image from run40213117715; refuse product-source drift and never rebuild'
         type: boolean
         default: false
       real_free_provider:
@@ -160,6 +160,7 @@ jobs:
           python3 -m unittest discover -s scripts/botmode/tests -p test_fixed_free_preflight.py
           python3 -m unittest discover -s scripts/botmode/tests -p test_source_fixture.py
           python3 -m unittest discover -s scripts/botmode/tests -p test_host_research_guard.py
+          python3 -m unittest discover -s scripts/botmode/tests -p test_publication_evidence.py
           python3 -m py_compile scripts/botmode/ci-host-research.py
           npm ci --no-audit --no-fund
           npm run build:data-provider
@@ -261,8 +262,8 @@ jobs:
       actions: read
     env:
       HARNESS_SHA: ${{ github.sha }}
-      CANDIDATE_SHA: 2c82b7578dac513909c9fdd970c424cbeb4b2fef
-      CANDIDATE_IMAGE: botmode-native-research:2c82b7578dac513909c9fdd970c424cbeb4b2fef
+      CANDIDATE_SHA: 1d98d2ccddf450a34c9f64d0ae24f67b43d8d54c
+      CANDIDATE_IMAGE: botmode-native-research:1d98d2ccddf450a34c9f64d0ae24f67b43d8d54c
       HOST_RESEARCH_PROJECT: botmode-research-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v5
@@ -291,6 +292,7 @@ jobs:
           python3 -m unittest discover -s scripts/botmode/tests -p test_fixed_free_preflight.py
           python3 -m unittest discover -s scripts/botmode/tests -p test_source_fixture.py
           python3 -m unittest discover -s scripts/botmode/tests -p test_host_research_guard.py
+          python3 -m unittest discover -s scripts/botmode/tests -p test_publication_evidence.py
           npm ci --no-audit --no-fund
           npm run build:data-provider
           python3 scripts/botmode/ci-host-research.py --check-config
@@ -302,8 +304,8 @@ jobs:
         run: python3 scripts/botmode/ci-host-research.py --check-real-catalog
       - uses: actions/download-artifact@v4
         with:
-          name: botmode-native-research-2c82b7578dac513909c9fdd970c424cbeb4b2fef
-          run-id: 40178091054
+          name: botmode-native-research-1d98d2ccddf450a34c9f64d0ae24f67b43d8d54c
+          run-id: 40213117715
           github-token: ${{ github.token }}
           path: retained-image
       - name: Verify retained archive, image identity and embedded source
@@ -311,10 +313,10 @@ jobs:
         run: |
           set -euo pipefail
           test "$(cat retained-image/source-sha.txt)" = "$CANDIDATE_SHA"
-          test "$(cat retained-image/image-id.txt)" = 'sha256:a4f92cc5bceb6544884b09f90c018663e738942d1b858e78a3ed0f28067f4c94'
-          printf '%s  %s\n' '5350aca0df41f57a0005564afaf4f26b6b541633e7bfa3f024c5b4b94fa57d8b' retained-image/image.tar.gz | sha256sum -c -
+          test "$(cat retained-image/image-id.txt)" = 'sha256:9eff139dc8c5314b643d56bbe19ea515dafa9f1e46b7e5e655e67a7c8bd1afbc'
+          printf '%s  %s\n' 'ecfb26867fcd0030a27a7f796db1c59cdaca34aab1925b8a802363207cba9d1e' retained-image/image.tar.gz | sha256sum -c -
           docker load -i retained-image/image.tar.gz
-          test "$(docker image inspect "$CANDIDATE_IMAGE" --format '{{.Id}}')" = 'sha256:a4f92cc5bceb6544884b09f90c018663e738942d1b858e78a3ed0f28067f4c94'
+          test "$(docker image inspect "$CANDIDATE_IMAGE" --format '{{.Id}}')" = 'sha256:9eff139dc8c5314b643d56bbe19ea515dafa9f1e46b7e5e655e67a7c8bd1afbc'
           docker image inspect "$CANDIDATE_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -Fx "BUILD_COMMIT=$CANDIDATE_SHA"
       - name: Verify web auth and provider caps inside the retained image without network
         run: |
@@ -404,7 +406,7 @@ jobs:
           Path('candidate-evidence/qualification-status.json').write_text(json.dumps({
             'source_sha':os.environ['CANDIDATE_SHA'],'harness_sha':os.environ['HARNESS_SHA'],
             'retained_image':os.environ['RETAINED_OUTCOME'],'host':os.environ['HOST_OUTCOME'],
-            'compiled_proof_run':40178091054,'image_artifact':12592944905,'new_build':False,
+            'compiled_proof_run':40213117715,'image_artifact':12606961546,'new_build':False,
             'real_free_provider':os.environ['REAL_PROVIDER_REQUESTED']=='true'}))
           PY_STATUS
       - uses: actions/upload-artifact@v4
