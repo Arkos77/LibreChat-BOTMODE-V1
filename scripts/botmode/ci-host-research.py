@@ -46,11 +46,36 @@ def validate_reused_files(paths):
         raise RuntimeError('HOST_RESEARCH_REUSED_PRODUCT_SOURCE_DRIFT')
 
 
+def real_provider_mode(env):
+    requested = env.get('CI_REAL_FREE_PROVIDER', 'false')
+    if requested not in ('false', 'true'):
+        raise RuntimeError('HOST_RESEARCH_REAL_PROVIDER_FLAG_INVALID')
+    if requested == 'true' and len(env.get('CI_REAL_OPENROUTER_KEY', '')) <= 16:
+        raise RuntimeError('HOST_RESEARCH_REAL_PROVIDER_KEY_REQUIRED')
+    return requested == 'true'
+
+
+def compose_override(real=False):
+    fixture = {'image': 'python:3.12-alpine', 'command': ['python3', '/fixture.py'],
+               'environment': {'CI_MISSION_SOURCE_MODE': '1'}, 'volumes': ['./fixture.py:/fixture.py:ro']}
+    networks = {'default': {'internal': True}}
+    if real:
+        fixture['environment'].update(CI_REAL_FREE_PROVIDER='1',
+            CI_OPENROUTER_KEY='${CI_REAL_OPENROUTER_KEY:?Missing explicitly authorized provider key}')
+        fixture['networks'] = ['default', 'provider_egress']
+        networks['provider_egress'] = {'internal': False}
+    return {'services': {
+        'api': {'environment': {'USE_REDIS': 'true', 'USE_REDIS_STREAMS': 'true',
+            'REDIS_URI': 'redis://redis:6379', 'STREAM_KEEP_COMPLETED_JOBS': 'true'}},
+        'redis': {'image': 'redis:7-alpine', 'command': ['redis-server', '--save', '', '--appendonly', 'no']},
+        'fixture': fixture}, 'networks': networks}
+
+
 def run(args, *, env=None, data=None, timeout=180):
     return subprocess.check_output(args, input=data, text=True, env=env, timeout=timeout)
 
 
-def build_config(source):
+def build_config(source, real=False):
     config = copy.deepcopy(source)
     config['endpoints']['agents'].pop('hostModelRouting', None)
     endpoints = [e for e in config['endpoints']['custom'] if e.get('name') == 'OpenRouter']
@@ -61,6 +86,9 @@ def build_config(source):
     endpoint = endpoints[0]
     endpoint.update(apiKey='ci-local-fixture-no-real-key', baseURL='http://fixture:8088/v1')
     endpoint['models'] = {'fetch': False, 'default': ['openrouter/free']}
+    if real:
+        endpoint['addParams'] = {**endpoint.get('addParams', {}),
+                                 'maxRetries': 0, 'timeout': 90000, 'maxTokens': 2048}
     config['endpoints']['custom'] = endpoints
     config['webSearch'] = {
         'searchProvider': 'searxng', 'scraperProvider': 'firecrawl', 'rerankerType': 'none',
@@ -111,10 +139,11 @@ def wait_for_api(request, observations):
 def main():
     harness_sha = run(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip()
     sha, image, project = validate_target(os.environ, harness_sha)
+    real = real_provider_mode(os.environ)
     if sha != harness_sha:
         changed = run(['git', '-C', str(ROOT), 'diff', '--name-only', sha, harness_sha]).splitlines()
         validate_reused_files(changed)
-    config = build_config(json.loads((ROOT / 'librechat.yaml').read_text()))
+    config = build_config(json.loads((ROOT / 'librechat.yaml').read_text()), real=real)
     check_config(config)
     image_env = run(['docker', 'image', 'inspect', image, '--format', '{{json .Config.Env}}'])
     if 'BUILD_COMMIT=' + sha not in json.loads(image_env):
@@ -142,27 +171,7 @@ def main():
         env_path.write_text(text)
         env_path.chmod(0o640)
         run(['sudo', 'chown', f'1000:{os.getgid()}', str(env_path)])
-        (directory / 'qualification.yml').write_text('''services:
-  api:
-    environment:
-      USE_REDIS: "true"
-      USE_REDIS_STREAMS: "true"
-      REDIS_URI: redis://redis:6379
-      STREAM_KEEP_COMPLETED_JOBS: "true"
-  redis:
-    image: redis:7-alpine
-    command: [redis-server, --save, "", --appendonly, "no"]
-  fixture:
-    image: python:3.12-alpine
-    command: [python3, /fixture.py]
-    environment:
-      CI_MISSION_SOURCE_MODE: "1"
-    volumes:
-      - ./fixture.py:/fixture.py:ro
-networks:
-  default:
-    internal: true
-''')
+        (directory / 'qualification.yml').write_text(json.dumps(compose_override(real)))
         env = {**os.environ, 'BOTMODE_IMAGE': image, 'BOTMODE_HOST_PORT': '127.0.0.1:3090', **values}
         for key in ('PROXY', 'HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy'):
             env[key] = ''
@@ -258,7 +267,7 @@ console.log(JSON.stringify(await m.connection.db.collection('agents').find({name
                     'error': str(envelope.get('error', ''))[:500],
                     'message': str(envelope.get('message', ''))[:500], 'attempt': attempt + 1}
                 for key in ('code', 'response_status', 'error', 'message'):
-                    for secret in [*values.values(), token]:
+                    for secret in [*values.values(), token, os.environ.get('CI_REAL_OPENROUTER_KEY')]:
                         if secret and len(secret) >= 8:
                             admission_observation[key] = admission_observation[key].replace(secret, '[redacted]')
                 if status != 503 or envelope.get('code') != 'SERVER_NOT_READY':
@@ -307,12 +316,22 @@ console.log(JSON.stringify({conversation:!!conversation,count:messages.length,co
             metrics = json.loads(dc('exec', '-T', 'fixture', 'python3', '-c',
                 'import json,urllib.request;print(urllib.request.urlopen("http://127.0.0.1:8088/metrics").read().decode())'))
             assert metrics.get('source_search_calls', 0) >= 1 and metrics.get('source_scrape_calls', 0) >= 1
-            assert metrics.get('source_tool_requests') == 1
+            if real:
+                assert metrics.get('provider_requests') == 4 and metrics.get('provider_http_200') == 4
+                assert metrics.get('source_search_calls') == 1
+                provider_evidence = json.loads(dc('exec', '-T', 'fixture', 'python3', '-c',
+                    'import urllib.request;print(urllib.request.urlopen("http://127.0.0.1:8088/provider-diagnostics").read().decode())'))
+                assert len(provider_evidence['records']) == 4
+                (evidence / 'provider-evidence.json').write_text(json.dumps(provider_evidence, indent=2))
+            else:
+                assert metrics.get('source_tool_requests') == 1
             component_images = {}
             for service in ('api', 'mongodb', 'redis', 'fixture'):
                 container_id = dc('ps', '-q', service).strip()
                 component_images[service] = run(['docker', 'inspect', container_id, '--format', '{{.Image}}']).strip()
-            summary = {'source_sha': sha, 'harness_sha': harness_sha, 'scenario': 'native HTTP/SSE analyze', 'task_keys': list(tasks),
+            summary = {'source_sha': sha, 'harness_sha': harness_sha, 'scenario': 'native HTTP/SSE analyze',
+                       'model_provider': 'real OpenRouter/free through bounded relay' if real else 'synthetic',
+                       'web_sources': 'synthetic controlled source', 'task_keys': list(tasks),
                        'verdict_counts': {k: len(state['results'][t['taskId']]['verdicts']) for k,t in tasks.items()},
                        'source_observations': len(sources), 'mongo_final_count': mongo['count'],
                        'fixture_metrics': metrics, 'component_images': component_images}
@@ -325,7 +344,15 @@ console.log(JSON.stringify({conversation:!!conversation,count:messages.length,co
                 diagnostics = {'source_sha': sha, 'harness_sha': harness_sha, 'passed': passed, 'last_stage': stage}
                 diagnostics['host_http'] = http_observations
                 diagnostics['admission'] = admission_observation
+                diagnostics['real_free_provider'] = real
                 if not passed:
+                    if real:
+                        try:
+                            provider_evidence = json.loads(dc('exec', '-T', 'fixture', 'python3', '-c',
+                                'import urllib.request;print(urllib.request.urlopen("http://127.0.0.1:8088/provider-diagnostics").read().decode())', timeout=10))
+                            (evidence / 'provider-evidence.json').write_text(json.dumps(provider_evidence, indent=2))
+                        except Exception:
+                            diagnostics['provider_evidence_available'] = False
                     try:
                         diagnostics['internal_http'] = json.loads(dc('exec', '-T', 'fixture', 'python3', '-',
                             data='''import json, urllib.request, urllib.error
@@ -363,7 +390,7 @@ print(json.dumps(results))
                         logs = subprocess.run(compose + ['logs', '--no-color', '--tail', '120', 'api'],
                                               env=env, capture_output=True, text=True, timeout=15)
                         sanitized = logs.stdout + logs.stderr
-                        for secret in [*values.values(), token, 'ci-local-fixture-no-real-key', 'ci-fixture']:
+                        for secret in [*values.values(), token, 'ci-local-fixture-no-real-key', 'ci-fixture', os.environ.get('CI_REAL_OPENROUTER_KEY')]:
                             if secret and len(secret) >= 8:
                                 sanitized = sanitized.replace(secret, '[redacted]')
                         (evidence / 'host-research-failure.log').write_text(sanitized)
@@ -381,7 +408,9 @@ print(json.dumps(results))
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check-config', action='store_true', help='Validate fixture config offline; no Docker or provider calls')
-    if parser.parse_args().check_config:
-        check_config(build_config(json.loads((ROOT / 'librechat.yaml').read_text())))
+    parser.add_argument('--check-real-config', action='store_true', help='Validate bounded real-provider fixture config offline')
+    args = parser.parse_args()
+    if args.check_config or args.check_real_config:
+        check_config(build_config(json.loads((ROOT / 'librechat.yaml').read_text()), real=args.check_real_config))
     else:
         main()

@@ -19,13 +19,17 @@ on:
         description: 'Reuse the verified image from run40134956297; refuse product-source drift and never rebuild'
         type: boolean
         default: false
+      real_free_provider:
+        description: 'Explicitly authorize up to four real OpenRouter/free requests through the bounded test relay (controlled web sources)'
+        type: boolean
+        default: false
 permissions:
   contents: read
 env:
   BOTMODE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 jobs:
   binding-regression:
-    if: ${{ !inputs.native_research_only && !inputs.host_research }}
+    if: ${{ !inputs.native_research_only && !inputs.host_research && !inputs.real_free_provider }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -46,7 +50,7 @@ jobs:
         working-directory: packages/api
         run: npx jest src/endpoints/openai/config.spec.ts src/agents/orchestrator/hostModelDecision.spec.ts --runInBand --coverage=false
   source-built-runtime:
-    if: ${{ !inputs.native_research_only && !inputs.host_research }}
+    if: ${{ !inputs.native_research_only && !inputs.host_research && !inputs.real_free_provider }}
     needs: binding-regression
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -126,7 +130,7 @@ jobs:
         run: sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
 
   compiled-research:
-    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.reuse_host_candidate && (inputs.native_research_only || inputs.host_research) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.real_free_provider && !inputs.reuse_host_candidate && (inputs.native_research_only || inputs.host_research) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -268,6 +272,7 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build:data-provider
           python3 scripts/botmode/ci-host-research.py --check-config
+          python3 scripts/botmode/ci-host-research.py --check-real-config
       - uses: actions/download-artifact@v4
         with:
           name: botmode-native-research-068f9c933ae5840d6b8d8bb4feb5278aaaffb9b1
@@ -284,7 +289,7 @@ jobs:
           docker load -i retained-image/image.tar.gz
           test "$(docker image inspect "$CANDIDATE_IMAGE" --format '{{.Id}}')" = 'sha256:4c8485101d0f03b2191d3abd83f28089a78df9b22e506b72f986b185603ac5a0'
           docker image inspect "$CANDIDATE_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -Fx "BUILD_COMMIT=$CANDIDATE_SHA"
-      - name: Verify web auth resolution inside the retained image without network
+      - name: Verify web auth and provider caps inside the retained image without network
         run: |
           set -euo pipefail
           python3 - <<'PY_CONFIG' > "$RUNNER_TEMP/botmode-fixture-config.json"
@@ -292,13 +297,13 @@ jobs:
           spec=importlib.util.spec_from_file_location('host','scripts/botmode/ci-host-research.py')
           host=importlib.util.module_from_spec(spec)
           spec.loader.exec_module(host)
-          print(json.dumps(host.build_config(json.load(open('librechat.yaml')))))
+          print(json.dumps(host.build_config(json.load(open('librechat.yaml')), real=True)))
           PY_CONFIG
           docker run --rm -i --network none --entrypoint node \
             --env BOTMODE_CI_WEB_URL=http://fixture:8088 --env BOTMODE_CI_WEB_KEY=ci-fixture \
             "$CANDIDATE_IMAGE" -e '
           const fs=require("node:fs"),assert=require("node:assert/strict");
-          const {loadWebSearchAuth}=require("@librechat/api");
+          const {loadWebSearchAuth,getOpenAILLMConfig}=require("@librechat/api");
           (async()=>{
             const config=JSON.parse(fs.readFileSync(0,"utf8"));
             const result=await loadWebSearchAuth({userId:"ci",webSearchConfig:config.webSearch,throwError:false,
@@ -309,17 +314,28 @@ jobs:
             assert.equal(result.authResult.searchProvider,"searxng");
             assert.equal(result.authResult.scraperProvider,"firecrawl");
             assert.equal(result.authResult.rerankerType,"none");
+            const endpoint=config.endpoints.custom[0];
+            const {llmConfig}=getOpenAILLMConfig({apiKey:"fixture-key",baseURL:"http://127.0.0.1/v1",
+              streaming:true,useOpenRouter:true,modelOptions:{model:"openrouter/free"},addParams:endpoint.addParams});
+            assert.equal(llmConfig.maxRetries,0);
+            assert.equal(llmConfig.maxTokens,2048);
+            assert.equal(llmConfig.timeout,90000);
             console.log("RETAINED_IMAGE_WEB_AUTH=PASS");
+            console.log("RETAINED_IMAGE_FREE_PROVIDER_CAPS=PASS");
           })().catch(e=>{console.error(e.message);process.exitCode=1});
           ' < "$RUNNER_TEMP/botmode-fixture-config.json"
       - name: Qualify native host path using the retained image
         id: host
+        env:
+          CI_REAL_FREE_PROVIDER: ${{ inputs.real_free_provider && 'true' || 'false' }}
+          CI_REAL_OPENROUTER_KEY: ${{ inputs.real_free_provider && secrets.OPENROUTER_API_KEY || '' }}
         run: python3 scripts/botmode/ci-host-research.py
       - name: Record separate source and harness identities
         if: always()
         env:
           RETAINED_OUTCOME: ${{ steps.retained.outcome }}
           HOST_OUTCOME: ${{ steps.host.outcome }}
+          REAL_PROVIDER_REQUESTED: ${{ inputs.real_free_provider && 'true' || 'false' }}
         run: |
           mkdir -p candidate-evidence
           python3 - <<'PY_STATUS'
@@ -328,7 +344,8 @@ jobs:
           Path('candidate-evidence/qualification-status.json').write_text(json.dumps({
             'source_sha':os.environ['CANDIDATE_SHA'],'harness_sha':os.environ['HARNESS_SHA'],
             'retained_image':os.environ['RETAINED_OUTCOME'],'host':os.environ['HOST_OUTCOME'],
-            'compiled_proof_run':40134956297,'image_artifact':12576688545,'new_build':False}))
+            'compiled_proof_run':40134956297,'image_artifact':12576688545,'new_build':False,
+            'real_free_provider':os.environ['REAL_PROVIDER_REQUESTED']=='true'}))
           PY_STATUS
       - uses: actions/upload-artifact@v4
         if: always()

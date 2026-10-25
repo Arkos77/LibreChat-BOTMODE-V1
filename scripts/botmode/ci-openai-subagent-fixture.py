@@ -10,6 +10,8 @@ import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 lock = threading.Lock()
 calls = {"parent_tool_requests": 0, "child_responses": 0, "parent_final": 0,
@@ -17,8 +19,81 @@ calls = {"parent_tool_requests": 0, "child_responses": 0, "parent_final": 0,
 child_id = os.environ.get("CI_AUTHORIZED_CHILD_ID", "").strip()
 MODEL = "openrouter/free"
 SOURCE_MODE = os.environ.get("CI_MISSION_SOURCE_MODE") == "1"
+REAL_MODE = os.environ.get('CI_REAL_FREE_PROVIDER') == '1'
+REAL_KEY = os.environ.get('CI_OPENROUTER_KEY', '')
+REAL_URL = 'https://openrouter.ai/api/v1/chat/completions'
+provider_records = []
 SOURCE_URL = "https://ci-source.invalid/report"
 SOURCE_RESULT = json.dumps({"ok":True,"result":"Synthetic CI observation: "+SOURCE_URL,"sources":SOURCE_URL})
+
+def bounded_real_request(request):
+    if request.get('model') != 'openrouter/free' or any(k in request for k in ('models', 'plugins', 'web_search_options')):
+        raise ValueError('REAL_FREE_ROUTE_REQUIRED')
+    if request.get('n', 1) != 1:
+        raise ValueError('REAL_SINGLE_CHOICE_REQUIRED')
+    for tool in request.get('tools') or []:
+        if not isinstance(tool, dict) or tool.get('type') != 'function' or tool.get('function', {}).get('name') != 'web_search':
+            raise ValueError('REAL_WEB_FUNCTION_ONLY')
+    result = dict(request)
+    for key in ('max_tokens', 'max_completion_tokens'):
+        value = result.get(key)
+        if value is not None and (type(value) is not int or not 1 <= value <= 2048):
+            raise ValueError('REAL_TOKEN_LIMIT_REQUIRED')
+    if result.get('max_tokens') is None and result.get('max_completion_tokens') is None:
+        result['max_tokens'] = 2048
+    return result
+
+def reserve_real_request():
+    with lock:
+        count = calls.get('provider_requests', 0)
+        if count >= 4:
+            raise ValueError('REAL_REQUEST_BUDGET_EXHAUSTED')
+        calls['provider_requests'] = count + 1
+        return count + 1
+
+def record_provider_response(number, status, body):
+    text = body.decode('utf8', errors='replace')
+    if REAL_KEY:
+        text = text.replace(REAL_KEY, '[redacted]')
+    items = []
+    for frame in ([line[5:].strip() for line in text.splitlines() if line.startswith('data:')]
+                  if text.lstrip().startswith('data:') or '\ndata:' in text else [text]):
+        try:
+            value = json.loads(frame)
+            if isinstance(value, dict): items.append(value)
+        except ValueError:
+            pass
+    content = []
+    models = set()
+    finishes = set()
+    tools = set()
+    usage = {}
+    errors = []
+    for item in items:
+        if isinstance(item.get('model'), str): models.add(item['model'])
+        if item.get('error'):
+            error = item['error']
+            errors.append(str(error.get('message', '') if isinstance(error, dict) else error)[:500])
+        for key in ('prompt_tokens', 'completion_tokens', 'total_tokens', 'cost'):
+            value = (item.get('usage') or {}).get(key)
+            if isinstance(value, (int, float)): usage[key] = value
+        for choice in item.get('choices') or []:
+            if not isinstance(choice, dict): continue
+            if choice.get('finish_reason'): finishes.add(str(choice['finish_reason']))
+            message = choice.get('delta') or choice.get('message') or {}
+            if not isinstance(message, dict): continue
+            if isinstance(message.get('content'), str): content.append(message['content'])
+            for call in message.get('tool_calls', []):
+                name = call.get('function', {}).get('name')
+                if isinstance(name, str): tools.add(name)
+    candidate = ''.join(content)
+    record = {'request': number, 'http_status': status, 'models': sorted(models),
+              'finish_reasons': sorted(finishes), 'tool_names': sorted(tools), 'usage': usage,
+              'candidate_text': candidate[:8192], 'candidate_truncated': len(candidate) > 8192,
+              'errors': errors[:2]}
+    with lock:
+        provider_records.append(record)
+        if status == 200: calls['provider_http_200'] = calls.get('provider_http_200', 0) + 1
 
 def tool_name(request):
     for item in request.get("tools") or []:
@@ -64,6 +139,10 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
     def do_GET(self):
+        if REAL_MODE and self.path == '/provider-diagnostics':
+            with lock: snapshot = list(provider_records)
+            return self.send({'route': 'openrouter/free', 'limit_requests': 4,
+                              'limit_output_tokens': 2048, 'records': snapshot})
         if SOURCE_MODE and self.path.startswith('/search?'):
             with lock: calls['source_search_calls']=calls.get('source_search_calls',0)+1
             return self.send({'query':'CI synthetic source','results':[{'url':SOURCE_URL,'title':'Synthetic CI source','content':'This is controlled fixture data, not a real-world financial claim.'}]})
@@ -110,6 +189,36 @@ class Handler(BaseHTTPRequestHandler):
         with lock:
             calls["completion_calls"]+=1
             number=calls["completion_calls"]
+        if REAL_MODE:
+            if not SOURCE_MODE or len(REAL_KEY) <= 16:
+                return self.send({'error': 'REAL_PROVIDER_NOT_AUTHORIZED'}, 400)
+            try:
+                bounded = bounded_real_request(req)
+                provider_number = reserve_real_request()
+            except ValueError as error:
+                return self.send({'error': str(error)}, 400)
+            request = Request(REAL_URL, data=json.dumps(bounded).encode(), method='POST',
+                headers={'Authorization': 'Bearer ' + REAL_KEY, 'Content-Type': 'application/json',
+                         'Accept': 'text/event-stream' if req.get('stream') else 'application/json'})
+            try:
+                with urlopen(request, timeout=90) as response:
+                    status, content_type = response.status, response.headers.get('Content-Type', 'application/json')
+                    payload = response.read(1048577)
+            except HTTPError as error:
+                status, content_type, payload = error.code, 'application/json', error.read(65536)
+            except (URLError, TimeoutError):
+                status, content_type, payload = 502, 'application/json', b'{"error":"UPSTREAM_TRANSPORT_FAILED"}'
+            if len(payload) > 1048576:
+                status, content_type, payload = 502, 'application/json', b'{"error":"UPSTREAM_RESPONSE_TOO_LARGE"}'
+            record_provider_response(provider_number, status, payload)
+            self.send_response(status)
+            self.send_header('Content-Type', content_type)
+            self.send_header('Content-Length', str(len(payload)))
+            self.send_header('Connection', 'close')
+            self.end_headers()
+            self.wfile.write(payload)
+            self.close_connection = True
+            return
         web_advertised=any(item.get('function',{}).get('name')=='web_search' for item in req.get('tools',[]) if isinstance(item,dict))
         web_calls={tc.get('id') for m in messages if isinstance(m,dict) for tc in m.get('tool_calls',[]) if isinstance(tc,dict) and tc.get('function',{}).get('name')=='web_search'}
         web_completed=any(m.get('role')=='tool' and m.get('tool_call_id') in web_calls for m in messages if isinstance(m,dict))

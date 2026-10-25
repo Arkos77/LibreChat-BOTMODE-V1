@@ -96,6 +96,39 @@ class HostResearchConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'SAVED_PROVIDER_AMBIGUOUS'):
             MODULE.build_config(source)
 
+    def test_real_mode_requires_explicit_flag_and_key(self):
+        self.assertFalse(MODULE.real_provider_mode({}))
+        self.assertFalse(MODULE.real_provider_mode({'CI_REAL_OPENROUTER_KEY': 'fake-key-not-authorization'}))
+        for env in ({'CI_REAL_FREE_PROVIDER': 'yes'}, {'CI_REAL_FREE_PROVIDER': 'true'}):
+            with self.assertRaises(RuntimeError): MODULE.real_provider_mode(env)
+        self.assertTrue(MODULE.real_provider_mode({
+            'CI_REAL_FREE_PROVIDER': 'true', 'CI_REAL_OPENROUTER_KEY': 'fake-key-long-enough-for-ci'}))
+
+    def test_only_the_relay_has_egress_and_receives_the_secret(self):
+        override = MODULE.compose_override(True)
+        self.assertEqual(override['networks']['default'], {'internal': True})
+        self.assertEqual(override['networks']['provider_egress'], {'internal': False})
+        fixture = override['services']['fixture']
+        self.assertEqual(fixture['networks'], ['default', 'provider_egress'])
+        self.assertNotIn('ports', fixture)
+        self.assertIn('CI_OPENROUTER_KEY', fixture['environment'])
+        for name in ('api', 'redis'):
+            service = override['services'][name]
+            self.assertNotIn('networks', service)
+            self.assertNotIn('CI_OPENROUTER_KEY', service.get('environment', {}))
+        synthetic = MODULE.compose_override(False)
+        self.assertNotIn('provider_egress', synthetic['networks'])
+        self.assertNotIn('CI_OPENROUTER_KEY', synthetic['services']['fixture']['environment'])
+
+    def test_real_binding_keeps_native_provider_and_disables_retries(self):
+        config = MODULE.build_config(self.source(), real=True)
+        endpoint = config['endpoints']['custom'][0]
+        self.assertEqual(endpoint['name'], 'OpenRouter')
+        self.assertEqual(endpoint['baseURL'], 'http://fixture:8088/v1')
+        self.assertEqual(endpoint['apiKey'], 'ci-local-fixture-no-real-key')
+        self.assertEqual(endpoint['addParams']['maxRetries'], 0)
+        self.assertEqual(endpoint['addParams']['maxTokens'], 2048)
+
 
 class HostResearchTargetTests(unittest.TestCase):
     def target(self):

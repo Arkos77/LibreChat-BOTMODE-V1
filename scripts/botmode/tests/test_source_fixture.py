@@ -3,7 +3,7 @@ import json
 import os
 import threading
 import unittest
-from http.server import ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -13,11 +13,15 @@ FIXTURE = Path(__file__).resolve().parents[1] / 'ci-openai-subagent-fixture.py'
 
 
 class SourceFixtureTests(unittest.TestCase):
-    def start(self, source=True):
+    def start(self, source=True, real=False, upstream=None):
         spec = importlib.util.spec_from_file_location('isolated_source_fixture', FIXTURE)
         module = importlib.util.module_from_spec(spec)
-        with patch.dict(os.environ, {'CI_MISSION_SOURCE_MODE': '1' if source else '0'}):
+        with patch.dict(os.environ, {'CI_MISSION_SOURCE_MODE': '1' if source else '0',
+            'CI_REAL_FREE_PROVIDER': '1' if real else '0',
+            'CI_OPENROUTER_KEY': 'fake-ci-provider-key-not-a-real-secret' if real else ''}):
             spec.loader.exec_module(module)
+        if upstream is not None:
+            module.REAL_URL = upstream
         server = ThreadingHTTPServer(('127.0.0.1', 0), module.Handler)
         thread = threading.Thread(target=server.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True)
         thread.start()
@@ -134,6 +138,119 @@ class SourceFixtureTests(unittest.TestCase):
         tool = response['choices'][0]['message']['tool_calls'][0]
         self.assertEqual(tool['function']['name'], 'subagent')
         self.assertEqual(json.loads(tool['function']['arguments'])['subagent_type'], 'authorized-child')
+
+    def test_real_request_refuses_paid_models_and_plugins(self):
+        spec = importlib.util.spec_from_file_location('bounded_relay', FIXTURE)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        valid = {'model': 'openrouter/free', 'messages': [], 'stream': True}
+        self.assertEqual(module.bounded_real_request(valid)['max_tokens'], 2048)
+        for changes in ({'model': 'openai/gpt-4'}, {'models': ['openrouter/free']},
+                        {'plugins': [{'id': 'web'}]}, {'max_tokens': 2049},
+                        {'max_completion_tokens': 2049}, {'n': 2},
+                        {'tools': [{'type': 'web_search'}]}):
+            with self.assertRaises(ValueError):
+                module.bounded_real_request({**valid, **changes})
+
+    def test_real_budget_reservation_stops_at_four(self):
+        spec = importlib.util.spec_from_file_location('bounded_relay_budget', FIXTURE)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        for expected in range(1, 5):
+            self.assertEqual(module.reserve_real_request(), expected)
+        with self.assertRaisesRegex(ValueError, 'BUDGET_EXHAUSTED'):
+            module.reserve_real_request()
+        self.assertEqual(module.calls['provider_requests'], 4)
+
+    def test_real_relay_forwards_local_http_and_enforces_budget_without_leaking_key(self):
+        received = []
+        key = 'fake-ci-provider-key-not-a-real-secret'
+        class Provider(BaseHTTPRequestHandler):
+            def log_message(self, *_): pass
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                received.append((self.headers['Authorization'], body))
+                message = {'role': 'assistant', 'content': json.dumps({'ok': True, 'result': key})}
+                payload = json.dumps({'model': 'upstream-fixture',
+                    'choices': [{'message': message, 'finish_reason': 'stop'}],
+                    'usage': {'prompt_tokens': 1, 'completion_tokens': 2, 'cost': 0}}).encode()
+                self.send_response(200)
+                self.send_header('Content-Length', str(len(payload)))
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(payload)
+        upstream = ThreadingHTTPServer(('127.0.0.1', 0), Provider)
+        thread = threading.Thread(target=upstream.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join)
+        self.addCleanup(upstream.server_close)
+        self.addCleanup(upstream.shutdown)
+        base = self.start(real=True, upstream=f'http://127.0.0.1:{upstream.server_port}/v1/chat/completions')
+        body = self.body()
+        self.assertEqual(self.post(base, {**body, 'model': 'paid/model'})[0], 400)
+        self.assertEqual(received, [])
+        for _ in range(4):
+            status, response = self.post(base, body)
+            self.assertEqual(status, 200)
+            self.assertEqual(response['model'], 'upstream-fixture')
+        status, response = self.post(base, body)
+        self.assertEqual(status, 400)
+        self.assertEqual(response['error'], 'REAL_REQUEST_BUDGET_EXHAUSTED')
+        self.assertEqual(len(received), 4)
+        self.assertTrue(all(auth == 'Bearer ' + key and b['max_tokens'] == 2048 for auth, b in received))
+        with urlopen(base + '/provider-diagnostics', timeout=3) as response:
+            evidence = json.load(response)
+        self.assertEqual(len(evidence['records']), 4)
+        self.assertNotIn(key, json.dumps(evidence))
+        self.assertEqual(evidence['records'][0]['candidate_text'], '{"ok": true, "result": "[redacted]"}')
+
+    def test_stream_evidence_keeps_final_content_but_excludes_reasoning(self):
+        spec = importlib.util.spec_from_file_location('relay_evidence', FIXTURE)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        payload = b'data: {"model":"local","choices":[{"delta":{"reasoning":"PRIVATE_REASONING","content":"{\\"ok\\":true}"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'
+        module.record_provider_response(1, 200, payload)
+        record = module.provider_records[0]
+        self.assertEqual(record['candidate_text'], '{"ok":true}')
+        self.assertNotIn('PRIVATE_REASONING', json.dumps(record))
+
+    def test_real_relay_preserves_sse_and_does_not_retry_upstream_errors(self):
+        received = []
+        wire = b'data: {"model":"local-upstream","choices":[{"delta":{"content":"{\\"ok\\":true}"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'
+        class Provider(BaseHTTPRequestHandler):
+            def log_message(self, *_): pass
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                received.append(body)
+                error = len(received) == 2
+                payload = b'{"error":{"message":"controlled rate limit"}}' if error else wire
+                self.send_response(429 if error else 200)
+                self.send_header('Content-Type', 'application/json' if error else 'text/event-stream')
+                self.send_header('Content-Length', str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+        upstream = ThreadingHTTPServer(('127.0.0.1', 0), Provider)
+        thread = threading.Thread(target=upstream.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join)
+        self.addCleanup(upstream.server_close)
+        self.addCleanup(upstream.shutdown)
+        base = self.start(real=True, upstream=f'http://127.0.0.1:{upstream.server_port}/v1/chat/completions')
+        body = self.body()
+        body['stream'] = True
+        body['messages'][0]['content'] = [{'type': 'text', 'text': 'cached input', 'cache_control': {'type': 'ephemeral'}}]
+        request = Request(base + '/v1/chat/completions', data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
+        with urlopen(request, timeout=3) as response:
+            self.assertEqual(response.read(), wire)
+        self.assertEqual(received[0]['messages'], body['messages'])
+        status, response = self.post(base, body)
+        self.assertEqual(status, 429)
+        self.assertEqual(response['error']['message'], 'controlled rate limit')
+        self.assertEqual(len(received), 2)
+        with urlopen(base + '/provider-diagnostics', timeout=3) as response:
+            records = json.load(response)['records']
+        self.assertEqual([r['http_status'] for r in records], [200, 429])
+        self.assertEqual(records[0]['candidate_text'], '{"ok":true}')
 
 
 if __name__ == '__main__':
