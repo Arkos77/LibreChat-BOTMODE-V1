@@ -1,6 +1,7 @@
 """Disposable hosted-runner HTTP/SSE research qualification; never an installer."""
 import argparse
 import copy
+import ipaddress
 import json
 import os
 import re
@@ -11,24 +12,36 @@ import time
 import uuid
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import ProxyHandler, Request, build_opener
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_URL = 'https://ci-source.invalid/report'
+FIXTURE_WEB_ENV = {'BOTMODE_CI_WEB_URL': 'http://fixture:8088', 'BOTMODE_CI_WEB_KEY': 'ci-fixture'}
+HARNESS_ONLY_PATHS = {
+    '.github/workflows/botmode-v1-pr77-source-built.yml',
+    'scripts/botmode/ci-host-research.py',
+    'scripts/botmode/tests/test_host_research_guard.py',
+}
 
 
 def validate_target(env, actual_sha):
     sha = env.get('CANDIDATE_SHA', '')
+    harness_sha = env.get('HARNESS_SHA', sha)
     project = env.get('HOST_RESEARCH_PROJECT', '')
     if env.get('GITHUB_ACTIONS') != 'true' or env.get('RUNNER_ENVIRONMENT') != 'github-hosted':
         raise RuntimeError('HOST_RESEARCH_HOSTED_RUNNER_REQUIRED')
-    if not re.fullmatch(r'[0-9a-f]{40}', sha) or sha != actual_sha:
+    if not re.fullmatch(r'[0-9a-f]{40}', sha) or not re.fullmatch(r'[0-9a-f]{40}', harness_sha) or harness_sha != actual_sha:
         raise RuntimeError('HOST_RESEARCH_EXACT_SOURCE_REQUIRED')
     if env.get('CANDIDATE_IMAGE') != 'botmode-native-research:' + sha:
         raise RuntimeError('HOST_RESEARCH_LOCAL_IMAGE_REQUIRED')
     if not re.fullmatch(r'botmode-research-[0-9]+-[0-9]+', project):
         raise RuntimeError('HOST_RESEARCH_ISOLATED_PROJECT_REQUIRED')
     return sha, env['CANDIDATE_IMAGE'], project
+
+
+def validate_reused_files(paths):
+    if not set(paths).issubset(HARNESS_ONLY_PATHS):
+        raise RuntimeError('HOST_RESEARCH_REUSED_PRODUCT_SOURCE_DRIFT')
 
 
 def run(args, *, env=None, data=None, timeout=180):
@@ -49,8 +62,8 @@ def build_config(source):
     config['endpoints']['custom'] = endpoints
     config['webSearch'] = {
         'searchProvider': 'searxng', 'scraperProvider': 'firecrawl', 'rerankerType': 'none',
-        'searxngInstanceUrl': 'http://fixture:8088', 'searxngApiKey': 'ci-fixture',
-        'firecrawlApiUrl': 'http://fixture:8088', 'firecrawlApiKey': 'ci-fixture',
+        'searxngInstanceUrl': '${BOTMODE_CI_WEB_URL}', 'searxngApiKey': '${BOTMODE_CI_WEB_KEY}',
+        'firecrawlApiUrl': '${BOTMODE_CI_WEB_URL}', 'firecrawlApiKey': '${BOTMODE_CI_WEB_KEY}',
         'allowedAddresses': ['fixture:8088'],
     }
     return config
@@ -61,8 +74,44 @@ def check_config(config):
               data=json.dumps(config), timeout=30).strip(), flush=True)
 
 
+def api_base_from_networks(networks, project):
+    network = project + '_default'
+    if set(networks) != {network}:
+        raise RuntimeError('HOST_RESEARCH_ISOLATED_API_NETWORK_REQUIRED')
+    try:
+        address = ipaddress.IPv4Address(networks[network].get('IPAddress', ''))
+    except ipaddress.AddressValueError:
+        raise RuntimeError('HOST_RESEARCH_PRIVATE_API_ADDRESS_REQUIRED') from None
+    if not address.is_private or address.is_loopback or address.is_link_local or address.is_unspecified or address.is_multicast:
+        raise RuntimeError('HOST_RESEARCH_PRIVATE_API_ADDRESS_REQUIRED')
+    return f'http://{address}:3080'
+
+
+def wait_for_api(request, observations):
+    deadline = time.monotonic() + 180
+    observations.update(attempts=0, recent=[])
+    while True:
+        try:
+            status, _body = request('/api/config', authenticated=False, timeout=3)
+            sample = {'status': status}
+        except (URLError, TimeoutError) as error:
+            reason = error.reason if isinstance(error, URLError) else error
+            sample = {'error_type': type(reason).__name__, 'errno': getattr(reason, 'errno', None)}
+        observations['attempts'] += 1
+        observations['recent'] = (observations['recent'] + [sample])[-8:]
+        if sample.get('status') == 200:
+            return
+        if time.monotonic() >= deadline:
+            raise RuntimeError('HOST_RESEARCH_API_NOT_READY')
+        time.sleep(1)
+
+
 def main():
-    sha, image, project = validate_target(os.environ, run(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip())
+    harness_sha = run(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip()
+    sha, image, project = validate_target(os.environ, harness_sha)
+    if sha != harness_sha:
+        changed = run(['git', '-C', str(ROOT), 'diff', '--name-only', sha, harness_sha]).splitlines()
+        validate_reused_files(changed)
     config = build_config(json.loads((ROOT / 'librechat.yaml').read_text()))
     check_config(config)
     image_env = run(['docker', 'image', 'inspect', image, '--format', '{{json .Config.Env}}'])
@@ -79,7 +128,7 @@ def main():
         values = {'JWT_SECRET': secrets.token_hex(48), 'JWT_REFRESH_SECRET': secrets.token_hex(48),
                   'CREDS_KEY': secrets.token_hex(32), 'CREDS_IV': secrets.token_hex(16),
                   'BOTMODE_MONGO_PASSWORD': secrets.token_hex(16), 'POSTGRES_PASSWORD': secrets.token_hex(16),
-                  'ALLOW_REGISTRATION': 'false', 'REDIS_KEY_PREFIX': ''}
+                  'ALLOW_REGISTRATION': 'false', 'REDIS_KEY_PREFIX': '', **FIXTURE_WEB_ENV}
         text = (ROOT / '.env.example').read_text()
         for key, value in values.items():
             pattern = r'^' + re.escape(key) + r'=.*$'
@@ -130,6 +179,9 @@ networks:
         sid = None
         stage = 'startup'
         passed = False
+        http_observations = {}
+        api_base = None
+        opener = build_opener(ProxyHandler({}))
 
         def request(path, body=None, authenticated=True, timeout=120):
             headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) Chrome/131.0.0.0 Safari/537.36'}
@@ -137,10 +189,12 @@ networks:
                 headers['Authorization'] = 'Bearer ' + token
             if body is not None:
                 headers['Content-Type'] = 'application/json'
-            req = Request('http://127.0.0.1:3090' + path,
+            if api_base is None:
+                raise RuntimeError('HOST_RESEARCH_API_ADDRESS_NOT_SELECTED')
+            req = Request(api_base + path,
                           data=None if body is None else json.dumps(body).encode(), headers=headers)
             try:
-                with urlopen(req, timeout=timeout) as response:
+                with opener.open(req, timeout=timeout) as response:
                     return response.status, response.read().decode()
             except HTTPError as error:
                 return error.code, error.read().decode()
@@ -149,16 +203,12 @@ networks:
         try:
             attempted = True
             dc('up', '-d', 'mongodb', 'redis', 'fixture', 'api', timeout=240)
-            deadline = time.monotonic() + 180
-            while True:
-                try:
-                    if request('/api/config', authenticated=False, timeout=3)[0] == 200:
-                        break
-                except (URLError, TimeoutError):
-                    pass
-                if time.monotonic() >= deadline:
-                    raise RuntimeError('HOST_RESEARCH_API_NOT_READY')
-                time.sleep(1)
+            api_container = dc('ps', '-q', 'api', timeout=5).strip()
+            networks = json.loads(run(['docker', 'inspect', api_container,
+                '--format', '{{json .NetworkSettings.Networks}}'], timeout=5))
+            api_base = api_base_from_networks(networks, project)
+            http_observations['transport'] = 'direct project bridge; no host port or proxy'
+            wait_for_api(request, http_observations)
             assert request('/api/agents/botmode/setup', {}, authenticated=False)[0] == 401
             stage = 'principal'
             principal = node('''const fs=require('fs'),m=require('mongoose'),jwt=require('jsonwebtoken');
@@ -249,7 +299,7 @@ console.log(JSON.stringify({conversation:!!conversation,count:messages.length,co
             for service in ('api', 'mongodb', 'redis', 'fixture'):
                 container_id = dc('ps', '-q', service).strip()
                 component_images[service] = run(['docker', 'inspect', container_id, '--format', '{{.Image}}']).strip()
-            summary = {'source_sha': sha, 'scenario': 'native HTTP/SSE analyze', 'task_keys': list(tasks),
+            summary = {'source_sha': sha, 'harness_sha': harness_sha, 'scenario': 'native HTTP/SSE analyze', 'task_keys': list(tasks),
                        'verdict_counts': {k: len(state['results'][t['taskId']]['verdicts']) for k,t in tasks.items()},
                        'source_observations': len(sources), 'mongo_final_count': mongo['count'],
                        'fixture_metrics': metrics, 'component_images': component_images}
@@ -259,8 +309,36 @@ console.log(JSON.stringify({conversation:!!conversation,count:messages.length,co
             print('HOST_RESEARCH_NATIVE_TOOL_ORACLE_MONGO=PASS', flush=True)
         finally:
             if attempted:
-                diagnostics = {'source_sha': sha, 'passed': passed, 'last_stage': stage}
+                diagnostics = {'source_sha': sha, 'harness_sha': harness_sha, 'passed': passed, 'last_stage': stage}
+                diagnostics['host_http'] = http_observations
                 if not passed:
+                    try:
+                        diagnostics['internal_http'] = json.loads(dc('exec', '-T', 'fixture', 'python3', '-',
+                            data='''import json, urllib.request, urllib.error
+results = {}
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+for path in ('/health', '/readyz', '/api/config'):
+    req = urllib.request.Request('http://api:3080' + path, headers={'User-Agent': 'Mozilla/5.0 Chrome/131.0.0.0 Safari/537.36'})
+    try:
+        with opener.open(req, timeout=2) as response:
+            results[path] = {'status': response.status}
+    except urllib.error.HTTPError as error:
+        results[path] = {'status': error.code}
+    except (urllib.error.URLError, TimeoutError) as error:
+        reason = error.reason if isinstance(error, urllib.error.URLError) else error
+        results[path] = {'error_type': type(reason).__name__, 'errno': getattr(reason, 'errno', None)}
+print(json.dumps(results))
+''', timeout=15))
+                    except Exception:
+                        diagnostics['internal_http_available'] = False
+                    try:
+                        api_container = dc('ps', '-q', 'api', timeout=5).strip()
+                        diagnostics['api_network'] = json.loads(run(['docker', 'inspect', api_container, '--format',
+                            '{"ports":{{json .NetworkSettings.Ports}},"networks":{{json .NetworkSettings.Networks}},"state":{{json .State.Status}}}'], timeout=5))
+                        diagnostics['network_internal'] = run(['docker', 'network', 'inspect', project + '_default',
+                            '--format', '{{.Internal}}'], timeout=5).strip()
+                    except Exception:
+                        diagnostics['api_network_available'] = False
                     try:
                         metrics = json.loads(dc('exec', '-T', 'fixture', 'python3', '-c',
                             'import urllib.request;print(urllib.request.urlopen("http://127.0.0.1:8088/metrics").read().decode())', timeout=10))

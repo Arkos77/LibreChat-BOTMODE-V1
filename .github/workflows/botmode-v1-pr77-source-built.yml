@@ -15,6 +15,10 @@ on:
         description: 'Qualify actual native web tool, HTTP/SSE, Oracle and Mongo on an isolated internal network'
         type: boolean
         default: false
+      reuse_host_candidate:
+        description: 'Reuse the verified image from run40134956297; refuse product-source drift and never rebuild'
+        type: boolean
+        default: false
 permissions:
   contents: read
 env:
@@ -122,7 +126,7 @@ jobs:
         run: sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
 
   compiled-research:
-    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.native_research_only || inputs.host_research) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.reuse_host_candidate && (inputs.native_research_only || inputs.host_research) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -222,3 +226,113 @@ jobs:
         if: always()
         run: |
           echo 'Qualification outcomes are recorded in the artifact. Optional host test uses synthetic model/search/scrape on an internal network. No browser, crash restart, real provider, installation or stable proof.' >> "$GITHUB_STEP_SUMMARY"
+
+  retained-host-research:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.host_research && inputs.reuse_host_candidate }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    env:
+      HARNESS_SHA: ${{ github.sha }}
+      CANDIDATE_SHA: 068f9c933ae5840d6b8d8bb4feb5278aaaffb9b1
+      CANDIDATE_IMAGE: botmode-native-research:068f9c933ae5840d6b8d8bb4feb5278aaaffb9b1
+      HOST_RESEARCH_PROJECT: botmode-research-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - name: Validate harness and unchanged product before loading image
+        env:
+          PYTHONPYCACHEPREFIX: ${{ runner.temp }}/botmode-python-cache
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HARNESS_SHA"
+          test -z "$(git status --porcelain)"
+          python3 - <<'PY_DIFF'
+          import importlib.util,os,subprocess
+          spec=importlib.util.spec_from_file_location('host','scripts/botmode/ci-host-research.py')
+          host=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(host)
+          host.validate_reused_files(subprocess.check_output(['git','diff','--name-only',os.environ['CANDIDATE_SHA'],os.environ['HARNESS_SHA']],text=True).splitlines())
+          PY_DIFF
+          python3 -m unittest discover -s scripts/botmode/tests -p test_host_research_guard.py
+          npm ci --no-audit --no-fund
+          npm run build:data-provider
+          python3 scripts/botmode/ci-host-research.py --check-config
+      - uses: actions/download-artifact@v4
+        with:
+          name: botmode-native-research-068f9c933ae5840d6b8d8bb4feb5278aaaffb9b1
+          run-id: 40134956297
+          github-token: ${{ github.token }}
+          path: retained-image
+      - name: Verify retained archive, image identity and embedded source
+        id: retained
+        run: |
+          set -euo pipefail
+          test "$(cat retained-image/source-sha.txt)" = "$CANDIDATE_SHA"
+          test "$(cat retained-image/image-id.txt)" = 'sha256:4c8485101d0f03b2191d3abd83f28089a78df9b22e506b72f986b185603ac5a0'
+          printf '%s  %s\n' '35193ffa9c5298d1dd183a8befc062f893f1e6021ad398dc35546bf84393b429' retained-image/image.tar.gz | sha256sum -c -
+          docker load -i retained-image/image.tar.gz
+          test "$(docker image inspect "$CANDIDATE_IMAGE" --format '{{.Id}}')" = 'sha256:4c8485101d0f03b2191d3abd83f28089a78df9b22e506b72f986b185603ac5a0'
+          docker image inspect "$CANDIDATE_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -Fx "BUILD_COMMIT=$CANDIDATE_SHA"
+      - name: Verify web auth resolution inside the retained image without network
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_CONFIG' > "$RUNNER_TEMP/botmode-fixture-config.json"
+          import importlib.util,json
+          spec=importlib.util.spec_from_file_location('host','scripts/botmode/ci-host-research.py')
+          host=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(host)
+          print(json.dumps(host.build_config(json.load(open('librechat.yaml')))))
+          PY_CONFIG
+          docker run --rm -i --network none --entrypoint node \
+            --env BOTMODE_CI_WEB_URL=http://fixture:8088 --env BOTMODE_CI_WEB_KEY=ci-fixture \
+            "$CANDIDATE_IMAGE" -e '
+          const fs=require("node:fs"),assert=require("node:assert/strict");
+          const {loadWebSearchAuth}=require("@librechat/api");
+          (async()=>{
+            const config=JSON.parse(fs.readFileSync(0,"utf8"));
+            const result=await loadWebSearchAuth({userId:"ci",webSearchConfig:config.webSearch,throwError:false,
+              loadAuthValues:async({authFields})=>Object.fromEntries(authFields.map(k=>[k,process.env[k]]))});
+            assert.equal(result.authenticated,true);
+            assert.equal(result.authResult.searxngInstanceUrl,"http://fixture:8088");
+            assert.equal(result.authResult.firecrawlApiUrl,"http://fixture:8088");
+            assert.equal(result.authResult.searchProvider,"searxng");
+            assert.equal(result.authResult.scraperProvider,"firecrawl");
+            assert.equal(result.authResult.rerankerType,"none");
+            console.log("RETAINED_IMAGE_WEB_AUTH=PASS");
+          })().catch(e=>{console.error(e.message);process.exitCode=1});
+          ' < "$RUNNER_TEMP/botmode-fixture-config.json"
+      - name: Qualify native host path using the retained image
+        id: host
+        run: python3 scripts/botmode/ci-host-research.py
+      - name: Record separate source and harness identities
+        if: always()
+        env:
+          RETAINED_OUTCOME: ${{ steps.retained.outcome }}
+          HOST_OUTCOME: ${{ steps.host.outcome }}
+        run: |
+          mkdir -p candidate-evidence
+          python3 - <<'PY_STATUS'
+          import json,os
+          from pathlib import Path
+          Path('candidate-evidence/qualification-status.json').write_text(json.dumps({
+            'source_sha':os.environ['CANDIDATE_SHA'],'harness_sha':os.environ['HARNESS_SHA'],
+            'retained_image':os.environ['RETAINED_OUTCOME'],'host':os.environ['HOST_OUTCOME'],
+            'compiled_proof_run':40134956297,'image_artifact':12576688545,'new_build':False}))
+          PY_STATUS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: botmode-retained-host-${{ github.sha }}
+          path: candidate-evidence/
+          retention-days: 3
+          if-no-files-found: error
