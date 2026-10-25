@@ -11,7 +11,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 lock = threading.Lock()
 calls = {"parent_tool_requests": 0, "child_responses": 0, "parent_final": 0,
@@ -23,6 +23,11 @@ REAL_MODE = os.environ.get('CI_REAL_FREE_PROVIDER') == '1'
 REAL_KEY = os.environ.get('CI_OPENROUTER_KEY', '')
 REAL_URL = 'https://openrouter.ai/api/v1/chat/completions'
 provider_records = []
+class NoProviderRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+provider_opener = build_opener(ProxyHandler({}), NoProviderRedirect())
 SOURCE_URL = "https://ci-source.invalid/report"
 SOURCE_RESULT = json.dumps({"ok":True,"result":"Synthetic CI observation: "+SOURCE_URL,"sources":SOURCE_URL})
 
@@ -201,13 +206,16 @@ class Handler(BaseHTTPRequestHandler):
                 headers={'Authorization': 'Bearer ' + REAL_KEY, 'Content-Type': 'application/json',
                          'Accept': 'text/event-stream' if req.get('stream') else 'application/json'})
             try:
-                with urlopen(request, timeout=90) as response:
+                with provider_opener.open(request, timeout=90) as response:
                     status, content_type = response.status, response.headers.get('Content-Type', 'application/json')
                     payload = response.read(1048577)
             except HTTPError as error:
                 status, content_type, payload = error.code, 'application/json', error.read(65536)
             except (URLError, TimeoutError):
                 status, content_type, payload = 502, 'application/json', b'{"error":"UPSTREAM_TRANSPORT_FAILED"}'
+            if 300 <= status < 400:
+                record_provider_response(provider_number, status, b'{"error":"UPSTREAM_REDIRECT_REFUSED"}')
+                return self.send({'error': 'UPSTREAM_REDIRECT_REFUSED'}, 502)
             if len(payload) > 1048576:
                 status, content_type, payload = 502, 'application/json', b'{"error":"UPSTREAM_RESPONSE_TOO_LARGE"}'
             record_provider_response(provider_number, status, payload)

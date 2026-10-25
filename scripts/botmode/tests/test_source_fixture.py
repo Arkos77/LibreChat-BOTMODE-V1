@@ -252,6 +252,42 @@ class SourceFixtureTests(unittest.TestCase):
         self.assertEqual([r['http_status'] for r in records], [200, 429])
         self.assertEqual(records[0]['candidate_text'], '{"ok":true}')
 
+    def test_real_relay_refuses_cross_host_redirect_without_forwarding_the_key(self):
+        leaked = []
+        class Destination(BaseHTTPRequestHandler):
+            def log_message(self, *_): pass
+            def do_GET(self):
+                leaked.append(self.headers.get('Authorization'))
+                payload = b'{"choices":[{"message":{"content":"unexpected destination"}}]}'
+                self.send_response(200)
+                self.send_header('Content-Length', str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+        destination = ThreadingHTTPServer(('127.0.0.1', 0), Destination)
+        class Redirect(BaseHTTPRequestHandler):
+            def log_message(self, *_): pass
+            def do_POST(self):
+                self.rfile.read(int(self.headers['Content-Length']))
+                self.send_response(302)
+                self.send_header('Location', f'http://127.0.0.1:{destination.server_port}/other')
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+        origin = ThreadingHTTPServer(('127.0.0.1', 0), Redirect)
+        for server in (destination, origin):
+            thread = threading.Thread(target=server.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True)
+            thread.start()
+            self.addCleanup(thread.join)
+            self.addCleanup(server.server_close)
+            self.addCleanup(server.shutdown)
+        base = self.start(real=True, upstream=f'http://127.0.0.1:{origin.server_port}/v1/chat/completions')
+        status, response = self.post(base, self.body())
+        self.assertEqual(status, 502)
+        self.assertEqual(response['error'], 'UPSTREAM_REDIRECT_REFUSED')
+        self.assertEqual(leaked, [])
+        with urlopen(base + '/provider-diagnostics', timeout=3) as response:
+            records = json.load(response)['records']
+        self.assertEqual([r['http_status'] for r in records], [302])
+
 
 if __name__ == '__main__':
     unittest.main()
