@@ -32,7 +32,11 @@ export function assertResearchToolAvailability(
   })[],
 ): void {
   for (const task of plan.tasks) {
-    if (!task.validation.some((requirement) => requirement.outputContract === 'research-v1'))
+    if (
+      !task.validation.some((requirement) =>
+        ['research-v1', 'research-v2'].includes(requirement.outputContract ?? ''),
+      )
+    )
       continue;
     const agent = agents.find((entry) => entry.id === task.agentId);
     const loaded = agent?.tools?.some((tool) =>

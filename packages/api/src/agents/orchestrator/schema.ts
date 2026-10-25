@@ -21,22 +21,29 @@ export function requireNativeParameters(provider: string, original: Options): Op
 }
 
 function taskFormat(requirements: readonly OracleRequirement[]) {
-  const research = requirements.some((requirement) => requirement.outputContract === 'research-v1');
+  const research = requirements.some((requirement) =>
+    ['research-v1', 'research-v2'].includes(requirement.outputContract ?? ''),
+  );
+  const separateSources =
+    requirements.some((requirement) => requirement.outputContract === 'research-v2') &&
+    !requirements.some((requirement) => requirement.outputContract === 'research-v1');
   const properties = new Map<string, ScalarSchema>([
     [
       'result',
       {
         type: 'string',
-        description:
-          'Report the actual findings, limitations and uncertainty honestly. Cite observed source URLs when research is required.',
+        description: separateSources
+          ? 'Report the actual findings, limitations and uncertainty honestly. The host displays the separately verified sources.'
+          : 'Report the actual findings, limitations and uncertainty honestly. Cite observed source URLs when research is required.',
       },
     ],
   ]);
   if (research)
     properties.set('sources', {
       type: 'string',
-      description:
-        'Newline-separated absolute URLs returned by completed web_search calls, cited in result. Never invent sources.',
+      description: separateSources
+        ? 'Newline-separated absolute URLs returned by completed web_search calls. The host displays these verified sources separately. Never invent sources.'
+        : 'Newline-separated absolute URLs returned by completed web_search calls, cited in result. Never invent sources.',
     });
   for (const requirement of requirements) {
     for (const { field, expected } of requirement.criteria) {
@@ -48,10 +55,11 @@ function taskFormat(requirements: readonly OracleRequirement[]) {
       properties.set(field, { type: [...types] });
     }
   }
+  const schemaName = research ? 'botmode_research_v1' : 'botmode_result_v1';
   return {
     type: 'json_schema',
     json_schema: {
-      name: research ? 'botmode_research_v1' : 'botmode_result_v1',
+      name: separateSources ? 'botmode_research_v2' : schemaName,
       strict: true,
       schema: {
         type: 'object',

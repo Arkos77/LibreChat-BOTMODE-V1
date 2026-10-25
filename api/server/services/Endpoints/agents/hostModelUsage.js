@@ -52,7 +52,9 @@ function projectHostModelUsage(decision, usageEvents, missionPlan) {
           (task) =>
             task?.nodeId === nodeId &&
             Array.isArray(task.validation) &&
-            task.validation.some((requirement) => requirement?.outputContract === 'research-v1'),
+            task.validation.some((requirement) =>
+              ['research-v1', 'research-v2'].includes(requirement?.outputContract),
+            ),
         )
       ) {
         actorIds.add(researchObservationNodeId(nodeId));

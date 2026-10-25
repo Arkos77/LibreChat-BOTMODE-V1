@@ -187,7 +187,9 @@ export function promoteTransientMissionOracleEvidence(
     if (
       observation.toolName !== 'web_search' ||
       task?.agentId !== observation.producerAgentId ||
-      !task.validation.some((requirement) => requirement.outputContract === 'research-v1')
+      !task.validation.some((requirement) =>
+        ['research-v1', 'research-v2'].includes(requirement.outputContract ?? ''),
+      )
     ) {
       throw new Error('Native source observation is not bound to an admitted research task');
     }

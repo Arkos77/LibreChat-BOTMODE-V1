@@ -93,11 +93,14 @@ export function prepareBotModePlan({
     constraints: [...(previousByKey.get(task.key)?.constraints ?? [])],
     validation: structuredClone(previousByKey.get(task.key)?.validation),
   }));
-  const admitted = prepareBotModeMission({
-    ...mission,
-    objectives,
-    requiredCapabilities: [...new Set(objectives.flatMap((task) => task.requiredCapabilities))],
-  });
+  const admitted = prepareBotModeMission(
+    {
+      ...mission,
+      objectives,
+      requiredCapabilities: [...new Set(objectives.flatMap((task) => task.requiredCapabilities))],
+    },
+    { researchContract: 'research-v2' },
+  );
   return deterministicPlanner.planMission(admitted, {
     worker: {
       id: 'worker',

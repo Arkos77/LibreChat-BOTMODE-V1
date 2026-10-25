@@ -68,6 +68,7 @@ export * from './modelWatchRunner';
 export * from './modelWatchConfig';
 
 export * from './output';
+export * from './publication';
 
 export * from './sources';
 

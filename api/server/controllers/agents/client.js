@@ -154,6 +154,7 @@ const {
   createContextMetaPublisher,
   selectRunContextMetaToPublish,
   assertTerminalMissionTasksVerified,
+  renderMissionPublication,
   areMissionOracleResultsEquivalent,
   normalizeMissionOracleState,
   getMissionOracleFailure,
@@ -3662,6 +3663,28 @@ class AgentClient extends BaseClient {
    * Tool/activity/steer parts remain available as bounded UI evidence.
    */
   applyBotModePublicationFilter() {
+    const structuredSources = this.orchestratorPlan?.tasks?.some((task) =>
+      task.validation?.some((v) => v.outputContract === 'research-v2'),
+    );
+    if (structuredSources) {
+      if (!Array.isArray(this.contentParts)) {
+        throw Object.assign(new Error('BOTMODE_VERIFIED_PRESENTATION_REQUIRED'), {
+          code: 'MISSION_ORACLE_FAILURE',
+        });
+      }
+      this.contentParts = this.contentParts.filter(
+        (part) =>
+          part != null && part.type !== ContentTypes.TEXT && part.type !== ContentTypes.THINK,
+      );
+      if (this._botModePresentationPaused) return;
+      if (typeof this._botModeRenderedAnswer !== 'string' || !this._botModeRenderedAnswer.trim()) {
+        throw Object.assign(new Error('BOTMODE_VERIFIED_PRESENTATION_REQUIRED'), {
+          code: 'MISSION_ORACLE_FAILURE',
+        });
+      }
+      this.contentParts.push({ type: ContentTypes.TEXT, text: this._botModeRenderedAnswer });
+      return;
+    }
     const agent = this.options?.agent;
     const isBotModeAgent = agent?.metadata?.botmode === true || agent?.name === 'BOT MODE Worker';
     if (!isBotModeAgent || !Array.isArray(this.contentParts)) {
@@ -5072,10 +5095,13 @@ class AgentClient extends BaseClient {
   }
 
   async assertTerminalMissionOracle(run) {
+    delete this._botModeRenderedAnswer;
+    this._botModePresentationPaused = false;
     if (this.orchestratorPlan == null) {
       return;
     }
     if (run.getInterrupt() != null || run.getHaltReason() != null) {
+      this._botModePresentationPaused = true;
       return;
     }
 
@@ -5089,6 +5115,10 @@ class AgentClient extends BaseClient {
         async (result) => {
           await this.persistMissionOracleResult(result);
         },
+      );
+      this._botModeRenderedAnswer = await renderMissionPublication(
+        this.orchestratorPlan,
+        this.missionOracleState,
       );
     } catch (error) {
       /** Mission Oracle failures are terminal QA failures, not ordinary provider errors.

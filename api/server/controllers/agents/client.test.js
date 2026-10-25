@@ -2531,6 +2531,77 @@ describe('AgentClient - BOT MODE publication filter', () => {
     expect(ctx.contentParts).toEqual([text('Réponse finale consolidée')]);
   });
 
+  it('uses the verified rendered result once instead of exposing raw research JSON', () => {
+    const ctx = {
+      options: { agent: { name: 'BOT MODE Worker' } },
+      orchestratorPlan: { tasks: [{ validation: [{ outputContract: 'research-v2' }] }] },
+      _botModeRenderedAnswer: 'Final findings\n\nSources\n- <https://ci-source.invalid/report>',
+      contentParts: [text('Draft'), text('{"ok":true,"result":"Final findings"}')],
+    };
+    AgentClient.prototype.applyBotModePublicationFilter.call(ctx);
+    expect(ctx.contentParts).toEqual([text(ctx._botModeRenderedAnswer)]);
+  });
+
+  it('blocks a completed v2 mission when the verified renderer has not supplied an answer', () => {
+    const ctx = {
+      options: { agent: { name: 'BOT MODE Worker' } },
+      orchestratorPlan: { tasks: [{ validation: [{ outputContract: 'research-v2' }] }] },
+      contentParts: [text('Unverified answer')],
+    };
+    expect(() => AgentClient.prototype.applyBotModePublicationFilter.call(ctx)).toThrow(
+      'BOTMODE_VERIFIED_PRESENTATION_REQUIRED',
+    );
+    ctx._botModePresentationPaused = true;
+    expect(() => AgentClient.prototype.applyBotModePublicationFilter.call(ctx)).not.toThrow();
+  });
+
+  it('clears any earlier rendered answer before a paused or halted warm resume', async () => {
+    const ctx = {
+      orchestratorPlan: { tasks: [] },
+      _botModeRenderedAnswer: 'Previous turn sources',
+    };
+    await AgentClient.prototype.assertTerminalMissionOracle.call(ctx, {
+      getInterrupt: () => ({}),
+      getHaltReason: () => null,
+    });
+    expect(ctx._botModeRenderedAnswer).toBeUndefined();
+    expect(ctx._botModePresentationPaused).toBe(true);
+  });
+
+  it.each(['normal', 'warm'])(
+    'renders an admitted v2 %s completion independently of worker name or metadata',
+    (_mode) => {
+      const ctx = {
+        options: { agent: { id: 'authorized-worker', name: 'My Worker' } },
+        orchestratorPlan: { tasks: [{ validation: [{ outputContract: 'research-v2' }] }] },
+        _botModeRenderedAnswer: 'Verified final\n\nSources\n- <https://ci-source.invalid/report>',
+        contentParts: [text('{"ok":true,"result":"Raw final"}')],
+      };
+      AgentClient.prototype.applyBotModePublicationFilter.call(ctx);
+      expect(ctx.contentParts).toEqual([text(ctx._botModeRenderedAnswer)]);
+    },
+  );
+
+  it('withholds partial v2 candidate text and stale sources after a non-HITL halt', async () => {
+    const tool = { type: ContentTypes.TOOL_CALL, tool_call: { id: 'search' } };
+    const ctx = {
+      options: { agent: { name: 'My Worker' } },
+      orchestratorPlan: { tasks: [{ validation: [{ outputContract: 'research-v2' }] }] },
+      _botModeRenderedAnswer: 'Earlier rendered sources',
+      contentParts: [
+        tool,
+        text('{"ok":true,"result":"Research only","sources":"https://ci-source.invalid/report"}'),
+      ],
+    };
+    await AgentClient.prototype.assertTerminalMissionOracle.call(ctx, {
+      getInterrupt: () => null,
+      getHaltReason: () => 'preempt_incomplete',
+    });
+    AgentClient.prototype.applyBotModePublicationFilter.call(ctx);
+    expect(ctx._botModeRenderedAnswer).toBeUndefined();
+    expect(ctx.contentParts).toEqual([tool]);
+  });
+
   it('is a no-op for non-BOT MODE agents', () => {
     const parts = [{ type: ContentTypes.THINK, think: 'visible native reasoning' }, text('answer')];
     const ctx = { options: { agent: { name: 'Other agent' } }, contentParts: parts };

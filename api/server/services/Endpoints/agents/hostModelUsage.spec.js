@@ -116,25 +116,31 @@ describe('P11 model invocation evidence', () => {
     expect(receipt.total.costKnown).toBe(false);
   });
 
-  it('keeps an observation-only receipt when no final model call completes', () => {
-    const { plan, observation } = researchActors();
-    const receipt = projectHostModelUsage(
-      decision,
-      [
-        {
-          agentId: observation,
-          provider: 'openrouter',
-          model: 'b:free',
-          input_tokens: 2,
-          output_tokens: 1,
-        },
-      ],
-      plan,
-    );
-    expect(receipt.modelCalls).toEqual([
-      expect.objectContaining({ actorId: observation, inputTokens: 2 }),
-    ]);
-  });
+  it.each(['research-v1', 'research-v2'])(
+    'keeps an observation-only receipt for %s when no final model call completes',
+    (contract) => {
+      const { plan, observation } = researchActors();
+      plan.tasks[0].validation = plan.tasks[0].validation.map((v) =>
+        v.outputContract === 'research-v1' ? { ...v, outputContract: contract } : v,
+      );
+      const receipt = projectHostModelUsage(
+        decision,
+        [
+          {
+            agentId: observation,
+            provider: 'openrouter',
+            model: 'b:free',
+            input_tokens: 2,
+            output_tokens: 1,
+          },
+        ],
+        plan,
+      );
+      expect(receipt.modelCalls).toEqual([
+        expect.objectContaining({ actorId: observation, inputTokens: 2 }),
+      ]);
+    },
+  );
 
   it.each(['foreign', 'forged', 'ambiguous', 'old-version', 'not-research'])(
     'does not attribute a %s observation actor',

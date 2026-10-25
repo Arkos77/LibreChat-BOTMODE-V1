@@ -33,6 +33,7 @@ export function supportsResearchResult(
   result: string,
   sources: string,
   observations: readonly OracleSourceObservation[],
+  contract: 'research-v1' | 'research-v2' = 'research-v1',
 ): boolean {
   try {
     if (!Array.isArray(observations) || observations.length === 0 || observations.length > 32)
@@ -65,7 +66,10 @@ export function supportsResearchResult(
       // Unicode paths. Markup is presentation only, not evidence of a source.
       return matchUrl(citation) ?? matchUrl(citation.replace(citationSuffix, ''));
     });
-    return matched.every((url) => url != null) && normalized.every((url) => matched.includes(url));
+    return (
+      matched.every((url) => url != null) &&
+      (contract === 'research-v2' || normalized.every((url) => matched.includes(url)))
+    );
   } catch {
     return false;
   }

@@ -34,7 +34,7 @@ function evaluate(input: OracleInput, verdict: OracleVerdict): void {
   const ids = new Set(criteria.map((criterion) => criterion.id));
   if (
     (input.outputContract != null &&
-      !['result-v1', 'research-v1'].includes(input.outputContract)) ||
+      !['result-v1', 'research-v1', 'research-v2'].includes(input.outputContract)) ||
     !input.taskId ||
     !agentId ||
     ids.size !== criteria.length ||
@@ -115,11 +115,16 @@ function evaluate(input: OracleInput, verdict: OracleVerdict): void {
     });
   }
 
-  if (input.outputContract === 'research-v1') {
+  if (input.outputContract === 'research-v1' || input.outputContract === 'research-v2') {
     const passed =
       typeof parsed.data.result === 'string' &&
       typeof parsed.data.sources === 'string' &&
-      supportsResearchResult(parsed.data.result, parsed.data.sources, input.observedSources ?? []);
+      supportsResearchResult(
+        parsed.data.result,
+        parsed.data.sources,
+        input.observedSources ?? [],
+        input.outputContract,
+      );
     verdict.checks.push({ criterionId: 'output:sources', expected: true, actual: passed, passed });
     verdict.reasons.push({
       code: passed ? 'CRITERION_MET' : 'CRITERION_FAILED',

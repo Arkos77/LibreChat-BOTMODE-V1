@@ -11,7 +11,9 @@ import { requireNativeParameters } from './schema';
 import { buildWebSearchContext } from '~/tools/toolkits/web';
 
 export const isResearchTask = (task: Pick<PlannedTask, 'validation'>): boolean =>
-  task.validation.some((requirement) => requirement.outputContract === 'research-v1');
+  task.validation.some((requirement) =>
+    ['research-v1', 'research-v2'].includes(requirement.outputContract ?? ''),
+  );
 
 /** Derived execution identity, not a new business task or authorization. */
 export const researchObservationNodeId = (nodeId: string): string =>
@@ -72,14 +74,20 @@ function phaseOptions(provider: string, original: Options | undefined, phase: Ph
   };
 }
 
-export function researchPhaseBinding(binding: AgentInputs, phase: Phase): AgentInputs {
+export function researchPhaseBinding(
+  binding: AgentInputs,
+  phase: Phase,
+  separateSources = false,
+): AgentInputs {
   const clientOptions = phaseOptions(binding.provider, binding.clientOptions as Options, phase);
   // Replace only the application-generated web context; owner instructions stay intact.
   const instructions =
     typeof binding.instructions === 'string'
       ? binding.instructions.replace(
           buildWebSearchContext(),
-          buildWebSearchContext({ citationFormat: 'direct-urls' }),
+          buildWebSearchContext({
+            citationFormat: separateSources ? 'sources-field' : 'direct-urls',
+          }),
         )
       : binding.instructions;
   if (phase === 'result') return { ...binding, instructions, toolEnd: false, clientOptions };

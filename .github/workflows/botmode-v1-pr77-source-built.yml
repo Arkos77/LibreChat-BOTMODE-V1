@@ -171,8 +171,8 @@ jobs:
           npm run build:data-schemas
           npm run build:api
           NODE_OPTIONS=--max-old-space-size=6144 npm exec --workspace=packages/api tsc -- --noEmit
-          npm exec --workspace=packages/api jest -- --runInBand --coverage=false --runTestsByPath src/tools/toolkits/web.spec.ts src/agents/oracle/deterministic.spec.ts src/agents/oracle/runtime.spec.ts src/agents/orchestrator/research.spec.ts src/agents/orchestrator/researchSources.spec.ts src/agents/orchestrator/nativeToolChoiceTransport.spec.ts src/agents/orchestrator/admission.spec.ts src/agents/orchestrator/schema.spec.ts
-          npm exec --workspace=api jest -- --runInBand --coverage=false --runTestsByPath server/services/Endpoints/agents/hostModelUsage.spec.js server/services/Endpoints/agents/nativeMissionRecoveredOracleSources.spec.js server/services/Endpoints/agents/hostModelRouting.compat.spec.js server/controllers/agents/callbacks.improvementEvidence.spec.js
+          npm exec --workspace=packages/api jest -- --runInBand --coverage=false --runTestsByPath src/tools/toolkits/web.spec.ts src/agents/oracle/research2.spec.ts src/agents/orchestrator/publication.spec.ts src/agents/orchestrator/publicationTransport.spec.ts src/agents/oracle/deterministic.spec.ts src/agents/oracle/runtime.spec.ts src/agents/orchestrator/research.spec.ts src/agents/orchestrator/researchSources.spec.ts src/agents/orchestrator/nativeToolChoiceTransport.spec.ts src/agents/orchestrator/admission.spec.ts src/agents/orchestrator/schema.spec.ts
+          npm exec --workspace=api jest -- --runInBand --coverage=false --runTestsByPath server/services/Endpoints/agents/nativeMissionPresentation.spec.js server/services/Endpoints/agents/hostModelUsage.spec.js server/services/Endpoints/agents/nativeMissionRecoveredOracleSources.spec.js server/services/Endpoints/agents/hostModelRouting.compat.spec.js server/controllers/agents/callbacks.improvementEvidence.spec.js
           node scripts/botmode/native-research-image-regression.cjs
       - uses: docker/setup-buildx-action@v4
       - name: Build one exact AMD64 image without publication

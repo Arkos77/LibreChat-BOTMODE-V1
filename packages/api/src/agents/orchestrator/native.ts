@@ -148,6 +148,9 @@ export function compileNativePlan(
     if (task.nodeId !== nodeIdentity(plan.mission.missionId, task.key)) {
       throw new Error('Invalid native task identity');
     }
+    const separateSources =
+      task.validation.some((requirement) => requirement.outputContract === 'research-v2') &&
+      !task.validation.some((requirement) => requirement.outputContract === 'research-v1');
     const result: AgentInputs = {
       ...binding,
       agentId: task.nodeId,
@@ -169,9 +172,13 @@ export function compileNativePlan(
         ...(task.validation.length === 0
           ? []
           : [
-              'Required task output: return exactly one JSON object, without Markdown fences or surrounding prose. Use scalar fields only; put detailed findings and source citations in a result string.',
+              separateSources
+                ? 'Required task output: return exactly one JSON object, without Markdown fences or surrounding prose. Use scalar fields only; put detailed findings in result and the observed source URLs used in sources.'
+                : 'Required task output: return exactly one JSON object, without Markdown fences or surrounding prose. Use scalar fields only; put detailed findings and source citations in a result string.',
               'The validation criteria above are checks, not values to copy. Report completion honestly; never claim a criterion is met when the requested work or evidence is missing.',
-              'For research-v1, include a sources string of newline-separated absolute HTTP(S) URLs returned by completed web_search calls. Cite these same direct URLs in result. Invented URLs and search arguments are not source observations.',
+              separateSources
+                ? 'For research-v2, include a sources string of newline-separated absolute HTTP(S) URLs returned by completed web_search calls. The host verifies and displays these sources separately from result. Invented URLs and search arguments are not source observations.'
+                : 'For research-v1, include a sources string of newline-separated absolute HTTP(S) URLs returned by completed web_search calls. Cite these same direct URLs in result. Invented URLs and search arguments are not source observations.',
               'Respect the mission deadline and other constraints. Distinguish sourced facts from estimates and unknowns. Do not invent amounts, payment delays or citations; state when a source does not establish a claim.',
             ]),
       ]
@@ -201,8 +208,9 @@ export function compileNativePlan(
             .join('\n'),
         },
         'observation',
+        separateSources,
       ),
-      researchPhaseBinding(result, 'result'),
+      researchPhaseBinding(result, 'result', separateSources),
     ];
   });
   const edges: MultiAgentGraphConfig['edges'] = plan.tasks

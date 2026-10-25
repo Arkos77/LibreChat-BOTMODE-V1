@@ -2,15 +2,20 @@ import { Tools, replaceSpecialVars } from 'librechat-data-provider';
 
 /** Builds the web search tool context with citation format instructions. */
 export function buildWebSearchContext(
-  options: { citationFormat?: 'anchors' | 'direct-urls' } = {},
+  options: { citationFormat?: 'anchors' | 'direct-urls' | 'sources-field' } = {},
 ): string {
-  const internal = options.citationFormat === 'direct-urls';
+  const internal =
+    options.citationFormat === 'direct-urls' || options.citationFormat === 'sources-field';
   const presentation = internal
     ? 'follow the internal structured output contract. Keep findings inside the JSON result string; do not add presentation formatting outside that object.'
     : 'then provide a brief summary addressing the query directly, then structure your response with clear Markdown formatting (## headers, lists, tables). Cite sources properly, tailor tone to query type, and provide comprehensive details.';
   const citationInstructions = internal
     ? `**INTERNAL RESEARCH OUTPUT:**
-Use only absolute URLs returned by completed web_search calls. Reproduce each cited observed URL literally in the result string and list the same URLs in sources.
+Use only absolute URLs returned by completed web_search calls. ${
+        options.citationFormat === 'sources-field'
+          ? 'List the observed URLs used for the findings in sources. The host verifies and displays this list; you do not need to repeat those URLs in result.'
+          : 'Reproduce each cited observed URL literally in the result string and list the same URLs in sources.'
+      }
 Do not use interface citation anchors in this internal JSON output. Tool responses may contain presentation anchors; these do not replace direct URLs required by the research contract.
 Report completion and uncertainty honestly. If required work or source evidence is missing, report that limitation instead of asserting success.`
     : `**CITATION FORMAT - UNICODE ESCAPE SEQUENCES ONLY:**

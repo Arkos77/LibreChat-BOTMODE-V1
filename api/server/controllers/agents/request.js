@@ -1915,7 +1915,9 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
 
       const sourceTasks = orchestratorPlan.tasks
         .filter((task) =>
-          task.validation.some((requirement) => requirement.outputContract === 'research-v1'),
+          task.validation.some((requirement) =>
+            ['research-v1', 'research-v2'].includes(requirement.outputContract),
+          ),
         )
         .map((task) => ({
           nodeId: task.nodeId,

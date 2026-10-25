@@ -43,7 +43,7 @@ describe('BOT MODE canonical admission', () => {
     expect(plan.tasks.map((task) => task.key)).toEqual(['research', 'analysis', 'synthesis']);
     expect(plan.tasks[1].dependsOn).toEqual(['research']);
     expect(plan.tasks[2].dependsOn).toEqual(['analysis']);
-    expect(plan.tasks[0].validation.some((v) => v.outputContract === 'research-v1')).toBe(true);
+    expect(plan.tasks[0].validation.some((v) => v.outputContract === 'research-v2')).toBe(true);
     expect(plan.mission.objective).toBe('Comparer les options avec des sources');
     expect(plan.tasks.every((task) => task.constraints.includes('sans achat'))).toBe(true);
   });
@@ -150,7 +150,7 @@ describe('BOT MODE canonical admission', () => {
         legacyContext.specialists[0].validation,
       ]),
     );
-    expect(task.validation.some((v) => v.outputContract === 'research-v1')).toBe(true);
+    expect(task.validation.some((v) => v.outputContract === 'research-v2')).toBe(true);
     expect(task.requiredCapabilities).toEqual(['web_search']);
     expect({ input, legacyContext }).toEqual(before);
   });

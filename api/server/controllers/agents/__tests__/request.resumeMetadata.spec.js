@@ -1185,7 +1185,7 @@ describe('ResumableAgentController resume metadata', () => {
           files ? ['analysis', 'documentation'] : ['analysis'],
         );
         expect(plan.tasks[0].agentId).toBe('agent-specialist');
-        expect(plan.tasks[0].validation.some((v) => v.outputContract === 'research-v1')).toBe(true);
+        expect(plan.tasks[0].validation.some((v) => v.outputContract === 'research-v2')).toBe(true);
         expect(client.orchestratorPlan).toEqual(plan);
         expect(configure).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -1263,7 +1263,7 @@ describe('ResumableAgentController resume metadata', () => {
       expect(task.validation).toEqual(
         expect.arrayContaining([expect.objectContaining(validation), specialist.validation]),
       );
-      expect(task.validation.some((v) => v.outputContract === 'research-v1')).toBe(true);
+      expect(task.validation.some((v) => v.outputContract === 'research-v2')).toBe(true);
       expect(f.sendMessage).toHaveBeenCalledTimes(1);
     });
 
