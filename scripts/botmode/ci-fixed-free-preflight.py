@@ -1,5 +1,6 @@
 """Opt-in two-request capability probe; synthetic data, no application mission."""
 import json
+import math
 import os
 import re
 import subprocess
@@ -12,6 +13,8 @@ MODEL = 'nvidia/nemotron-3.5-super-vl:free'
 SOURCE = 'https://ci-source.invalid/report'
 CATALOG_URL = 'https://openrouter.ai/api/v1/models'
 API_URL = 'https://openrouter.ai/api/v1/chat/completions'
+CATALOG_LIMIT = 4 * 1024 * 1024
+GENERATION_LIMIT = 65536
 TOOL = {'type': 'function', 'function': {'name': 'web_search',
         'description': 'Request the controlled synthetic report.',
         'parameters': {'type': 'object', 'properties': {'query': {'type': 'string'}},
@@ -38,6 +41,7 @@ class Transport:
         self.opener = build_opener(ProxyHandler({}), NoRedirect())
 
     def _json(self, url, payload=None):
+        limit = CATALOG_LIMIT if payload is None else GENERATION_LIMIT
         headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
         if payload is not None: headers['Authorization'] = 'Bearer ' + self.token
         request = Request(url, data=None if payload is None else json.dumps(payload).encode(),
@@ -45,14 +49,15 @@ class Transport:
         try:
             with self.opener.open(request, timeout=30) as response:
                 if response.status != 200: raise ProbeError('HTTP_' + str(response.status))
-                data = response.read(65537)
+                data = response.read(limit + 1)
         except HTTPError as error:
             code = error.code
             error.close()
             raise ProbeError('HTTP_' + str(code)) from None
         except (URLError, TimeoutError, OSError):
             raise ProbeError('TRANSPORT_FAILED') from None
-        if len(data) > 65536: raise ProbeError('RESPONSE_TOO_LARGE')
+        if len(data) > limit:
+            raise ProbeError('CATALOG_TOO_LARGE' if payload is None else 'RESPONSE_TOO_LARGE')
         try: value = json.loads(data)
         except (ValueError, UnicodeError): raise ProbeError('RESPONSE_INVALID_JSON') from None
         if not isinstance(value, dict): raise ProbeError('RESPONSE_INVALID_OBJECT')
@@ -94,12 +99,23 @@ def generate(transport, report, phase, payload):
     finally:
         report['request_count'] = transport.requests
     record['http_status'] = 200
-    record['model'] = value.get('model')
+    model = value.get('model')
+    record['model'] = model if isinstance(model, str) else None
+    if model != MODEL: raise ProbeError('RESPONSE_MODEL_MISMATCH')
     usage = value.get('usage')
     record['usage'] = {k: v for k, v in (usage.items() if isinstance(usage, dict) else [])
                        if k in ('prompt_tokens', 'completion_tokens', 'total_tokens', 'cost')
-                       and type(v) in (int, float)}
-    if record['usage'].get('cost', 0) != 0: raise ProbeError('UNEXPECTED_NONZERO_COST')
+                       and type(v) in (int, float) and math.isfinite(v)}
+    if not isinstance(usage, dict): raise ProbeError('USAGE_REQUIRED')
+    completion = usage.get('completion_tokens')
+    if type(completion) is not int or not 0 <= completion <= 512:
+        raise ProbeError('REPORTED_TOKEN_USAGE_INVALID')
+    for field in ('prompt_tokens', 'total_tokens'):
+        if field in usage and (type(usage[field]) is not int or usage[field] < 0):
+            raise ProbeError('REPORTED_TOKEN_USAGE_INVALID')
+    cost = usage.get('cost')
+    if type(cost) not in (int, float) or not math.isfinite(cost): raise ProbeError('USAGE_COST_INVALID')
+    if cost != 0: raise ProbeError('UNEXPECTED_NONZERO_COST')
     choices = value.get('choices')
     if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
         raise ProbeError('SINGLE_CHOICE_REQUIRED')
@@ -120,7 +136,7 @@ def run_probe(transport, report):
     price = entry.get('pricing')
     try:
         if not isinstance(price, dict) or any(
-                Decimal(str(price.get(k, '0' if k == 'request' else '1'))) != 0
+                Decimal(str(price.get(k, '1'))) != 0
                 for k in ('prompt', 'completion', 'request')):
             raise ProbeError('NONZERO_OR_UNKNOWN_PRICE')
     except InvalidOperation: raise ProbeError('NONZERO_OR_UNKNOWN_PRICE') from None

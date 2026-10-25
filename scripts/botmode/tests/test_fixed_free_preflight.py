@@ -27,13 +27,21 @@ class FixedFreePreflightTests(unittest.TestCase):
                 self.send_response(status)
                 self.send_header('Content-Length', str(len(data)))
                 self.end_headers()
-                self.wfile.write(data)
+                try: self.wfile.write(data)
+                except (BrokenPipeError, ConnectionResetError): pass
             def do_GET(self):
-                self.send({'data': [{'id': module.MODEL,
+                entry = {'id': module.MODEL,
                     'pricing': {'prompt': '0' if mode != 'price' else '0.1', 'completion': '0',
                                 'request': '0.1' if mode == 'request_price' else '0'},
                     'supported_parameters': ['tools', 'tool_choice'] if mode == 'caps'
-                        else ['tools', 'tool_choice', 'response_format', 'reasoning']}]})
+                        else ['tools', 'tool_choice', 'response_format', 'reasoning']}
+                if mode == 'missing_request': del entry['pricing']['request']
+                catalog = [entry]
+                if mode == 'large_catalog':
+                    catalog += [{'id': f'other/model-{i}', 'description': 'x' * 1000} for i in range(100)]
+                if mode == 'oversized_catalog':
+                    catalog.append({'id': 'other/huge', 'description': 'x' * (module.CATALOG_LIMIT + 1024)})
+                self.send({'data': catalog})
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                 received.append((self.headers.get('Authorization'), body))
@@ -60,8 +68,18 @@ class FixedFreePreflightTests(unittest.TestCase):
                     if mode == 'secret': content = json.dumps({'ok': True, 'result': module.SOURCE + key, 'sources': module.SOURCE})
                     message = {'role': 'assistant', 'content': content, 'reasoning': 'PRIVATE_REASONING'}
                     finish = 'length' if mode == 'length' else 'stop'
-                self.send({'model': module.MODEL, 'choices': [{'message': message, 'finish_reason': finish}],
-                           'usage': {'prompt_tokens': 12, 'completion_tokens': 20, 'cost': 0.1 if mode == 'cost' else 0}})
+                usage = {'prompt_tokens': 12, 'completion_tokens': 20, 'cost': 0.1 if mode == 'cost' else 0}
+                if mode == 'overcap': usage['completion_tokens'] = 513
+                if mode == 'negative_usage': usage['completion_tokens'] = -1
+                if mode == 'bool_tokens': usage['completion_tokens'] = True
+                if mode == 'cost_string': usage['cost'] = '0.1'
+                if mode == 'missing_cost': del usage['cost']
+                if mode == 'nan_cost': usage['cost'] = float('nan')
+                if mode == 'missing_usage': usage = None
+                model = 'paid/other' if mode == 'model' else module.MODEL
+                value = {'model': model, 'choices': [{'message': message, 'finish_reason': finish}], 'usage': usage}
+                if mode == 'large_response': value['padding'] = 'x' * module.GENERATION_LIMIT
+                self.send(value)
 
         server = ThreadingHTTPServer(('127.0.0.1', 0), Provider)
         thread = threading.Thread(target=server.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True)
@@ -103,7 +121,7 @@ class FixedFreePreflightTests(unittest.TestCase):
         self.assertEqual(len(received), 2)
 
     def test_price_and_capability_failures_stop_before_any_generation(self):
-        for mode in ('price', 'request_price', 'caps'):
+        for mode in ('price', 'request_price', 'missing_request', 'caps'):
             with self.subTest(mode=mode):
                 module, transport, report, received, _ = self.start(mode)
                 with self.assertRaises(module.ProbeError): module.run_probe(transport, report)
@@ -167,3 +185,30 @@ class FixedFreePreflightTests(unittest.TestCase):
                 network.assert_not_called()
                 self.assertFalse(writer.call_args.args[1]['passed'])
         self.assertEqual(received, [])
+
+    def test_model_and_reported_usage_violations_stop_before_second_request(self):
+        for mode in ('model', 'overcap', 'negative_usage', 'bool_tokens', 'cost_string',
+                     'missing_cost', 'missing_usage', 'nan_cost'):
+            with self.subTest(mode=mode):
+                module, transport, report, received, _ = self.start(mode)
+                with self.assertRaises(module.ProbeError): module.run_probe(transport, report)
+                self.assertFalse(report['passed'])
+                self.assertEqual(transport.requests, 1)
+                self.assertEqual(len(received), 1)
+
+    def test_valid_catalog_can_exceed_generation_limit_and_catalog_read_stays_bounded(self):
+        module, transport, report, received, _ = self.start('large_catalog')
+        module.run_probe(transport, report)
+        self.assertTrue(report['passed'])
+        self.assertEqual(len(received), 2)
+        module, transport, report, received, _ = self.start('oversized_catalog')
+        with self.assertRaisesRegex(module.ProbeError, 'TOO_LARGE'): module.run_probe(transport, report)
+        self.assertEqual(transport.requests, 0)
+        self.assertEqual(received, [])
+
+    def test_generation_response_keeps_its_smaller_limit(self):
+        module, transport, report, received, _ = self.start('large_response')
+        with self.assertRaisesRegex(module.ProbeError, 'RESPONSE_TOO_LARGE'):
+            module.run_probe(transport, report)
+        self.assertEqual(transport.requests, 1)
+        self.assertEqual(len(received), 1)
