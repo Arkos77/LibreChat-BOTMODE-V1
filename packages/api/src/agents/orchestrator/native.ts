@@ -9,6 +9,7 @@ import type { MissionOracleResultPersister, MissionOracleTaskInput } from './mis
 import type { MissionPlan, OracleRequirement, PlannedTask } from './types';
 import { assertMissionTaskVerified, validateMissionTask } from './missionOracle';
 import { getTaskLevels, nodeIdentity } from './planner';
+import { structuredTaskOptions } from './schema';
 import {
   isResearchTask,
   researchObservationNodeId,
@@ -31,7 +32,11 @@ function validatedClientOptions(binding: AgentInputs, task: PlannedTask) {
   ) {
     return binding.clientOptions;
   }
-  const options = binding.clientOptions as OpenAIClientOptions | undefined;
+  const options = structuredTaskOptions(
+    binding.provider,
+    binding.clientOptions as OpenAIClientOptions | undefined,
+    task.validation,
+  );
   if (options?.useResponsesApi === true) {
     return binding.clientOptions;
   }
@@ -47,7 +52,7 @@ function validatedClientOptions(binding: AgentInputs, task: PlannedTask) {
   // after tool results; forcing "required" on every turn would prevent that.
   const needsToolChoice = hasTools && options?.modelKwargs?.tool_choice == null;
   if (hasJsonFormat && !needsToolChoice) {
-    return binding.clientOptions;
+    return options;
   }
   return {
     ...options,

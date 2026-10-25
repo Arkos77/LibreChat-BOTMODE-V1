@@ -191,7 +191,20 @@ it.each(['success', 'prose', 'tool-error', 'fallback429'])(
           hasToolResult: false,
           format: undefined,
         },
-        { choice: 'auto', hasToolResult: true, format: { type: 'json_object' } },
+        {
+          choice: 'auto',
+          hasToolResult: true,
+          format: expect.objectContaining({
+            type: 'json_schema',
+            json_schema: expect.objectContaining({
+              strict: true,
+              schema: expect.objectContaining({
+                required: ['result', 'sources', 'ok'],
+                additionalProperties: false,
+              }),
+            }),
+          }),
+        },
       ]);
       expect(executed).toBe(1);
       if (mode === 'fallback429')

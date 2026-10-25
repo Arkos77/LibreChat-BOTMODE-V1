@@ -174,10 +174,17 @@ async function check(mode) {
       assert.equal(run.getAgentOutputs()[plan.tasks[0].nodeId], undefined);
     } else {
       await execute();
-      assert.deepEqual(requests, [
-        observation,
-        { choice: 'auto', format: { type: 'json_object' }, hasToolResult: true },
-      ]);
+      assert.deepEqual(
+        requests.map(({ choice, hasToolResult }) => ({ choice, hasToolResult })),
+        [
+          { choice: observation.choice, hasToolResult: false },
+          { choice: 'auto', hasToolResult: true },
+        ],
+      );
+      assert.equal(requests[0].format, undefined);
+      assert.equal(requests[1].format.type, 'json_schema');
+      assert.equal(requests[1].format.json_schema.strict, true);
+      assert.deepEqual(requests[1].format.json_schema.schema.required, ['result', 'sources', 'ok']);
       assert.equal(effects, 1);
       if (mode === 'fallback429') assert.deepEqual(primary, requests);
       const task = plan.tasks[0];

@@ -7,6 +7,7 @@ import type {
 } from '@librechat/agents';
 import type { AIMessage } from '@librechat/agents/langchain/messages';
 import type { PlannedTask } from './types';
+import { requireNativeParameters } from './schema';
 
 export const isResearchTask = (task: Pick<PlannedTask, 'validation'>): boolean =>
   task.validation.some((requirement) => requirement.outputContract === 'research-v1');
@@ -34,6 +35,7 @@ function phaseOptions(provider: string, original: Options | undefined, phase: Ph
   if (!['openai', 'openrouter'].includes(provider.toLowerCase()) || original?.useResponsesApi) {
     throw new Error('BOTMODE_RESEARCH_PROVIDER_UNSUPPORTED');
   }
+  original = requireNativeParameters(provider, original ?? {});
   const choice = original?.modelKwargs?.tool_choice;
   if (
     choice != null &&
