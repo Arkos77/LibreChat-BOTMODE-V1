@@ -346,11 +346,11 @@ jobs:
               fallback=os.environ['CI_NATIVE_FALLBACK']=='true')))
           PY_CONFIG
           if [ "$CI_NATIVE_FALLBACK" = true ]; then
-            docker run --rm -i --network none --entrypoint node "$CANDIDATE_IMAGE" \
+            timeout 45s docker run --rm -i --network none --entrypoint node "$CANDIDATE_IMAGE" \
               -e "$(cat scripts/botmode/validate-host-research-config.cjs)" -- --runtime-binding \
               < "$RUNNER_TEMP/botmode-fixture-config.json"
           fi
-          docker run --rm -i --network none --entrypoint node \
+          timeout 45s docker run --rm -i --network none --entrypoint node \
             --env BOTMODE_CI_WEB_URL=http://fixture:8088 --env BOTMODE_CI_WEB_KEY=ci-fixture \
             "$CANDIDATE_IMAGE" -e '
           const fs=require("node:fs"),assert=require("node:assert/strict");
@@ -366,8 +366,9 @@ jobs:
             assert.equal(result.authResult.scraperProvider,"firecrawl");
             assert.equal(result.authResult.rerankerType,"none");
             const endpoint=config.endpoints.custom.find(e=>e.models.default.includes("nvidia/nemotron-3.5-super-vl:free"));
+            const fixedModel="nvidia/nemotron-3.5-super-vl:free";
             const {llmConfig}=getOpenAILLMConfig({apiKey:"fixture-key",baseURL:"http://127.0.0.1/v1",
-              streaming:true,useOpenRouter:true,modelOptions:{model:endpoint.models.default[0]},addParams:endpoint.addParams});
+              streaming:true,useOpenRouter:true,modelOptions:{model:fixedModel},addParams:endpoint.addParams});
             assert.equal(llmConfig.model,"nvidia/nemotron-3.5-super-vl:free");
             assert.deepEqual(llmConfig.reasoning,{enabled:false});
             assert.equal(llmConfig.maxRetries,0);
@@ -382,7 +383,7 @@ jobs:
               try {
                 let raw="";for await(const chunk of req) raw+=chunk;
                 const sent=JSON.parse(raw);
-                assert.equal(sent.model,endpoint.models.default[0]);
+                assert.equal(sent.model,fixedModel);
                 assert.deepEqual(sent.reasoning,{enabled:false});
                 assert.equal(sent.max_tokens,2048);
                 assert.equal(sent.models,undefined);
@@ -401,7 +402,13 @@ jobs:
               for(const streaming of [false,true]){
                 const model=initializeModel({provider:Providers.OPENROUTER,clientOptions:{...llmConfig,streaming,
                   configuration:{baseURL:"http://127.0.0.1:"+server.address().port+"/v1"}}});
-                await model.invoke([{role:"user",content:"Controlled local wire test"}]);
+                const messages=[{role:"user",content:"Controlled local wire test"}];
+                if(streaming){
+                  let content="";for await(const chunk of await model.stream(messages))content+=chunk.content;
+                  assert.equal(content,"controlled fixture");
+                }else{
+                  assert.equal((await model.invoke(messages)).content,"controlled fixture");
+                }
               }
               assert.equal(wireCalls,2);
             }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}

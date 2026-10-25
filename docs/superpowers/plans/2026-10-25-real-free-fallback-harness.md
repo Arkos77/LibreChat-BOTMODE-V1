@@ -47,3 +47,21 @@
 One fresh review found 0 Critical,1 Important,0 Minor. Important fixed RED→GREEN: the initially considered historical openAI alias omitted reasoning.enabled=false on the wire. The current retained SDK already supports native openrouter fallback (including acquired CJS/ESM child tests), so the alias was removed. The pre-key guard now serializes actual resolved fallback.provider/clientOptions rather than forcing a different constructor. Relay strictness remains unchanged. No second review or external trial.
 
 Ruling: native provider support in the exact current SDK supersedes the historical alias requirement for this recipe; if image behavior differs, its mandatory pre-key guard fails without consuming a mission. Full ACL/live provider/image-retrieval behavior remains for the authorized mission, with normal native validation/Oracle/cleanup, not presumed from local checks. No deferred minors. No stable/install/merge qualification implied.
+
+### Task 2: Correct the pre-key probes exposed by run40245710585 (26 October)
+
+**Evidence:** Published b7fdcbd run40245710585 reloaded and verified the exact retained image. Actual native fallback binding and wire probes passed. The legacy workflow wire probe then selected endpoint.models.default[0] (openrouter/free primary) and asserted the fixed secondary, failing before the host/secret step. Streaming model.invoke also attempted tiktoken.pages.dev while aggregating estimated usage, delaying the network-disabled probe. No external inference or hosted mission; the mission authorization remains unused. No cancellation was sent: its guard observed the job had already failed.
+
+**Files:** Only workflow, validate-host-research-config.cjs, test_host_research_guard.py and this existing plan. No product changes or new image.
+
+**Interfaces:** Exact workflow JS is exercised offline for real configs with/without fallback. Each subprocess rejects any non-loopback global fetch and fails immediately; no tokenizer cache or external network is assumed. Streaming probe uses the public model.stream path; nonstreaming continues model.invoke. Both still check actual request bodies and returned text. Fixed-model selection is explicit, independent of endpoint model order. Both pre-key containers have a45-second bound.
+
+- [x] Reproduce wrong-model failure with exact workflow JS; reproduce tiktoken outbound fetch with deterministic refusal.
+- [x] Select the fixed model explicitly; use public streaming API to avoid invoke's estimated-token aggregation, without disabling usage accounting in product or altering SDK prototypes.
+- [x] Run guards and complete Python harness suite, JS lint/syntax, YAML/bash checks and exact product-drift guard.
+- [x] One fresh bounded review of this CI-discovered correction; 0 Critical,0 Important,0 Minor, no second review.
+- [x] Freeze local correction and checkpoint. Publishing a new exact harness source requires its corresponding approval; the already-authorized real mission was never admitted. No automatic dispatch/replay or new image in this correction lot.
+
+Final Task2 validation:97/97 complete Python harness tests PASS (verbose completion observed),32 targeted guard tests PASS, JS lint with zero warnings and YAML/22 bash blocks/AST/source guard PASS. Exact workflow code is tested under both real configurations, not inferred from the standalone validator. Both observed defects have failing tests followed by passing results. The initial full-suite log was incomplete and was not counted; the completed verbose97-test run is authoritative.
+
+Review limits retained: the local fetch wrapper detects global fetch only; the actual image must still enforce --network none for all networking. GNU timeout provides a pre-key deadline, not proof of teardown of an arbitrary uncooperative container; these disposable probe containers have fixture credentials only and cannot admit a real mission. No guarantee of corrected image execution is inferred from local verification.

@@ -2,6 +2,8 @@ import importlib.util
 import copy
 import json
 import subprocess
+import re
+import os
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -63,13 +65,35 @@ class HostResearchReadinessTests(unittest.TestCase):
 
 
 class HostResearchConfigTests(unittest.TestCase):
+    def offline_node(self, script, config):
+        guard = '''const ciOriginalFetch=globalThis.fetch;let ciExternalFetches=0;
+globalThis.fetch=(input,...args)=>{const url=new URL(typeof input==='string'?input:input.url||String(input));
+if(!['127.0.0.1','localhost','::1'].includes(url.hostname)){ciExternalFetches++;console.error('EXTERNAL_FETCH_ATTEMPT='+url.hostname);setImmediate(()=>process.exit(97));return Promise.reject(new Error('offline probe external fetch refused'));}
+return ciOriginalFetch(input,...args);};
+process.on('exit',()=>{if(ciExternalFetches){console.error('EXTERNAL_FETCH_ATTEMPTS='+ciExternalFetches);process.exitCode=1;}});
+'''
+        return subprocess.run(['node', '-e', guard + script, '--', '--runtime-binding'],
+            cwd=MODULE.ROOT, env={**os.environ, **MODULE.FIXTURE_WEB_ENV},
+            input=json.dumps(config), text=True, capture_output=True, timeout=30)
+
+    @unittest.skipUnless((MODULE.ROOT / 'packages/api/dist/index.cjs').is_file(),
+                         'compiled API unavailable; exact workflow script runs in retained image before key')
+    def test_exact_workflow_wire_probe_uses_fixed_model_for_both_configs_without_external_fetch(self):
+        workflow = (MODULE.ROOT / '.github/workflows/botmode-v1-pr77-source-built.yml').read_text()
+        script = re.search(r'(const fs=require\("node:fs"\),assert=require\("node:assert/strict"\);.*?)\n\s*\x27 < "\$RUNNER_TEMP/botmode-fixture-config.json"',
+                           workflow, re.S).group(1)
+        for fallback in (False, True):
+            with self.subTest(fallback=fallback):
+                result = self.offline_node(script, MODULE.build_config(self.source(), real=True, fallback=fallback))
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn('RETAINED_IMAGE_FIXED_PROFILE_WIRE=PASS', result.stdout)
+
     @unittest.skipUnless((MODULE.ROOT / 'packages/api/dist/index.cjs').is_file(),
                          'compiled API unavailable; runtime binding is mandatory in retained image before key')
     def test_fallback_runtime_binding_is_checked_by_actual_native_initializer(self):
         config = MODULE.build_config(self.source(), real=True, fallback=True)
         script = (MODULE.ROOT / 'scripts/botmode/validate-host-research-config.cjs').read_text()
-        output = subprocess.run(['node', '-e', script, '--', '--runtime-binding'],
-            cwd=MODULE.ROOT, input=json.dumps(config), text=True, capture_output=True, timeout=30)
+        output = self.offline_node(script, config)
         self.assertIn('HOST_RESEARCH_FALLBACK_RUNTIME_BINDING=PASS', output.stdout,
                       output.stdout + output.stderr)
         self.assertEqual(output.returncode, 0, output.stdout + output.stderr)

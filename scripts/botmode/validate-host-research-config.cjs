@@ -134,7 +134,15 @@ async function validateFallbackWire(fallback) {
           configuration: { baseURL: 'http://127.0.0.1:' + server.address().port + '/v1' },
         },
       });
-      await model.invoke([{ role: 'user', content: 'Controlled local alias wire test' }]);
+      const messages = [{ role: 'user', content: 'Controlled local alias wire test' }];
+      if (streaming) {
+        let content = '';
+        for await (const chunk of await model.stream(messages)) content += chunk.content;
+        assert.equal(content, 'controlled alias wire probe');
+      } else {
+        const result = await model.invoke(messages);
+        assert.equal(result.content, 'controlled alias wire probe');
+      }
     }
     assert.ifError(wireError);
     assert.equal(wireCalls, 2);
