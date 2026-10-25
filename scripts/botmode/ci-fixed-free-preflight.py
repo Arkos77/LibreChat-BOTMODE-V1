@@ -127,7 +127,7 @@ def generate(transport, report, phase, payload):
     return choice.get('finish_reason'), message, record
 
 
-def run_probe(transport, report):
+def validate_catalog(transport, report):
     models = transport.catalog().get('data')
     if not isinstance(models, list): raise ProbeError('CATALOG_INVALID')
     matches = [m for m in models if isinstance(m, dict) and m.get('id') == MODEL]
@@ -152,6 +152,10 @@ def run_probe(transport, report):
         'request_price': 0 if 'request' in price else None, 'request_price_declared': 'request' in price,
         'free_variant_policy': 'https://openrouter.ai/docs/guides/routing/model-variants/free',
         'required_parameters': ['tools', 'tool_choice', 'response_format', 'reasoning']})
+
+
+def run_probe(transport, report):
+    validate_catalog(transport, report)
     messages = [{'role': 'system', 'content': 'Use the named tool for the controlled report. Keep requests and answers brief.'},
                 {'role': 'user', 'content': 'Find the controlled CI report using web_search.'}]
     finish, message, record = generate(transport, report, 'named_tool', {

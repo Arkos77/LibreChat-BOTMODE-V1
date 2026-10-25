@@ -2,7 +2,9 @@
 import argparse
 import copy
 import ipaddress
+import importlib.util
 import json
+import math
 import os
 import re
 import secrets
@@ -16,6 +18,7 @@ from urllib.request import ProxyHandler, Request, build_opener
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_URL = 'https://ci-source.invalid/report'
+FIXED_FREE_MODEL = 'nvidia/nemotron-3.5-super-vl:free'
 FIXTURE_WEB_ENV = {'BOTMODE_CI_WEB_URL': 'http://fixture:8088', 'BOTMODE_CI_WEB_KEY': 'ci-fixture'}
 HARNESS_ONLY_PATHS = {
     '.github/workflows/botmode-v1-live-provider-preflight.yml',
@@ -58,6 +61,51 @@ def real_provider_mode(env):
     return requested == 'true'
 
 
+def setup_binding(real=False):
+    return {'provider': 'OpenRouter', 'model': FIXED_FREE_MODEL if real else 'openrouter/free'}
+
+
+def validate_agent_bindings(agents, real=False):
+    expected = setup_binding(real)
+    if any(any(agent.get(k) != v for k, v in expected.items()) for agent in agents):
+        raise RuntimeError('HOST_RESEARCH_SAVED_BINDING_MISMATCH')
+
+
+def validate_provider_evidence(evidence):
+    records = evidence.get('records')
+    if not isinstance(records, list) or len(records) != 4:
+        raise RuntimeError('HOST_RESEARCH_PROVIDER_RECORDS_REQUIRED')
+    for record in records:
+        usage = record.get('usage', {})
+        cost = usage.get('cost')
+        completion = usage.get('completion_tokens')
+        params = record.get('request_parameters', {})
+        if (record.get('http_status') != 200 or record.get('models') != [FIXED_FREE_MODEL]
+                or params.get('model') != FIXED_FREE_MODEL or params.get('reasoning_enabled') is not False
+                or type(cost) not in (int, float) or not math.isfinite(cost) or cost != 0
+                or type(completion) is not int or not 0 <= completion <= 2048):
+            raise RuntimeError('HOST_RESEARCH_PROVIDER_PROFILE_MISMATCH')
+
+
+def check_free_catalog():
+    spec = importlib.util.spec_from_file_location('fixed_profile_catalog', ROOT / 'scripts/botmode/ci-fixed-free-preflight.py')
+    probe = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(probe)
+    sha = run(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip()
+    report = probe.new_report(sha)
+    try:
+        if probe.MODEL != FIXED_FREE_MODEL:
+            raise RuntimeError('HOST_RESEARCH_CATALOG_PROFILE_MISMATCH')
+        probe.validate_catalog(probe.Transport(''), report)
+        report['passed'] = True
+    except Exception as error:
+        report['error'] = str(error) if isinstance(error, (probe.ProbeError, RuntimeError)) else type(error).__name__
+        raise
+    finally:
+        probe.write_report(ROOT / 'candidate-evidence/fixed-profile-catalog.json', report, '')
+    print('HOST_RESEARCH_FREE_CATALOG=PASS', flush=True)
+
+
 def compose_override(real=False):
     fixture = {'image': 'python:3.12-alpine', 'command': ['python3', '/fixture.py'],
                'environment': {'CI_MISSION_SOURCE_MODE': '1'}, 'volumes': ['./fixture.py:/fixture.py:ro']}
@@ -88,10 +136,10 @@ def build_config(source, real=False):
         raise RuntimeError('HOST_RESEARCH_SAVED_PROVIDER_AMBIGUOUS')
     endpoint = endpoints[0]
     endpoint.update(apiKey='ci-local-fixture-no-real-key', baseURL='http://fixture:8088/v1')
-    endpoint['models'] = {'fetch': False, 'default': ['openrouter/free']}
+    endpoint['models'] = {'fetch': False, 'default': [setup_binding(real)['model']]}
     if real:
         endpoint['addParams'] = {**endpoint.get('addParams', {}),
-                                 'maxRetries': 0, 'timeout': 90000, 'maxTokens': 2048}
+                                 'maxRetries': 0, 'timeout': 90000, 'maxTokens': 2048, 'reasoning': {'enabled': False}}
     config['endpoints']['custom'] = endpoints
     config['webSearch'] = {
         'searchProvider': 'searxng', 'scraperProvider': 'firecrawl', 'rerankerType': 'none',
@@ -148,6 +196,8 @@ def main():
         validate_reused_files(changed)
     config = build_config(json.loads((ROOT / 'librechat.yaml').read_text()), real=real)
     check_config(config)
+    if real:
+        check_free_catalog()
     image_env = run(['docker', 'image', 'inspect', image, '--format', '{{json .Config.Env}}'])
     if 'BUILD_COMMIT=' + sha not in json.loads(image_env):
         raise RuntimeError('HOST_RESEARCH_EMBEDDED_SOURCE_MISMATCH')
@@ -235,7 +285,7 @@ console.log(JSON.stringify({id:String(id),token:jwt.sign({id:String(id)},secret,
 })().catch(()=>process.exit(1));''')
             token = principal['token']
             stage = 'native_setup'
-            setup = {'provider': 'OpenRouter', 'model': 'openrouter/free'}
+            setup = setup_binding(real)
             for _ in range(2):
                 status, body = request('/api/agents/botmode/setup', setup)
                 assert status in (200, 201), 'HOST_RESEARCH_NATIVE_SETUP_DENIED'
@@ -244,9 +294,13 @@ console.log(JSON.stringify({id:String(id),token:jwt.sign({id:String(id)},secret,
             assert status == 200 and all(inventory.get(k) is True for k in
                 ('inventoryComplete', 'permissionsComplete', 'delegationConfigured'))
             agents = node('''const m=require('mongoose');(async()=>{await m.connect(process.env.MONGO_URI);
-console.log(JSON.stringify(await m.connection.db.collection('agents').find({name:{$in:['BOT MODE Worker','RECHERCHE','ANALYSE','CODE','DOCUMENTS','RÉDACTION']}},{projection:{id:1,name:1,author:1}}).toArray()));await m.disconnect();})().catch(()=>process.exit(1));''')
+console.log(JSON.stringify(await m.connection.db.collection('agents').find({name:{$in:['BOT MODE Worker','RECHERCHE','ANALYSE','CODE','DOCUMENTS','RÉDACTION']}},{projection:{id:1,name:1,author:1,provider:1,model:1}}).toArray()));await m.disconnect();})().catch(()=>process.exit(1));''')
             assert len(agents) == 6 and len({a['name'] for a in agents}) == 6
             assert all(str(a['author']) == principal['id'] for a in agents)
+            validate_agent_bindings(agents, real)
+            (evidence / 'saved-agent-bindings.json').write_text(json.dumps({
+                'harness_sha': harness_sha, 'bindings': [{'name': a['name'], 'provider': a['provider'], 'model': a['model']} for a in agents],
+                'endpoint_reasoning': config['endpoints']['custom'][0].get('addParams', {}).get('reasoning')}, indent=2))
             by_name = {a['name']: a for a in agents}
             sid = str(uuid.uuid4())
             payload = {'endpoint': 'agents', 'agent_id': by_name['BOT MODE Worker']['id'],
@@ -324,7 +378,7 @@ console.log(JSON.stringify({conversation:!!conversation,count:messages.length,co
                 assert metrics.get('source_search_calls') == 1
                 provider_evidence = json.loads(dc('exec', '-T', 'fixture', 'python3', '-c',
                     'import urllib.request;print(urllib.request.urlopen("http://127.0.0.1:8088/provider-diagnostics").read().decode())'))
-                assert len(provider_evidence['records']) == 4
+                validate_provider_evidence(provider_evidence)
                 (evidence / 'provider-evidence.json').write_text(json.dumps(provider_evidence, indent=2))
             else:
                 assert metrics.get('source_tool_requests') == 1
@@ -333,7 +387,8 @@ console.log(JSON.stringify({conversation:!!conversation,count:messages.length,co
                 container_id = dc('ps', '-q', service).strip()
                 component_images[service] = run(['docker', 'inspect', container_id, '--format', '{{.Image}}']).strip()
             summary = {'source_sha': sha, 'harness_sha': harness_sha, 'scenario': 'native HTTP/SSE analyze',
-                       'model_provider': 'real OpenRouter/free through bounded relay' if real else 'synthetic',
+                       'model_provider': FIXED_FREE_MODEL if real else 'synthetic',
+                       'reasoning_enabled': False if real else None,
                        'web_sources': 'synthetic controlled source', 'task_keys': list(tasks),
                        'verdict_counts': {k: len(state['results'][t['taskId']]['verdicts']) for k,t in tasks.items()},
                        'source_observations': len(sources), 'mongo_final_count': mongo['count'],
@@ -412,8 +467,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check-config', action='store_true', help='Validate fixture config offline; no Docker or provider calls')
     parser.add_argument('--check-real-config', action='store_true', help='Validate bounded real-provider fixture config offline')
+    parser.add_argument('--check-real-catalog', action='store_true', help='Public catalog only; zero inference and no key')
     args = parser.parse_args()
-    if args.check_config or args.check_real_config:
+    if args.check_real_catalog:
+        check_free_catalog()
+    elif args.check_config or args.check_real_config:
         check_config(build_config(json.loads((ROOT / 'librechat.yaml').read_text()), real=args.check_real_config))
     else:
         main()

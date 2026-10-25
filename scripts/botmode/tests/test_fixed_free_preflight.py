@@ -96,6 +96,14 @@ class FixedFreePreflightTests(unittest.TestCase):
         report = module.new_report('a' * 40)
         return module, transport, report, received, key
 
+    def test_catalog_only_validation_never_generates(self):
+        module, transport, report, received, _ = self.start('missing_request')
+        module.validate_catalog(transport, report)
+        self.assertEqual(transport.requests, 0)
+        self.assertEqual(received, [])
+        self.assertEqual(report['catalog']['id'], module.MODEL)
+        self.assertFalse(report['passed'])
+
     def test_two_requests_keep_fixed_free_model_contract_and_token_bounds(self):
         module, transport, report, received, key = self.start()
         module.run_probe(transport, report)

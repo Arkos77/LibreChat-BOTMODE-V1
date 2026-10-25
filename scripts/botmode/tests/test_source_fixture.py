@@ -20,7 +20,9 @@ class SourceFixtureTests(unittest.TestCase):
             'CI_REAL_FREE_PROVIDER': '1' if real else '0',
             'CI_OPENROUTER_KEY': 'fake-ci-provider-key-not-a-real-secret' if real else ''}):
             spec.loader.exec_module(module)
-        if upstream is not None:
+        if real:
+            module.REAL_URL = upstream or 'http://127.0.0.1:1/refuse-network'
+        elif upstream is not None:
             module.REAL_URL = upstream
         server = ThreadingHTTPServer(('127.0.0.1', 0), module.Handler)
         thread = threading.Thread(target=server.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True)
@@ -38,8 +40,9 @@ class SourceFixtureTests(unittest.TestCase):
         except HTTPError as error:
             return error.code, json.load(error)
 
-    def body(self):
-        return {'model': 'openrouter/free', 'stream': False,
+    def body(self, real=False):
+        return {'model': 'nvidia/nemotron-3.5-super-vl:free' if real else 'openrouter/free',
+                **({'reasoning': {'enabled': False}} if real else {}), 'stream': False,
                 'messages': [{'role': 'system', 'content': 'Internal web observation phase: call web_search.'}],
                 'tool_choice': {'type': 'function', 'function': {'name': 'web_search'}},
                 'tools': [{'type': 'function', 'function': {'name': 'web_search', 'parameters': {'type': 'object'}}}]}
@@ -143,7 +146,7 @@ class SourceFixtureTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('bounded_relay', FIXTURE)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        valid = {'model': 'openrouter/free', 'messages': [], 'stream': True}
+        valid = self.body(real=True)
         self.assertEqual(module.bounded_real_request(valid)['max_tokens'], 2048)
         for changes in ({'model': 'openai/gpt-4'}, {'models': ['openrouter/free']},
                         {'plugins': [{'id': 'web'}]}, {'max_tokens': 2049},
@@ -157,13 +160,16 @@ class SourceFixtureTests(unittest.TestCase):
     def test_local_refusals_are_preserved_without_request_content_or_provider_calls(self):
         base = self.start(real=True)
         cases = [({'model': 'paid-secret-marker'}, 'REAL_FREE_ROUTE_REQUIRED'),
+                 ({'model': 'openrouter/free'}, 'REAL_FREE_ROUTE_REQUIRED'),
+                 ({'reasoning': {'enabled': True}}, 'REAL_REASONING_DISABLED_REQUIRED'),
+                 ({'reasoning': None}, 'REAL_REASONING_DISABLED_REQUIRED'),
                  ({'n': 2}, 'REAL_SINGLE_CHOICE_REQUIRED'),
                  ({'tools': [{'type': 'web_search'}]}, 'REAL_FUNCTION_SCHEMA_REQUIRED'),
                  ({'tools': [{'type': 'function', 'function': None}]},
                   'REAL_FUNCTION_SCHEMA_REQUIRED'),
                  ({'max_tokens': 2049}, 'REAL_TOKEN_LIMIT_REQUIRED')]
         for changes, expected in cases:
-            status, response = self.post(base, {**self.body(), **changes})
+            status, response = self.post(base, {**self.body(real=True), **changes})
             self.assertEqual((status, response['error']), (400, expected))
         with urlopen(base + '/provider-diagnostics') as response:
             diagnostics = json.load(response)
@@ -208,7 +214,7 @@ class SourceFixtureTests(unittest.TestCase):
         self.addCleanup(upstream.server_close)
         self.addCleanup(upstream.shutdown)
         base = self.start(real=True, upstream=f'http://127.0.0.1:{upstream.server_port}/v1/chat/completions')
-        body = self.body()
+        body = self.body(real=True)
         body['messages'][0]['content'] += ' PRIVATE_INPUT_NOT_FOR_DIAGNOSTICS'
         self.assertEqual(self.post(base, {**body, 'model': 'paid/model'})[0], 400)
         self.assertEqual(received, [])
@@ -236,6 +242,8 @@ class SourceFixtureTests(unittest.TestCase):
         self.assertEqual(received[1][1]['tool_choice'], 'auto')
         self.assertEqual(received[1][1]['response_format']['type'], 'json_schema')
         self.assertTrue(all(auth == 'Bearer ' + key and b['max_tokens'] == 2048 for auth, b in received))
+        self.assertTrue(all(b['model'] == 'nvidia/nemotron-3.5-super-vl:free'
+                            and b['reasoning'] == {'enabled': False} for _, b in received))
         with urlopen(base + '/provider-diagnostics', timeout=3) as response:
             evidence = json.load(response)
         self.assertEqual(len(evidence['records']), 4)
@@ -243,7 +251,8 @@ class SourceFixtureTests(unittest.TestCase):
         self.assertEqual(evidence['records'][1]['request_parameters'], {
             'response_format': 'json_schema', 'strict': True,
             'required_output_fields': ['result', 'sources', 'ok'],
-            'require_parameters': True, 'max_tokens': 2048, 'max_completion_tokens': None})
+            'require_parameters': True, 'max_tokens': 2048, 'max_completion_tokens': None,
+            'model': 'nvidia/nemotron-3.5-super-vl:free', 'reasoning_enabled': False})
         self.assertNotIn('PRIVATE_INPUT_NOT_FOR_DIAGNOSTICS', json.dumps(evidence))
         self.assertNotIn(key, json.dumps(evidence))
         self.assertEqual(evidence['records'][0]['candidate_text'], '{"ok": true, "result": "[redacted]"}')
@@ -280,7 +289,7 @@ class SourceFixtureTests(unittest.TestCase):
         self.addCleanup(upstream.server_close)
         self.addCleanup(upstream.shutdown)
         base = self.start(real=True, upstream=f'http://127.0.0.1:{upstream.server_port}/v1/chat/completions')
-        body = self.body()
+        body = self.body(real=True)
         body['stream'] = True
         body['messages'][0]['content'] = [{'type': 'text', 'text': 'cached input', 'cache_control': {'type': 'ephemeral'}}]
         request = Request(base + '/v1/chat/completions', data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
@@ -324,7 +333,7 @@ class SourceFixtureTests(unittest.TestCase):
             self.addCleanup(server.server_close)
             self.addCleanup(server.shutdown)
         base = self.start(real=True, upstream=f'http://127.0.0.1:{origin.server_port}/v1/chat/completions')
-        status, response = self.post(base, self.body())
+        status, response = self.post(base, self.body(real=True))
         self.assertEqual(status, 502)
         self.assertEqual(response['error'], 'UPSTREAM_REDIRECT_REFUSED')
         self.assertEqual(leaked, [])

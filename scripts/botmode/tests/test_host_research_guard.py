@@ -120,14 +120,50 @@ class HostResearchConfigTests(unittest.TestCase):
         self.assertNotIn('provider_egress', synthetic['networks'])
         self.assertNotIn('CI_OPENROUTER_KEY', synthetic['services']['fixture']['environment'])
 
-    def test_real_binding_keeps_native_provider_and_disables_retries(self):
-        config = MODULE.build_config(self.source(), real=True)
+    def test_real_binding_keeps_native_provider_and_fixed_profile(self):
+        source = self.source()
+        original = copy.deepcopy(source)
+        config = MODULE.build_config(source, real=True)
+        self.assertEqual(source, original)
         endpoint = config['endpoints']['custom'][0]
         self.assertEqual(endpoint['name'], 'OpenRouter')
         self.assertEqual(endpoint['baseURL'], 'http://fixture:8088/v1')
         self.assertEqual(endpoint['apiKey'], 'ci-local-fixture-no-real-key')
+        self.assertEqual(endpoint['models']['default'], ['nvidia/nemotron-3.5-super-vl:free'])
         self.assertEqual(endpoint['addParams']['maxRetries'], 0)
         self.assertEqual(endpoint['addParams']['maxTokens'], 2048)
+        self.assertEqual(endpoint['addParams']['reasoning'], {'enabled': False})
+        self.assertEqual(MODULE.setup_binding(True), {
+            'provider': 'OpenRouter', 'model': 'nvidia/nemotron-3.5-super-vl:free'})
+        self.assertEqual(MODULE.setup_binding(False), {'provider': 'OpenRouter', 'model': 'openrouter/free'})
+
+    def test_saved_binding_mismatch_stops_before_mission(self):
+        agents = [{'name': 'RECHERCHE', **MODULE.setup_binding(True)}]
+        MODULE.validate_agent_bindings(agents, real=True)
+        for change in ({'provider': 'other'}, {'model': 'openrouter/free'}, {'model': 'paid/model'}):
+            with self.subTest(change=change), self.assertRaisesRegex(RuntimeError, 'SAVED_BINDING_MISMATCH'):
+                MODULE.validate_agent_bindings([{**agents[0], **change}], real=True)
+
+    def test_actual_provider_evidence_requires_fixed_profile_zero_cost_and_bounded_usage(self):
+        model = 'nvidia/nemotron-3.5-super-vl:free'
+        record = {'http_status': 200, 'models': [model], 'usage': {'cost': 0, 'completion_tokens': 40},
+                  'request_parameters': {'model': model, 'reasoning_enabled': False}}
+        evidence = {'records': [copy.deepcopy(record) for _ in range(4)]}
+        MODULE.validate_provider_evidence(evidence)
+        for cost in (None, '0', False, 0.01, float('nan')):
+            broken = copy.deepcopy(evidence)
+            broken['records'][0]['usage']['cost'] = cost
+            with self.subTest(cost=cost), self.assertRaisesRegex(RuntimeError, 'PROVIDER_PROFILE_MISMATCH'):
+                MODULE.validate_provider_evidence(broken)
+        for changed in ({'models': ['other:free']}, {'http_status': 429},
+                        {'usage': {'cost': 0, 'completion_tokens': 2049}},
+                        {'request_parameters': {'model': model, 'reasoning_enabled': True}}):
+            broken = copy.deepcopy(evidence)
+            broken['records'][0].update(changed)
+            with self.subTest(changed=changed), self.assertRaises(RuntimeError):
+                MODULE.validate_provider_evidence(broken)
+        with self.assertRaises(RuntimeError): MODULE.validate_provider_evidence({'records': []})
+
 
 
 class HostResearchTargetTests(unittest.TestCase):

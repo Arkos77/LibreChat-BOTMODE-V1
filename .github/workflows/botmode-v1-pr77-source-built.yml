@@ -20,7 +20,7 @@ on:
         type: boolean
         default: false
       real_free_provider:
-        description: 'Explicitly authorize up to four real OpenRouter/free requests through the bounded test relay (controlled web sources)'
+        description: 'Explicitly authorize up to four fixed nvidia/nemotron-3.5-super-vl:free requests, reasoning off, through bounded relay (controlled sources)'
         type: boolean
         default: false
 permissions:
@@ -267,12 +267,18 @@ jobs:
           spec.loader.exec_module(host)
           host.validate_reused_files(subprocess.check_output(['git','diff','--name-only',os.environ['CANDIDATE_SHA'],os.environ['HARNESS_SHA']],text=True).splitlines())
           PY_DIFF
+          python3 -m unittest discover -s scripts/botmode/tests -p test_fixed_free_preflight.py
           python3 -m unittest discover -s scripts/botmode/tests -p test_source_fixture.py
           python3 -m unittest discover -s scripts/botmode/tests -p test_host_research_guard.py
           npm ci --no-audit --no-fund
           npm run build:data-provider
           python3 scripts/botmode/ci-host-research.py --check-config
           python3 scripts/botmode/ci-host-research.py --check-real-config
+      - name: Check fixed free model catalog before image download (no key or inference)
+        if: ${{ inputs.real_free_provider }}
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python3 scripts/botmode/ci-host-research.py --check-real-catalog
       - uses: actions/download-artifact@v4
         with:
           name: botmode-native-research-9a1a1523bb9c8a8ed3bfe138a0aaf56a80d6099d
@@ -316,12 +322,45 @@ jobs:
             assert.equal(result.authResult.rerankerType,"none");
             const endpoint=config.endpoints.custom[0];
             const {llmConfig}=getOpenAILLMConfig({apiKey:"fixture-key",baseURL:"http://127.0.0.1/v1",
-              streaming:true,useOpenRouter:true,modelOptions:{model:"openrouter/free"},addParams:endpoint.addParams});
+              streaming:true,useOpenRouter:true,modelOptions:{model:endpoint.models.default[0]},addParams:endpoint.addParams});
+            assert.equal(llmConfig.model,"nvidia/nemotron-3.5-super-vl:free");
+            assert.deepEqual(llmConfig.reasoning,{enabled:false});
             assert.equal(llmConfig.maxRetries,0);
             assert.equal(llmConfig.maxTokens,2048);
             assert.equal(llmConfig.timeout,90000);
             console.log("RETAINED_IMAGE_WEB_AUTH=PASS");
             console.log("RETAINED_IMAGE_FREE_PROVIDER_CAPS=PASS");
+            const {createServer}=require("node:http");
+            const {initializeModel,Providers}=require("@librechat/agents");
+            let wireCalls=0;
+            const server=createServer(async(req,res)=>{
+              try {
+                let raw="";for await(const chunk of req) raw+=chunk;
+                const sent=JSON.parse(raw);
+                assert.equal(sent.model,endpoint.models.default[0]);
+                assert.deepEqual(sent.reasoning,{enabled:false});
+                assert.equal(sent.max_tokens,2048);
+                assert.equal(sent.models,undefined);
+                wireCalls++;
+                const choice={index:0,message:{role:"assistant",content:"controlled fixture"},finish_reason:"stop"};
+                const reply={id:"local-profile",object:"chat.completion",created:1700000000,model:sent.model,choices:[choice]};
+                if(sent.stream){
+                  res.writeHead(200,{"Content-Type":"text/event-stream"});
+                  reply.choices=[{index:0,delta:choice.message,finish_reason:"stop"}];
+                  res.end("data: "+JSON.stringify(reply)+"\n\ndata: [DONE]\n\n");
+                } else {res.writeHead(200,{"Content-Type":"application/json"});res.end(JSON.stringify(reply));}
+              }catch(e){res.writeHead(400);res.end("profile mismatch");}
+            });
+            await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
+            try {
+              for(const streaming of [false,true]){
+                const model=initializeModel({provider:Providers.OPENROUTER,clientOptions:{...llmConfig,streaming,
+                  configuration:{baseURL:"http://127.0.0.1:"+server.address().port+"/v1"}}});
+                await model.invoke([{role:"user",content:"Controlled local wire test"}]);
+              }
+              assert.equal(wireCalls,2);
+            }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+            console.log("RETAINED_IMAGE_FIXED_PROFILE_WIRE=PASS");
           })().catch(e=>{console.error(e.message);process.exitCode=1});
           ' < "$RUNNER_TEMP/botmode-fixture-config.json"
       - name: Qualify native host path using the retained image

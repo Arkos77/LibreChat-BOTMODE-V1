@@ -22,6 +22,7 @@ SOURCE_MODE = os.environ.get("CI_MISSION_SOURCE_MODE") == "1"
 REAL_MODE = os.environ.get('CI_REAL_FREE_PROVIDER') == '1'
 REAL_KEY = os.environ.get('CI_OPENROUTER_KEY', '')
 REAL_URL = 'https://openrouter.ai/api/v1/chat/completions'
+REAL_MODEL = 'nvidia/nemotron-3.5-super-vl:free'
 provider_records = []
 local_rejections = []
 class NoProviderRedirect(HTTPRedirectHandler):
@@ -33,8 +34,10 @@ SOURCE_URL = "https://ci-source.invalid/report"
 SOURCE_RESULT = json.dumps({"ok":True,"result":"Synthetic CI observation: "+SOURCE_URL,"sources":SOURCE_URL})
 
 def bounded_real_request(request):
-    if request.get('model') != 'openrouter/free' or any(k in request for k in ('models', 'plugins', 'web_search_options')):
+    if request.get('model') != REAL_MODEL or any(k in request for k in ('models', 'plugins', 'web_search_options')):
         raise ValueError('REAL_FREE_ROUTE_REQUIRED')
+    if request.get('reasoning') != {'enabled': False}:
+        raise ValueError('REAL_REASONING_DISABLED_REQUIRED')
     if request.get('n', 1) != 1:
         raise ValueError('REAL_SINGLE_CHOICE_REQUIRED')
     # Function schemas describe application-side tools; the relay neither grants
@@ -116,6 +119,8 @@ def record_provider_response(number, status, body, request=None):
             'required_output_fields': [name for name in ('result', 'sources', 'ok')
                                        if isinstance(required, list) and name in required],
             'require_parameters': object_value(request.get('provider')).get('require_parameters') is True,
+            'model': request.get('model') if request.get('model') == REAL_MODEL else None,
+            'reasoning_enabled': object_value(request.get('reasoning')).get('enabled'),
             'max_tokens': request.get('max_tokens'),
             'max_completion_tokens': request.get('max_completion_tokens')}
     with lock:
@@ -170,7 +175,7 @@ class Handler(BaseHTTPRequestHandler):
             with lock:
                 snapshot = list(provider_records)
                 rejections = list(local_rejections)
-            return self.send({'route': 'openrouter/free', 'limit_requests': 4,
+            return self.send({'route': REAL_MODEL, 'reasoning_enabled': False, 'limit_requests': 4,
                               'limit_output_tokens': 2048, 'records': snapshot,
                               'local_rejections': rejections})
         if SOURCE_MODE and self.path.startswith('/search?'):
