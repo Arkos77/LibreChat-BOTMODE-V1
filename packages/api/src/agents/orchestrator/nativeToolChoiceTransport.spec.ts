@@ -18,10 +18,10 @@ it.each(['success', 'prose', 'tool-error', 'fallback429'])(
     const primaryChoices: unknown[] = [];
     const systemPrompts: string[] = [];
     const assertInternalPrompts = () => {
-      expect(systemPrompts.some(prompt => prompt.includes('INTERNAL RESEARCH OUTPUT'))).toBe(true);
+      expect(systemPrompts.some((prompt) => prompt.includes('INTERNAL RESEARCH OUTPUT'))).toBe(
+        true,
+      );
       for (const prompt of systemPrompts) {
-        // Existing SDK fallback may drop all system instructions; this lot does not qualify that path.
-        if (mode === 'fallback429' && prompt === '') continue;
         expect(prompt).toContain('INTERNAL RESEARCH OUTPUT');
         expect(prompt).not.toContain('CITATION FORMAT - UNICODE');
         expect(prompt).toContain('Reproduce each cited observed URL literally');

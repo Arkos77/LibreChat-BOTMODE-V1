@@ -412,7 +412,7 @@ describe('native structured output transport', () => {
           tool.type === 'function' ? tool.function.name : tool.type,
         );
         expect(resultTools).toContain('web_search');
-        if (!fallback) expect(resultTools).toContain('subagent');
+        expect(resultTools).toContain('subagent');
         expect(run.getAgentOutputs()[plan.tasks[0].nodeId].content).toBe(candidate);
         if (fallback) expect(received.filter((request) => request.primary)).toHaveLength(2);
         expect(clientOptions.modelKwargs).toBeUndefined();

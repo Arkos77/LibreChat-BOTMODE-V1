@@ -36,14 +36,9 @@ async function check(mode) {
       const input = JSON.parse(body);
       const system = input.messages.filter(m => ['system','developer'].includes(m.role))
         .map(m => JSON.stringify(m.content)).join('\n');
-      if (mode === 'fallback429' && system === '') {
-        // Independently reproduced SDK limitation, not changed by this instruction profile.
-        console.log('KNOWN_SDK_FALLBACK_INSTRUCTIONS=NOT_QUALIFIED');
-      } else {
-        assert(system.includes('INTERNAL RESEARCH OUTPUT'));
-        assert(!system.includes('CITATION FORMAT - UNICODE'));
-        assert(system.includes('Reproduce each cited observed URL literally'));
-      }
+      assert(system.includes('INTERNAL RESEARCH OUTPUT'));
+      assert(!system.includes('CITATION FORMAT - UNICODE'));
+      assert(system.includes('Reproduce each cited observed URL literally'));
       const shape = {
         choice: input.tool_choice,
         format: input.response_format,
@@ -144,6 +139,7 @@ async function check(mode) {
       provider: mode.startsWith('native-') ? Providers.OPENROUTER : Providers.OPENAI,
       instructions: ['Owner policy', buildWebSearchContext()].join('\n'),
       tools: [tool],
+      subagentConfigs: [{ type: 'authorized-self', name: 'Authorized child', self: true, description: 'Controlled context' }],
       clientOptions: {
         ...options(mode === 'fallback429' ? 'primary/v1' : 'v1'),
         ...(mode === 'fallback429'
@@ -228,7 +224,8 @@ async function check(mode) {
   }
 }
 
-(async () => {
+module.exports = { check };
+if (require.main === module) (async () => {
   for (const mode of ['success', 'prose', 'tool-error', 'fallback429', 'native-openrouter', 'native-citation-unicode', 'native-citation-escaped', 'native-anchor-only'])
     await check(mode);
   console.log(
