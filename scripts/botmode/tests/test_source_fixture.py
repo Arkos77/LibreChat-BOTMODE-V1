@@ -152,6 +152,24 @@ class SourceFixtureTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 module.bounded_real_request({**valid, **changes})
 
+    def test_local_refusals_are_preserved_without_request_content_or_provider_calls(self):
+        base = self.start(real=True)
+        cases = [({'model': 'paid-secret-marker'}, 'REAL_FREE_ROUTE_REQUIRED'),
+                 ({'n': 2}, 'REAL_SINGLE_CHOICE_REQUIRED'),
+                 ({'tools': [{'type': 'web_search'}]}, 'REAL_WEB_FUNCTION_ONLY'),
+                 ({'max_tokens': 2049}, 'REAL_TOKEN_LIMIT_REQUIRED')]
+        for changes, expected in cases:
+            status, response = self.post(base, {**self.body(), **changes})
+            self.assertEqual((status, response['error']), (400, expected))
+        with urlopen(base + '/provider-diagnostics') as response:
+            diagnostics = json.load(response)
+        self.assertEqual(diagnostics['local_rejections'], [
+            {'completion_call': i + 1, 'code': code} for i, (_, code) in enumerate(cases)])
+        self.assertEqual(diagnostics['records'], [])
+        self.assertNotIn('paid-secret-marker', json.dumps(diagnostics))
+        with urlopen(base + '/metrics') as response:
+            self.assertEqual(json.load(response).get('provider_requests', 0), 0)
+
     def test_real_budget_reservation_stops_at_four(self):
         spec = importlib.util.spec_from_file_location('bounded_relay_budget', FIXTURE)
         module = importlib.util.module_from_spec(spec)

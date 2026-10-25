@@ -23,6 +23,7 @@ REAL_MODE = os.environ.get('CI_REAL_FREE_PROVIDER') == '1'
 REAL_KEY = os.environ.get('CI_OPENROUTER_KEY', '')
 REAL_URL = 'https://openrouter.ai/api/v1/chat/completions'
 provider_records = []
+local_rejections = []
 class NoProviderRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -145,9 +146,12 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
     def do_GET(self):
         if REAL_MODE and self.path == '/provider-diagnostics':
-            with lock: snapshot = list(provider_records)
+            with lock:
+                snapshot = list(provider_records)
+                rejections = list(local_rejections)
             return self.send({'route': 'openrouter/free', 'limit_requests': 4,
-                              'limit_output_tokens': 2048, 'records': snapshot})
+                              'limit_output_tokens': 2048, 'records': snapshot,
+                              'local_rejections': rejections})
         if SOURCE_MODE and self.path.startswith('/search?'):
             with lock: calls['source_search_calls']=calls.get('source_search_calls',0)+1
             return self.send({'query':'CI synthetic source','results':[{'url':SOURCE_URL,'title':'Synthetic CI source','content':'This is controlled fixture data, not a real-world financial claim.'}]})
@@ -201,6 +205,9 @@ class Handler(BaseHTTPRequestHandler):
                 bounded = bounded_real_request(req)
                 provider_number = reserve_real_request()
             except ValueError as error:
+                with lock:
+                    if len(local_rejections) < 8:
+                        local_rejections.append({'completion_call': number, 'code': str(error)})
                 return self.send({'error': str(error)}, 400)
             request = Request(REAL_URL, data=json.dumps(bounded).encode(), method='POST',
                 headers={'Authorization': 'Bearer ' + REAL_KEY, 'Content-Type': 'application/json',
