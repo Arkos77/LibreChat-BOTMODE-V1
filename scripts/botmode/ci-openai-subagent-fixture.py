@@ -37,9 +37,15 @@ def bounded_real_request(request):
         raise ValueError('REAL_FREE_ROUTE_REQUIRED')
     if request.get('n', 1) != 1:
         raise ValueError('REAL_SINGLE_CHOICE_REQUIRED')
+    # Function schemas describe application-side tools; the relay neither grants
+    # permissions nor executes them. Keep native authorization in the host.
+    # Provider-executed built-ins/plugins remain forbidden on this free route.
     for tool in request.get('tools') or []:
-        if not isinstance(tool, dict) or tool.get('type') != 'function' or tool.get('function', {}).get('name') not in ('web_search', 'subagent'):
-            raise ValueError('REAL_NATIVE_FUNCTION_ONLY')
+        function = tool.get('function') if isinstance(tool, dict) else None
+        name = function.get('name') if isinstance(function, dict) else None
+        if (not isinstance(tool, dict) or tool.get('type') != 'function'
+                or not isinstance(name, str) or not name.strip()):
+            raise ValueError('REAL_FUNCTION_SCHEMA_REQUIRED')
     result = dict(request)
     for key in ('max_tokens', 'max_completion_tokens'):
         value = result.get(key)

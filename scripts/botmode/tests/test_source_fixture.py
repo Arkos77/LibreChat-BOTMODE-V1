@@ -148,7 +148,9 @@ class SourceFixtureTests(unittest.TestCase):
         for changes in ({'model': 'openai/gpt-4'}, {'models': ['openrouter/free']},
                         {'plugins': [{'id': 'web'}]}, {'max_tokens': 2049},
                         {'max_completion_tokens': 2049}, {'n': 2},
-                        {'tools': [{'type': 'web_search'}]}):
+                        {'tools': [{'type': 'web_search'}]},
+                        {'tools': [{'type': 'code_interpreter'}]},
+                        {'tools': [{'type': 'function', 'function': {'name': ''}}]}):
             with self.assertRaises(ValueError):
                 module.bounded_real_request({**valid, **changes})
 
@@ -156,9 +158,9 @@ class SourceFixtureTests(unittest.TestCase):
         base = self.start(real=True)
         cases = [({'model': 'paid-secret-marker'}, 'REAL_FREE_ROUTE_REQUIRED'),
                  ({'n': 2}, 'REAL_SINGLE_CHOICE_REQUIRED'),
-                 ({'tools': [{'type': 'web_search'}]}, 'REAL_NATIVE_FUNCTION_ONLY'),
-                 ({'tools': [{'type': 'function', 'function': {'name': 'execute_code'}}]},
-                  'REAL_NATIVE_FUNCTION_ONLY'),
+                 ({'tools': [{'type': 'web_search'}]}, 'REAL_FUNCTION_SCHEMA_REQUIRED'),
+                 ({'tools': [{'type': 'function', 'function': None}]},
+                  'REAL_FUNCTION_SCHEMA_REQUIRED'),
                  ({'max_tokens': 2049}, 'REAL_TOKEN_LIMIT_REQUIRED')]
         for changes, expected in cases:
             status, response = self.post(base, {**self.body(), **changes})
@@ -213,7 +215,8 @@ class SourceFixtureTests(unittest.TestCase):
             request_body = body if index == 0 else {**body, 'tool_choice': 'auto',
                 'response_format': {'type': 'json_object'},
                 'tools': body['tools'] + [{'type': 'function', 'function': {
-                    'name': 'subagent', 'description': 'Native authorized child context',
+                    'name': ('subagent', 'current_state', 'tool_search')[index - 1],
+                    'description': 'Application-side native function schema',
                     'parameters': {'type': 'object'}}}]}
             status, response = self.post(base, request_body)
             self.assertEqual(status, 200)
@@ -224,6 +227,8 @@ class SourceFixtureTests(unittest.TestCase):
         self.assertEqual(len(received), 4)
         self.assertEqual([t['function']['name'] for t in received[1][1]['tools']],
                          ['web_search', 'subagent'])
+        self.assertEqual(received[2][1]['tools'][-1]['function']['name'], 'current_state')
+        self.assertEqual(received[3][1]['tools'][-1]['function']['name'], 'tool_search')
         self.assertEqual(received[1][1]['tool_choice'], 'auto')
         self.assertEqual(received[1][1]['response_format'], {'type': 'json_object'})
         self.assertTrue(all(auth == 'Bearer ' + key and b['max_tokens'] == 2048 for auth, b in received))
