@@ -209,11 +209,15 @@ class SourceFixtureTests(unittest.TestCase):
         self.addCleanup(upstream.shutdown)
         base = self.start(real=True, upstream=f'http://127.0.0.1:{upstream.server_port}/v1/chat/completions')
         body = self.body()
+        body['messages'][0]['content'] += ' PRIVATE_INPUT_NOT_FOR_DIAGNOSTICS'
         self.assertEqual(self.post(base, {**body, 'model': 'paid/model'})[0], 400)
         self.assertEqual(received, [])
         for index in range(4):
             request_body = body if index == 0 else {**body, 'tool_choice': 'auto',
-                'response_format': {'type': 'json_object'},
+                'response_format': {'type': 'json_schema', 'json_schema': {'name': 'ci-result',
+                    'strict': True, 'schema': {'type': 'object', 'required': ['result', 'sources', 'ok'],
+                        'additionalProperties': False}}},
+                'provider': {'require_parameters': True},
                 'tools': body['tools'] + [{'type': 'function', 'function': {
                     'name': ('subagent', 'current_state', 'tool_search')[index - 1],
                     'description': 'Application-side native function schema',
@@ -230,11 +234,17 @@ class SourceFixtureTests(unittest.TestCase):
         self.assertEqual(received[2][1]['tools'][-1]['function']['name'], 'current_state')
         self.assertEqual(received[3][1]['tools'][-1]['function']['name'], 'tool_search')
         self.assertEqual(received[1][1]['tool_choice'], 'auto')
-        self.assertEqual(received[1][1]['response_format'], {'type': 'json_object'})
+        self.assertEqual(received[1][1]['response_format']['type'], 'json_schema')
         self.assertTrue(all(auth == 'Bearer ' + key and b['max_tokens'] == 2048 for auth, b in received))
         with urlopen(base + '/provider-diagnostics', timeout=3) as response:
             evidence = json.load(response)
         self.assertEqual(len(evidence['records']), 4)
+        self.assertEqual(evidence['records'][0]['request_parameters']['response_format'], None)
+        self.assertEqual(evidence['records'][1]['request_parameters'], {
+            'response_format': 'json_schema', 'strict': True,
+            'required_output_fields': ['result', 'sources', 'ok'],
+            'require_parameters': True, 'max_tokens': 2048, 'max_completion_tokens': None})
+        self.assertNotIn('PRIVATE_INPUT_NOT_FOR_DIAGNOSTICS', json.dumps(evidence))
         self.assertNotIn(key, json.dumps(evidence))
         self.assertEqual(evidence['records'][0]['candidate_text'], '{"ok": true, "result": "[redacted]"}')
 

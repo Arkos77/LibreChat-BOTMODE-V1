@@ -63,7 +63,7 @@ def reserve_real_request():
         calls['provider_requests'] = count + 1
         return count + 1
 
-def record_provider_response(number, status, body):
+def record_provider_response(number, status, body, request=None):
     text = body.decode('utf8', errors='replace')
     if REAL_KEY:
         text = text.replace(REAL_KEY, '[redacted]')
@@ -103,6 +103,21 @@ def record_provider_response(number, status, body):
               'finish_reasons': sorted(finishes), 'tool_names': sorted(tools), 'usage': usage,
               'candidate_text': candidate[:8192], 'candidate_truncated': len(candidate) > 8192,
               'errors': errors[:2]}
+    if request is not None:
+        def object_value(value):
+            return value if isinstance(value, dict) else {}
+        fmt = object_value(request.get('response_format'))
+        structured = object_value(fmt.get('json_schema'))
+        schema = object_value(structured.get('schema'))
+        required = schema.get('required')
+        record['request_parameters'] = {
+            'response_format': fmt.get('type') if fmt.get('type') in ('json_object', 'json_schema') else None,
+            'strict': structured.get('strict') is True,
+            'required_output_fields': [name for name in ('result', 'sources', 'ok')
+                                       if isinstance(required, list) and name in required],
+            'require_parameters': object_value(request.get('provider')).get('require_parameters') is True,
+            'max_tokens': request.get('max_tokens'),
+            'max_completion_tokens': request.get('max_completion_tokens')}
     with lock:
         provider_records.append(record)
         if status == 200: calls['provider_http_200'] = calls.get('provider_http_200', 0) + 1
@@ -227,11 +242,11 @@ class Handler(BaseHTTPRequestHandler):
             except (URLError, TimeoutError):
                 status, content_type, payload = 502, 'application/json', b'{"error":"UPSTREAM_TRANSPORT_FAILED"}'
             if 300 <= status < 400:
-                record_provider_response(provider_number, status, b'{"error":"UPSTREAM_REDIRECT_REFUSED"}')
+                record_provider_response(provider_number, status, b'{"error":"UPSTREAM_REDIRECT_REFUSED"}', bounded)
                 return self.send({'error': 'UPSTREAM_REDIRECT_REFUSED'}, 502)
             if len(payload) > 1048576:
                 status, content_type, payload = 502, 'application/json', b'{"error":"UPSTREAM_RESPONSE_TOO_LARGE"}'
-            record_provider_response(provider_number, status, payload)
+            record_provider_response(provider_number, status, payload, bounded)
             self.send_response(status)
             self.send_header('Content-Type', content_type)
             self.send_header('Content-Length', str(len(payload)))
