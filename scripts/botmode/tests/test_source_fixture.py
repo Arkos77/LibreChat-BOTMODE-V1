@@ -15,11 +15,12 @@ FIXTURE = Path(__file__).resolve().parents[1] / 'ci-openai-subagent-fixture.py'
 
 
 class SourceFixtureTests(unittest.TestCase):
-    def start(self, source=True, real=False, upstream=None):
+    def start(self, source=True, real=False, upstream=None, fallback=False):
         spec = importlib.util.spec_from_file_location('isolated_source_fixture', FIXTURE)
         module = importlib.util.module_from_spec(spec)
         with patch.dict(os.environ, {'CI_MISSION_SOURCE_MODE': '1' if source else '0',
             'CI_REAL_FREE_PROVIDER': '1' if real else '0',
+            'CI_NATIVE_FALLBACK': '1' if fallback else '0',
             'CI_OPENROUTER_KEY': 'fake-ci-provider-key-not-a-real-secret' if real else ''}):
             spec.loader.exec_module(module)
         if real:
@@ -42,6 +43,65 @@ class SourceFixtureTests(unittest.TestCase):
                 return response.status, json.load(response)
         except HTTPError as error:
             return error.code, json.load(error)
+
+    def test_controlled_primary_429_never_reaches_provider(self):
+        base = self.start(real=True, fallback=True)
+        primary = {**self.body(real=True), 'model': 'openrouter/free'}
+        with patch.object(self.last_module.provider_opener, 'open') as upstream:
+            status, body = self.post(base, primary)
+        self.assertEqual(status, 429)
+        self.assertEqual(body['error']['type'], 'rate_limit_exceeded')
+        upstream.assert_not_called()
+        with urlopen(base + '/provider-diagnostics') as reply: evidence = json.load(reply)
+        self.assertEqual(evidence['records'], [])
+        self.assertEqual(evidence['fallback']['records'][0]['kind'], 'primary_429')
+        self.assertNotIn('messages', json.dumps(evidence))
+
+    def test_secondary_requires_matching_primary_context_and_cannot_skip_or_repeat(self):
+        base = self.start(real=True, fallback=True)
+        secondary = self.body(real=True)
+        primary = {**secondary, 'model': 'openrouter/free'}
+        with patch.object(self.last_module.provider_opener, 'open') as upstream:
+            self.assertEqual(self.post(base, secondary)[0], 400)
+            self.assertEqual(self.post(base, primary)[0], 429)
+            self.assertEqual(self.post(base, primary)[0], 400)
+            for change in ({'messages': []}, {'tools': []}, {'tool_choice': 'none'},
+                           {'response_format': {'type': 'json_object'}}):
+                self.assertEqual(self.post(base, {**secondary, **change})[0], 400)
+            upstream.assert_not_called()
+
+    def test_four_fallback_pairs_forward_only_secondary_over_local_http(self):
+        received = []
+        class Provider(BaseHTTPRequestHandler):
+            def log_message(self, *_): pass
+            def do_POST(self):
+                received.append(json.loads(self.rfile.read(int(self.headers['Content-Length']))))
+                payload = json.dumps({'model': 'nvidia/nemotron-3.5-super-vl:free',
+                    'choices': [{'message': {'role': 'assistant', 'content': 'controlled'}, 'finish_reason': 'stop'}],
+                    'usage': {'completion_tokens': 2, 'cost': 0}}).encode()
+                self.send_response(200)
+                self.send_header('Content-Length', str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Provider)
+        thread = threading.Thread(target=server.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        base = self.start(real=True, fallback=True, upstream=f'http://127.0.0.1:{server.server_port}/v1/chat/completions')
+        secondary = self.body(real=True)
+        primary = {**secondary, 'model': 'openrouter/free'}
+        for _ in range(4):
+            self.assertEqual(self.post(base, primary)[0], 429)
+            self.assertEqual(self.post(base, secondary)[0], 200)
+        self.assertEqual(self.post(base, primary)[0], 400)
+        self.assertEqual(self.post(base, secondary)[0], 400)
+        self.assertEqual(len(received), 4)
+        self.assertTrue(all(r['model'] == secondary['model'] for r in received))
+        with urlopen(base + '/provider-diagnostics') as reply: evidence = json.load(reply)
+        self.assertEqual(len(evidence['fallback']['records']), 8)
+        self.assertEqual(len(evidence['records']), 4)
 
     def body(self, real=False):
         return {'model': 'nvidia/nemotron-3.5-super-vl:free' if real else 'openrouter/free',

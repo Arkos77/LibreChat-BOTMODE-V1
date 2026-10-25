@@ -63,6 +63,68 @@ class HostResearchReadinessTests(unittest.TestCase):
 
 
 class HostResearchConfigTests(unittest.TestCase):
+    @unittest.skipUnless((MODULE.ROOT / 'packages/api/dist/index.cjs').is_file(),
+                         'compiled API unavailable; runtime binding is mandatory in retained image before key')
+    def test_fallback_runtime_binding_is_checked_by_actual_native_initializer(self):
+        config = MODULE.build_config(self.source(), real=True, fallback=True)
+        script = (MODULE.ROOT / 'scripts/botmode/validate-host-research-config.cjs').read_text()
+        output = subprocess.run(['node', '-e', script, '--', '--runtime-binding'],
+            cwd=MODULE.ROOT, input=json.dumps(config), text=True, capture_output=True, timeout=30)
+        self.assertIn('HOST_RESEARCH_FALLBACK_RUNTIME_BINDING=PASS', output.stdout,
+                      output.stdout + output.stderr)
+        self.assertEqual(output.returncode, 0, output.stdout + output.stderr)
+        self.assertIn('HOST_RESEARCH_FALLBACK_ACTUAL_WIRE=PASS', output.stdout)
+
+    def test_fallback_config_starts_with_saved_primary_and_one_static_free_secondary(self):
+        config = MODULE.build_config(self.source(), real=True, fallback=True)
+        endpoint = config['endpoints']['custom'][0]
+        self.assertEqual(endpoint['models']['default'], ['openrouter/free', MODULE.FIXED_FREE_MODEL])
+        self.assertEqual(len(config['endpoints']['custom']), 1)
+        self.assertEqual(MODULE.setup_binding(True, True)['model'], 'openrouter/free')
+        policies = config['endpoints']['agents']['hostModelRouting']
+        self.assertEqual({p['agentName'] for p in policies},
+                         {'BOT MODE Worker', 'RECHERCHE', 'ANALYSE', 'CODE', 'DOCUMENTS', 'RÉDACTION'})
+        for policy in policies:
+            self.assertEqual(policy['routingMode'], 'static')
+            self.assertTrue(policy['allowFailover'])
+            self.assertEqual(policy['routingConstraints']['spendingPolicy'], 'free_only')
+            self.assertEqual(policy['preferredBindingId'], policy['bindings'][0]['id'])
+            self.assertEqual([b['model'] for b in policy['bindings']], ['openrouter/free', MODULE.FIXED_FREE_MODEL])
+            self.assertEqual([b['provider'] for b in policy['bindings']],
+                             ['OpenRouter', 'OpenRouter'])
+        override = MODULE.compose_override(True, True)
+        self.assertEqual(override['services']['fixture']['environment']['CI_NATIVE_FALLBACK'], '1')
+
+    def test_fallback_flag_requires_explicit_real_mode(self):
+        self.assertFalse(MODULE.native_fallback_mode({}, False))
+        self.assertTrue(MODULE.native_fallback_mode({'CI_NATIVE_FALLBACK': 'true'}, True))
+        for value in ('true', 'yes', '1'):
+            with self.assertRaisesRegex(RuntimeError, 'FALLBACK'):
+                MODULE.native_fallback_mode({'CI_NATIVE_FALLBACK': value}, False)
+        with self.assertRaisesRegex(RuntimeError, 'FALLBACK'):
+            MODULE.build_config(self.source(), real=False, fallback=True)
+
+    def test_fallback_evidence_requires_four_matching_ordered_pairs(self):
+        pairs = []
+        for i in range(4):
+            common = {'context_sha256': str(i) * 64, 'system_present': True}
+            pairs.extend([{'kind': 'primary_429', 'model': 'openrouter/free', **common},
+                          {'kind': 'secondary', 'model': MODULE.FIXED_FREE_MODEL, **common}])
+        evidence = {'fallback': {'enabled': True, 'records': pairs}, 'local_rejections': []}
+        MODULE.validate_fallback_evidence(evidence)
+        for changes in ({'kind': 'secondary'}, {'model': MODULE.FIXED_FREE_MODEL},
+                        {'system_present': False}, {'context_sha256': 'not-a-hash'}):
+            invalid = copy.deepcopy(evidence)
+            invalid['fallback']['records'][0].update(changes)
+            with self.subTest(changes=changes), self.assertRaisesRegex(RuntimeError, 'FALLBACK_EVIDENCE'):
+                MODULE.validate_fallback_evidence(invalid)
+        invalid = copy.deepcopy(evidence)
+        invalid['fallback']['records'][1]['context_sha256'] = 'f' * 64
+        with self.assertRaises(RuntimeError): MODULE.validate_fallback_evidence(invalid)
+        for broken in ({}, {'fallback': {'enabled': True, 'records': pairs[:-1]}},
+                       {**evidence, 'local_rejections': [{'code': 'refused'}]}):
+            with self.assertRaises(RuntimeError): MODULE.validate_fallback_evidence(broken)
+
     def source(self):
         return json.loads((MODULE.ROOT / 'librechat.yaml').read_text())
 

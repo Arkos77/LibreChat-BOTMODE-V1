@@ -32,6 +32,8 @@ HARNESS_ONLY_PATHS = {
     'scripts/botmode/tests/test_publication_evidence.py',
     'scripts/botmode/ci-openai-subagent-fixture.py',
     'scripts/botmode/tests/test_source_fixture.py',
+    'scripts/botmode/validate-host-research-config.cjs',
+    'docs/superpowers/plans/2026-10-25-real-free-fallback-harness.md',
 }
 
 
@@ -64,12 +66,19 @@ def real_provider_mode(env):
     return requested == 'true'
 
 
-def setup_binding(real=False):
-    return {'provider': 'OpenRouter', 'model': FIXED_FREE_MODEL if real else 'openrouter/free'}
+def native_fallback_mode(env, real):
+    value = env.get('CI_NATIVE_FALLBACK', 'false')
+    if value not in ('false', 'true') or value == 'true' and not real:
+        raise RuntimeError('HOST_RESEARCH_NATIVE_FALLBACK_MODE_INVALID')
+    return value == 'true'
 
 
-def validate_agent_bindings(agents, real=False):
-    expected = setup_binding(real)
+def setup_binding(real=False, fallback=False):
+    return {'provider': 'OpenRouter', 'model': FIXED_FREE_MODEL if real and not fallback else 'openrouter/free'}
+
+
+def validate_agent_bindings(agents, real=False, fallback=False):
+    expected = setup_binding(real, fallback)
     if any(any(agent.get(k) != v for k, v in expected.items()) for agent in agents):
         raise RuntimeError('HOST_RESEARCH_SAVED_BINDING_MISMATCH')
 
@@ -88,6 +97,23 @@ def validate_provider_evidence(evidence):
                 or type(cost) not in (int, float) or not math.isfinite(cost) or cost != 0
                 or type(completion) is not int or not 0 <= completion <= 2048):
             raise RuntimeError('HOST_RESEARCH_PROVIDER_PROFILE_MISMATCH')
+
+
+def validate_fallback_evidence(evidence):
+    fallback = evidence.get('fallback', {})
+    records = fallback.get('records')
+    if (fallback.get('enabled') is not True or not isinstance(records, list) or len(records) != 8
+            or evidence.get('local_rejections') != []):
+        raise RuntimeError('HOST_RESEARCH_FALLBACK_EVIDENCE_REQUIRED')
+    for i in range(0, 8, 2):
+        primary, secondary = records[i:i + 2]
+        signature = primary.get('context_sha256', '')
+        if (primary.get('kind') != 'primary_429' or primary.get('model') != 'openrouter/free'
+                or secondary.get('kind') != 'secondary' or secondary.get('model') != FIXED_FREE_MODEL
+                or primary.get('system_present') is not True or secondary.get('system_present') is not True
+                or not isinstance(signature, str) or not re.fullmatch(r'[a-f0-9]{64}', signature)
+                or secondary.get('context_sha256') != signature):
+            raise RuntimeError('HOST_RESEARCH_FALLBACK_EVIDENCE_MISMATCH')
 
 
 def validate_publication(final, mongo, conversation_id, response_id, expected_text):
@@ -155,7 +181,7 @@ def check_free_catalog():
     print('HOST_RESEARCH_FREE_CATALOG=PASS', flush=True)
 
 
-def compose_override(real=False):
+def compose_override(real=False, fallback=False):
     fixture = {'image': 'python:3.12-alpine', 'command': ['python3', '/fixture.py'],
                'environment': {'CI_MISSION_SOURCE_MODE': '1'}, 'volumes': ['./fixture.py:/fixture.py:ro']}
     networks = {'default': {'internal': True}}
@@ -164,6 +190,10 @@ def compose_override(real=False):
             CI_OPENROUTER_KEY='${CI_REAL_OPENROUTER_KEY:?Missing explicitly authorized provider key}')
         fixture['networks'] = ['default', 'provider_egress']
         networks['provider_egress'] = {'internal': False}
+    if fallback:
+        if not real:
+            raise RuntimeError('HOST_RESEARCH_NATIVE_FALLBACK_MODE_INVALID')
+        fixture['environment']['CI_NATIVE_FALLBACK'] = '1'
     return {'services': {
         'api': {'environment': {'USE_REDIS': 'true', 'USE_REDIS_STREAMS': 'true',
             'REDIS_URI': 'redis://redis:6379', 'STREAM_KEEP_COMPLETED_JOBS': 'true'}},
@@ -175,7 +205,9 @@ def run(args, *, env=None, data=None, timeout=180):
     return subprocess.check_output(args, input=data, text=True, env=env, timeout=timeout)
 
 
-def build_config(source, real=False):
+def build_config(source, real=False, fallback=False):
+    if fallback and not real:
+        raise RuntimeError('HOST_RESEARCH_NATIVE_FALLBACK_MODE_INVALID')
     config = copy.deepcopy(source)
     config['endpoints']['agents'].pop('hostModelRouting', None)
     endpoints = [e for e in config['endpoints']['custom'] if e.get('name') == 'OpenRouter']
@@ -185,7 +217,18 @@ def build_config(source, real=False):
         raise RuntimeError('HOST_RESEARCH_SAVED_PROVIDER_AMBIGUOUS')
     endpoint = endpoints[0]
     endpoint.update(apiKey='ci-local-fixture-no-real-key', baseURL='http://fixture:8088/v1')
-    endpoint['models'] = {'fetch': False, 'default': [setup_binding(real)['model']]}
+    endpoint['models'] = {'fetch': False, 'default': [setup_binding(real, fallback)['model']]}
+    if fallback:
+        endpoint['models']['default'].append(FIXED_FREE_MODEL)
+        config['endpoints']['agents']['hostModelRouting'] = [
+            {'agentName': name, 'bindings': [
+                {'id': 'controlled-primary', 'provider': 'OpenRouter', 'model': 'openrouter/free',
+                 'signals': {'pricingTier': 'free'}},
+                {'id': 'fixed-free-secondary', 'provider': 'OpenRouter', 'model': FIXED_FREE_MODEL,
+                 'signals': {'pricingTier': 'free'}}],
+             'preferredBindingId': 'controlled-primary', 'routingMode': 'static',
+             'routingConstraints': {'spendingPolicy': 'free_only'}, 'allowFailover': True}
+            for name in ('BOT MODE Worker', 'RECHERCHE', 'ANALYSE', 'CODE', 'DOCUMENTS', 'RÉDACTION')]
     if real:
         endpoint['addParams'] = {**endpoint.get('addParams', {}),
                                  'maxRetries': 0, 'timeout': 90000, 'maxTokens': 2048, 'reasoning': {'enabled': False}}
@@ -240,10 +283,11 @@ def main():
     harness_sha = run(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip()
     sha, image, project = validate_target(os.environ, harness_sha)
     real = real_provider_mode(os.environ)
+    fallback = native_fallback_mode(os.environ, real)
     if sha != harness_sha:
         changed = run(['git', '-C', str(ROOT), 'diff', '--name-only', sha, harness_sha]).splitlines()
         validate_reused_files(changed)
-    config = build_config(json.loads((ROOT / 'librechat.yaml').read_text()), real=real)
+    config = build_config(json.loads((ROOT / 'librechat.yaml').read_text()), real=real, fallback=fallback)
     check_config(config)
     if real:
         check_free_catalog()
@@ -273,7 +317,7 @@ def main():
         env_path.write_text(text)
         env_path.chmod(0o640)
         run(['sudo', 'chown', f'1000:{os.getgid()}', str(env_path)])
-        (directory / 'qualification.yml').write_text(json.dumps(compose_override(real)))
+        (directory / 'qualification.yml').write_text(json.dumps(compose_override(real, fallback)))
         env = {**os.environ, 'BOTMODE_IMAGE': image, 'BOTMODE_HOST_PORT': '127.0.0.1:3090', **values}
         for key in ('PROXY', 'HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy'):
             env[key] = ''
@@ -334,7 +378,7 @@ console.log(JSON.stringify({id:String(id),token:jwt.sign({id:String(id)},secret,
 })().catch(()=>process.exit(1));''')
             token = principal['token']
             stage = 'native_setup'
-            setup = setup_binding(real)
+            setup = setup_binding(real, fallback)
             for _ in range(2):
                 status, body = request('/api/agents/botmode/setup', setup)
                 assert status in (200, 201), 'HOST_RESEARCH_NATIVE_SETUP_DENIED'
@@ -346,7 +390,7 @@ console.log(JSON.stringify({id:String(id),token:jwt.sign({id:String(id)},secret,
 console.log(JSON.stringify(await m.connection.db.collection('agents').find({name:{$in:['BOT MODE Worker','RECHERCHE','ANALYSE','CODE','DOCUMENTS','RÉDACTION']}},{projection:{id:1,name:1,author:1,provider:1,model:1}}).toArray()));await m.disconnect();})().catch(()=>process.exit(1));''')
             assert len(agents) == 6 and len({a['name'] for a in agents}) == 6
             assert all(str(a['author']) == principal['id'] for a in agents)
-            validate_agent_bindings(agents, real)
+            validate_agent_bindings(agents, real, fallback)
             (evidence / 'saved-agent-bindings.json').write_text(json.dumps({
                 'harness_sha': harness_sha, 'bindings': [{'name': a['name'], 'provider': a['provider'], 'model': a['model']} for a in agents],
                 'endpoint_reasoning': config['endpoints']['custom'][0].get('addParams', {}).get('reasoning')}, indent=2))
@@ -432,6 +476,9 @@ console.log(JSON.stringify({conversation:!!conversation,count:messages.length,co
                 provider_evidence = json.loads(dc('exec', '-T', 'fixture', 'python3', '-c',
                     'import urllib.request;print(urllib.request.urlopen("http://127.0.0.1:8088/provider-diagnostics").read().decode())'))
                 validate_provider_evidence(provider_evidence)
+                if fallback:
+                    validate_fallback_evidence(provider_evidence)
+                    assert metrics.get('controlled_primary_429') == 4
                 (evidence / 'provider-evidence.json').write_text(json.dumps(provider_evidence, indent=2))
             else:
                 assert metrics.get('source_tool_requests') == 1
@@ -441,6 +488,7 @@ console.log(JSON.stringify({conversation:!!conversation,count:messages.length,co
                 component_images[service] = run(['docker', 'inspect', container_id, '--format', '{{.Image}}']).strip()
             summary = {'source_sha': sha, 'harness_sha': harness_sha, 'scenario': 'native HTTP/SSE analyze',
                        'model_provider': FIXED_FREE_MODEL if real else 'synthetic',
+                       'native_fallback': fallback, 'primary_429': 'synthetic controlled' if fallback else None,
                        'reasoning_enabled': False if real else None,
                        'web_sources': 'synthetic controlled source', 'task_keys': list(tasks),
                        'verdict_counts': {k: len(state['results'][t['taskId']]['verdicts']) for k,t in tasks.items()},
@@ -456,6 +504,7 @@ console.log(JSON.stringify({conversation:!!conversation,count:messages.length,co
                 diagnostics['host_http'] = http_observations
                 diagnostics['admission'] = admission_observation
                 diagnostics['real_free_provider'] = real
+                diagnostics['native_fallback'] = fallback
                 if sid is not None:
                     capture_error = preserve_job_state(evidence / 'host-job-state.json',
                         lambda name: dc('exec', '-T', 'redis', 'redis-cli', '--raw',
@@ -527,11 +576,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check-config', action='store_true', help='Validate fixture config offline; no Docker or provider calls')
     parser.add_argument('--check-real-config', action='store_true', help='Validate bounded real-provider fixture config offline')
+    parser.add_argument('--check-fallback-config', action='store_true', help='Validate native fallback config offline; zero inference')
     parser.add_argument('--check-real-catalog', action='store_true', help='Public catalog only; zero inference and no key')
     args = parser.parse_args()
     if args.check_real_catalog:
         check_free_catalog()
-    elif args.check_config or args.check_real_config:
-        check_config(build_config(json.loads((ROOT / 'librechat.yaml').read_text()), real=args.check_real_config))
+    elif args.check_config or args.check_real_config or args.check_fallback_config:
+        check_config(build_config(json.loads((ROOT / 'librechat.yaml').read_text()),
+                                  real=args.check_real_config or args.check_fallback_config,
+                                  fallback=args.check_fallback_config))
     else:
         main()

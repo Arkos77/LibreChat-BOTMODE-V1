@@ -5,6 +5,7 @@ CI-only; not an LLM or a source of delegated authority. A real agent's advertise
 tool schema and a configured authorized child ID are required. No secrets logged.
 """
 import json
+import hashlib
 import os
 import re
 import threading
@@ -21,6 +22,7 @@ child_id = os.environ.get("CI_AUTHORIZED_CHILD_ID", "").strip()
 MODEL = "openrouter/free"
 SOURCE_MODE = os.environ.get("CI_MISSION_SOURCE_MODE") == "1"
 REAL_MODE = os.environ.get('CI_REAL_FREE_PROVIDER') == '1'
+FALLBACK_MODE = os.environ.get('CI_NATIVE_FALLBACK') == '1'
 REAL_KEY = os.environ.get('CI_OPENROUTER_KEY', '')
 REAL_URL = 'https://openrouter.ai/api/v1/chat/completions'
 REAL_MODEL = 'nvidia/nemotron-3.5-super-vl:free'
@@ -28,6 +30,7 @@ provider_records = []
 provider_started = {}
 provider_finished = {}
 local_rejections = []
+fallback_records = []
 class NoProviderRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -79,6 +82,32 @@ def reserve_real_request():
             raise ValueError('REAL_REQUEST_BUDGET_EXHAUSTED')
         calls['provider_requests'] = count + 1
         return count + 1
+
+
+def observe_fallback_request(request):
+    if not REAL_MODE or not SOURCE_MODE:
+        raise ValueError('NATIVE_FALLBACK_REAL_MODE_REQUIRED')
+    model = request.get('model')
+    if model not in (MODEL, REAL_MODEL):
+        raise ValueError('NATIVE_FALLBACK_ROUTE_REQUIRED')
+    system_present = any(isinstance(m, dict) and m.get('role') in ('system', 'developer')
+                         and message_text(m).strip() for m in request['messages'])
+    if not system_present:
+        raise ValueError('NATIVE_FALLBACK_SYSTEM_REQUIRED')
+    context = {key: request.get(key) for key in ('messages', 'tools', 'tool_choice', 'response_format')}
+    signature = hashlib.sha256(json.dumps(context, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    record = {'kind': 'primary_429' if model == MODEL else 'secondary', 'model': model,
+              'context_sha256': signature, 'system_present': True}
+    with lock:
+        count = len(fallback_records)
+        if model == MODEL:
+            if count >= 8 or count % 2:
+                raise ValueError('NATIVE_FALLBACK_PRIMARY_ORDER_OR_BUDGET')
+            calls['controlled_primary_429'] = calls.get('controlled_primary_429', 0) + 1
+        elif count >= 8 or count % 2 != 1 or fallback_records[-1]['context_sha256'] != signature:
+            raise ValueError('NATIVE_FALLBACK_SECONDARY_CONTEXT_OR_ORDER')
+        fallback_records.append(record)
+    return model == MODEL
 
 def provider_request_parameters(request):
     def obj(value): return value if isinstance(value, dict) else {}
@@ -221,9 +250,10 @@ class Handler(BaseHTTPRequestHandler):
             snapshot = provider_snapshot()
             with lock:
                 rejections = list(local_rejections)
+                fallback = {'enabled': FALLBACK_MODE, 'records': list(fallback_records)}
             return self.send({'route': REAL_MODEL, 'reasoning_enabled': False, 'limit_requests': 4,
                               'limit_output_tokens': 2048, 'records': snapshot,
-                              'local_rejections': rejections})
+                              'local_rejections': rejections, 'fallback': fallback})
         if SOURCE_MODE and self.path.startswith('/search?'):
             with lock: calls['source_search_calls']=calls.get('source_search_calls',0)+1
             return self.send({'query':'CI synthetic source','results':[{'url':SOURCE_URL,'title':'Controlled CI report CI-FIXTURE-001',
@@ -271,6 +301,16 @@ class Handler(BaseHTTPRequestHandler):
         with lock:
             calls["completion_calls"]+=1
             number=calls["completion_calls"]
+        if FALLBACK_MODE:
+            try:
+                if observe_fallback_request(req):
+                    return self.send({'error': {'message': 'Controlled CI primary quota; no upstream request',
+                                               'type': 'rate_limit_exceeded'}}, 429)
+            except ValueError as error:
+                with lock:
+                    if len(local_rejections) < 8:
+                        local_rejections.append({'completion_call': number, 'code': str(error)})
+                return self.send({'error': str(error)}, 400)
         if REAL_MODE:
             if not SOURCE_MODE or len(REAL_KEY) <= 16:
                 return self.send({'error': 'REAL_PROVIDER_NOT_AUTHORIZED'}, 400)
