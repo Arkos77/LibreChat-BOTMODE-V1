@@ -39,6 +39,7 @@ class HostResearchReadinessTests(unittest.TestCase):
         self.assertEqual(observations['attempts'], 2)
         self.assertEqual([x['status'] for x in observations['recent']], [503, 200])
         self.assertNotIn('body', observations['recent'][0])
+        self.assertEqual([call.args[0] for call in request.call_args_list], ['/readyz', '/readyz'])
 
     def test_transport_error_records_type_and_errno_without_private_text(self):
         observations = {}
@@ -58,7 +59,7 @@ class HostResearchReadinessTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'HOST_RESEARCH_API_NOT_READY'):
                 MODULE.wait_for_api(request, observations)
         self.assertEqual(observations['recent'][0]['status'], 403)
-        request.assert_called_once_with('/api/config', authenticated=False, timeout=3)
+        request.assert_called_once_with('/readyz', authenticated=False, timeout=3)
 
 
 class HostResearchConfigTests(unittest.TestCase):

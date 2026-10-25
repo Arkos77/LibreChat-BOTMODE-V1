@@ -92,7 +92,7 @@ def wait_for_api(request, observations):
     observations.update(attempts=0, recent=[])
     while True:
         try:
-            status, _body = request('/api/config', authenticated=False, timeout=3)
+            status, _body = request('/readyz', authenticated=False, timeout=3)
             sample = {'status': status}
         except (URLError, TimeoutError) as error:
             reason = error.reason if isinstance(error, URLError) else error
@@ -180,6 +180,7 @@ networks:
         stage = 'startup'
         passed = False
         http_observations = {}
+        admission_observation = {}
         api_base = None
         opener = build_opener(ProxyHandler({}))
 
@@ -209,6 +210,7 @@ networks:
             api_base = api_base_from_networks(networks, project)
             http_observations['transport'] = 'direct project bridge; no host port or proxy'
             wait_for_api(request, http_observations)
+            assert request('/api/config', authenticated=False)[0] == 200
             assert request('/api/agents/botmode/setup', {}, authenticated=False)[0] == 401
             stage = 'principal'
             principal = node('''const fs=require('fs'),m=require('mongoose'),jwt=require('jsonwebtoken');
@@ -248,6 +250,15 @@ console.log(JSON.stringify(await m.connection.db.collection('agents').find({name
             for attempt in range(6):
                 status, body = request('/api/agents/chat/agents', payload)
                 envelope = json.loads(body)
+                admission_observation = {'status': status,
+                    'code': str(envelope.get('code', ''))[:160],
+                    'response_status': str(envelope.get('status', ''))[:160],
+                    'error': str(envelope.get('error', ''))[:500],
+                    'message': str(envelope.get('message', ''))[:500], 'attempt': attempt + 1}
+                for key in ('code', 'response_status', 'error', 'message'):
+                    for secret in [*values.values(), token]:
+                        if secret and len(secret) >= 8:
+                            admission_observation[key] = admission_observation[key].replace(secret, '[redacted]')
                 if status != 503 or envelope.get('code') != 'SERVER_NOT_READY':
                     break
                 time.sleep(1)
@@ -311,6 +322,7 @@ console.log(JSON.stringify({conversation:!!conversation,count:messages.length,co
             if attempted:
                 diagnostics = {'source_sha': sha, 'harness_sha': harness_sha, 'passed': passed, 'last_stage': stage}
                 diagnostics['host_http'] = http_observations
+                diagnostics['admission'] = admission_observation
                 if not passed:
                     try:
                         diagnostics['internal_http'] = json.loads(dc('exec', '-T', 'fixture', 'python3', '-',
