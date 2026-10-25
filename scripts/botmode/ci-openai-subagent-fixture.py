@@ -24,6 +24,8 @@ REAL_KEY = os.environ.get('CI_OPENROUTER_KEY', '')
 REAL_URL = 'https://openrouter.ai/api/v1/chat/completions'
 REAL_MODEL = 'nvidia/nemotron-3.5-super-vl:free'
 provider_records = []
+provider_started = {}
+provider_finished = {}
 local_rejections = []
 class NoProviderRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -77,6 +79,47 @@ def reserve_real_request():
         calls['provider_requests'] = count + 1
         return count + 1
 
+def provider_request_parameters(request):
+    def obj(value): return value if isinstance(value, dict) else {}
+    fmt = obj(request.get('response_format'))
+    structured = obj(fmt.get('json_schema'))
+    required = obj(structured.get('schema')).get('required')
+    return {'response_format': fmt.get('type') if fmt.get('type') in ('json_object', 'json_schema') else None,
+        'strict': structured.get('strict') is True,
+        'required_output_fields': [name for name in ('result', 'sources', 'ok') if isinstance(required, list) and name in required],
+        'require_parameters': obj(request.get('provider')).get('require_parameters') is True,
+        'model': request.get('model') if request.get('model') == REAL_MODEL else None,
+        'reasoning_enabled': obj(request.get('reasoning')).get('enabled'),
+        'max_tokens': request.get('max_tokens'), 'max_completion_tokens': request.get('max_completion_tokens')}
+
+
+def start_provider_request(number, request):
+    with lock:
+        provider_started[number] = time.monotonic()
+        provider_records.append({'request': number, 'phase': 'waiting_headers', 'http_status': None,
+            'upstream_headers_status': None, 'usage': {}, 'models': [], 'finish_reasons': [],
+            'tool_names': [], 'errors': [], 'candidate_text': '', 'candidate_truncated': False,
+            'request_parameters': provider_request_parameters(request)})
+
+
+def update_provider_phase(number, phase, status=None, error_type=None):
+    with lock:
+        record = next((r for r in provider_records if r['request'] == number), None)
+        if record is None: return
+        record['phase'] = phase
+        if status is not None:
+            record['upstream_headers_status'] = status
+            record['http_status'] = status
+        if error_type is not None: record['transport_error_type'] = error_type[:80]
+
+
+def provider_snapshot():
+    with lock:
+        now = time.monotonic()
+        return [{**r, 'elapsed_ms': max(0, int(1000 * (provider_finished.get(r['request'], now)
+                  - provider_started.get(r['request'], now))))} for r in provider_records]
+
+
 def record_provider_response(number, status, body, request=None):
     text = body.decode('utf8', errors='replace')
     if REAL_KEY:
@@ -118,24 +161,15 @@ def record_provider_response(number, status, body, request=None):
               'candidate_text': candidate[:8192], 'candidate_truncated': len(candidate) > 8192,
               'errors': errors[:2]}
     if request is not None:
-        def object_value(value):
-            return value if isinstance(value, dict) else {}
-        fmt = object_value(request.get('response_format'))
-        structured = object_value(fmt.get('json_schema'))
-        schema = object_value(structured.get('schema'))
-        required = schema.get('required')
-        record['request_parameters'] = {
-            'response_format': fmt.get('type') if fmt.get('type') in ('json_object', 'json_schema') else None,
-            'strict': structured.get('strict') is True,
-            'required_output_fields': [name for name in ('result', 'sources', 'ok')
-                                       if isinstance(required, list) and name in required],
-            'require_parameters': object_value(request.get('provider')).get('require_parameters') is True,
-            'model': request.get('model') if request.get('model') == REAL_MODEL else None,
-            'reasoning_enabled': object_value(request.get('reasoning')).get('enabled'),
-            'max_tokens': request.get('max_tokens'),
-            'max_completion_tokens': request.get('max_completion_tokens')}
+        record['request_parameters'] = provider_request_parameters(request)
     with lock:
-        provider_records.append(record)
+        existing = next((r for r in provider_records if r['request'] == number), None)
+        if existing is None:
+            provider_records.append({**record, 'phase': 'response_complete'})
+        else:
+            existing.update(record)
+            existing['phase'] = 'response_complete'
+        provider_finished[number] = time.monotonic()
         if status == 200: calls['provider_http_200'] = calls.get('provider_http_200', 0) + 1
 
 def tool_name(request):
@@ -183,8 +217,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
     def do_GET(self):
         if REAL_MODE and self.path == '/provider-diagnostics':
+            snapshot = provider_snapshot()
             with lock:
-                snapshot = list(provider_records)
                 rejections = list(local_rejections)
             return self.send({'route': REAL_MODEL, 'reasoning_enabled': False, 'limit_requests': 4,
                               'limit_output_tokens': 2048, 'records': snapshot,
@@ -247,16 +281,29 @@ class Handler(BaseHTTPRequestHandler):
                     if len(local_rejections) < 8:
                         local_rejections.append({'completion_call': number, 'code': str(error)})
                 return self.send({'error': str(error)}, 400)
+            start_provider_request(provider_number, bounded)
+            transport_error_type = None
             request = Request(REAL_URL, data=json.dumps(bounded).encode(), method='POST',
                 headers={'Authorization': 'Bearer ' + REAL_KEY, 'Content-Type': 'application/json',
                          'Accept': 'text/event-stream' if req.get('stream') else 'application/json'})
             try:
                 with provider_opener.open(request, timeout=90) as response:
                     status, content_type = response.status, response.headers.get('Content-Type', 'application/json')
+                    update_provider_phase(provider_number, 'reading_body', status)
                     payload = response.read(1048577)
             except HTTPError as error:
-                status, content_type, payload = error.code, 'application/json', error.read(65536)
-            except (URLError, TimeoutError):
+                update_provider_phase(provider_number, 'reading_body', error.code)
+                try:
+                    status, content_type, payload = error.code, 'application/json', error.read(65536)
+                except (URLError, TimeoutError, OSError) as read_error:
+                    cause = read_error.reason if isinstance(read_error, URLError) else read_error
+                    transport_error_type = type(cause).__name__
+                    status, content_type, payload = 502, 'application/json', b'{"error":"UPSTREAM_TRANSPORT_FAILED"}'
+                finally:
+                    error.close()
+            except (URLError, TimeoutError, OSError) as error:
+                cause = error.reason if isinstance(error, URLError) else error
+                transport_error_type = type(cause).__name__
                 status, content_type, payload = 502, 'application/json', b'{"error":"UPSTREAM_TRANSPORT_FAILED"}'
             if 300 <= status < 400:
                 record_provider_response(provider_number, status, b'{"error":"UPSTREAM_REDIRECT_REFUSED"}', bounded)
@@ -264,6 +311,8 @@ class Handler(BaseHTTPRequestHandler):
             if len(payload) > 1048576:
                 status, content_type, payload = 502, 'application/json', b'{"error":"UPSTREAM_RESPONSE_TOO_LARGE"}'
             record_provider_response(provider_number, status, payload, bounded)
+            if transport_error_type is not None:
+                update_provider_phase(provider_number, 'transport_error', error_type=transport_error_type)
             self.send_response(status)
             self.send_header('Content-Type', content_type)
             self.send_header('Content-Length', str(len(payload)))

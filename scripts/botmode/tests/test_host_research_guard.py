@@ -164,6 +164,23 @@ class HostResearchConfigTests(unittest.TestCase):
                 MODULE.validate_provider_evidence(broken)
         with self.assertRaises(RuntimeError): MODULE.validate_provider_evidence({'records': []})
 
+    def test_failure_state_capture_is_bounded_selected_and_redacted(self):
+        values = {'status': 'error', 'error': 'private-fake-key',
+                  'orchestratorPlan': '{"task":"controlled","sensitive":"private-fake-key"}',
+                  'missionOracleState': '{"results":{}}', 'responseMessageId': 'test-response',
+                  'terminalPersistencePending': '1'}
+        reader = unittest.mock.Mock(side_effect=lambda name: values[name])
+        snapshot = MODULE.capture_job_state(reader, ['private-fake-key'])
+        self.assertEqual(snapshot['orchestratorPlan']['task'], 'controlled')
+        self.assertEqual(snapshot['missionOracleState'], {'results': {}})
+        self.assertNotIn('private-fake-key', json.dumps(snapshot))
+        self.assertEqual({c.args[0] for c in reader.call_args_list}, set(values))
+        values['orchestratorPlan'] = 'x' * 65537
+        values['missionOracleState'] = 'not JSON'
+        snapshot = MODULE.capture_job_state(lambda name: values[name], [])
+        self.assertEqual(snapshot['orchestratorPlan'], {'omitted': 'size_limit', 'characters': 65537})
+        self.assertEqual(snapshot['missionOracleState'], {'invalid_json': True})
+
 
 
 class HostResearchTargetTests(unittest.TestCase):

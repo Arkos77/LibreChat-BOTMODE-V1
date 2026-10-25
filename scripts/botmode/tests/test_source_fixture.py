@@ -2,11 +2,12 @@ import importlib.util
 import json
 import os
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 FIXTURE = Path(__file__).resolve().parents[1] / 'ci-openai-subagent-fixture.py'
@@ -24,6 +25,7 @@ class SourceFixtureTests(unittest.TestCase):
             module.REAL_URL = upstream or 'http://127.0.0.1:1/refuse-network'
         elif upstream is not None:
             module.REAL_URL = upstream
+        self.last_module = module
         server = ThreadingHTTPServer(('127.0.0.1', 0), module.Handler)
         thread = threading.Thread(target=server.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True)
         thread.start()
@@ -198,6 +200,70 @@ class SourceFixtureTests(unittest.TestCase):
         self.assertNotIn('paid-secret-marker', json.dumps(diagnostics))
         with urlopen(base + '/metrics') as response:
             self.assertEqual(json.load(response).get('provider_requests', 0), 0)
+
+    def test_pending_provider_requests_are_visible_before_and_after_response_headers(self):
+        for waiting_phase in ('waiting_headers', 'reading_body'):
+            with self.subTest(waiting_phase=waiting_phase):
+                release, arrived = threading.Event(), threading.Event()
+                class Provider(BaseHTTPRequestHandler):
+                    def log_message(self, *_): pass
+                    def do_POST(self):
+                        self.rfile.read(int(self.headers['Content-Length']))
+                        arrived.set()
+                        if waiting_phase == 'waiting_headers': release.wait(2)
+                        payload = b'{"model":"local","choices":[],"usage":{"cost":0}}'
+                        self.send_response(200)
+                        self.send_header('Content-Length', str(len(payload)))
+                        self.end_headers()
+                        if waiting_phase == 'reading_body': release.wait(2)
+                        self.wfile.write(payload)
+                upstream = ThreadingHTTPServer(('127.0.0.1', 0), Provider)
+                thread = threading.Thread(target=upstream.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True)
+                thread.start()
+                self.addCleanup(thread.join)
+                self.addCleanup(upstream.server_close)
+                self.addCleanup(upstream.shutdown)
+                base = self.start(real=True, upstream=f'http://127.0.0.1:{upstream.server_port}/v1/chat/completions')
+                results = []
+                client = threading.Thread(target=lambda: results.append(self.post(base, self.body(real=True))), daemon=True)
+                client.start()
+                try:
+                    self.assertTrue(arrived.wait(1))
+                    deadline = time.monotonic() + 1
+                    while True:
+                        with urlopen(base + '/provider-diagnostics', timeout=1) as response: snapshot = json.load(response)
+                        records = snapshot['records']
+                        if records and records[0].get('phase') == waiting_phase: break
+                        if time.monotonic() >= deadline: self.fail('Pending request lifecycle was not captured')
+                        time.sleep(0.01)
+                    self.assertEqual(len(records), 1)
+                    self.assertEqual(records[0]['upstream_headers_status'], None if waiting_phase == 'waiting_headers' else 200)
+                    self.assertGreaterEqual(records[0]['elapsed_ms'], 0)
+                    self.assertEqual(records[0]['usage'], {})
+                    self.assertNotIn('fake-ci-provider-key', json.dumps(snapshot))
+                    self.assertNotIn('messages', json.dumps(snapshot))
+                finally:
+                    release.set()
+                    client.join(2)
+                self.assertEqual(results[0][0], 200)
+                with urlopen(base + '/provider-diagnostics', timeout=1) as response: final = json.load(response)
+                self.assertEqual(len(final['records']), 1)
+                self.assertEqual(final['records'][0]['phase'], 'response_complete')
+
+    def test_transport_error_retains_only_error_type_and_no_retry(self):
+        http_error = HTTPError('http://127.0.0.1/fake', 429, 'controlled', {}, None)
+        http_error.read = unittest.mock.Mock(side_effect=TimeoutError('private-provider-detail'))
+        for failure in (URLError(TimeoutError('private-provider-detail')), http_error):
+            with self.subTest(failure=type(failure).__name__):
+                base = self.start(real=True)
+                with patch.object(self.last_module.provider_opener, 'open', side_effect=failure):
+                    status, _ = self.post(base, self.body(real=True))
+                self.assertEqual(status, 502)
+                with urlopen(base + '/provider-diagnostics') as response: evidence = json.load(response)
+                self.assertEqual(len(evidence['records']), 1)
+                self.assertEqual(evidence['records'][0]['phase'], 'transport_error')
+                self.assertEqual(evidence['records'][0]['transport_error_type'], 'TimeoutError')
+                self.assertNotIn('private-provider-detail', json.dumps(evidence))
 
     def test_real_budget_reservation_stops_at_four(self):
         spec = importlib.util.spec_from_file_location('bounded_relay_budget', FIXTURE)

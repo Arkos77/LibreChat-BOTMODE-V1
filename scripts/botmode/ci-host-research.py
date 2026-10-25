@@ -89,6 +89,27 @@ def validate_provider_evidence(evidence):
             raise RuntimeError('HOST_RESEARCH_PROVIDER_PROFILE_MISMATCH')
 
 
+def capture_job_state(read_field, sensitive_values):
+    snapshot = {}
+    for name in ('status', 'error', 'orchestratorPlan', 'missionOracleState',
+                 'responseMessageId', 'terminalPersistencePending'):
+        try:
+            raw = read_field(name)
+            if len(raw) > 65536:
+                snapshot[name] = {'omitted': 'size_limit', 'characters': len(raw)}
+            elif name in ('orchestratorPlan', 'missionOracleState'):
+                try: snapshot[name] = json.loads(raw) if raw else None
+                except ValueError: snapshot[name] = {'invalid_json': True}
+            else:
+                snapshot[name] = raw[:2000]
+        except Exception as error:
+            snapshot[name] = {'read_error': type(error).__name__}
+    text = json.dumps(snapshot, ensure_ascii=False)
+    for secret in sensitive_values:
+        if secret and len(secret) >= 8: text = text.replace(secret, '[redacted]')
+    return json.loads(text)
+
+
 def check_free_catalog():
     spec = importlib.util.spec_from_file_location('fixed_profile_catalog', ROOT / 'scripts/botmode/ci-fixed-free-preflight.py')
     probe = importlib.util.module_from_spec(spec)
@@ -405,6 +426,11 @@ console.log(JSON.stringify({conversation:!!conversation,count:messages.length,co
                 diagnostics['host_http'] = http_observations
                 diagnostics['admission'] = admission_observation
                 diagnostics['real_free_provider'] = real
+                if sid is not None:
+                    state = capture_job_state(lambda name: dc('exec', '-T', 'redis', 'redis-cli', '--raw',
+                        'HGET', '::stream:{' + sid + '}:job', name, timeout=5).strip(),
+                        [*values.values(), token, os.environ.get('CI_REAL_OPENROUTER_KEY')])
+                    (evidence / 'host-job-state.json').write_text(json.dumps(state, indent=2))
                 if not passed:
                     if real:
                         try:
