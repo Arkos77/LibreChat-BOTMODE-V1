@@ -263,6 +263,7 @@ jobs:
           spec.loader.exec_module(host)
           host.validate_reused_files(subprocess.check_output(['git','diff','--name-only',os.environ['CANDIDATE_SHA'],os.environ['HARNESS_SHA']],text=True).splitlines())
           PY_DIFF
+          python3 -m unittest discover -s scripts/botmode/tests -p test_source_fixture.py
           python3 -m unittest discover -s scripts/botmode/tests -p test_host_research_guard.py
           npm ci --no-audit --no-fund
           npm run build:data-provider

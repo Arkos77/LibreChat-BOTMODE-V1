@@ -21,6 +21,8 @@ HARNESS_ONLY_PATHS = {
     '.github/workflows/botmode-v1-pr77-source-built.yml',
     'scripts/botmode/ci-host-research.py',
     'scripts/botmode/tests/test_host_research_guard.py',
+    'scripts/botmode/ci-openai-subagent-fixture.py',
+    'scripts/botmode/tests/test_source_fixture.py',
 }
 
 

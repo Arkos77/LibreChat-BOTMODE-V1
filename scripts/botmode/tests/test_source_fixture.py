@@ -96,6 +96,33 @@ class SourceFixtureTests(unittest.TestCase):
         self.assertEqual(response['choices'][0]['finish_reason'], 'stop')
         self.assertTrue(json.loads(response['choices'][0]['message']['content'])['result'])
 
+    def test_cached_research_contract_accepts_text_blocks_and_completed_search(self):
+        body = self.body()
+        body['tool_choice'] = 'auto'
+        body['messages'] = [
+            {'role': 'system', 'content': [{'type': 'text', 'cache_control': {'type': 'ephemeral'},
+                'text': 'Mission planning context (not execution permission):\n' +
+                    json.dumps({'validation': [{'outputContract': 'research-v1'}]})}]},
+            {'role': 'assistant', 'tool_calls': [{'id': 'observed', 'function': {'name': 'web_search'}}]},
+            {'role': 'tool', 'tool_call_id': 'observed', 'content': [{'type': 'text', 'text': 'observation'}]},
+        ]
+        status, response = self.post(self.start(), body)
+        self.assertEqual(status, 200)
+        self.assertEqual(response['choices'][0]['finish_reason'], 'stop')
+        self.assertEqual(json.loads(response['choices'][0]['message']['content'])['sources'],
+                         'https://ci-source.invalid/report')
+
+    def test_cached_result_contract_accepts_split_text_blocks(self):
+        body = self.body()
+        body['tool_choice'] = 'auto'
+        body['messages'] = [{'role': 'system', 'content': [
+            {'type': 'text', 'text': 'Mission planning context (not execution permission):'},
+            {'type': 'text', 'text': json.dumps({'validation': [{'outputContract': 'result-v1'}]})},
+        ]}]
+        status, response = self.post(self.start(), body)
+        self.assertEqual(status, 200)
+        self.assertTrue(json.loads(response['choices'][0]['message']['content'])['ok'])
+
     def test_legacy_delegation_outside_source_mode(self):
         base = self.start(source=False)
         self.assertEqual(self.post(base, {'childId': 'authorized-child'}, '/configure')[0], 200)

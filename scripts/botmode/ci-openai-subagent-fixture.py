@@ -29,12 +29,21 @@ def tool_name(request):
             return "subagent"
     return None
 
+def message_text(message):
+    content = message.get('content')
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return '\n'.join(part['text'] for part in content if isinstance(part, dict)
+                         and part.get('type') == 'text' and isinstance(part.get('text'), str))
+    return ''
+
 def planned_output_contract(messages):
     marker='Mission planning context (not execution permission):'
     for message in reversed(messages):
         if not isinstance(message,dict) or message.get('role') not in ('system','developer'): continue
-        content=message.get('content')
-        if not isinstance(content,str) or marker not in content: continue
+        content=message_text(message)
+        if marker not in content: continue
         try: context,_=json.JSONDecoder().raw_decode(content.split(marker,1)[1].lstrip())
         except ValueError: continue
         if not isinstance(context,dict) or not isinstance(context.get('validation'),list): continue
@@ -105,7 +114,7 @@ class Handler(BaseHTTPRequestHandler):
         web_calls={tc.get('id') for m in messages if isinstance(m,dict) for tc in m.get('tool_calls',[]) if isinstance(tc,dict) and tc.get('function',{}).get('name')=='web_search'}
         web_completed=any(m.get('role')=='tool' and m.get('tool_call_id') in web_calls for m in messages if isinstance(m,dict))
         planned_contract=planned_output_contract(messages)
-        research_contract=planned_contract=='research-v1' or planned_contract is None and any(isinstance(m.get('content'),str) and re.search(r'"outputContract"\s*:\s*"research-v1"',m['content']) for m in messages if isinstance(m,dict))
+        research_contract=planned_contract=='research-v1' or planned_contract is None and any(re.search(r'"outputContract"\s*:\s*"research-v1"',message_text(m)) for m in messages if isinstance(m,dict))
         choice=req.get('tool_choice')
         forced_web=isinstance(choice,dict) and choice.get('type')=='function' and isinstance(choice.get('function'),dict) and choice['function'].get('name')=='web_search'
         if SOURCE_MODE and forced_web and not web_advertised:
