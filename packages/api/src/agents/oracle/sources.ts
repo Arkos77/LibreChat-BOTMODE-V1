@@ -20,6 +20,14 @@ export function normalizeSourceUrls(urls: readonly string[]): string[] {
   ];
 }
 
+// The web tool explicitly instructs these suffixes (see tools/toolkits/web.ts).
+// Strip only a complete, trailing citation sequence, never URL path/query text.
+const citationAnchor = String.raw`(?:\ue202|\\ue202)turn\d+(?:search|news|image|ref)\d+`;
+const citationSuffix = new RegExp(
+  String.raw`(?:\ue204|\\ue204)?(?:(?:${citationAnchor})+|(?:\ue200|\\ue200)(?:${citationAnchor})+(?:\ue201|\\ue201))[).,;:!?]*$`,
+  'i',
+);
+
 /** Checks observed URL provenance only, never whether a page entails a factual claim. */
 export function supportsResearchResult(
   result: string,
@@ -45,12 +53,17 @@ export function supportsResearchResult(
     if (normalized.length === 0 || normalized.some((url) => !observed.has(url))) return false;
     const cited = result.match(/https?:\/\/[^\s<>"\]]+/gi) ?? [];
     const matched = cited.map((citation) => {
-      const url = normalizeSourceUrls([citation])[0];
-      return normalized.find(
-        (source) =>
-          url === source ||
-          (url.startsWith(source) && /^[).,;:!?]+$/.test(url.slice(source.length))),
-      );
+      const matchUrl = (value: string) => {
+        const url = normalizeSourceUrls([value])[0];
+        return normalized.find(
+          (source) =>
+            url === source ||
+            (url.startsWith(source) && /^[).,;:!?]+$/.test(url.slice(source.length))),
+        );
+      };
+      // Preserve exact matching first, including legitimate URL punctuation or
+      // Unicode paths. Markup is presentation only, not evidence of a source.
+      return matchUrl(citation) ?? matchUrl(citation.replace(citationSuffix, ''));
     });
     return matched.every((url) => url != null) && normalized.every((url) => matched.includes(url));
   } catch {

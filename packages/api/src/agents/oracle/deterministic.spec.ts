@@ -200,6 +200,60 @@ describe('research source provenance', () => {
     });
     expect(verdict.status).toBe('VERIFIED');
   });
+  it.each([
+    '\\ue202turn0search0',
+    '\ue202turn0search0',
+    '\\ue202turn0search0\\ue202turn0news1',
+    '\ue202turn0search0\ue202turn0news1',
+    '\\ue200\\ue202turn0search0\\ue201',
+    '\ue200\ue202turn0search0\ue201',
+    '\\ue204\\ue202turn0search0',
+    '\ue204\ue202turn0search0',
+  ])('accepts an observed URL followed by the application citation suffix %s', async (suffix) => {
+    const url = 'https://example.org/report';
+    const verdict = await deterministicOracle.validate({
+      ...research,
+      candidate: JSON.stringify({ ok: true, result: `Observed ${url}.${suffix}`, sources: url }),
+      observedSources: [{ toolCallId: 'search-call', urls: [url] }],
+    });
+    expect(verdict.status).toBe('VERIFIED');
+  });
+
+  it.each([
+    'https://example.org/forged.\\ue202turn0search0',
+    'https://example.org/report/extra.\\ue202turn0search0',
+    'https://example.org/report?extra=yes.\\ue202turn0search0',
+    'https://example.org/report#extra.\\ue202turn0search0',
+    'https://example.org.attacker.invalid/report.\\ue202turn0search0',
+    'https://example.org/report.\\ue202turn0search0/extra',
+    'https://example.org/report.\\ue202turn0search0evil',
+    'https://example.org/report.\\ue202turn0unknown0',
+    'https://example.org/report.%EE%88%82turn0search0',
+  ])('keeps forged or malformed citations rejected: %s', async (citation) => {
+    const verdict = await deterministicOracle.validate({
+      ...research,
+      candidate: JSON.stringify({
+        ok: true,
+        result: `Observed ${citation}`,
+        sources: 'https://example.org/report',
+      }),
+      observedSources: [{ toolCallId: 'search-call', urls: ['https://example.org/report'] }],
+    });
+    expect(verdict.status).toBe('REJECTED');
+  });
+
+  it('does not promote a citation anchor into an independent source observation', async () => {
+    const verdict = await deterministicOracle.validate({
+      ...research,
+      candidate: JSON.stringify({
+        ok: true,
+        result: 'https://example.org/report.\\ue202turn0search0',
+        sources: 'https://example.org/report',
+      }),
+    });
+    expect(verdict.status).toBe('REJECTED');
+  });
+
   it('rejects a citation absent from observed results', async () => {
     expect(
       (

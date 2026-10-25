@@ -19,9 +19,11 @@ async function check(mode) {
   const observed = [];
   let effects = 0;
   let sourcesReady = false;
+  const suffix = mode === 'native-citation-unicode' ? '\ue202turn0search0'
+    : mode === 'native-citation-escaped' ? '\\ue202turn0search0' : '';
   const candidate = JSON.stringify({
     ok: true,
-    result: 'Synthetic source https://example.invalid/report',
+    result: 'Synthetic source https://example.invalid/report' + (suffix ? '.' + suffix : ''),
     sources: 'https://example.invalid/report',
   });
   const server = createServer(async (req, res) => {
@@ -126,7 +128,7 @@ async function check(mode) {
     });
     const binding = {
       agentId: 'saved',
-      provider: mode === 'native-openrouter' ? Providers.OPENROUTER : Providers.OPENAI,
+      provider: mode.startsWith('native-') ? Providers.OPENROUTER : Providers.OPENAI,
       tools: [tool],
       clientOptions: {
         ...options(mode === 'fallback429' ? 'primary/v1' : 'v1'),
@@ -209,7 +211,7 @@ async function check(mode) {
 }
 
 (async () => {
-  for (const mode of ['success', 'prose', 'tool-error', 'fallback429', 'native-openrouter'])
+  for (const mode of ['success', 'prose', 'tool-error', 'fallback429', 'native-openrouter', 'native-citation-unicode', 'native-citation-escaped'])
     await check(mode);
   console.log(
     'SCOPE=compiled API and native SDK; synthetic loopback only; no host/browser/cold recovery proof',

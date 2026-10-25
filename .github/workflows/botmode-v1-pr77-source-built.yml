@@ -130,7 +130,7 @@ jobs:
         run: sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
 
   compiled-research:
-    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.real_free_provider && !inputs.reuse_host_candidate && (inputs.native_research_only || inputs.host_research) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.reuse_host_candidate && (inputs.native_research_only || inputs.host_research) && (!inputs.real_free_provider || inputs.host_research) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -154,18 +154,24 @@ jobs:
       - name: Cheap source gates before Docker
         env:
           PYTHONPYCACHEPREFIX: ${{ runner.temp }}/botmode-python-cache
+          CI_REAL_PROVIDER_REQUESTED: ${{ inputs.real_free_provider && 'true' || 'false' }}
         run: |
           set -euo pipefail
+          python3 -m unittest discover -s scripts/botmode/tests -p test_fixed_free_preflight.py
           python3 -m unittest discover -s scripts/botmode/tests -p test_source_fixture.py
           python3 -m unittest discover -s scripts/botmode/tests -p test_host_research_guard.py
           python3 -m py_compile scripts/botmode/ci-host-research.py
           npm ci --no-audit --no-fund
           npm run build:data-provider
           python3 scripts/botmode/ci-host-research.py --check-config
+          if [ "$CI_REAL_PROVIDER_REQUESTED" = true ]; then
+            python3 scripts/botmode/ci-host-research.py --check-real-config
+            python3 scripts/botmode/ci-host-research.py --check-real-catalog
+          fi
           npm run build:data-schemas
           npm run build:api
           NODE_OPTIONS=--max-old-space-size=6144 npm exec --workspace=packages/api tsc -- --noEmit
-          npm exec --workspace=packages/api jest -- --runInBand --coverage=false --runTestsByPath src/agents/orchestrator/research.spec.ts src/agents/orchestrator/researchSources.spec.ts src/agents/orchestrator/nativeToolChoiceTransport.spec.ts src/agents/orchestrator/admission.spec.ts src/agents/orchestrator/schema.spec.ts
+          npm exec --workspace=packages/api jest -- --runInBand --coverage=false --runTestsByPath src/agents/oracle/deterministic.spec.ts src/agents/oracle/runtime.spec.ts src/agents/orchestrator/research.spec.ts src/agents/orchestrator/researchSources.spec.ts src/agents/orchestrator/nativeToolChoiceTransport.spec.ts src/agents/orchestrator/admission.spec.ts src/agents/orchestrator/schema.spec.ts
           npm exec --workspace=api jest -- --runInBand --coverage=false --runTestsByPath server/services/Endpoints/agents/hostModelUsage.spec.js server/services/Endpoints/agents/nativeMissionRecoveredOracleSources.spec.js server/services/Endpoints/agents/hostModelRouting.compat.spec.js server/controllers/agents/callbacks.improvementEvidence.spec.js
           node scripts/botmode/native-research-image-regression.cjs
       - uses: docker/setup-buildx-action@v4
@@ -197,6 +203,9 @@ jobs:
       - name: Actual host web research on an isolated internal network
         id: host_research
         if: ${{ inputs.host_research }}
+        env:
+          CI_REAL_FREE_PROVIDER: ${{ inputs.real_free_provider && 'true' || 'false' }}
+          CI_REAL_OPENROUTER_KEY: ${{ inputs.real_free_provider && secrets.OPENROUTER_API_KEY || '' }}
         run: python3 scripts/botmode/ci-host-research.py
       - name: Retain built image and explicit qualification outcomes
         id: archive
@@ -204,6 +213,7 @@ jobs:
         env:
           COMPILED_OUTCOME: ${{ steps.compiled_image.outcome }}
           HOST_OUTCOME: ${{ steps.host_research.outcome }}
+          REAL_PROVIDER_REQUESTED: ${{ inputs.real_free_provider && 'true' || 'false' }}
         run: |
           set -euo pipefail
           mkdir -p candidate-evidence
@@ -215,10 +225,21 @@ jobs:
           Path('candidate-evidence/qualification-status.json').write_text(json.dumps({
             'source_sha':os.environ['CANDIDATE_SHA'],
             'compiled':os.environ['COMPILED_OUTCOME'],
-            'host':os.environ['HOST_OUTCOME']}))
+            'host':os.environ['HOST_OUTCOME'],
+            'real_free_provider':os.environ['REAL_PROVIDER_REQUESTED']=='true'}))
           PY_STATUS
           docker save "$CANDIDATE_IMAGE" | gzip -1 > candidate-evidence/image.tar.gz
           (cd candidate-evidence && sha256sum image.tar.gz > image.tar.gz.sha256)
+      - name: Preserve lightweight evidence independently of the image archive
+        uses: actions/upload-artifact@v4
+        if: ${{ always() && steps.candidate_build.outcome == 'success' }}
+        with:
+          name: botmode-native-research-evidence-${{ github.sha }}
+          path: |
+            candidate-evidence/
+            !candidate-evidence/image.tar.gz
+          retention-days: 3
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: ${{ always() && steps.archive.outcome == 'success' }}
         with:
@@ -229,7 +250,7 @@ jobs:
       - name: Record qualification boundary
         if: always()
         run: |
-          echo 'Qualification outcomes are recorded in the artifact. Optional host test uses synthetic model/search/scrape on an internal network. No browser, crash restart, real provider, installation or stable proof.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Qualification outcomes are recorded separately from the image. Synthetic loopback gates precede any explicitly authorized fixed free-model host test. Web sources remain controlled. No browser, crash restart, installation or stable proof.' >> "$GITHUB_STEP_SUMMARY"
 
   retained-host-research:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.host_research && inputs.reuse_host_candidate }}
