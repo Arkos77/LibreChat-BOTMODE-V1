@@ -173,6 +173,13 @@ class HostResearchTargetTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'REUSED_PRODUCT_SOURCE_DRIFT'):
                 MODULE.validate_reused_files(['scripts/botmode/ci-host-research.py', path])
 
+    def test_fixed_preflight_files_are_test_only_and_do_not_require_a_new_product_image(self):
+        MODULE.validate_reused_files([
+            '.github/workflows/botmode-v1-live-provider-preflight.yml',
+            'scripts/botmode/ci-fixed-free-preflight.py',
+            'scripts/botmode/tests/test_fixed_free_preflight.py',
+        ])
+
     def test_reuse_product_drift_stops_before_schema_or_docker(self):
         sha, env = self.target()
         env['HARNESS_SHA'] = 'b' * 40

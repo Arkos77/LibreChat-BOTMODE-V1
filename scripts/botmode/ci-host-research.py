@@ -18,6 +18,9 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE_URL = 'https://ci-source.invalid/report'
 FIXTURE_WEB_ENV = {'BOTMODE_CI_WEB_URL': 'http://fixture:8088', 'BOTMODE_CI_WEB_KEY': 'ci-fixture'}
 HARNESS_ONLY_PATHS = {
+    '.github/workflows/botmode-v1-live-provider-preflight.yml',
+    'scripts/botmode/ci-fixed-free-preflight.py',
+    'scripts/botmode/tests/test_fixed_free_preflight.py',
     '.github/workflows/botmode-v1-pr77-source-built.yml',
     'scripts/botmode/ci-host-research.py',
     'scripts/botmode/tests/test_host_research_guard.py',

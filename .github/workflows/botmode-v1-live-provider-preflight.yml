@@ -4,6 +4,11 @@ name: BOTMODE V1 Live Provider Preflight
 on:
   workflow_dispatch:
     inputs:
+      fixed_model_contract:
+        description: "Explicitly authorize at most two fixed free-model probes, 512 output tokens each; no mission or Docker"
+        required: true
+        default: false
+        type: boolean
       check_gemini:
         description: "Verify Gemini (optional; can fail independently of OpenRouter)"
         required: true
@@ -25,6 +30,7 @@ permissions:
 
 jobs:
   provider-readiness:
+    if: ${{ !inputs.fixed_model_contract }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -130,3 +136,43 @@ jobs:
         run: |
           echo "### Provider access proved only" >> "$GITHUB_STEP_SUMMARY"
           echo "This does NOT prove Worker -> specialist -> Oracle -> publication." >> "$GITHUB_STEP_SUMMARY"
+
+  fixed-model-contract:
+    if: ${{ inputs.fixed_model_contract }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify exact source and exclusive probe mode
+        env:
+          PREFLIGHT_SOURCE_SHA: ${{ github.sha }}
+          CHECK_GEMINI: ${{ inputs.check_gemini }}
+          CHECK_OPENROUTER: ${{ inputs.check_openrouter }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PREFLIGHT_SOURCE_SHA"
+          test "$CHECK_GEMINI" = false
+          test "$CHECK_OPENROUTER" = false
+          python3 -m unittest discover -s scripts/botmode/tests -p test_fixed_free_preflight.py
+      - name: Two explicitly authorized fixed free-model requests
+        id: probe
+        env:
+          CI_FIXED_FREE_PREFLIGHT: ${{ inputs.fixed_model_contract && 'true' || 'false' }}
+          PREFLIGHT_SOURCE_SHA: ${{ github.sha }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: python3 scripts/botmode/ci-fixed-free-preflight.py
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && steps.probe.outcome != 'skipped' }}
+        with:
+          name: botmode-fixed-free-preflight-${{ github.sha }}
+          path: candidate-evidence/fixed-free-preflight.json
+          retention-days: 3
+          if-no-files-found: warn
+      - name: Record exact scope
+        if: always()
+        run: |
+          echo 'Fixed model nvidia/nemotron-3.5-super-vl:free; max two requests * 512 output tokens, reasoning disabled, no retries or fallback. Catalog checked before generation.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Synthetic tool result and structured response only; no BOTMODE mission, Oracle, Mongo publication, Docker build or installation proof.' >> "$GITHUB_STEP_SUMMARY"
