@@ -11,6 +11,7 @@ const {
   compileNativePlan,
   validateMissionTask,
   assertMissionTaskVerified,
+  buildWebSearchContext,
 } = require('../../packages/api/dist/index.cjs');
 
 async function check(mode) {
@@ -21,9 +22,11 @@ async function check(mode) {
   let sourcesReady = false;
   const suffix = mode === 'native-citation-unicode' ? '\ue202turn0search0'
     : mode === 'native-citation-escaped' ? '\\ue202turn0search0' : '';
+  const anchorOnly = mode === 'native-anchor-only';
   const candidate = JSON.stringify({
     ok: true,
-    result: 'Synthetic source https://example.invalid/report' + (suffix ? '.' + suffix : ''),
+    result: anchorOnly ? 'Controlled report \ue202turn0search0'
+      : 'Synthetic source https://example.invalid/report' + (suffix ? '.' + suffix : ''),
     sources: 'https://example.invalid/report',
   });
   const server = createServer(async (req, res) => {
@@ -31,6 +34,16 @@ async function check(mode) {
       let body = '';
       for await (const chunk of req) body += chunk;
       const input = JSON.parse(body);
+      const system = input.messages.filter(m => ['system','developer'].includes(m.role))
+        .map(m => JSON.stringify(m.content)).join('\n');
+      if (mode === 'fallback429' && system === '') {
+        // Independently reproduced SDK limitation, not changed by this instruction profile.
+        console.log('KNOWN_SDK_FALLBACK_INSTRUCTIONS=NOT_QUALIFIED');
+      } else {
+        assert(system.includes('INTERNAL RESEARCH OUTPUT'));
+        assert(!system.includes('CITATION FORMAT - UNICODE'));
+        assert(system.includes('Reproduce each cited observed URL literally'));
+      }
       const shape = {
         choice: input.tool_choice,
         format: input.response_format,
@@ -129,6 +142,7 @@ async function check(mode) {
     const binding = {
       agentId: 'saved',
       provider: mode.startsWith('native-') ? Providers.OPENROUTER : Providers.OPENAI,
+      instructions: ['Owner policy', buildWebSearchContext()].join('\n'),
       tools: [tool],
       clientOptions: {
         ...options(mode === 'fallback429' ? 'primary/v1' : 'v1'),
@@ -192,16 +206,20 @@ async function check(mode) {
       const task = plan.tasks[0];
       const output = run.getAgentOutputs()[task.nodeId];
       assert.equal(output.content, candidate);
-      assertMissionTaskVerified(
-        await validateMissionTask({
-          taskId: task.taskId,
-          nodeId: task.nodeId,
-          agentId: task.agentId,
-          candidate: output.content,
-          requirements: task.validation,
-          observedSources: observed,
-        }),
-      );
+      const verdict = await validateMissionTask({
+        taskId: task.taskId,
+        nodeId: task.nodeId,
+        agentId: task.agentId,
+        candidate: output.content,
+        requirements: task.validation,
+        observedSources: observed,
+      });
+      if (anchorOnly) {
+        assert(verdict.verdicts.some(v => v.status === 'REJECTED'));
+        assert.throws(() => assertMissionTaskVerified(verdict));
+      } else {
+        assertMissionTaskVerified(verdict);
+      }
     }
     console.log(`BOTMODE_COMPILED_RESEARCH_${mode.toUpperCase().replaceAll('-', '_')}=PASS`);
   } finally {
@@ -211,7 +229,7 @@ async function check(mode) {
 }
 
 (async () => {
-  for (const mode of ['success', 'prose', 'tool-error', 'fallback429', 'native-openrouter', 'native-citation-unicode', 'native-citation-escaped'])
+  for (const mode of ['success', 'prose', 'tool-error', 'fallback429', 'native-openrouter', 'native-citation-unicode', 'native-citation-escaped', 'native-anchor-only'])
     await check(mode);
   console.log(
     'SCOPE=compiled API and native SDK; synthetic loopback only; no host/browser/cold recovery proof',

@@ -19,6 +19,7 @@ import type {
 } from '@librechat/agents';
 import { deterministicPlanner } from './planner';
 import { prepareBotModeMission } from './output';
+import { buildWebSearchContext } from '~/tools/toolkits/web';
 import { compileNativePlan } from './native';
 import {
   createMissionEvidenceContext,
@@ -109,6 +110,35 @@ describe('native research phases', () => {
 
   it('stamps fresh host research missions with their execution-policy version', () => {
     expect(plan.mission.researchExecutionVersion).toBe(1);
+  });
+
+  it.each(['observation', 'result'] as const)(
+    'uses direct URL instructions for internal %s without changing owner instructions',
+    (phase) => {
+      const original = [
+        'Owner instruction before',
+        buildWebSearchContext(),
+        'Owner instruction after',
+      ].join('\n');
+      const source = { ...binding, instructions: original };
+      const compiled = researchPhaseBinding(source, phase);
+      expect(compiled.instructions).toContain('Owner instruction before');
+      expect(compiled.instructions).toContain('Owner instruction after');
+      expect(compiled.instructions).toContain('INTERNAL RESEARCH OUTPUT');
+      expect(compiled.instructions).not.toContain('CITATION FORMAT - UNICODE');
+      expect(compiled.instructions).not.toContain('then provide a brief summary');
+      expect(compiled.instructions).toContain(
+        'Never infer or extrapolate a current value from older observations',
+      );
+      expect(source.instructions).toBe(original);
+    },
+  );
+
+  it('preserves customized tool or owner instructions when the generated context is absent', () => {
+    const instructions = 'Owner-specific source policy; do not rewrite this text.';
+    expect(researchPhaseBinding({ ...binding, instructions }, 'result').instructions).toBe(
+      instructions,
+    );
   });
 
   it('forces only web_search without JSON on observation and restores final JSON', () => {

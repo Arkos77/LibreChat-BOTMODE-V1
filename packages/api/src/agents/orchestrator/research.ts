@@ -8,6 +8,7 @@ import type {
 import type { AIMessage } from '@librechat/agents/langchain/messages';
 import type { PlannedTask } from './types';
 import { requireNativeParameters } from './schema';
+import { buildWebSearchContext } from '~/tools/toolkits/web';
 
 export const isResearchTask = (task: Pick<PlannedTask, 'validation'>): boolean =>
   task.validation.some((requirement) => requirement.outputContract === 'research-v1');
@@ -73,7 +74,15 @@ function phaseOptions(provider: string, original: Options | undefined, phase: Ph
 
 export function researchPhaseBinding(binding: AgentInputs, phase: Phase): AgentInputs {
   const clientOptions = phaseOptions(binding.provider, binding.clientOptions as Options, phase);
-  if (phase === 'result') return { ...binding, toolEnd: false, clientOptions };
+  // Replace only the application-generated web context; owner instructions stay intact.
+  const instructions =
+    typeof binding.instructions === 'string'
+      ? binding.instructions.replace(
+          buildWebSearchContext(),
+          buildWebSearchContext({ citationFormat: 'direct-urls' }),
+        )
+      : binding.instructions;
+  if (phase === 'result') return { ...binding, instructions, toolEnd: false, clientOptions };
   const tools = binding.tools?.filter(isWebTool);
   const graphTools = binding.graphTools?.filter((tool) => tool.name === 'web_search');
   const toolDefinitions = binding.toolDefinitions?.filter(
@@ -84,6 +93,7 @@ export function researchPhaseBinding(binding: AgentInputs, phase: Phase): AgentI
   }
   return {
     ...binding,
+    instructions,
     clientOptions,
     toolEnd: true,
     tools,

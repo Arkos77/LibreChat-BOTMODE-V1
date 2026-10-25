@@ -6,6 +6,7 @@ import { HumanMessage } from '@librechat/agents/langchain/messages';
 import { DynamicStructuredTool } from '@librechat/agents/langchain/tools';
 import { deterministicPlanner } from './planner';
 import { prepareBotModeMission } from './output';
+import { buildWebSearchContext } from '~/tools/toolkits/web';
 import { compileNativePlan } from './native';
 import { validateMissionTask, assertMissionTaskVerified } from './missionOracle';
 import type { OracleSourceObservation } from '../oracle';
@@ -15,6 +16,17 @@ it.each(['success', 'prose', 'tool-error', 'fallback429'])(
   async (mode) => {
     const requests: Array<{ choice: unknown; hasToolResult: boolean; format: unknown }> = [];
     const primaryChoices: unknown[] = [];
+    const systemPrompts: string[] = [];
+    const assertInternalPrompts = () => {
+      expect(systemPrompts.some(prompt => prompt.includes('INTERNAL RESEARCH OUTPUT'))).toBe(true);
+      for (const prompt of systemPrompts) {
+        // Existing SDK fallback may drop all system instructions; this lot does not qualify that path.
+        if (mode === 'fallback429' && prompt === '') continue;
+        expect(prompt).toContain('INTERNAL RESEARCH OUTPUT');
+        expect(prompt).not.toContain('CITATION FORMAT - UNICODE');
+        expect(prompt).toContain('Reproduce each cited observed URL literally');
+      }
+    };
     const observed: OracleSourceObservation[] = [];
     let executed = 0;
     const candidate = JSON.stringify({
@@ -26,6 +38,12 @@ it.each(['success', 'prose', 'tool-error', 'fallback429'])(
       let body = '';
       for await (const chunk of req) body += chunk;
       const input = JSON.parse(body);
+      systemPrompts.push(
+        input.messages
+          .filter((m: { role: string }) => ['system', 'developer'].includes(m.role))
+          .map((m: { content: unknown }) => JSON.stringify(m.content))
+          .join('\n'),
+      );
       const hasToolResult = input.messages.some(
         (message: { role: string }) => message.role === 'tool',
       );
@@ -137,6 +155,7 @@ it.each(['success', 'prose', 'tool-error', 'fallback429'])(
             {
               agentId: 'saved-worker',
               provider: Providers.OPENAI,
+              instructions: ['Owner policy', buildWebSearchContext()].join('\n'),
               tools: [tool],
               clientOptions: {
                 model: 'offline:free',
@@ -179,6 +198,7 @@ it.each(['success', 'prose', 'tool-error', 'fallback429'])(
         ).rejects.toThrow();
         expect(requests).toHaveLength(1);
         expect(executed).toBe(mode === 'prose' ? 0 : 1);
+        assertInternalPrompts();
         return;
       }
       await run.processStream(
@@ -207,6 +227,7 @@ it.each(['success', 'prose', 'tool-error', 'fallback429'])(
         },
       ]);
       expect(executed).toBe(1);
+      assertInternalPrompts();
       if (mode === 'fallback429')
         expect(primaryChoices).toEqual(requests.map((request) => request.choice));
       const task = plan.tasks[0];
