@@ -1,7 +1,6 @@
 {
   "com_ui_botmode_progress_title": "Progress",
   "com_ui_botmode_progress_toggle": "Show or hide BOT MODE progress",
-  "com_ui_botmode_progress_close": "Close progress",
   "com_ui_botmode_progress_counter": "Phase {count} of {total}",
   "com_ui_botmode_progress_not_recorded": "No mission progress recorded yet",
   "com_ui_botmode_progress_stages": "Progress",

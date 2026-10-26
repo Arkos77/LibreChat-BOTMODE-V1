@@ -41,7 +41,6 @@ export default function Presentation({ children }: { children: React.ReactNode }
   const progressOpenOverride = useAtomValue(botModeProgressOpenAtom);
   const isSmallScreen = useMediaQuery('(max-width: 767px)');
   const isBotModeProgressOpen = progressOpenOverride ?? !isSmallScreen;
-  const setBotModeProgressOpen = useSetAtom(botModeProgressOpenAtom);
   const activeConversation = useRecoilValue(store.conversationByIndex(0));
   const setSelectedSubagent = useSetAtom(activeSubagentPanel);
   const resetSelectedSubagent = useCallback(() => setSelectedSubagent(null), [setSelectedSubagent]);
@@ -152,7 +151,6 @@ export default function Presentation({ children }: { children: React.ReactNode }
       <BotModeProgressPanel
         projectId={activeConversation?.chatProjectId}
         conversationId={conversationId ?? ''}
-        onClose={() => setBotModeProgressOpen(false)}
       />
     ) : null;
 

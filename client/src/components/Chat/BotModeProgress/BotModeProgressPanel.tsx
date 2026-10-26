@@ -7,7 +7,6 @@ import {
   GitBranch,
   ShieldCheck,
   Users,
-  X,
 } from 'lucide-react';
 import type { TBotModeProjectObservation } from 'librechat-data-provider';
 import { subagentStatusDotClass, subagentStatusLabelKey } from '~/components/Chat/Subagents/status';
@@ -57,11 +56,9 @@ export function getMissionProgress(observations: TBotModeProjectObservation[]) {
 export default function BotModeProgressPanel({
   projectId,
   conversationId,
-  onClose,
 }: {
   projectId?: string | null;
   conversationId: string;
-  onClose: () => void;
 }) {
   const localize = useLocalize();
   const { data: project } = useBotModeProjectProjectionQuery(projectId, {
@@ -90,7 +87,7 @@ export default function BotModeProgressPanel({
       aria-label={localize('com_ui_botmode_progress_title')}
       data-testid="botmode-progress-sidebar"
     >
-      <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border-light px-5 py-4">
+      <header className="shrink-0 border-b border-border-light px-5 py-4">
         <div className="min-w-0">
           <h2 className="flex items-center gap-2 text-base font-semibold">
             <ClipboardList className="h-4 w-4 text-blue-500" aria-hidden="true" />
@@ -105,14 +102,6 @@ export default function BotModeProgressPanel({
               : localize('com_ui_botmode_progress_not_recorded')}
           </p>
         </div>
-        <button
-          type="button"
-          aria-label={localize('com_ui_botmode_progress_close')}
-          onClick={onClose}
-          className="rounded-lg p-2 text-text-secondary hover:bg-surface-hover"
-        >
-          <X className="h-4 w-4" aria-hidden="true" />
-        </button>
       </header>
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5 text-sm">
         <section aria-label={localize('com_ui_botmode_progress_stages')}>
