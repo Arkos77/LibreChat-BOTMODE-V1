@@ -4,6 +4,7 @@ import { Constants } from 'librechat-data-provider';
 import { Alert, DelayedRender } from '@librechat/client';
 import type { TMessage } from 'librechat-data-provider';
 import type { TMessageContentProps, TDisplayProps } from '~/common';
+import { useBotModeView } from '~/components/Chat/BotModeViewContext';
 import useSmoothStreaming from '~/hooks/Messages/useSmoothStreaming';
 import Error from '~/components/Messages/Content/Error';
 import ToolCallLimitNotice from './ToolCallLimitNotice';
@@ -161,6 +162,7 @@ const MessageContent = ({
   const { messageId } = message;
 
   const { thinkingContent, regularContent } = useMemo(() => parseThinkingContent(text), [text]);
+  const isBotModeView = useBotModeView();
   const showRegularCursor = useMemo(() => isLast && isSubmitting, [isLast, isSubmitting]);
 
   const unfinishedMessage = useMemo(
@@ -185,7 +187,7 @@ const MessageContent = ({
 
   return (
     <>
-      {thinkingContent.length > 0 && (
+      {!isBotModeView && thinkingContent.length > 0 && (
         <Thinking key={`thinking-${messageId}`}>{thinkingContent}</Thinking>
       )}
       <DisplayMessage

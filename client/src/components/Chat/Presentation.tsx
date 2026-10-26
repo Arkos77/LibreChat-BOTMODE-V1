@@ -1,12 +1,16 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useRecoilValue } from 'recoil';
 import { useAtomValue, useSetAtom } from 'jotai';
+import { useMediaQuery } from '@librechat/client';
 import { EModelEndpoint, FileSources, LocalStorageKeys } from 'librechat-data-provider';
 import type { ExtendedFile } from '~/common';
 import useResetArtifactsOnConversationChange from '~/hooks/Artifacts/useResetArtifactsOnConversationChange';
 import { ParentSubagentsProvider } from '~/components/Chat/Subagents/ParentSubagentsProvider';
+import BotModeProgressPanel from '~/components/Chat/BotModeProgress/BotModeProgressPanel';
+import { botModeProgressOpenAtom } from '~/components/Chat/BotModeProgress/state';
 import DragDropWrapper from '~/components/Chat/Input/Files/DragDropWrapper';
 import { activeSubagentPanel } from '~/components/Chat/Subagents/state';
+import { useBotModeView } from '~/components/Chat/BotModeViewContext';
 import { EditorProvider, ArtifactsProvider } from '~/Providers';
 import { useDeleteFilesMutation } from '~/data-provider';
 import { SidePanelGroup } from '~/components/SidePanel';
@@ -33,6 +37,12 @@ export default function Presentation({ children }: { children: React.ReactNode }
   const conversationEndpoint = useRecoilValue(store.effectiveEndpointByIndex(0));
   const conversationAgentId = useRecoilValue(store.conversationAgentIdByIndex(0));
   const selectedSubagent = useAtomValue(activeSubagentPanel);
+  const isBotModeView = useBotModeView();
+  const progressOpenOverride = useAtomValue(botModeProgressOpenAtom);
+  const isSmallScreen = useMediaQuery('(max-width: 767px)');
+  const isBotModeProgressOpen = progressOpenOverride ?? !isSmallScreen;
+  const setBotModeProgressOpen = useSetAtom(botModeProgressOpenAtom);
+  const activeConversation = useRecoilValue(store.conversationByIndex(0));
   const setSelectedSubagent = useSetAtom(activeSubagentPanel);
   const resetSelectedSubagent = useCallback(() => setSelectedSubagent(null), [setSelectedSubagent]);
   const previousConversationIdRef = useRef<string | null>(null);
@@ -137,7 +147,17 @@ export default function Presentation({ children }: { children: React.ReactNode }
     );
   }, [conversationId, selectedSubagent]);
 
-  const panelElement = artifactsElement ?? subagentElement;
+  const progressElement =
+    isBotModeView && isBotModeProgressOpen ? (
+      <BotModeProgressPanel
+        projectId={activeConversation?.chatProjectId}
+        conversationId={conversationId ?? ''}
+        onClose={() => setBotModeProgressOpen(false)}
+      />
+    ) : null;
+
+  // Existing artifact and child-thread panels keep their precedence.
+  const panelElement = artifactsElement ?? subagentElement ?? progressElement;
 
   return (
     <DragDropWrapper className="relative flex w-full grow overflow-hidden bg-presentation">

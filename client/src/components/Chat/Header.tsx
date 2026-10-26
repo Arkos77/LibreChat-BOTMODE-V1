@@ -1,5 +1,8 @@
 import { memo, useMemo } from 'react';
+import { ListTodo } from 'lucide-react';
 import { useRecoilValue } from 'recoil';
+import { useAtomValue, useSetAtom } from 'jotai';
+import { useMediaQuery } from '@librechat/client';
 import { useParams, useSearchParams } from 'react-router-dom';
 import {
   getConfigDefaults,
@@ -10,9 +13,11 @@ import {
 } from 'librechat-data-provider';
 import type { TConversation } from 'librechat-data-provider';
 import BotModeDashboardDrawer from '~/components/Projects/BotModeDashboardDrawer';
+import { botModeProgressOpenAtom } from '~/components/Chat/BotModeProgress/state';
 import { useGetAgentByIdQuery, useGetStartupConfig } from '~/data-provider';
 import { OpenSidebar, PresetsMenu, NewChat, HeaderMenu } from './Menus';
 import { TemporaryChat, TemporaryChatIndicator } from './TemporaryChat';
+import { useBotModeView } from '~/components/Chat/BotModeViewContext';
 import ModelSelector from './Menus/Endpoints/ModelSelector';
 import ExportAndShareMenu from './ExportAndShareMenu';
 import SubagentThreadLink from './SubagentThreadLink';
@@ -46,6 +51,11 @@ function Header({
 }) {
   const { data: startupConfig } = useGetStartupConfig();
   const localize = useLocalize();
+  const isBotModeView = useBotModeView();
+  const progressOverride = useAtomValue(botModeProgressOpenAtom);
+  const isSmallScreen = useMediaQuery('(max-width: 767px)');
+  const progressOpen = progressOverride ?? !isSmallScreen;
+  const setProgressOpen = useSetAtom(botModeProgressOpenAtom);
   const [searchParams] = useSearchParams();
   const effectiveParams = resolveBotModeSearchParams(searchParams, conversation);
   const modeLabels = {
@@ -142,6 +152,20 @@ function Header({
         {hasAccessToTemporaryChat === true && <TemporaryChatIndicator />}
         {!isNewChat && <NewChat className="md:hidden" />}
         <HeaderMenu startupConfig={startupConfig} className="md:hidden" />
+        {isBotModeView && !readOnly && (
+          <button
+            type="button"
+            aria-pressed={progressOpen}
+            aria-label={localize('com_ui_botmode_progress_toggle')}
+            onClick={() => setProgressOpen((previous) => !(previous ?? !isSmallScreen))}
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+          >
+            <ListTodo className="h-4 w-4" aria-hidden="true" />
+            <span className="hidden sm:inline">
+              {localize('com_ui_botmode_progress_title')}
+            </span>
+          </button>
+        )}
         <div className="hidden items-center gap-2 md:flex">
           <ExportAndShareMenu isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false} />
           {hasAccessToTemporaryChat === true && <TemporaryChat />}
