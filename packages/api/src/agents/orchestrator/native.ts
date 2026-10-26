@@ -4,6 +4,7 @@ import type {
   OpenAIClientOptions,
   MultiAgentGraphConfig,
   StandardGraphConfig,
+  FallbackConfig,
 } from '@librechat/agents';
 import type { MissionOracleResultPersister, MissionOracleTaskInput } from './missionOracle';
 import type { MissionPlan, OracleRequirement, PlannedTask } from './types';
@@ -37,25 +38,46 @@ function validatedClientOptions(binding: AgentInputs, task: PlannedTask) {
     binding.clientOptions as OpenAIClientOptions | undefined,
     task.validation,
   );
-  if (options?.useResponsesApi === true) {
-    return binding.clientOptions;
-  }
-  const format = options?.modelKwargs?.response_format;
-  const hasJsonFormat = format?.type === 'json_schema' || format?.type === 'json_object';
   const hasTools = Boolean(
     binding.tools?.length ||
       binding.graphTools?.length ||
       binding.toolDefinitions?.some((tool) => tool.defer_loading !== true),
   );
+  return validatedTransportOptions(binding.provider, options, hasTools);
+}
+
+function validatedTransportOptions(
+  provider: string,
+  options: ReturnType<typeof structuredTaskOptions>,
+  hasTools: boolean,
+): ReturnType<typeof structuredTaskOptions> {
+  if (
+    !['openai', 'openrouter'].includes(provider.toLowerCase()) ||
+    options?.useResponsesApi === true
+  ) {
+    return options;
+  }
+  const format = options?.modelKwargs?.response_format;
+  const hasJsonFormat = format?.type === 'json_schema' || format?.type === 'json_object';
   // Some OpenAI-compatible providers require tools and tool_choice together.
   // Keep explicit choices (including "none") and allow the model to finish
   // after tool results; forcing "required" on every turn would prevent that.
   const needsToolChoice = hasTools && options?.modelKwargs?.tool_choice == null;
-  if (hasJsonFormat && !needsToolChoice) {
+  if (hasJsonFormat && !needsToolChoice && options?.fallbacks == null) {
     return options;
   }
   return {
     ...options,
+    ...(options?.fallbacks != null && {
+      fallbacks: options.fallbacks.map((fallback) => ({
+        ...fallback,
+        clientOptions: validatedTransportOptions(
+          fallback.provider,
+          fallback.clientOptions as ReturnType<typeof structuredTaskOptions>,
+          hasTools,
+        ),
+      })) as FallbackConfig[],
+    }),
     modelKwargs: {
       ...options?.modelKwargs,
       ...(!hasJsonFormat && { response_format: { type: 'json_object' } }),

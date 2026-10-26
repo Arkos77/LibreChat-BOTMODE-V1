@@ -2,7 +2,12 @@ import { Run, Providers } from '@librechat/agents';
 import { AIMessage, HumanMessage } from '@librechat/agents/langchain/messages';
 import { DynamicStructuredTool } from '@librechat/agents/langchain/tools';
 import { z } from 'zod';
-import type { AgentInputs, BaseGraphState } from '@librechat/agents';
+import type {
+  AgentInputs,
+  BaseGraphState,
+  FallbackConfig,
+  OpenAIClientOptions,
+} from '@librechat/agents';
 import { deterministicPlanner } from './planner';
 import { compileNativePlan } from './native';
 
@@ -36,6 +41,8 @@ const base = {
   requiredCapabilities: ['basic'],
   constraints: ['offline'],
 };
+
+type FallbackOptions = OpenAIClientOptions & { fallbacks: FallbackConfig[] };
 
 describe('validated native output contract', () => {
   const validatedPlan = () =>
@@ -78,7 +85,72 @@ describe('validated native output contract', () => {
     },
   );
 
-  it.each(['none', { type: 'function', function: { name: 'authorized_tool' } }])(
+  it.each(['tools', 'toolDefinitions', 'graphTools'] as const)(
+    'keeps implicit tool choice across nested fallback bindings with %s',
+    (field) => {
+      const tool = new DynamicStructuredTool({
+        name: 'check_background_task',
+        description: 'Authorized host control',
+        schema: z.object({}),
+        func: async () => '',
+      });
+      const options = {
+        model: 'primary',
+        fallbacks: [
+          {
+            provider: Providers.OPENROUTER,
+            clientOptions: {
+              model: 'secondary',
+              fallbacks: [
+                {
+                  provider: Providers.OPENAI,
+                  clientOptions: { model: 'third' },
+                  retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK' as const,
+                },
+              ],
+            },
+            retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK' as const,
+          },
+        ],
+      };
+      const before = JSON.stringify(options);
+      const input = new Map(bindings);
+      input.set('worker', {
+        ...bindings.get('worker')!,
+        provider: Providers.OPENROUTER,
+        [field]: field === 'toolDefinitions' ? [{ name: tool.name }] : [tool],
+        clientOptions: options,
+      });
+      const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
+      const primary = agent.clientOptions as typeof options & { modelKwargs: unknown };
+      expect(primary).toMatchObject({
+        model: 'primary',
+        modelKwargs: { tool_choice: 'auto' },
+        fallbacks: [
+          {
+            provider: Providers.OPENROUTER,
+            retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
+            clientOptions: {
+              model: 'secondary',
+              modelKwargs: { tool_choice: 'auto' },
+              fallbacks: [
+                {
+                  provider: Providers.OPENAI,
+                  clientOptions: {
+                    model: 'third',
+                    modelKwargs: { tool_choice: 'auto' },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+      expect(JSON.stringify(options)).toBe(before);
+    },
+  );
+
+  it.each(['none', 'required', { type: 'function', function: { name: 'authorized_tool' } }])(
     'preserves an explicitly configured tool choice',
     (choice) => {
       const input = new Map(bindings);
@@ -89,6 +161,86 @@ describe('validated native output contract', () => {
       });
       const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
       expect(agent.clientOptions).toMatchObject({ modelKwargs: { tool_choice: choice } });
+    },
+  );
+
+  it.each(['none', 'required', { type: 'function', function: { name: 'authorized_tool' } }])(
+    'preserves a fallback-specific explicit choice independently from primary',
+    (choice) => {
+      const input = new Map(bindings);
+      input.set('worker', {
+        ...bindings.get('worker')!,
+        toolDefinitions: [{ name: 'authorized_tool' }],
+        clientOptions: {
+          fallbacks: [
+            {
+              provider: Providers.OPENROUTER,
+              clientOptions: { modelKwargs: { tool_choice: choice } },
+              retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
+            },
+          ],
+        } as FallbackOptions,
+      });
+      expect(
+        compileNativePlan(validatedPlan(), input).graphConfig.agents[0].clientOptions,
+      ).toMatchObject({
+        modelKwargs: { tool_choice: 'auto' },
+        fallbacks: [
+          {
+            clientOptions: { modelKwargs: { tool_choice: choice } },
+          },
+        ],
+      });
+    },
+  );
+
+  it.each([
+    { provider: Providers.OPENAI, clientOptions: { useResponsesApi: true } },
+    { provider: Providers.ANTHROPIC, clientOptions: { model: 'other-provider' } },
+  ])(
+    'does not inject Chat Completions options into unsupported fallback transport: %j',
+    (fallback) => {
+      const input = new Map(bindings);
+      input.set('worker', {
+        ...bindings.get('worker')!,
+        toolDefinitions: [{ name: 'authorized_tool' }],
+        clientOptions: {
+          fallbacks: [{ ...fallback, retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK' }],
+        } as FallbackOptions,
+      });
+      const result = compileNativePlan(validatedPlan(), input).graphConfig.agents[0].clientOptions;
+      expect(result).toMatchObject({ fallbacks: [{ clientOptions: fallback.clientOptions }] });
+      expect(
+        (result as { fallbacks: Array<{ clientOptions: unknown }> }).fallbacks[0].clientOptions,
+      ).not.toHaveProperty('modelKwargs');
+    },
+  );
+
+  it.each([
+    { toolDefinitions: [] },
+    { toolDefinitions: [{ name: 'deferred', defer_loading: true }] },
+  ])(
+    'does not enable tools on primary or fallback without an authorized eager tool',
+    ({ toolDefinitions }) => {
+      const input = new Map(bindings);
+      input.set('worker', {
+        ...bindings.get('worker')!,
+        toolDefinitions,
+        clientOptions: {
+          fallbacks: [
+            {
+              provider: Providers.OPENROUTER,
+              clientOptions: { model: 'secondary' },
+              retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
+            },
+          ],
+        } as FallbackOptions,
+      });
+      const result = compileNativePlan(validatedPlan(), input).graphConfig.agents[0].clientOptions;
+      expect(result).not.toHaveProperty('modelKwargs.tool_choice');
+      expect(
+        (result as { fallbacks: Array<{ clientOptions: unknown }> }).fallbacks[0].clientOptions,
+      ).not.toHaveProperty('modelKwargs.tool_choice');
     },
   );
 
