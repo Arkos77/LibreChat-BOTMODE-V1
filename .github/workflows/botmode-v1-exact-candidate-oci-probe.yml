@@ -1030,6 +1030,27 @@ jobs:
                   import hashlib
                   detail=fields[1].strip()
                   print('CI_BROWSER_ERROR_FINGERPRINT='+hashlib.sha256(detail.encode()).hexdigest()[:16],flush=True)
+                  # Redact values/paths/URLs and emit only an error type with
+                  # bounded safe vocabulary; the original error stays in Redis.
+                  import re
+                  safe_lines=[line.strip() for line in detail.splitlines() if line.strip()]
+                  error_tail=safe_lines[-1] if safe_lines else ''
+                  categories_safe={
+                      'NOT_FOUND':r'not found|not_found|no such',
+                      'UNSUPPORTED':r'unsupported|not supported',
+                      'INVALID_ARGS':r'argument|parameter|schema|validation',
+                      'NETWORK':r'connection|fetch failed|network|econn|enotfound',
+                      'TIMEOUT':r'timeout|timed out',
+                      'SEARCH':r'web.search|search provider|search tool',
+                      'TOOL_EXEC':r'tool execution|tool call|failed to invoke',
+                      'HTTP':r'\\b(?:http|status code)\\b',
+                      'MISSING_CONFIG':r'not configured|missing configuration|no api key',
+                      'JSON':r'json|parse|syntaxerror'
+                  }
+                  labels=[name for name,pattern in categories_safe.items() if re.search(pattern,error_tail,re.I)]
+                  print('CI_BROWSER_ERROR_SAFE_CLASSES='+(','.join(labels) if labels else 'OTHER'),flush=True)
+                  print('CI_BROWSER_ERROR_LENGTH='+str(len(detail)),flush=True)
+                  print('CI_BROWSER_ERROR_LINES='+str(len(safe_lines)),flush=True)
                   categories=('MISSION_ORACLE','RESEARCH','SOURCE','PROVIDER','MODEL','TOOL','AUTH',
                     'CAPABILITY','BUDGET','CONTRACT','VALIDATION','TIMEOUT','ABORT','REJECT')
                   print('CI_BROWSER_ERROR_CATEGORY='+','.join(c for c in categories if c in detail.upper()),flush=True)
