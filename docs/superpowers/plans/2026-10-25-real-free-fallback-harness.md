@@ -65,3 +65,23 @@ Ruling: native provider support in the exact current SDK supersedes the historic
 Final Task2 validation:97/97 complete Python harness tests PASS (verbose completion observed),32 targeted guard tests PASS, JS lint with zero warnings and YAML/22 bash blocks/AST/source guard PASS. Exact workflow code is tested under both real configurations, not inferred from the standalone validator. Both observed defects have failing tests followed by passing results. The initial full-suite log was incomplete and was not counted; the completed verbose97-test run is authoritative.
 
 Review limits retained: the local fetch wrapper detects global fetch only; the actual image must still enforce --network none for all networking. GNU timeout provides a pre-key deadline, not proof of teardown of an arbitrary uncooperative container; these disposable probe containers have fixture credentials only and cannot admit a real mission. No guarantee of corrected image execution is inferred from local verification.
+
+### Task 3: Diagnose host context drift without another external inference (26 October)
+
+**Evidence:** e05a9fe run40247048705 passes every pre-key gate, admits one mission, and makes two real free-model HTTP200 calls (reported cost0). Native search/scrape1/1 and research result-v1/research-v2 Oracle VERIFIED. Third primary429 is followed by local NATIVE_FALLBACK_SECONDARY_CONTEXT_OR_ORDER refusal before analysis egress. Captured five wire records prove pending third primary and changed context, but retain only its combined hash, so the changed field is UNKNOWN. Cleanup PASS; real one-shot authorization consumed. Local exact-SDK replay of captured three-task plan with synthetic responses yields8requests/four matching pairs, so no blanket product fix is justified.
+
+**Goal/architecture:** Add bounded selected raw context diagnostics on refusal, keeping the exact four-field hash guard unchanged. Add an explicit zero-inference native_fallback=true/real_free_provider=false hosted simulation using the same config/model labels and retained image. Simulation has internal network only, no real key, no provider opener, provider records empty and summary provider=synthetic. The existing deterministic source fixture emits responses locally. No proxy bypass or altered candidate/Oracle policy. A real run still requires real_free_provider=true, an explicit key and catalog checks; its4request limit is unchanged.
+
+**Files:** Existing host runner, fixture, guard/fixture tests, workflow, this plan. No product/SDK/image changes.
+
+**Interfaces:** native_fallback_mode accepts true in real or simulated mode without conferring real-provider authority. build_config(real=False,fallback=True) uses the same fixed secondary/native options. compose_override gives no egress/key unless real=True. GET diagnostics works for real or native-fallback simulation, marks simulated. Mismatch captures changed_fields plus primary/secondary selected messages/tools/tool_choice/response_format only, redacts real key, max16KiB/context and first mismatch only; oversize contexts omitted with byte count, never truncated into misleading valid JSON. Hash refusal stays mandatory.
+
+- [x] Write/run RED diagnostics and no-egress/no-key simulation tests.
+- [x] Implement minimal diagnostics and simulation opt-in, retaining all live/key/catalog/Oracle/refusal guards.
+- [x] Verify100/100 full harness tests, exact workflow/32flag combinations,22bash blocks, syntax and product drift; no Docker/inference in this offline lot.
+- [x] One fresh bounded review:0Critical/0Important/1Minor deferred; no second reviewer.
+- [x] Freeze and checkpoint; request only publication plus ONE hosted synthetic diagnostic run with real_free_provider=false. No new real mission authorized or automatically replayed.
+
+Task3 review minor deferred:16KiB is the decoded UTF-8 JSON context measurement before final endpoint/artifact serialization; ASCII escaping/indentation can enlarge the saved representation. It remains finitely bounded and does not weaken the refusal or confer upstream authority. Do not claim an exact16KiB final serialized field cap.
+
+Task3 limits: whether hosted simulation reproduces the live field drift is unknown; actual hosted network isolation/cleanup still require the separate run. No corrected product or full real fallback success is claimed. If simulation does not reproduce it, retain that result and do not automatically invoke a provider.

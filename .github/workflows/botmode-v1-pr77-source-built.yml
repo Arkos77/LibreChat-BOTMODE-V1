@@ -24,7 +24,7 @@ on:
         type: boolean
         default: false
       native_fallback:
-        description: 'Retained-image real-provider mission only: controlled primary 429 then fixed free secondary; four upstream requests maximum'
+        description: 'Retained-image native fallback: controlled primary429; real_free_provider=false means internal synthetic replies with no key/egress; true caps upstream at4'
         type: boolean
         default: false
 permissions:
@@ -33,11 +33,11 @@ env:
   BOTMODE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 jobs:
   invalid-fallback-inputs:
-    if: ${{ inputs.native_fallback && (!inputs.host_research || !inputs.reuse_host_candidate || !inputs.real_free_provider || inputs.native_research_only) }}
+    if: ${{ inputs.native_fallback && (!inputs.host_research || !inputs.reuse_host_candidate || inputs.native_research_only) }}
     runs-on: ubuntu-latest
     steps:
       - run: |
-          echo 'Native fallback requires retained host research, explicit real free provider, and native_research_only=false.' >&2
+          echo 'Native fallback requires retained host research and native_research_only=false; real provider is a separate opt-in.' >&2
           exit 1
   binding-regression:
     if: ${{ !inputs.native_fallback && !inputs.native_research_only && !inputs.host_research && !inputs.real_free_provider }}
@@ -268,7 +268,7 @@ jobs:
           echo 'Qualification outcomes are recorded separately from the image. Synthetic loopback gates precede any explicitly authorized fixed free-model host test. Web sources remain controlled. No browser, crash restart, installation or stable proof.' >> "$GITHUB_STEP_SUMMARY"
 
   retained-host-research:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.host_research && inputs.reuse_host_candidate && (!inputs.native_fallback || (inputs.real_free_provider && !inputs.native_research_only)) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.host_research && inputs.reuse_host_candidate && (!inputs.native_fallback || !inputs.native_research_only) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

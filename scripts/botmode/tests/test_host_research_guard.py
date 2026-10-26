@@ -119,14 +119,24 @@ process.on('exit',()=>{if(ciExternalFetches){console.error('EXTERNAL_FETCH_ATTEM
         override = MODULE.compose_override(True, True)
         self.assertEqual(override['services']['fixture']['environment']['CI_NATIVE_FALLBACK'], '1')
 
-    def test_fallback_flag_requires_explicit_real_mode(self):
+    def test_fallback_simulation_has_no_provider_authority_or_egress(self):
         self.assertFalse(MODULE.native_fallback_mode({}, False))
         self.assertTrue(MODULE.native_fallback_mode({'CI_NATIVE_FALLBACK': 'true'}, True))
-        for value in ('true', 'yes', '1'):
+        self.assertTrue(MODULE.native_fallback_mode({'CI_NATIVE_FALLBACK': 'true'}, False))
+        for value in ('yes', '1'):
             with self.assertRaisesRegex(RuntimeError, 'FALLBACK'):
                 MODULE.native_fallback_mode({'CI_NATIVE_FALLBACK': value}, False)
-        with self.assertRaisesRegex(RuntimeError, 'FALLBACK'):
-            MODULE.build_config(self.source(), real=False, fallback=True)
+        config = MODULE.build_config(self.source(), real=False, fallback=True)
+        endpoint = config['endpoints']['custom'][0]
+        self.assertEqual(endpoint['models']['default'], ['openrouter/free', MODULE.FIXED_FREE_MODEL])
+        self.assertEqual(endpoint['addParams']['reasoning'], {'enabled': False})
+        override = MODULE.compose_override(False, True)
+        self.assertEqual(override['networks'], {'default': {'internal': True}})
+        env = override['services']['fixture']['environment']
+        self.assertEqual(env['CI_NATIVE_FALLBACK'], '1')
+        self.assertNotIn('CI_REAL_FREE_PROVIDER', env)
+        self.assertNotIn('CI_OPENROUTER_KEY', env)
+        self.assertFalse(MODULE.real_provider_mode({'CI_NATIVE_FALLBACK': 'true'}))
 
     def test_fallback_evidence_requires_four_matching_ordered_pairs(self):
         pairs = []

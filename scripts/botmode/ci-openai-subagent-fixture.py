@@ -31,6 +31,8 @@ provider_started = {}
 provider_finished = {}
 local_rejections = []
 fallback_records = []
+fallback_mismatches = []
+pending_fallback_context = None
 class NoProviderRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -85,8 +87,9 @@ def reserve_real_request():
 
 
 def observe_fallback_request(request):
-    if not REAL_MODE or not SOURCE_MODE:
-        raise ValueError('NATIVE_FALLBACK_REAL_MODE_REQUIRED')
+    global pending_fallback_context
+    if not SOURCE_MODE:
+        raise ValueError('NATIVE_FALLBACK_SOURCE_MODE_REQUIRED')
     model = request.get('model')
     if model not in (MODEL, REAL_MODEL):
         raise ValueError('NATIVE_FALLBACK_ROUTE_REQUIRED')
@@ -104,10 +107,32 @@ def observe_fallback_request(request):
             if count >= 8 or count % 2:
                 raise ValueError('NATIVE_FALLBACK_PRIMARY_ORDER_OR_BUDGET')
             calls['controlled_primary_429'] = calls.get('controlled_primary_429', 0) + 1
-        elif count >= 8 or count % 2 != 1 or fallback_records[-1]['context_sha256'] != signature:
-            raise ValueError('NATIVE_FALLBACK_SECONDARY_CONTEXT_OR_ORDER')
+            pending_fallback_context = context
+        else:
+            if count >= 8 or count % 2 != 1:
+                raise ValueError('NATIVE_FALLBACK_SECONDARY_CONTEXT_OR_ORDER')
+            if fallback_records[-1]['context_sha256'] != signature:
+                if not fallback_mismatches:
+                    fallback_mismatches.append({
+                        'changed_fields': [key for key in context if
+                            json.dumps(pending_fallback_context.get(key), sort_keys=True) !=
+                            json.dumps(context[key], sort_keys=True)],
+                        'primary': bounded_fallback_context(pending_fallback_context),
+                        'secondary': bounded_fallback_context(context)})
+                raise ValueError('NATIVE_FALLBACK_SECONDARY_CONTEXT_OR_ORDER')
+            pending_fallback_context = None
         fallback_records.append(record)
     return model == MODEL
+
+
+def bounded_fallback_context(context):
+    text = json.dumps(context, ensure_ascii=False, sort_keys=True)
+    if REAL_KEY:
+        text = text.replace(REAL_KEY, '[redacted]')
+    size = len(text.encode())
+    if size > 16384:
+        return {'omitted': 'size_limit', 'bytes': size}
+    return {'value': json.loads(text)}
 
 def provider_request_parameters(request):
     def obj(value): return value if isinstance(value, dict) else {}
@@ -246,14 +271,16 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
     def do_GET(self):
-        if REAL_MODE and self.path == '/provider-diagnostics':
+        if (REAL_MODE or FALLBACK_MODE) and self.path == '/provider-diagnostics':
             snapshot = provider_snapshot()
             with lock:
                 rejections = list(local_rejections)
-                fallback = {'enabled': FALLBACK_MODE, 'records': list(fallback_records)}
+                fallback = {'enabled': FALLBACK_MODE, 'records': list(fallback_records),
+                            'mismatches': list(fallback_mismatches)}
             return self.send({'route': REAL_MODEL, 'reasoning_enabled': False, 'limit_requests': 4,
                               'limit_output_tokens': 2048, 'records': snapshot,
-                              'local_rejections': rejections, 'fallback': fallback})
+                              'local_rejections': rejections, 'fallback': fallback,
+                              'simulated': not REAL_MODE})
         if SOURCE_MODE and self.path.startswith('/search?'):
             with lock: calls['source_search_calls']=calls.get('source_search_calls',0)+1
             return self.send({'query':'CI synthetic source','results':[{'url':SOURCE_URL,'title':'Controlled CI report CI-FIXTURE-001',
@@ -303,6 +330,8 @@ class Handler(BaseHTTPRequestHandler):
             number=calls["completion_calls"]
         if FALLBACK_MODE:
             try:
+                if req.get('model') != MODEL:
+                    bounded_real_request(req)
                 if observe_fallback_request(req):
                     return self.send({'error': {'message': 'Controlled CI primary quota; no upstream request',
                                                'type': 'rate_limit_exceeded'}}, 429)

@@ -68,7 +68,7 @@ def real_provider_mode(env):
 
 def native_fallback_mode(env, real):
     value = env.get('CI_NATIVE_FALLBACK', 'false')
-    if value not in ('false', 'true') or value == 'true' and not real:
+    if value not in ('false', 'true'):
         raise RuntimeError('HOST_RESEARCH_NATIVE_FALLBACK_MODE_INVALID')
     return value == 'true'
 
@@ -191,8 +191,6 @@ def compose_override(real=False, fallback=False):
         fixture['networks'] = ['default', 'provider_egress']
         networks['provider_egress'] = {'internal': False}
     if fallback:
-        if not real:
-            raise RuntimeError('HOST_RESEARCH_NATIVE_FALLBACK_MODE_INVALID')
         fixture['environment']['CI_NATIVE_FALLBACK'] = '1'
     return {'services': {
         'api': {'environment': {'USE_REDIS': 'true', 'USE_REDIS_STREAMS': 'true',
@@ -206,8 +204,6 @@ def run(args, *, env=None, data=None, timeout=180):
 
 
 def build_config(source, real=False, fallback=False):
-    if fallback and not real:
-        raise RuntimeError('HOST_RESEARCH_NATIVE_FALLBACK_MODE_INVALID')
     config = copy.deepcopy(source)
     config['endpoints']['agents'].pop('hostModelRouting', None)
     endpoints = [e for e in config['endpoints']['custom'] if e.get('name') == 'OpenRouter']
@@ -229,7 +225,7 @@ def build_config(source, real=False, fallback=False):
              'preferredBindingId': 'controlled-primary', 'routingMode': 'static',
              'routingConstraints': {'spendingPolicy': 'free_only'}, 'allowFailover': True}
             for name in ('BOT MODE Worker', 'RECHERCHE', 'ANALYSE', 'CODE', 'DOCUMENTS', 'RÉDACTION')]
-    if real:
+    if real or fallback:
         endpoint['addParams'] = {**endpoint.get('addParams', {}),
                                  'maxRetries': 0, 'timeout': 90000, 'maxTokens': 2048, 'reasoning': {'enabled': False}}
     config['endpoints']['custom'] = endpoints
@@ -473,15 +469,20 @@ console.log(JSON.stringify({conversation:!!conversation,count:messages.length,co
             if real:
                 assert metrics.get('provider_requests') == 4 and metrics.get('provider_http_200') == 4
                 assert metrics.get('source_search_calls') == 1
+            else:
+                assert metrics.get('source_tool_requests') == 1
+                assert metrics.get('provider_requests', 0) == 0
+            if real or fallback:
                 provider_evidence = json.loads(dc('exec', '-T', 'fixture', 'python3', '-c',
                     'import urllib.request;print(urllib.request.urlopen("http://127.0.0.1:8088/provider-diagnostics").read().decode())'))
-                validate_provider_evidence(provider_evidence)
+                if real:
+                    validate_provider_evidence(provider_evidence)
+                else:
+                    assert provider_evidence.get('simulated') is True and provider_evidence.get('records') == []
                 if fallback:
                     validate_fallback_evidence(provider_evidence)
                     assert metrics.get('controlled_primary_429') == 4
                 (evidence / 'provider-evidence.json').write_text(json.dumps(provider_evidence, indent=2))
-            else:
-                assert metrics.get('source_tool_requests') == 1
             component_images = {}
             for service in ('api', 'mongodb', 'redis', 'fixture'):
                 container_id = dc('ps', '-q', service).strip()
@@ -513,7 +514,7 @@ console.log(JSON.stringify({conversation:!!conversation,count:messages.length,co
                     if capture_error is not None:
                         diagnostics['job_state_capture_error'] = capture_error
                 if not passed:
-                    if real:
+                    if real or fallback:
                         try:
                             provider_evidence = json.loads(dc('exec', '-T', 'fixture', 'python3', '-c',
                                 'import urllib.request;print(urllib.request.urlopen("http://127.0.0.1:8088/provider-diagnostics").read().decode())', timeout=10))

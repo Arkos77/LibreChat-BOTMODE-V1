@@ -15,6 +15,51 @@ FIXTURE = Path(__file__).resolve().parents[1] / 'ci-openai-subagent-fixture.py'
 
 
 class SourceFixtureTests(unittest.TestCase):
+    def test_native_fallback_simulation_never_calls_upstream_or_requires_key(self):
+        base = self.start(real=False, fallback=True)
+        body = self.body(real=True)
+        with patch.object(self.last_module.provider_opener, 'open') as upstream:
+            self.assertEqual(self.post(base, {**body, 'model': 'openrouter/free'})[0], 429)
+            self.assert_search(self.post(base, body))
+            upstream.assert_not_called()
+        with urlopen(base + '/provider-diagnostics') as reply: evidence = json.load(reply)
+        self.assertTrue(evidence['simulated'])
+        self.assertEqual(evidence['records'], [])
+        self.assertEqual(len(evidence['fallback']['records']), 2)
+        with urlopen(base + '/metrics') as reply: metrics = json.load(reply)
+        self.assertEqual(metrics.get('provider_requests', 0), 0)
+
+    def test_context_refusal_preserves_selected_raw_diff_bounded_and_redacted(self):
+        base = self.start(real=True, fallback=True)
+        body = self.body(real=True)
+        secret = self.last_module.REAL_KEY
+        body['messages'][0]['content'] += ' ' + secret
+        primary = {**body, 'model': 'openrouter/free'}
+        changed = {**body, 'tool_choice': 'auto'}
+        with patch.object(self.last_module.provider_opener, 'open') as upstream:
+            self.assertEqual(self.post(base, primary)[0], 429)
+            self.assertEqual(self.post(base, changed)[0], 400)
+            upstream.assert_not_called()
+        with urlopen(base + '/provider-diagnostics') as reply: evidence = json.load(reply)
+        mismatch = evidence['fallback']['mismatches'][0]
+        self.assertEqual(mismatch['changed_fields'], ['tool_choice'])
+        self.assertEqual(mismatch['primary']['value']['tool_choice'], body['tool_choice'])
+        self.assertEqual(mismatch['secondary']['value']['tool_choice'], 'auto')
+        self.assertNotIn(secret, json.dumps(evidence))
+        self.assertEqual(set(mismatch['primary']['value']), {'messages', 'tools', 'tool_choice', 'response_format'})
+
+    def test_oversized_context_diagnostics_fail_closed_without_unbounded_body(self):
+        base = self.start(real=False, fallback=True)
+        body = self.body(real=True)
+        body['messages'][0]['content'] = 'x' * 20000
+        self.assertEqual(self.post(base, {**body, 'model': 'openrouter/free'})[0], 429)
+        self.assertEqual(self.post(base, {**body, 'tool_choice': 'auto'})[0], 400)
+        with urlopen(base + '/provider-diagnostics') as reply: evidence = json.load(reply)
+        mismatch = evidence['fallback']['mismatches'][0]
+        self.assertEqual(mismatch['primary']['omitted'], 'size_limit')
+        self.assertEqual(mismatch['secondary']['omitted'], 'size_limit')
+        self.assertLess(len(json.dumps(evidence)), 10000)
+
     def start(self, source=True, real=False, upstream=None, fallback=False):
         spec = importlib.util.spec_from_file_location('isolated_source_fixture', FIXTURE)
         module = importlib.util.module_from_spec(spec)
