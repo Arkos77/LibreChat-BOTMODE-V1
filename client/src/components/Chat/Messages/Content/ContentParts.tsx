@@ -22,6 +22,7 @@ import {
   lastCursorContentIdx,
   getActivityLabelText,
 } from '~/utils/activityLabels';
+import SingleToolRightPortal from '~/components/Chat/BotModeTools/SingleToolRightPortal';
 import WorkspaceChanges, { partitionWorkspaceChanges } from './Parts/WorkspaceChanges';
 import { ParallelContentRenderer, type PartWithIndex } from './ParallelContent';
 import { MediaContext, MessageContext, SearchContext } from '~/Providers';
@@ -1020,7 +1021,21 @@ const ContentPartsBody = memo(function ContentPartsBody({
           }
           if (group.type === 'single') {
             const { part, idx } = group.part;
-            nodes.push(renderPart(part, idx, idx === lastContentIdx));
+            const rendered = renderPart(part, idx, idx === lastContentIdx);
+            if (part.type === ContentTypes.TOOL_CALL) {
+              nodes.push(
+                <SingleToolRightPortal
+                  key={'single-tool-' + messageId + '-' + getPartKeyIndex(part, idx)}
+                  part={part}
+                  withinActivityPhase={withinActivityPhase}
+                  hasAttachments={!hideAttachments && (attachmentsForPart(part)?.length ?? 0) > 0}
+                >
+                  {rendered}
+                </SingleToolRightPortal>,
+              );
+            } else {
+              nodes.push(rendered);
+            }
             return nodes;
           }
           const { groupId } = group;
