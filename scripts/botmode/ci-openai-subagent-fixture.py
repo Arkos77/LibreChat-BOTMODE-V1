@@ -281,7 +281,7 @@ class Handler(BaseHTTPRequestHandler):
                               'limit_output_tokens': 2048, 'records': snapshot,
                               'local_rejections': rejections, 'fallback': fallback,
                               'simulated': not REAL_MODE})
-        if SOURCE_MODE and self.path.startswith('/search?'):
+        if self.path.startswith('/search?'):
             with lock: calls['source_search_calls']=calls.get('source_search_calls',0)+1
             return self.send({'query':'CI synthetic source','results':[{'url':SOURCE_URL,'title':'Controlled CI report CI-FIXTURE-001',
                 'content':'Synthetic test report CI-FIXTURE-001, published 2026-10-25T00:00:00Z by the BOTMODE qualification fixture: three recorded checks passed. Scope: fixture only.'}]})
@@ -294,7 +294,7 @@ class Handler(BaseHTTPRequestHandler):
         return self.send({"error":"not_found"},404)
     def do_POST(self):
         global child_id
-        if SOURCE_MODE and self.path.rstrip('/').endswith('/scrape'):
+        if self.path.rstrip('/').endswith('/scrape'):
             length=int(self.headers.get('Content-Length','0'))
             if length < 2 or length > 1048576: return self.send({'error':'size'},400)
             self.rfile.read(length)
