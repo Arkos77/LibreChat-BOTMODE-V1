@@ -1049,6 +1049,13 @@ jobs:
                   }
                   labels=[name for name,pattern in categories_safe.items() if re.search(pattern,error_tail,re.I)]
                   print('CI_BROWSER_ERROR_SAFE_CLASSES='+(','.join(labels) if labels else 'OTHER'),flush=True)
+                  # This CI job uses synthetic, disposable credentials. Emit only a
+                  # small redacted error label, never URLs, tokens, paths or IDs.
+                  sanitized=re.sub(r'https?://\\S+','[URL]',detail)
+                  sanitized=re.sub(r'(?i)(?:sk-[A-Za-z0-9_-]{10,}|Bearer\\s+\\S+)','[CREDENTIAL]',sanitized)
+                  sanitized=re.sub(r'/(?:home|app|tmp|run|var)/[^\\s:]+','[PATH]',sanitized)
+                  sanitized=re.sub(r'\\b[0-9a-f]{24,}\\b','[ID]',sanitized,flags=re.I)
+                  print('CI_BROWSER_ERROR_REDACTED='+sanitized[:180].replace('\\n',' '),flush=True)
                   print('CI_BROWSER_ERROR_LENGTH='+str(len(detail)),flush=True)
                   print('CI_BROWSER_ERROR_LINES='+str(len(safe_lines)),flush=True)
                   categories=('MISSION_ORACLE','RESEARCH','SOURCE','PROVIDER','MODEL','TOOL','AUTH',
