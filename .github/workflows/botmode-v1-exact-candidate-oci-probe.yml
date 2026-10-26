@@ -892,12 +892,11 @@ jobs:
               assert bot_mode.get('selectionMode')=='auto', 'CI_BROWSER_POST_SELECTION_MODE_MISMATCH'
               selected={s.get('id') for s in bot_mode.get('agents',[]) if isinstance(s,dict)}
               assert selected and selected.issubset(allowlist), 'CI_BROWSER_POST_SPECIALIST_ACL_MISMATCH'
-              url_bindings=json.loads(parse_qs(urlparse(page.url).query).get('botmode_agent_bindings',['[]'])[0])
-              url_selected={s.get('id') for s in url_bindings if isinstance(s,dict)}
-              print('CI_BROWSER_SELECTED_COUNT='+str(len(selected)),flush=True)
-              print('CI_BROWSER_URL_SELECTED_COUNT='+str(len(url_selected)),flush=True)
-              print('CI_BROWSER_SELECTED_OVERLAP='+str(len(selected & url_selected)),flush=True)
-              assert selected==url_selected, 'CI_BROWSER_POST_SPECIALIST_SELECTION_DRIFT'
+              # The route bindings are already verified by launched('auto') before
+              # the chat route can consume/replace its navigation parameters.
+              # At POST time, verify nonempty selected agents against the server ACL;
+              # do not require transient URL parameters to remain present.
+              print('CI_BROWSER_POST_AUTHORIZED_SPECIALIST_COUNT='+str(len(selected)),flush=True)
               print('CI_BROWSER_REAL_MISSION_POST_AUTHORIZED=PASS',flush=True)
               # Wait for the actual admission reply from this browser turn.
               # Never substitute the separate synthetic Oracle mission.
