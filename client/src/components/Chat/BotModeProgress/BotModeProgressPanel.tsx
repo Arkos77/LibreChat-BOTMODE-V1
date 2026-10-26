@@ -96,8 +96,8 @@ export default function BotModeProgressPanel({
           <p className="mt-1 text-xs text-text-secondary" role="status">
             {progress.count > 0
               ? localize('com_ui_botmode_progress_counter', {
-                  count: String(progress.count),
-                  total: String(MISSION_PHASES.length),
+                  count: progress.count,
+                  total: MISSION_PHASES.length,
                 })
               : localize('com_ui_botmode_progress_not_recorded')}
           </p>
@@ -202,7 +202,7 @@ export default function BotModeProgressPanel({
           </h3>
           <p className="text-xs text-text-secondary">
             {results.length > 0
-              ? localize('com_ui_botmode_progress_results', { count: String(results.length) })
+              ? localize('com_ui_botmode_progress_results', { count: results.length })
               : localize('com_ui_botmode_progress_no_outputs')}
           </p>
         </section>
