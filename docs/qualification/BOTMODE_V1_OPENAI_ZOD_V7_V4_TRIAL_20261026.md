@@ -1,26 +1,23 @@
-# Security compatibility experiment: OpenAI SDK 7 / Zod 4
+# BOT MODE V1 — isolated security experiments, 26 October 2026
 
-Date: 2026-10-26. EXPERIMENTAL ONLY; not approved for integration or deployment.
+**All changes experimental. Not accepted for release, merge or runtime deployment.**
 
-Baseline: PR83 SHA 9145de18e33c8fcde1f9ed161e6c6e95914fc843 with five production npm advisories resolved and four HIGH still reported.
+Baseline: PR83 SHA 9145de18e33c8fcde1f9ed161e6c6e95914fc843, production npm audit 0 critical / 4 high / 0 moderate.
 
-## Trial changes
-- api: OpenAI SDK 5.8.2 -> 7.44.0; Zod dependency ^3.22.4 -> ^4.6.7.
-- client and packages/data-provider: Zod dependency ^3.22.4 -> ^4.6.7.
-- packages/api: Zod peer range ^3.22.4 -> ^4.6.7.
-- Regenerated root package-lock with npm install --package-lock-only --ignore-scripts --no-audit --no-fund. No forced audit fix.
-- No source or code migrations attempted yet; incompatibilities are expected and MUST be measured with CI.
+## Attempt 1: SDK OpenAI 7.44.0 + Zod 4.6.7 across workspaces — REJECTED
 
-## Security evidence
-- Baseline production audit: 0 critical, 4 HIGH, 0 moderate (2 Azure/MSAL and 2 OpenAI/Zod).
-- Experiment production audit: 0 critical, 2 HIGH, 0 moderate (both Azure/MSAL). OpenAI/Zod advisory package entries gone from lockfile.
-- This audit is lockfile-level only. It neither establishes functional compatibility nor ensures the new dependencies are present in a built final Docker image.
+Lockfile-only audit yielded 0 critical / 2 high / 0 moderate (Azure/MSAL only), BUT GitHub Frontend run 40382525312 and Backend run 40382525253 both FAILED at Build data-provider, with extensive Zod 4 API/type incompatibilities (ZodError.errors, Zod AnyZodObject, schema defaultValue, records and config type signatures). Downstream suites were skipped. Therefore this four-workspace migration is UNSAFE to integrate. No deployed runtime changes.
 
-## Acceptance gates
-- Strict frontend TypeScript/Vite/Jest, backend tests, static checks, SDK/tool calling compatibility, provider fallback and Worker->specialists->Oracle->P6 regressions.
-- Ensure no incompatible Zod 3 parse/schema APIs or OpenAI SDK v7 runtime paths; a passing audit cannot waive failing tests.
-- After CI evaluation, preserve base PR83 until a deliberate decision to integrate, refine or reject.
-- No changes to running 3080/3081, no Docker build on Chromebook, no secrets, no paid models, no GHCR, no merge/stable publication.
+## Attempt 2: SDK OpenAI 7.44.0 only, retain Zod 3 across workspaces
 
-## Azure/MSAL
-- Independent security advisory GHSA-xcx6-jx8p-x3h5 impacts MSAL authorization-code flow and is patched in MSAL 7.1.0. BOT MODE application uses DefaultAzureCredential for Azure Blob and OpenID OBO through openid-client, with no direct acquireTokenByCode call observed. Not enough evidence to claim Azure not exploitable through all transitive paths.
+This PR's current changes are restricted to:
+- api/package.json openai 5.8.2 -> 7.44.0
+- root package-lock.json updated with npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+- all Zod 3 declarations restored in api, client, packages/api and packages/data-provider; changes to those files are merely the revert of the first experimental commit relative to this PR (net difference against PR83 is OpenAI API manifest + package-lock and this document).
+
+Production npm audit of this narrower candidate yields 0 critical / 3 high / 0 moderate: Azure identity/MSAL and Zod. OpenAI advisory entry is resolved.
+
+### Required qualification before possible adoption
+Exact SHA CI must pass: build data-provider, API and frontend TypeScript, static checks, backend and frontend unit tests; provider compatibility, free fallback, Worker->specialists->Oracle->P6 (especially SDK tool calling, usage receipts), and isolation. Even green CI is not proof of full real-provider behavior.
+
+This is a DRAFT EXPERIMENT. No merge, no stable/latest tag, no Docker/GHCR publication, no 3080/3081 changes, no paid model usage. Remaining high warnings still block stable release.
