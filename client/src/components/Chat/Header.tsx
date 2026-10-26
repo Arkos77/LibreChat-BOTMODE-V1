@@ -161,9 +161,7 @@ function Header({
             className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-text-secondary hover:bg-surface-hover hover:text-text-primary"
           >
             <ListTodo className="h-4 w-4" aria-hidden="true" />
-            <span className="hidden sm:inline">
-              {localize('com_ui_botmode_progress_title')}
-            </span>
+            <span className="hidden sm:inline">{localize('com_ui_botmode_progress_title')}</span>
           </button>
         )}
         <div className="hidden items-center gap-2 md:flex">

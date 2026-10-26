@@ -10,18 +10,17 @@ import {
   X,
 } from 'lucide-react';
 import type { TBotModeProjectObservation } from 'librechat-data-provider';
-import {
-  subagentStatusDotClass,
-  subagentStatusLabelKey,
-} from '~/components/Chat/Subagents/status';
-import {
-  useBotModeProjectProjectionQuery,
-  useParentSubagentsQuery,
-} from '~/data-provider';
+import { subagentStatusDotClass, subagentStatusLabelKey } from '~/components/Chat/Subagents/status';
+import { useBotModeProjectProjectionQuery, useParentSubagentsQuery } from '~/data-provider';
 import { useLocalize } from '~/hooks';
 
 export const MISSION_PHASES = [
-  'REQUESTED', 'PLANNED', 'DECIDED', 'AUTHORIZED', 'COMMITTED', 'SETTLED',
+  'REQUESTED',
+  'PLANNED',
+  'DECIDED',
+  'AUTHORIZED',
+  'COMMITTED',
+  'SETTLED',
 ] as const;
 type Phase = (typeof MISSION_PHASES)[number];
 
@@ -46,8 +45,12 @@ export function getMissionProgress(observations: TBotModeProjectObservation[]) {
     latest,
     count: latest ? MISSION_PHASES.indexOf(latest as Phase) + 1 : 0,
     recorded,
-    verified: observations.filter((item) => item.source === 'oracle' && item.type === 'VERIFIED').length,
-    rejected: observations.filter((item) => item.source === 'oracle' && item.type === 'REJECTED').length,
+    verified: observations.filter(
+      (item) => item.source === 'oracle' && item.type === 'VERIFIED',
+    ).length,
+    rejected: observations.filter(
+      (item) => item.source === 'oracle' && item.type === 'REJECTED',
+    ).length,
   };
 }
 
@@ -126,10 +129,16 @@ export default function BotModeProgressPanel({
                 return (
                   <li key={phase} className="flex items-center gap-2">
                     <Icon
-                      className={'h-4 w-4 shrink-0 ' + (recorded ? 'text-emerald-500' : 'text-text-tertiary')}
+                      className={
+                        'h-4 w-4 shrink-0 ' + (recorded ? 'text-emerald-500' : 'text-text-tertiary')
+                      }
                       aria-hidden="true"
                     />
-                    <span className={progress.latest === phase ? 'font-semibold' : 'text-text-secondary'}>
+                    <span
+                      className={
+                        progress.latest === phase ? 'font-semibold' : 'text-text-secondary'
+                      }
+                    >
                       {localize(PHASE_LABELS[phase])}
                     </span>
                   </li>
@@ -147,7 +156,10 @@ export default function BotModeProgressPanel({
             </h3>
             <ol className="space-y-2">
               {tasks.map((task, i) => (
-                <li key={task.taskId ?? i} className="rounded-lg border border-border-light p-2.5 text-xs">
+                <li
+                  key={task.taskId ?? i}
+                  className="rounded-lg border border-border-light p-2.5 text-xs"
+                >
                   {task.objective || localize('com_ui_botmode_progress_untitled')}
                 </li>
               ))}
@@ -165,7 +177,9 @@ export default function BotModeProgressPanel({
               {children.map((child) => (
                 <li key={child.threadId} className="flex items-start gap-2 text-xs">
                   <span
-                    className={'mt-1.5 h-2 w-2 shrink-0 rounded-full ' + subagentStatusDotClass(child.status)}
+                    className={
+                      'mt-1.5 h-2 w-2 shrink-0 rounded-full ' + subagentStatusDotClass(child.status)
+                    }
                     aria-hidden="true"
                   />
                   <span className="min-w-0 flex-1 truncate">{child.title}</span>
@@ -209,9 +223,7 @@ export default function BotModeProgressPanel({
 
         {(sources.length > 0 || receipts.length > 0) && (
           <section aria-label={localize('com_ui_botmode_progress_resources')}>
-            <h3 className="mb-2 font-semibold">
-              {localize('com_ui_botmode_progress_resources')}
-            </h3>
+            <h3 className="mb-2 font-semibold">{localize('com_ui_botmode_progress_resources')}</h3>
             {sources.map((source, i) => (
               <div key={source.fileId ?? i} className="truncate py-1 text-xs text-text-secondary">
                 {source.filename || localize('com_ui_botmode_progress_source')}
