@@ -332,6 +332,17 @@ class Handler(BaseHTTPRequestHandler):
             if advertised: calls["advertised_subagent_requests"]=calls.get("advertised_subagent_requests",0)+1
             if not advertised: calls["requests_without_subagent_tool"]=calls.get("requests_without_subagent_tool",0)+1
             if req.get("response_format"): calls["structured_format_requests"]=calls.get("structured_format_requests",0)+1
+            # Counters only: identify whether the browser invokes a tool-capable
+            # parent or a child-like request; never retain message contents.
+            tools=req.get("tools") or []
+            calls["last_tool_count"]=len(tools) if isinstance(tools,list) else -1
+            calls["last_message_count"]=len(messages)
+            calls["last_has_tool_result"]=int(has_tool_result)
+            calls["last_prior_subagent_call"]=int(already_requested)
+            calls["last_advertised_subagent"]=int(bool(advertised))
+            calls["last_tool_choice_forced"]=int(isinstance(req.get("tool_choice"),dict))
+            if not advertised and not has_tool_result and not already_requested:
+                calls["unclassified_no_tool_turns"]=calls.get("unclassified_no_tool_turns",0)+1
         if FALLBACK_MODE:
             try:
                 if req.get('model') != MODEL:
