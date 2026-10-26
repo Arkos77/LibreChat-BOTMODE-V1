@@ -31,6 +31,8 @@ type ProjectCreateDialogProps = {
   onCreated?: (project: TChatProject) => void;
   children?: ReactNode;
   triggerRef?: MutableRefObject<HTMLButtonElement | null>;
+  initialName?: string;
+  initialDescription?: string;
 };
 
 export default function ProjectCreateDialog({
@@ -39,6 +41,8 @@ export default function ProjectCreateDialog({
   onCreated,
   children,
   triggerRef,
+  initialName = '',
+  initialDescription = '',
 }: ProjectCreateDialogProps) {
   const localize = useLocalize();
   const formId = useId();
@@ -52,9 +56,11 @@ export default function ProjectCreateDialog({
     if (!open) {
       return;
     }
+    setName(initialName.slice(0, MAX_CHAT_PROJECT_NAME_LENGTH));
+    setDescription(initialDescription.slice(0, MAX_CHAT_PROJECT_DESCRIPTION_LENGTH));
     const frameId = requestAnimationFrame(() => inputRef.current?.focus());
     return () => cancelAnimationFrame(frameId);
-  }, [open]);
+  }, [open, initialName, initialDescription]);
 
   const resetForm = () => {
     setName('');

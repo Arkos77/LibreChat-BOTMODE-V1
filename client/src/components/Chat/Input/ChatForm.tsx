@@ -39,6 +39,7 @@ import InterruptSteerButton from './InterruptSteerButton';
 import PastedTextDialog from './Files/PastedTextDialog';
 import DuringRunSendButton from './DuringRunSendButton';
 import ProjectLandingChip from '../ProjectLandingChip';
+import BotModeProjectSuggestion from './BotModeProjectSuggestion';
 import { useGetStartupConfig } from '~/data-provider';
 import { mainTextareaId, BadgeItem } from '~/common';
 import PendingSteerChips from './PendingSteerChips';
@@ -603,6 +604,13 @@ const ChatForm = memo(function ChatForm({
               )}
             >
               {project ? <ProjectLandingChip project={project} /> : null}
+              {index === 0 && !isTemporary && !isSubmitting && !composerReserved && (
+                <BotModeProjectSuggestion
+                  text={textValue ?? ''}
+                  conversation={conversation}
+                  disabled={disableInputs}
+                />
+              )}
               <TextareaHeader addedConvo={addedConvo} setAddedConvo={setAddedConvo} />
               <PendingManualSkillsChips conversationId={conversationId} />
               {quotesEnabled && <PendingQuoteChips conversationId={conversationId} />}

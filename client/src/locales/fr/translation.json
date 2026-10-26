@@ -1,4 +1,8 @@
 {
+  "com_ui_botmode_project_suggestion": "Cette demande semble nécessiter plusieurs étapes. Créer un projet pour suivre son avancement ?",
+  "com_ui_botmode_project_create": "Créer un projet",
+  "com_ui_botmode_continue_chat": "Continuer dans Chat",
+  "com_ui_botmode_dismiss_suggestion": "Ignorer la suggestion de projet",
   "com_ui_intelbase_lookup": "Recherche email IntelBase :",
   "com_ui_intelbase_invalid": "Adresse invalide",
   "com_ui_intelbase_unavailable": "La finalite et le plafond de cout doivent etre configures avant activation.",

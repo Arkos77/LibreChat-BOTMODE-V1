@@ -1,4 +1,8 @@
 {
+  "com_ui_botmode_project_suggestion": "This looks like a longer mission. Create a project to track its progress?",
+  "com_ui_botmode_project_create": "Create project",
+  "com_ui_botmode_continue_chat": "Continue in Chat",
+  "com_ui_botmode_dismiss_suggestion": "Dismiss project suggestion",
   "com_ui_botmode_mode_auto": "BOT MODE · Automatic mode",
   "com_ui_botmode_mode_fast": "BOT MODE · Fast chat",
   "com_ui_botmode_mode_analyze": "BOT MODE · Analysis mission",
