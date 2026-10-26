@@ -6,6 +6,7 @@
   "com_ui_botmode_progress_worker_running": "Le Worker traite votre demande…",
   "com_ui_botmode_progress_task_planned": "Planifiée — exécution non encore confirmée",
   "com_ui_botmode_progress_no_stages": "Aucune étape d’exécution encore enregistrée",
+  "com_ui_botmode_tools_left_title": "Outils utilisés",
   "com_ui_botmode_progress_title": "Progression",
   "com_ui_botmode_progress_stages": "Progression",
   "com_ui_botmode_progress_phase_requested": "Demande reçue",

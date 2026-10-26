@@ -1,6 +1,8 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { useRecoilValue } from 'recoil';
+import { createPortal } from 'react-dom';
 import { Button } from '@librechat/client';
+import { useAtomValue, useSetAtom } from 'jotai';
 import { ChevronDown, MessageCircleQuestion, Users } from 'lucide-react';
 import { Tools, Constants, ContentTypes, ToolCallTypes } from 'librechat-data-provider';
 import type {
@@ -11,6 +13,11 @@ import type {
 } from 'librechat-data-provider';
 import type { PartWithIndex } from './ParallelContent';
 import {
+  BOTMODE_TOOLS_LEFT_HOST_ID,
+  botModeToolsInSidebarAtom,
+  botModeToolsSidebarExpandedAtom,
+} from '~/components/Chat/BotModeTools/state';
+import {
   cn,
   getToolDisplayLabel,
   hasPendingApprovalInPart,
@@ -18,6 +25,7 @@ import {
   getActivityLabelText,
 } from '~/utils';
 import { useLocalize, useExpandCollapse, scheduleMessageContentLayoutReconcile } from '~/hooks';
+import { useBotModeView } from '~/components/Chat/BotModeViewContext';
 import { useMCPIconMap, useMCPServerNames } from '~/hooks/MCP';
 import { isBashProgrammaticToolCall } from './routing';
 import { ASK_USER_QUESTION } from '~/utils/approval';
@@ -126,6 +134,10 @@ export default function ToolCallGroup({
   const localize = useLocalize();
   const mcpIconMap = useMCPIconMap();
   const mcpServerNames = useMCPServerNames();
+  const isBotModeView = useBotModeView();
+  const isLeftSidebarExpanded = useAtomValue(botModeToolsSidebarExpandedAtom);
+  const setSidebarToolCount = useSetAtom(botModeToolsInSidebarAtom);
+  const [leftHost, setLeftHost] = useState<HTMLElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const cancelLayoutReconcileRef = useRef<(() => void) | null>(null);
   const retainedForPendingApprovalRef = useRef(false);
@@ -146,6 +158,26 @@ export default function ToolCallGroup({
     () => parts.some(({ part }) => hasPendingApprovalInPart(part)),
     [parts],
   );
+
+  // The original interactive group is portalled, never copied. Approval
+  // prompts and attachment-bearing groups stay in the conversation.
+  useEffect(() => {
+    setLeftHost(document.getElementById(BOTMODE_TOOLS_LEFT_HOST_ID));
+  }, []);
+  const showOnLeft =
+    isBotModeView &&
+    isLeftSidebarExpanded &&
+    leftHost != null &&
+    count > 0 &&
+    !hasPendingApproval &&
+    !withinActivityPhase &&
+    (groupAttachments?.length ?? 0) === 0;
+
+  useEffect(() => {
+    if (!showOnLeft) return;
+    setSidebarToolCount((current) => current + 1);
+    return () => setSidebarToolCount((current) => Math.max(0, current - 1));
+  }, [showOnLeft, setSidebarToolCount]);
   const activityLabel = getBatchActivityLabelPart(labelPart?.part);
   const activityLabelText = getActivityLabelText(activityLabel);
   const activityFailed = activityLabel?.status === 'failed' || activityLabel?.status === 'partial';
@@ -338,7 +370,7 @@ export default function ToolCallGroup({
     }
   }, [hasActiveToolCall, userOverride, suppressAutoExpand]);
 
-  return (
+  const groupContent = (
     <div className="mb-2 mt-1" ref={rootRef}>
       <Button
         variant="ghost"
@@ -418,4 +450,6 @@ export default function ToolCallGroup({
       )}
     </div>
   );
+
+  return showOnLeft && leftHost != null ? createPortal(groupContent, leftHost) : groupContent;
 }
