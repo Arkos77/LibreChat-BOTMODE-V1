@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useAtomValue, useSetAtom } from 'jotai';
 import {
   CheckCircle2,
   Circle,
@@ -6,8 +7,14 @@ import {
   FileText,
   LoaderCircle,
   ShieldCheck,
+  Wrench,
 } from 'lucide-react';
 import type { TBotModeProjectObservation } from 'librechat-data-provider';
+import {
+  BOTMODE_TOOLS_RIGHT_HOST_ID,
+  botModeToolsRightCountAtom,
+  botModeToolsRightHostAtom,
+} from '~/components/Chat/BotModeTools/state';
 import { subagentStatusDotClass, subagentStatusLabelKey } from '~/components/Chat/Subagents/status';
 import { useBotModeProjectProjectionQuery, useParentSubagentsQuery } from '~/data-provider';
 import { useLocalize } from '~/hooks';
@@ -67,6 +74,12 @@ export default function BotModeProgressPanel({
   isSubmitting?: boolean;
 }) {
   const localize = useLocalize();
+  const toolGroupCount = useAtomValue(botModeToolsRightCountAtom);
+  const setRightHost = useSetAtom(botModeToolsRightHostAtom);
+  const registerRightHost = useCallback(
+    (node: HTMLDivElement | null) => setRightHost(node),
+    [setRightHost],
+  );
   const { data: project } = useBotModeProjectProjectionQuery(projectId, {
     enabled: Boolean(projectId),
     refetchInterval: isSubmitting ? 2_000 : 5_000,
@@ -89,7 +102,10 @@ export default function BotModeProgressPanel({
   const results = current?.results.filter((item) => Boolean(item.content.trim())) ?? [];
   const sources = project?.sources ?? [];
   const receipts = current?.modelReceipts ?? [];
+  const hasMissionStages =
+    isSubmitting || progress.count > 0 || tasks.length > 0 || children.length > 0;
   const hasActivity =
+    toolGroupCount > 0 ||
     isSubmitting ||
     progress.count > 0 ||
     tasks.length > 0 ||
@@ -118,12 +134,29 @@ export default function BotModeProgressPanel({
       </header>
 
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5 text-sm">
+        <section
+          className={toolGroupCount > 0 ? 'block' : 'hidden'}
+          aria-label={localize('com_ui_botmode_tools_right_title')}
+          data-testid="botmode-tools-right-section"
+        >
+          <h3 className="mb-3 flex items-center gap-2 font-semibold">
+            <Wrench className="h-4 w-4 text-blue-500" aria-hidden="true" />
+            {localize('com_ui_botmode_tools_right_title')}
+          </h3>
+          <div
+            id={BOTMODE_TOOLS_RIGHT_HOST_ID}
+            ref={registerRightHost}
+            data-testid="botmode-tools-right-host"
+            className="min-w-0 space-y-2"
+          />
+        </section>
         {!hasActivity ? (
           <p className="text-sm text-text-secondary" data-testid="botmode-progress-idle">
             {localize('com_ui_botmode_progress_waiting')}
           </p>
         ) : (
           <>
+            {hasMissionStages && (
             <section aria-label={localize('com_ui_botmode_progress_stages')}>
               <h3 className="mb-3 font-semibold">{localize('com_ui_botmode_progress_stages')}</h3>
               <ol className="space-y-3 border-l border-border-medium pl-4" aria-live="polite">
@@ -188,6 +221,7 @@ export default function BotModeProgressPanel({
                   )}
               </ol>
             </section>
+            )}
 
             {(progress.verified > 0 || progress.rejected > 0) && (
               <section aria-label={localize('com_ui_botmode_progress_oracle')}>

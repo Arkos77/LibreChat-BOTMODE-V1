@@ -6,7 +6,7 @@
   "com_ui_botmode_progress_worker_running": "Worker is handling your request…",
   "com_ui_botmode_progress_task_planned": "Planned — awaiting execution evidence",
   "com_ui_botmode_progress_no_stages": "No execution steps recorded yet",
-  "com_ui_botmode_tools_left_title": "Tools used",
+  "com_ui_botmode_tools_right_title": "Tools used",
   "com_ui_botmode_progress_title": "Progress",
   "com_ui_botmode_progress_stages": "Progress",
   "com_ui_botmode_progress_phase_requested": "Request received",

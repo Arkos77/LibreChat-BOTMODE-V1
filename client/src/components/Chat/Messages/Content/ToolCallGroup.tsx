@@ -13,17 +13,16 @@ import type {
 } from 'librechat-data-provider';
 import type { PartWithIndex } from './ParallelContent';
 import {
-  BOTMODE_TOOLS_LEFT_HOST_ID,
-  botModeToolsInSidebarAtom,
-  botModeToolsSidebarExpandedAtom,
-} from '~/components/Chat/BotModeTools/state';
-import {
   cn,
   getToolDisplayLabel,
   hasPendingApprovalInPart,
   getBatchActivityLabelPart,
   getActivityLabelText,
 } from '~/utils';
+import {
+  botModeToolsRightHostAtom,
+  botModeToolsRightCountAtom,
+} from '~/components/Chat/BotModeTools/state';
 import { useLocalize, useExpandCollapse, scheduleMessageContentLayoutReconcile } from '~/hooks';
 import { useBotModeView } from '~/components/Chat/BotModeViewContext';
 import { useMCPIconMap, useMCPServerNames } from '~/hooks/MCP';
@@ -135,9 +134,8 @@ export default function ToolCallGroup({
   const mcpIconMap = useMCPIconMap();
   const mcpServerNames = useMCPServerNames();
   const isBotModeView = useBotModeView();
-  const isLeftSidebarExpanded = useAtomValue(botModeToolsSidebarExpandedAtom);
-  const setSidebarToolCount = useSetAtom(botModeToolsInSidebarAtom);
-  const [leftHost, setLeftHost] = useState<HTMLElement | null>(null);
+  const rightHost = useAtomValue(botModeToolsRightHostAtom);
+  const setRightToolCount = useSetAtom(botModeToolsRightCountAtom);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const cancelLayoutReconcileRef = useRef<(() => void) | null>(null);
   const retainedForPendingApprovalRef = useRef(false);
@@ -159,25 +157,23 @@ export default function ToolCallGroup({
     [parts],
   );
 
-  // The original interactive group is portalled, never copied. Approval
-  // prompts and attachment-bearing groups stay in the conversation.
-  useEffect(() => {
-    setLeftHost(document.getElementById(BOTMODE_TOOLS_LEFT_HOST_ID));
-  }, []);
-  const showOnLeft =
+  // Portal the original interactive group into Progression on the RIGHT.
+  // Approval controls, attachments and nested phase groups stay inline.
+  // When the progress panel closes, rightHost becomes null and the group
+  // remains accessible in the conversation; nothing is copied or persisted.
+  const showOnRight =
     isBotModeView &&
-    isLeftSidebarExpanded &&
-    leftHost != null &&
+    rightHost != null &&
     count > 0 &&
     !hasPendingApproval &&
     !withinActivityPhase &&
     (groupAttachments?.length ?? 0) === 0;
 
   useEffect(() => {
-    if (!showOnLeft) return;
-    setSidebarToolCount((current) => current + 1);
-    return () => setSidebarToolCount((current) => Math.max(0, current - 1));
-  }, [showOnLeft, setSidebarToolCount]);
+    if (!showOnRight) return;
+    setRightToolCount((current) => current + 1);
+    return () => setRightToolCount((current) => Math.max(0, current - 1));
+  }, [showOnRight, setRightToolCount]);
   const activityLabel = getBatchActivityLabelPart(labelPart?.part);
   const activityLabelText = getActivityLabelText(activityLabel);
   const activityFailed = activityLabel?.status === 'failed' || activityLabel?.status === 'partial';
@@ -451,5 +447,5 @@ export default function ToolCallGroup({
     </div>
   );
 
-  return showOnLeft && leftHost != null ? createPortal(groupContent, leftHost) : groupContent;
+  return showOnRight && rightHost != null ? createPortal(groupContent, rightHost) : groupContent;
 }

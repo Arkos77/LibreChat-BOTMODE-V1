@@ -1,7 +1,8 @@
 import { atom } from 'jotai';
 
-/** Shared between the app sidebar and BOT MODE's message components. */
-export const botModeToolsSidebarExpandedAtom = atom(false);
-export const botModeToolsInSidebarAtom = atom(0);
+/** The progress panel owns the host. Closing it removes the host so the original
+ * tool controls return to the conversation rather than becoming inaccessible. */
+export const botModeToolsRightHostAtom = atom<HTMLElement | null>(null);
+export const botModeToolsRightCountAtom = atom(0);
 
-export const BOTMODE_TOOLS_LEFT_HOST_ID = 'botmode-tools-left-host';
+export const BOTMODE_TOOLS_RIGHT_HOST_ID = 'botmode-tools-right-host';
