@@ -937,7 +937,8 @@ jobs:
                   print('CI_BROWSER_FIXTURE_'+metric.upper()+'_DELTA='+str(after-before),flush=True)
               for metric in ('last_tool_count','last_message_count','last_has_tool_result',
                              'last_prior_subagent_call','last_advertised_subagent',
-                             'last_tool_choice_forced','unclassified_no_tool_turns'):
+                             'last_tool_choice_forced','last_forced_tool_class','last_advertised_web_search',
+                             'unclassified_no_tool_turns'):
                   print('CI_BROWSER_FIXTURE_'+metric.upper()+'='+str(fixture_after.get(metric,'absent')),flush=True)
               page.close()
               context.close()
