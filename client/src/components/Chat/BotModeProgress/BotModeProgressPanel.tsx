@@ -40,16 +40,13 @@ export function getMissionProgress(observations: TBotModeProjectObservation[]) {
   const latest = [...observations]
     .reverse()
     .find((item) => MISSION_PHASES.includes(item.type as Phase))?.type;
+  const oracleEvents = observations.filter((item) => item.source === 'oracle');
   return {
     latest,
     count: latest ? MISSION_PHASES.indexOf(latest as Phase) + 1 : 0,
     recorded,
-    verified: observations.filter(
-      (item) => item.source === 'oracle' && item.type === 'VERIFIED',
-    ).length,
-    rejected: observations.filter(
-      (item) => item.source === 'oracle' && item.type === 'REJECTED',
-    ).length,
+    verified: oracleEvents.filter((item) => item.type === 'VERIFIED').length,
+    rejected: oracleEvents.filter((item) => item.type === 'REJECTED').length,
   };
 }
 
