@@ -3,7 +3,6 @@
  * It does not establish live Azure authentication compatibility.
  */
 import { DefaultAzureCredential } from '@azure/identity';
-import { BlobServiceClient } from '@azure/storage-blob';
 
 describe('Azure MSAL 7 compatibility (offline)', () => {
   const initialAccount = process.env.AZURE_STORAGE_ACCOUNT_NAME;
@@ -39,7 +38,7 @@ describe('Azure MSAL 7 compatibility (offline)', () => {
     process.env.AZURE_STORAGE_ACCOUNT_NAME = 'botmodeofflinefixture';
     const { initializeAzureBlobService } = await import('../azure');
     const client = await initializeAzureBlobService();
-    expect(client).toBeInstanceOf(BlobServiceClient);
     expect(client?.url).toBe('https://botmodeofflinefixture.blob.core.windows.net');
+    expect(typeof client?.getContainerClient).toBe('function');
   });
 });

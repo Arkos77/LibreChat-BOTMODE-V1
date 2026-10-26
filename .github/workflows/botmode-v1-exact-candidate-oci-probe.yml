@@ -881,10 +881,20 @@ jobs:
                   raise AssertionError('CI_BROWSER_WORKER_MISSION_POST_NOT_OBSERVED')
               request=admissions[0]
               assert request.get('agent_id')==worker_id, 'CI_BROWSER_POST_WORKER_MISMATCH'
+              # Current Chat deliberately sends an intent-only mission;
+              # server-authorized specialist bindings come from botMode,
+              # not a legacy browser-supplied plannerContext.
               orchestration=request.get('orchestratorMission') or {}
-              planner=orchestration.get('plannerContext') or {}
-              selected={s.get('agentId') for s in planner.get('specialists',[]) if isinstance(s,dict)}
+              assert (orchestration.get('mission') or {}).get('missionId'), 'CI_BROWSER_POST_MISSION_ID_MISSING'
+              assert not orchestration.get('plannerContext'), 'CI_BROWSER_CLIENT_MUST_NOT_GRANT_PLANNER_CONTEXT'
+              bot_mode=request.get('botMode') or {}
+              assert bot_mode.get('workerAgentId')==worker_id, 'CI_BROWSER_POST_BOTMODE_WORKER_MISMATCH'
+              assert bot_mode.get('selectionMode')=='auto', 'CI_BROWSER_POST_SELECTION_MODE_MISMATCH'
+              selected={s.get('id') for s in bot_mode.get('agents',[]) if isinstance(s,dict)}
               assert selected and selected.issubset(allowlist), 'CI_BROWSER_POST_SPECIALIST_ACL_MISMATCH'
+              url_bindings=json.loads(parse_qs(urlparse(page.url).query).get('botmode_agent_bindings',['[]'])[0])
+              url_selected={s.get('id') for s in url_bindings if isinstance(s,dict)}
+              assert selected==url_selected, 'CI_BROWSER_POST_SPECIALIST_SELECTION_DRIFT'
               print('CI_BROWSER_REAL_MISSION_POST_AUTHORIZED=PASS',flush=True)
               # Wait for the actual admission reply from this browser turn.
               # Never substitute the separate synthetic Oracle mission.
