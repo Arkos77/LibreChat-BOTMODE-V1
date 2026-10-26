@@ -928,7 +928,8 @@ jobs:
               assert completed, 'CI_BROWSER_MISSION_STREAM_NOT_TERMINAL_WITH_PAGE_OPEN'
               with urlopen('http://127.0.0.1:8088/metrics',timeout=5) as metric_response:
                   fixture_after=json.load(metric_response)
-              for metric in ('completion_calls','parent_tool_requests','child_responses','parent_final','missing_tool'):
+              for metric in ('completion_calls','parent_tool_requests','child_responses','parent_final','missing_tool',
+                             'advertised_subagent_requests','requests_without_subagent_tool','structured_format_requests'):
                   before=fixture_before.get(metric,0)
                   after=fixture_after.get(metric,0)
                   print('CI_BROWSER_FIXTURE_'+metric.upper()+'_DELTA='+str(after-before),flush=True)
@@ -981,7 +982,10 @@ jobs:
                           verdicts=[v.get('status') for outcome in results.values() for v in outcome.get('verdicts',[]) if isinstance(v,dict)]
                           tasks=plan.get('tasks',[])
                           expected={task.get('taskId') for task in tasks if isinstance(task,dict)}
-                          valid=(len(tasks)==5 and len(expected)==5 and None not in expected
+                          # The browser explicitly launches ANALYZE without attachments:
+                          # research, analysis, synthesis (three canonical tasks).
+                          # Five-node DEVELOP mode is independently verified above.
+                          valid=(len(tasks)==3 and len(expected)==3 and None not in expected
                             and set(results)==expected
                             and all(
                               isinstance(task.get('validation'),list) and len(task['validation'])>0
@@ -1015,6 +1019,18 @@ jobs:
               print('CI_BROWSER_JOB_REDIS_ACCESS='+('PASS' if diag.returncode==0 else 'FAIL'),flush=True)
               print('CI_BROWSER_JOB_STATUS='+(fields[0][:32] if fields else 'ABSENT'),flush=True)
               print('CI_BROWSER_JOB_HAS_ERROR='+str(bool(len(fields)>1 and fields[1].strip())),flush=True)
+              if len(fields)>1 and fields[1].strip():
+                  import hashlib
+                  detail=fields[1].strip()
+                  print('CI_BROWSER_ERROR_FINGERPRINT='+hashlib.sha256(detail.encode()).hexdigest()[:16],flush=True)
+                  categories=('MISSION_ORACLE','RESEARCH','SOURCE','PROVIDER','MODEL','TOOL','AUTH',
+                    'CAPABILITY','BUDGET','CONTRACT','VALIDATION','TIMEOUT','ABORT','REJECT')
+                  print('CI_BROWSER_ERROR_CATEGORY='+','.join(c for c in categories if c in detail.upper()),flush=True)
+                  try:
+                      obj=json.loads(detail)
+                      print('CI_BROWSER_ERROR_JSON_KEYS='+','.join(sorted(obj)[:10])[:150] if isinstance(obj,dict) else 'not_object',flush=True)
+                  except (ValueError,TypeError):
+                      print('CI_BROWSER_ERROR_JSON_KEYS=not_json',flush=True)
               print('CI_BROWSER_JOB_HAS_PLAN='+str(bool(len(fields)>2 and fields[2].strip())),flush=True)
               if len(fields)>2 and fields[2].strip():
                   try:

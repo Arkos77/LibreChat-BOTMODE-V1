@@ -328,6 +328,10 @@ class Handler(BaseHTTPRequestHandler):
         with lock:
             calls["completion_calls"]+=1
             number=calls["completion_calls"]
+            # Bounded metadata only: no prompts, tokens, credentials or tool args.
+            if advertised: calls["advertised_subagent_requests"]=calls.get("advertised_subagent_requests",0)+1
+            if not advertised: calls["requests_without_subagent_tool"]=calls.get("requests_without_subagent_tool",0)+1
+            if req.get("response_format"): calls["structured_format_requests"]=calls.get("structured_format_requests",0)+1
         if FALLBACK_MODE:
             try:
                 if req.get('model') != MODEL:

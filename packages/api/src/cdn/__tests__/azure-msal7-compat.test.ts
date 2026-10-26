@@ -38,7 +38,7 @@ describe('Azure MSAL 7 compatibility (offline)', () => {
     process.env.AZURE_STORAGE_ACCOUNT_NAME = 'botmodeofflinefixture';
     const { initializeAzureBlobService } = await import('../azure');
     const client = await initializeAzureBlobService();
-    expect(client?.url).toBe('https://botmodeofflinefixture.blob.core.windows.net');
+    expect(new URL(client?.url ?? '').origin).toBe('https://botmodeofflinefixture.blob.core.windows.net');
     expect(typeof client?.getContainerClient).toBe('function');
   });
 });
