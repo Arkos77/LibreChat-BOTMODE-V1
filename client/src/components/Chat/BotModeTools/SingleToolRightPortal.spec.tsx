@@ -2,12 +2,9 @@
 import React from 'react';
 import { Provider, createStore } from 'jotai';
 import { ContentTypes } from 'librechat-data-provider';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, waitFor, within } from '@testing-library/react';
 import type { TMessageContentParts } from 'librechat-data-provider';
-import {
-  botModeToolsRightCountAtom,
-  botModeToolsRightHostAtom,
-} from './state';
+import { botModeToolsRightCountAtom, botModeToolsRightHostAtom } from './state';
 import { BotModeViewContext } from '~/components/Chat/BotModeViewContext';
 import SingleToolRightPortal from './SingleToolRightPortal';
 
@@ -32,8 +29,12 @@ describe('BOT MODE isolated web_search tool in right Progression panel', () => {
       <Provider store={store}>
         <BotModeViewContext.Provider value={true}>
           <div data-testid="conversation">
-            <SingleToolRightPortal part={singleSearchPart} withinActivityPhase={false} hasAttachments={false}>
-              <button type="button">Searched the web</button>
+            <SingleToolRightPortal
+              part={singleSearchPart}
+              withinActivityPhase={false}
+              hasAttachments={false}
+            >
+              <button type="button">{'Searched the web'}</button>
             </SingleToolRightPortal>
           </div>
         </BotModeViewContext.Provider>
@@ -77,11 +78,19 @@ describe('BOT MODE isolated web_search tool in right Progression panel', () => {
       <Provider store={store}>
         <BotModeViewContext.Provider value={true}>
           <div data-testid="conversation">
-            <SingleToolRightPortal part={approval} withinActivityPhase={false} hasAttachments={false}>
-              <button type="button">Approve?</button>
+            <SingleToolRightPortal
+              part={approval}
+              withinActivityPhase={false}
+              hasAttachments={false}
+            >
+              <button type="button">{'Approve?'}</button>
             </SingleToolRightPortal>
-            <SingleToolRightPortal part={singleSearchPart} withinActivityPhase={false} hasAttachments>
-              <button type="button">File-bearing tool</button>
+            <SingleToolRightPortal
+              part={singleSearchPart}
+              withinActivityPhase={false}
+              hasAttachments
+            >
+              <button type="button">{'File-bearing tool'}</button>
             </SingleToolRightPortal>
           </div>
         </BotModeViewContext.Provider>
@@ -89,7 +98,9 @@ describe('BOT MODE isolated web_search tool in right Progression panel', () => {
     );
     try {
       expect(within(view.getByTestId('conversation')).getByText('Approve?')).toBeInTheDocument();
-      expect(within(view.getByTestId('conversation')).getByText('File-bearing tool')).toBeInTheDocument();
+      expect(
+        within(view.getByTestId('conversation')).getByText('File-bearing tool'),
+      ).toBeInTheDocument();
       expect(within(host).queryByRole('button')).toBeNull();
       expect(store.get(botModeToolsRightCountAtom)).toBe(0);
     } finally {
@@ -107,15 +118,21 @@ describe('BOT MODE isolated web_search tool in right Progression panel', () => {
       <Provider store={store}>
         <BotModeViewContext.Provider value={true}>
           <div data-testid="conversation">
-            <SingleToolRightPortal part={singleSearchPart} withinActivityPhase hasAttachments={false}>
-              <button>Within phase</button>
+            <SingleToolRightPortal
+              part={singleSearchPart}
+              withinActivityPhase
+              hasAttachments={false}
+            >
+              <button>{'Within phase'}</button>
             </SingleToolRightPortal>
           </div>
         </BotModeViewContext.Provider>
       </Provider>,
     );
     try {
-      expect(within(view.getByTestId('conversation')).getByText('Within phase')).toBeInTheDocument();
+      expect(
+        within(view.getByTestId('conversation')).getByText('Within phase'),
+      ).toBeInTheDocument();
       expect(within(host).queryByRole('button')).toBeNull();
     } finally {
       view.unmount();

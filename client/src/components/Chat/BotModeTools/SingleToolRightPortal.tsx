@@ -39,6 +39,10 @@ export default function SingleToolRightPortal({
     return () => setRightCount((previous) => Math.max(0, previous - 1));
   }, [setRightCount, showOnRight]);
 
-  const card = <div className="min-w-0" data-testid="botmode-single-tool-card">{children}</div>;
+  const card = (
+    <div className="min-w-0" data-testid="botmode-single-tool-card">
+      {children}
+    </div>
+  );
   return showOnRight && rightHost != null ? createPortal(card, rightHost) : card;
 }
