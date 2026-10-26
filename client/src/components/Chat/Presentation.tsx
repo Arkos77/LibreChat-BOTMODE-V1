@@ -2,7 +2,6 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useRecoilValue } from 'recoil';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { useMediaQuery } from '@librechat/client';
-import { useSearchParams } from 'react-router-dom';
 import { EModelEndpoint, FileSources, LocalStorageKeys } from 'librechat-data-provider';
 import type { ExtendedFile } from '~/common';
 import useResetArtifactsOnConversationChange from '~/hooks/Artifacts/useResetArtifactsOnConversationChange';
@@ -23,7 +22,13 @@ import store from '~/store';
 const Artifacts = lazy(() => import('~/components/Artifacts/Artifacts'));
 const SubagentThreadPanel = lazy(() => import('~/components/Chat/Subagents/SubagentThreadPanel'));
 
-export default function Presentation({ children }: { children: React.ReactNode }) {
+export default function Presentation({
+  children,
+  projectId,
+}: {
+  children: React.ReactNode;
+  projectId?: string | null;
+}) {
   const artifacts = useRecoilValue(store.artifactsState);
   const artifactsVisibility = useRecoilValue(store.artifactsVisibility);
   // Render-gating the panel on `currentArtifactId != null` (in addition
@@ -36,7 +41,6 @@ export default function Presentation({ children }: { children: React.ReactNode }
   const currentArtifactId = useRecoilValue(store.currentArtifactId);
   const conversationId = useRecoilValue(store.conversationIdByIndex(0));
   const isSubmitting = useRecoilValue(store.isSubmittingFamily(0));
-  const [searchParams] = useSearchParams();
   const conversationEndpoint = useRecoilValue(store.effectiveEndpointByIndex(0));
   const conversationAgentId = useRecoilValue(store.conversationAgentIdByIndex(0));
   const selectedSubagent = useAtomValue(activeSubagentPanel);
@@ -152,7 +156,7 @@ export default function Presentation({ children }: { children: React.ReactNode }
   const progressElement =
     isBotModeView && isBotModeProgressOpen ? (
       <BotModeProgressPanel
-        projectId={activeConversation?.chatProjectId ?? searchParams.get('projectId')}
+        projectId={activeConversation?.chatProjectId ?? projectId}
         conversationId={conversationId ?? ''}
         isSubmitting={isSubmitting}
       />

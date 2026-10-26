@@ -146,7 +146,7 @@ function ChatView({ index = 0, project }: { index?: number; project?: TChatProje
       <ChatContext.Provider value={chatHelpers}>
         <AddedChatContext.Provider value={addedChatHelpers}>
           <BotModeViewContext.Provider value={hasBotModeView}>
-            <Presentation>
+            <Presentation projectId={project?._id ?? searchParams.get('projectId')}>
               <div className="relative flex h-full w-full flex-col">
                 <h1 className="sr-only">{pageHeading}</h1>
                 <Header

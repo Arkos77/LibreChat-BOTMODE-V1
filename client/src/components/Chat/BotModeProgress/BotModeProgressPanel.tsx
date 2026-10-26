@@ -1,5 +1,12 @@
 import { useMemo } from 'react';
-import { CheckCircle2, Circle, ClipboardList, FileText, LoaderCircle, ShieldCheck } from 'lucide-react';
+import {
+  CheckCircle2,
+  Circle,
+  ClipboardList,
+  FileText,
+  LoaderCircle,
+  ShieldCheck,
+} from 'lucide-react';
 import type { TBotModeProjectObservation } from 'librechat-data-provider';
 import { subagentStatusDotClass, subagentStatusLabelKey } from '~/components/Chat/Subagents/status';
 import { useBotModeProjectProjectionQuery, useParentSubagentsQuery } from '~/data-provider';
@@ -32,10 +39,7 @@ export function getMissionProgress(observations: TBotModeProjectObservation[]) {
   const recorded = new Set<Phase>();
   const recordedPhases: Phase[] = [];
   for (const event of ordered) {
-    if (
-      MISSION_PHASES.includes(event.type as Phase) &&
-      !recorded.has(event.type as Phase)
-    ) {
+    if (MISSION_PHASES.includes(event.type as Phase) && !recorded.has(event.type as Phase)) {
       const phase = event.type as Phase;
       recorded.add(phase);
       recordedPhases.push(phase);
@@ -174,7 +178,9 @@ export default function BotModeProgressPanel({
                     </span>
                   </li>
                 ))}
-                {progress.count === 0 && tasks.length === 0 && children.length === 0 &&
+                {progress.count === 0 &&
+                  tasks.length === 0 &&
+                  children.length === 0 &&
                   !isSubmitting && (
                     <li className="text-xs text-text-secondary">
                       {localize('com_ui_botmode_progress_no_stages')}

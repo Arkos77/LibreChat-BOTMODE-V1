@@ -77,9 +77,7 @@ describe('BOT MODE incremental progress sidebar', () => {
     });
     mockSubagentsQuery.mockReturnValue({
       data: {
-        children: [
-          { threadId: 'child-1', title: 'Spécialiste Recherche', status: 'running' },
-        ],
+        children: [{ threadId: 'child-1', title: 'Spécialiste Recherche', status: 'running' }],
       },
     });
     render(
