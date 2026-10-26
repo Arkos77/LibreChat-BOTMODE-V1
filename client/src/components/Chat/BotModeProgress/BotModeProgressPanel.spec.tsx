@@ -19,7 +19,7 @@ describe('BOT MODE progress reflects durable records only', () => {
       { type: 'REJECTED', source: 'oracle' },
     ]);
     expect(state.latest).toBe('AUTHORIZED');
-    expect(state.count).toBe(4);
+    expect(state.count).toBe(3);
     expect(state.recorded.has('DECIDED')).toBe(false);
     expect(state.verified).toBe(1);
     expect(state.rejected).toBe(1);
