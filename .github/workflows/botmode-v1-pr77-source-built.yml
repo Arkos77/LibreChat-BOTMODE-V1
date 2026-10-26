@@ -16,7 +16,7 @@ on:
         type: boolean
         default: false
       reuse_host_candidate:
-        description: 'Reuse verified a8b8073 image from run40228333797; refuse product-source drift and never rebuild'
+        description: 'Reuse verified 26e8586 image from run40250697479; refuse product-source drift and never rebuild'
         type: boolean
         default: false
       real_free_provider:
@@ -276,8 +276,8 @@ jobs:
       actions: read
     env:
       HARNESS_SHA: ${{ github.sha }}
-      CANDIDATE_SHA: a8b8073211367c06b33c491dc9973340692a416b
-      CANDIDATE_IMAGE: botmode-native-research:a8b8073211367c06b33c491dc9973340692a416b
+      CANDIDATE_SHA: 26e8586cbc802f5f7ca9ba2863c073cd967e78ba
+      CANDIDATE_IMAGE: botmode-native-research:26e8586cbc802f5f7ca9ba2863c073cd967e78ba
       CI_NATIVE_FALLBACK: ${{ inputs.native_fallback && 'true' || 'false' }}
       HOST_RESEARCH_PROJECT: botmode-research-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
@@ -320,8 +320,8 @@ jobs:
         run: python3 scripts/botmode/ci-host-research.py --check-real-catalog
       - uses: actions/download-artifact@v4
         with:
-          name: botmode-native-research-a8b8073211367c06b33c491dc9973340692a416b
-          run-id: 40228333797
+          name: botmode-native-research-26e8586cbc802f5f7ca9ba2863c073cd967e78ba
+          run-id: 40250697479
           github-token: ${{ github.token }}
           path: retained-image
       - name: Verify retained archive, image identity and embedded source
@@ -329,10 +329,10 @@ jobs:
         run: |
           set -euo pipefail
           test "$(cat retained-image/source-sha.txt)" = "$CANDIDATE_SHA"
-          test "$(cat retained-image/image-id.txt)" = 'sha256:be343811b24d065448620b40a05302e6530a615ac12887544b600a44e3ec4e54'
-          printf '%s  %s\n' '02bb76954f8093e2493085f2773aae43cce68457186d6abd23941891b7d98843' retained-image/image.tar.gz | sha256sum -c -
+          test "$(cat retained-image/image-id.txt)" = 'sha256:7332c610d921284e505c67b10e347b8d0edfa3abc962b7d2342b8c88db131d74'
+          printf '%s  %s\n' '309da49cbdf0848677c7399c00a978738ced634bc42e108ea03a06143e47495c' retained-image/image.tar.gz | sha256sum -c -
           docker load -i retained-image/image.tar.gz
-          test "$(docker image inspect "$CANDIDATE_IMAGE" --format '{{.Id}}')" = 'sha256:be343811b24d065448620b40a05302e6530a615ac12887544b600a44e3ec4e54'
+          test "$(docker image inspect "$CANDIDATE_IMAGE" --format '{{.Id}}')" = 'sha256:7332c610d921284e505c67b10e347b8d0edfa3abc962b7d2342b8c88db131d74'
           docker image inspect "$CANDIDATE_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -Fx "BUILD_COMMIT=$CANDIDATE_SHA"
       - name: Verify web auth and provider caps inside the retained image without network
         run: |
@@ -435,7 +435,7 @@ jobs:
           Path('candidate-evidence/qualification-status.json').write_text(json.dumps({
             'source_sha':os.environ['CANDIDATE_SHA'],'harness_sha':os.environ['HARNESS_SHA'],
             'retained_image':os.environ['RETAINED_OUTCOME'],'host':os.environ['HOST_OUTCOME'],
-            'compiled_proof_run':40228333797,'image_artifact':12612047426,'new_build':False,
+            'compiled_proof_run':40250697479,'image_artifact':12620841610,'new_build':False,
             'native_fallback':os.environ['CI_NATIVE_FALLBACK']=='true',
             'primary_429':'synthetic controlled' if os.environ['CI_NATIVE_FALLBACK']=='true' else None,
             'real_free_provider':os.environ['REAL_PROVIDER_REQUESTED']=='true'}))
