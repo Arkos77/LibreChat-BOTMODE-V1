@@ -1,4 +1,11 @@
 {
+  "com_ui_botmode_progress_show": "Show progress",
+  "com_ui_botmode_progress_hide": "Hide progress",
+  "com_ui_botmode_progress_live": "Live activity",
+  "com_ui_botmode_progress_waiting": "The steps will appear here as the mission progresses.",
+  "com_ui_botmode_progress_worker_running": "Worker is handling your request…",
+  "com_ui_botmode_progress_task_planned": "Planned — awaiting execution evidence",
+  "com_ui_botmode_progress_no_stages": "No execution steps recorded yet",
   "com_ui_botmode_progress_title": "Progress",
   "com_ui_botmode_progress_toggle": "Show or hide BOT MODE progress",
   "com_ui_botmode_progress_counter": "Phase {count} of {total}",

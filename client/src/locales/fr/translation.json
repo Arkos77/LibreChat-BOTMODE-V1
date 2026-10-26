@@ -1,4 +1,11 @@
 {
+  "com_ui_botmode_progress_show": "Afficher le suivi",
+  "com_ui_botmode_progress_hide": "Masquer le suivi",
+  "com_ui_botmode_progress_live": "Activité en direct",
+  "com_ui_botmode_progress_waiting": "Les étapes apparaîtront ici au fur et à mesure de la mission.",
+  "com_ui_botmode_progress_worker_running": "Le Worker traite votre demande…",
+  "com_ui_botmode_progress_task_planned": "Planifiée — exécution non encore confirmée",
+  "com_ui_botmode_progress_no_stages": "Aucune étape d’exécution encore enregistrée",
   "com_ui_botmode_progress_title": "Progression",
   "com_ui_botmode_progress_toggle": "Afficher ou masquer la progression BOT MODE",
   "com_ui_botmode_progress_counter": "Phase {count} sur {total}",

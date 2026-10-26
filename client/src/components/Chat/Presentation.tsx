@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useRecoilValue } from 'recoil';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { useMediaQuery } from '@librechat/client';
+import { useSearchParams } from 'react-router-dom';
 import { EModelEndpoint, FileSources, LocalStorageKeys } from 'librechat-data-provider';
 import type { ExtendedFile } from '~/common';
 import useResetArtifactsOnConversationChange from '~/hooks/Artifacts/useResetArtifactsOnConversationChange';
@@ -34,6 +35,8 @@ export default function Presentation({ children }: { children: React.ReactNode }
   // (gated on `isSubmitting`), restoring the legacy streaming UX.
   const currentArtifactId = useRecoilValue(store.currentArtifactId);
   const conversationId = useRecoilValue(store.conversationIdByIndex(0));
+  const isSubmitting = useRecoilValue(store.isSubmittingFamily(0));
+  const [searchParams] = useSearchParams();
   const conversationEndpoint = useRecoilValue(store.effectiveEndpointByIndex(0));
   const conversationAgentId = useRecoilValue(store.conversationAgentIdByIndex(0));
   const selectedSubagent = useAtomValue(activeSubagentPanel);
@@ -149,8 +152,9 @@ export default function Presentation({ children }: { children: React.ReactNode }
   const progressElement =
     isBotModeView && isBotModeProgressOpen ? (
       <BotModeProgressPanel
-        projectId={activeConversation?.chatProjectId}
+        projectId={activeConversation?.chatProjectId ?? searchParams.get('projectId')}
         conversationId={conversationId ?? ''}
+        isSubmitting={isSubmitting}
       />
     ) : null;
 

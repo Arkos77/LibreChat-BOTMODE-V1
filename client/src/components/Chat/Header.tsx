@@ -1,9 +1,9 @@
 import { memo, useMemo } from 'react';
-import { ListTodo } from 'lucide-react';
 import { useRecoilValue } from 'recoil';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { useMediaQuery } from '@librechat/client';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { PanelRightClose, PanelRightOpen } from 'lucide-react';
 import {
   getConfigDefaults,
   resolveBotModeSearchParams,
@@ -156,12 +156,27 @@ function Header({
           <button
             type="button"
             aria-pressed={progressOpen}
-            aria-label={localize('com_ui_botmode_progress_toggle')}
+            aria-expanded={progressOpen}
+            aria-controls={progressOpen ? 'botmode-progress-sidebar' : undefined}
+            aria-label={localize(
+              progressOpen ? 'com_ui_botmode_progress_hide' : 'com_ui_botmode_progress_show',
+            )}
+            title={localize(
+              progressOpen ? 'com_ui_botmode_progress_hide' : 'com_ui_botmode_progress_show',
+            )}
             onClick={() => setProgressOpen((previous) => !(previous ?? !isSmallScreen))}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-text-primary shadow-sm transition-colors hover:bg-blue-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
-            <ListTodo className="h-4 w-4" aria-hidden="true" />
-            <span className="hidden sm:inline">{localize('com_ui_botmode_progress_title')}</span>
+            {progressOpen ? (
+              <PanelRightClose className="h-4 w-4 text-blue-500" aria-hidden="true" />
+            ) : (
+              <PanelRightOpen className="h-4 w-4 text-blue-500" aria-hidden="true" />
+            )}
+            <span className="hidden sm:inline">
+              {localize(
+                progressOpen ? 'com_ui_botmode_progress_hide' : 'com_ui_botmode_progress_show',
+              )}
+            </span>
           </button>
         )}
         <div className="hidden items-center gap-2 md:flex">
