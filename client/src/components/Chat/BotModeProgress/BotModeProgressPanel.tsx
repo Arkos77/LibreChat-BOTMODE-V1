@@ -157,70 +157,70 @@ export default function BotModeProgressPanel({
         ) : (
           <>
             {hasMissionStages && (
-            <section aria-label={localize('com_ui_botmode_progress_stages')}>
-              <h3 className="mb-3 font-semibold">{localize('com_ui_botmode_progress_stages')}</h3>
-              <ol className="space-y-3 border-l border-border-medium pl-4" aria-live="polite">
-                {isSubmitting && (
-                  <li className="flex items-start gap-2" data-testid="botmode-worker-running">
-                    <LoaderCircle
-                      className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-blue-500"
-                      aria-hidden="true"
-                    />
-                    <span className="font-medium text-text-primary">
-                      {localize('com_ui_botmode_progress_worker_running')}
-                    </span>
-                  </li>
-                )}
-                {progress.recordedPhases.map((phase) => (
-                  <li key={phase} className="flex items-start gap-2">
-                    <CheckCircle2
-                      className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500"
-                      aria-hidden="true"
-                    />
-                    <span className="text-text-secondary">{localize(PHASE_LABELS[phase])}</span>
-                  </li>
-                ))}
-                {tasks.map((task, index) => (
-                  <li key={task.taskId ?? index} className="flex items-start gap-2">
-                    <Circle
-                      className="mt-0.5 h-4 w-4 shrink-0 text-violet-500"
-                      aria-hidden="true"
-                    />
-                    <span className="min-w-0 flex-1 text-text-secondary">
-                      {task.objective || localize('com_ui_botmode_progress_untitled')}
-                      <span className="mt-0.5 block text-xs text-text-tertiary">
-                        {localize('com_ui_botmode_progress_task_planned')}
+              <section aria-label={localize('com_ui_botmode_progress_stages')}>
+                <h3 className="mb-3 font-semibold">{localize('com_ui_botmode_progress_stages')}</h3>
+                <ol className="space-y-3 border-l border-border-medium pl-4" aria-live="polite">
+                  {isSubmitting && (
+                    <li className="flex items-start gap-2" data-testid="botmode-worker-running">
+                      <LoaderCircle
+                        className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-blue-500"
+                        aria-hidden="true"
+                      />
+                      <span className="font-medium text-text-primary">
+                        {localize('com_ui_botmode_progress_worker_running')}
                       </span>
-                    </span>
-                  </li>
-                ))}
-                {children.map((child) => (
-                  <li key={child.threadId} className="flex items-start gap-2">
-                    <span
-                      className={
-                        'mt-1.5 h-2 w-2 shrink-0 rounded-full ' +
-                        subagentStatusDotClass(child.status)
-                      }
-                      aria-hidden="true"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate">{child.title}</span>
-                      <span className="block text-xs text-text-secondary">
-                        {localize(subagentStatusLabelKey(child.status))}
-                      </span>
-                    </span>
-                  </li>
-                ))}
-                {progress.count === 0 &&
-                  tasks.length === 0 &&
-                  children.length === 0 &&
-                  !isSubmitting && (
-                    <li className="text-xs text-text-secondary">
-                      {localize('com_ui_botmode_progress_no_stages')}
                     </li>
                   )}
-              </ol>
-            </section>
+                  {progress.recordedPhases.map((phase) => (
+                    <li key={phase} className="flex items-start gap-2">
+                      <CheckCircle2
+                        className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500"
+                        aria-hidden="true"
+                      />
+                      <span className="text-text-secondary">{localize(PHASE_LABELS[phase])}</span>
+                    </li>
+                  ))}
+                  {tasks.map((task, index) => (
+                    <li key={task.taskId ?? index} className="flex items-start gap-2">
+                      <Circle
+                        className="mt-0.5 h-4 w-4 shrink-0 text-violet-500"
+                        aria-hidden="true"
+                      />
+                      <span className="min-w-0 flex-1 text-text-secondary">
+                        {task.objective || localize('com_ui_botmode_progress_untitled')}
+                        <span className="mt-0.5 block text-xs text-text-tertiary">
+                          {localize('com_ui_botmode_progress_task_planned')}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                  {children.map((child) => (
+                    <li key={child.threadId} className="flex items-start gap-2">
+                      <span
+                        className={
+                          'mt-1.5 h-2 w-2 shrink-0 rounded-full ' +
+                          subagentStatusDotClass(child.status)
+                        }
+                        aria-hidden="true"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{child.title}</span>
+                        <span className="block text-xs text-text-secondary">
+                          {localize(subagentStatusLabelKey(child.status))}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                  {progress.count === 0 &&
+                    tasks.length === 0 &&
+                    children.length === 0 &&
+                    !isSubmitting && (
+                      <li className="text-xs text-text-secondary">
+                        {localize('com_ui_botmode_progress_no_stages')}
+                      </li>
+                    )}
+                </ol>
+              </section>
             )}
 
             {(progress.verified > 0 || progress.rejected > 0) && (
