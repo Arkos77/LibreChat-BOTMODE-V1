@@ -341,6 +341,12 @@ class Handler(BaseHTTPRequestHandler):
             calls["last_prior_subagent_call"]=int(already_requested)
             calls["last_advertised_subagent"]=int(bool(advertised))
             calls["last_tool_choice_forced"]=int(isinstance(req.get("tool_choice"),dict))
+            # Name of an explicitly forced tool, restricted to a small allowlist.
+            choice=req.get("tool_choice")
+            chosen=choice.get("function",{}).get("name") if isinstance(choice,dict) and isinstance(choice.get("function"),dict) else ""
+            allowed={"subagent","web_search","file_search","execute_code","terminal"}
+            calls["last_forced_tool_class"]=chosen if chosen in allowed else ("other" if chosen else "none")
+            calls["last_advertised_web_search"]=int(any(isinstance(t,dict) and t.get("function",{}).get("name")=="web_search" for t in tools))
             if not advertised and not has_tool_result and not already_requested:
                 calls["unclassified_no_tool_turns"]=calls.get("unclassified_no_tool_turns",0)+1
         if FALLBACK_MODE:
