@@ -728,6 +728,50 @@ jobs:
           cp scripts/botmode/ci-oracle-delegated-mission-gate.py /tmp/botmode-ci-oracle-publication-gate.py
           python3 /tmp/botmode-ci-oracle-publication-gate.py
           echo 'BOTMODE_CURRENT_IMAGE_SUBAGENT_ORACLE_PROBE=PASS'
+      - name: Explicit non-Azure profile — assert disabled in actual running image
+        shell: bash
+        env:
+          BOTMODE_MONGO_PASSWORD: ci-isolated-only
+          POSTGRES_PASSWORD: ci-isolated-only
+          BOTMODE_IMAGE: ${{ env.BOTMODE_TEST_IMAGE }}
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T -w /app/api api node - <<'NODE_AZURE_DISABLED'
+          const fs = require('node:fs');
+          const config = JSON.parse(fs.readFileSync('/app/librechat.yaml', 'utf8'));
+          const strategies = [config.fileStrategy, ...Object.values(config.fileStrategies || {})];
+          if (strategies.includes('azure_blob')) {
+            throw new Error('CI_AZURE_DISABLED_STORAGE_STRATEGY_ACTIVE');
+          }
+          if (config.endpoints?.azureOpenAI) {
+            throw new Error('CI_AZURE_DISABLED_OPENAI_ENDPOINT_ACTIVE');
+          }
+          for (const name of [
+            'AZURE_STORAGE_ACCOUNT_NAME',
+            'AZURE_STORAGE_CONNECTION_STRING',
+            'AZURE_OPENAI_API_KEY',
+            'AZURE_API_KEY',
+            'AZURE_AI_SEARCH_API_KEY',
+          ]) {
+            if (process.env[name]) {
+              throw new Error('CI_AZURE_DISABLED_CREDENTIAL_CONFIG_ACTIVE:' + name);
+            }
+          }
+          const { initializeAzureBlobService, getAzureContainerClient } = require('@librechat/api');
+          (async () => {
+            if (await initializeAzureBlobService() !== null) {
+              throw new Error('CI_AZURE_DISABLED_BLOB_CLIENT_CREATED');
+            }
+            if (await getAzureContainerClient('botmode-test') !== null) {
+              throw new Error('CI_AZURE_DISABLED_CONTAINER_CLIENT_CREATED');
+            }
+            console.log('CI_AZURE_DISABLED_SOURCE_CONFIGURATION=PASS');
+            console.log('CI_AZURE_DISABLED_RUNTIME=PASS');
+          })().catch((error) => {
+            console.error(error.name + ':' + error.message);
+            process.exitCode = 1;
+          });
+          NODE_AZURE_DISABLED
       - name: Browser acceptance — actual candidate UI and agent selector
         shell: bash
         run: |
