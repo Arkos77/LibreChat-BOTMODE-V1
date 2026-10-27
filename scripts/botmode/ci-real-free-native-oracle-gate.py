@@ -179,10 +179,12 @@ def read_native_terminal_stream(helpers, stream_id):
             try:
                 with urlopen("http://127.0.0.1:8088/provider-diagnostics",timeout=3) as diag_response:
                     diag=json.load(diag_response)
-                if (diag.get("simulated") is False and
-                        diag.get("route") == MODEL and
-                        diag.get("local_rejections")):
-                    return last_http, events, "RELAY_LOCAL_REJECTION", attempts
+                if diag.get("simulated") is False and diag.get("route") == MODEL:
+                    if diag.get("local_rejections"):
+                        return last_http, events, "RELAY_LOCAL_REJECTION", attempts
+                    records=diag.get("records") or []
+                    if any(r.get("http_status") not in (None,200) for r in records if isinstance(r,dict)):
+                        return last_http, events, "PROVIDER_NON200_RESPONSE", attempts
             except (OSError, ValueError, TypeError):
                 pass
         if time.monotonic() < deadline:
@@ -227,6 +229,31 @@ def bounded_failure_diagnostics(helpers, stream_id, parent_id, events):
             print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_PHASE="+(phase if phase in phases else "OTHER"),flush=True)
             print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_HTTP="+(code if code in statuses else "OTHER_OR_PENDING"),flush=True)
             print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_SUBAGENT_TOOL="+str("subagent" in (record.get("tool_names") or [])).upper(),flush=True)
+            p=record.get("request_parameters") or {}
+            allowed_format={"json_schema","json_object"}
+            fmt=p.get("response_format")
+            print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_FORMAT="+(fmt if fmt in allowed_format else "NONE_OR_OTHER"),flush=True)
+            print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_STRICT="+str(p.get("strict") is True).upper(),flush=True)
+            print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_REASONING_DISABLED="+str(p.get("reasoning_enabled") is False).upper(),flush=True)
+            for field in ("max_tokens","max_completion_tokens"):
+                value=p.get(field)
+                print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_"+field.upper()+"_BAND="+("VALID" if type(value) is int and 0 < value <= 2048 else "MISSING_OR_OTHER"),flush=True)
+            # The relay stores upstream errors privately. Only classify
+            # known parameter keywords; never emit model text or raw errors.
+            error_text=" ".join(str(e).lower() for e in (record.get("errors") or [])[:2])
+            categories={
+                "REASONING":("reasoning","thinking"),
+                "STRUCTURED_OUTPUT":("response_format","json_schema","json object","structured"),
+                "TOOLS":("tool_choice","tool_calls","function","tools","tool use"),
+                "MODEL":("model","unknown endpoint","not supported"),
+                "PARAMETERS":("parameter","unsupported","invalid request"),
+                "TOKENS":("max_tokens","max_completion_tokens","token limit"),
+                "MESSAGES":("messages","role","content"),
+                "TEMPERATURE":("temperature",),
+                "PROVIDER":("provider","upstream"),
+            }
+            classes=[k for k,terms in categories.items() if any(t in error_text for t in terms)]
+            print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_SAFE_ERROR_TAGS="+(",".join(classes) if classes else "UNCLASSIFIED"),flush=True)
     except (OSError, ValueError, TypeError):
         print("CI_NATIVE_REAL_PROVIDER_DIAG_UNAVAILABLE=TRUE",flush=True)
     allowed_events={"on_subagent_update","on_run_step","on_run_step_closed","error","on_message_delta","on_chain_end","on_chain_start"}
