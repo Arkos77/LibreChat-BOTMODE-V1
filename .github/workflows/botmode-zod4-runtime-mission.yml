@@ -1215,14 +1215,56 @@ jobs:
           p.write_text(s)
           PY_REAL_RELAY
           python3 -m py_compile /tmp/botmode-ci-model-fixture.py scripts/botmode/ci-real-free-native-oracle-gate.py
-          kill "$(cat /tmp/botmode-ci-fixture.pid)"
+          # Old fixture and new relay share port 8088. Do not mistake a
+          # response from the dying process for readiness of the live relay.
+          old_pid="$(cat /tmp/botmode-ci-fixture.pid)"
+          kill "$old_pid"
+          python3 - <<'PY_WAIT_STOP'
+          import socket,time
+          deadline=time.monotonic()+30
+          while time.monotonic()<deadline:
+              with socket.socket() as sock:
+                  sock.settimeout(.4)
+                  if sock.connect_ex(('127.0.0.1',8088)) != 0:
+                      print('CI_NATIVE_REAL_OLD_FIXTURE_PORT_CLOSED=PASS',flush=True)
+                      break
+              time.sleep(.25)
+          else:
+              raise SystemExit('CI_NATIVE_REAL_FAIL=OLD_FIXTURE_STILL_OWNS_PORT')
+          PY_WAIT_STOP
           CI_REAL_FREE_PROVIDER=1 CI_MISSION_SOURCE_MODE=1 CI_OPENROUTER_KEY="$OPENROUTER_API_KEY" python3 /tmp/botmode-ci-model-fixture.py >/tmp/botmode-ci-real-relay.log 2>&1 &
           echo "$!" > /tmp/botmode-ci-fixture.pid
-          for i in $(seq 1 20); do
-            if curl -fsS --max-time 3 http://127.0.0.1:8088/provider-diagnostics >/dev/null 2>&1; then break; fi
-            sleep 1
-          done
-          curl -fsS --max-time 3 http://127.0.0.1:8088/provider-diagnostics >/dev/null
+          # Check two different endpoints on the actual configured live-only relay.
+          # A successful HTTP handshake alone is not a readiness assertion.
+          python3 - <<'PY_RELAY_READY'
+          import json,os,time
+          from pathlib import Path
+          from urllib.request import urlopen
+          pid=int(Path('/tmp/botmode-ci-fixture.pid').read_text().strip())
+          deadline=time.monotonic()+25
+          while time.monotonic()<deadline:
+              try:
+                  os.kill(pid,0)
+                  with urlopen('http://127.0.0.1:8088/provider-diagnostics',timeout=2) as r:
+                      diag=json.load(r)
+                  with urlopen('http://127.0.0.1:8088/metrics',timeout=2) as r:
+                      met=json.load(r)
+                  if (diag.get('route')=='liquid/lfm-2.5-2.6b:free'
+                          and diag.get('simulated') is False
+                          and diag.get('limit_requests')==4
+                          and isinstance(met.get('completion_calls'),int)
+                          and isinstance(met.get('provider_requests',0),int)):
+                      time.sleep(.4)
+                      with urlopen('http://127.0.0.1:8088/metrics',timeout=2) as r:
+                          assert isinstance(json.load(r).get('completion_calls'),int)
+                      print('CI_NATIVE_REAL_LIVE_RELAY_READY=PASS',flush=True)
+                      break
+              except (OSError,ValueError,AssertionError):
+                  pass
+              time.sleep(.5)
+          else:
+              raise SystemExit('CI_NATIVE_REAL_FAIL=LIVE_RELAY_NOT_READY')
+          PY_RELAY_READY
           python3 scripts/botmode/ci-real-free-native-oracle-gate.py
       - name: Explicit opt-in — one real free-only Worker specialist Oracle P6 mission
         if: github.event_name == 'workflow_dispatch' && inputs.live_free_provider == true
