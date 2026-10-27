@@ -34,13 +34,13 @@ def api_json(path, key=None):
         return json.load(resp)
 
 
-def quota_and_price():
+def quota_and_price(min_remaining=4):
     key = os.environ.get("OPENROUTER_API_KEY", "")
     if len(key) < 17:
         fail("SECRET_MISSING")
     info = api_json("/key", key).get("data") or {}
     remaining = (info.get("free_model_daily_requests") or {}).get("remaining")
-    if info.get("is_management_key") or type(remaining) is not int or remaining < 4:
+    if info.get("is_management_key") or type(remaining) is not int or remaining < min_remaining:
         fail("FREE_DAILY_QUOTA_NOT_CONFIRMED_FOR_FOUR_REQUESTS")
     matches = [m for m in api_json("/models").get("data", []) if m.get("id") == MODEL]
     if len(matches) != 1:
@@ -62,7 +62,7 @@ def metrics():
 def read_p6(stream_id, helpers):
     command = helpers["COMPOSE"] + [
         "exec", "-T", "redis", "redis-cli", "--raw", "HMGET",
-        helpers["REDIS_PHYSICAL_PREFIX"] + "generation:job:" + stream_id,
+        helpers["REDIS_PHYSICAL_PREFIX"] + "stream:{" + stream_id + "}:job",
         "status", "orchestratorPlan", "missionOracleState",
         "responseMessageId", "terminalPersistencePending",
     ]
@@ -233,7 +233,7 @@ def live_gate():
         fail("ORACLE_P6_STATE_CHANGED_AFTER_RESTART")
     verify_parent_message(parent_id, response_id, helpers)
     print("CI_NATIVE_REAL_ORACLE_P6_SURVIVES_API_RESTART=PASS", flush=True)
-    current = quota_and_price()
+    current = quota_and_price(min_remaining=0)
     for key, value in before.items():
         if key in current and Decimal(current[key]) > Decimal(value):
             fail("POSITIVE_ACCOUNT_SPEND_DETECTED")
