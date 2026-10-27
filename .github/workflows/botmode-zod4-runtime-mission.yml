@@ -6,6 +6,12 @@ on:
     paths:
       - '.github/workflows/botmode-zod4-runtime-mission.yml'
   workflow_dispatch:
+    inputs:
+      live_free_provider:
+        description: 'Explicitly run ONE zero-price real OpenRouter Worker-specialist Oracle/P6 mission'
+        type: boolean
+        required: true
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -1151,6 +1157,78 @@ jobs:
 
           echo '### Zod4 exact-HEAD Oracle/QA E2E (local synthetic provider)' >> "$GITHUB_STEP_SUMMARY"
           echo 'Exact experimental Zod4 HEAD image tested with local synthetic subagent model; no real-provider inference; not a production release.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Explicit opt-in — one real free-only Worker specialist Oracle P6 mission
+        if: github.event_name == 'workflow_dispatch' && inputs.live_free_provider == true
+        timeout-minutes: 15
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: \${{ secrets.OPENROUTER_API_KEY }}
+          CI_EXTERNAL_FREE_PROVIDER: 'true'
+          CI_LIVE_FREE_FIVE_TASKS: 'false'
+          CI_LIVE_FREE_DISABLE_FALLBACK_DIAG: 'true'
+          CI_LIVE_FREE_COMPAT_FALLBACK_DIAG: 'false'
+        run: |
+          set -euo pipefail
+          test -n "\${OPENROUTER_API_KEY:-}" || { echo 'CI_LIVE_FREE=NO_KEY'; exit 1; }
+          echo "::add-mask::$OPENROUTER_API_KEY"
+          python3 - <<'PY_PREFLIGHT'
+          import json, os
+          from decimal import Decimal
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError, URLError
+          key=os.environ['OPENROUTER_API_KEY']
+          base='https://openrouter.ai/api/v1'
+          def read(uri, auth=False):
+              h={'Accept':'application/json'}
+              if auth: h['Authorization']='Bearer '+key
+              with urlopen(Request(base+uri,headers=h), timeout=20) as r:
+                  return json.load(r)
+          try:
+              info=read('/key',True).get('data',{})
+              quota=info.get('free_model_daily_requests') or {}
+              if info.get('is_management_key') or type(quota.get('remaining')) is not int or quota['remaining']<2:
+                  raise SystemExit('CI_LIVE_FREE=QUOTA_NOT_CONFIRMED_FOR_TWO_NODES')
+              rows=[m for m in read('/models').get('data',[]) if m.get('id')=='openrouter/free']
+              if len(rows)!=1: raise SystemExit('CI_LIVE_FREE=ROUTER_NOT_IN_CATALOG')
+              prices=rows[0].get('pricing') or {}
+              if any(Decimal(str(prices.get(k,'1')))!=0 for k in ('prompt','completion')):
+                  raise SystemExit('CI_LIVE_FREE=ROUTER_NOT_ZERO_PRICE')
+          except (HTTPError,URLError,TimeoutError,KeyError,ValueError,ArithmeticError) as e:
+              print('CI_LIVE_FREE_PREFLIGHT_ERROR_CLASS='+type(e).__name__,flush=True)
+              raise SystemExit('CI_LIVE_FREE=PROVIDER_PREFLIGHT_FAILED')
+          print('CI_LIVE_FREE_TWO_REQUEST_QUOTA_AND_ZERO_PRICE=PASS',flush=True)
+          # Adapt archival fixture guard *only in the disposable runner*.
+          # Never alter the original immutable-candidate workflow or script.
+          p=Path('scripts/botmode/ci-live-free-child-preflight.sh')
+          source=p.read_text()
+          old_pattern=r'^botmode-oci-child-[0-9]+-[0-9]+        if: always()
+        env:
+          BOTMODE_MONGO_PASSWORD: ci-isolated-only
+          POSTGRES_PASSWORD: ci-isolated-only
+          BOTMODE_IMAGE: ${{ env.BOTMODE_TEST_IMAGE }}
+        run: docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
+
+          old_image="test \"\${BOTMODE_PUBLISHED_IMAGE:-}\" = 'ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0'"
+          assert source.count(old_pattern)==1, 'CI_FREE_ARCHIVAL_PROJECT_GUARD_CHANGED'
+          assert source.count(old_image)==1, 'CI_FREE_ARCHIVAL_IMAGE_GUARD_CHANGED'
+          source=source.replace(old_pattern, r'^botmode-zod4-ci-[0-9]+-[0-9]+        if: always()
+        env:
+          BOTMODE_MONGO_PASSWORD: ci-isolated-only
+          POSTGRES_PASSWORD: ci-isolated-only
+          BOTMODE_IMAGE: ${{ env.BOTMODE_TEST_IMAGE }}
+        run: docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
+)
+          source=source.replace(old_image, 'test "\${BOTMODE_PUBLISHED_IMAGE:-}" = "\${BOTMODE_TEST_IMAGE:?}"')
+          target=Path('/tmp/botmode-zod4-real-free-preflight.sh')
+          target.write_text(source)
+          print('CI_FREE_EXACT_HEAD_EPHEMERAL_GUARDS=PASS',flush=True)
+          PY_PREFLIGHT
+          bash -n /tmp/botmode-zod4-real-free-preflight.sh
+          # Prior synthetic fixture is killed by preflight before any live mission.
+          # Retains already validated runner-only identity, Redis, Oracle and P6.
+          bash /tmp/botmode-zod4-real-free-preflight.sh
+          echo 'BOTMODE_ZOD4_REAL_FREE_ORACLE_P6=PASS'
       - name: Always destroy disposable stack
         if: always()
         env:
