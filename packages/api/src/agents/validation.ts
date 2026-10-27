@@ -401,7 +401,7 @@ export const agentSubagentsSchema: z.ZodOptional<z.ZodType<AgentSubagentsConfig>
   .optional();
 
 /** Base agent schema with all common fields */
-const agentCodeEnvironmentIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
+const agentCodeEnvironmentIdSchema: z.ZodString = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
 
 export const agentBaseSchema: z.ZodObject<
   {
