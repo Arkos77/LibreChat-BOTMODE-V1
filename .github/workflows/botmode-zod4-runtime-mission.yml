@@ -1162,14 +1162,14 @@ jobs:
         timeout-minutes: 15
         shell: bash
         env:
-          OPENROUTER_API_KEY: \${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CI_EXTERNAL_FREE_PROVIDER: 'true'
           CI_LIVE_FREE_FIVE_TASKS: 'false'
           CI_LIVE_FREE_DISABLE_FALLBACK_DIAG: 'true'
           CI_LIVE_FREE_COMPAT_FALLBACK_DIAG: 'false'
         run: |
           set -euo pipefail
-          test -n "\${OPENROUTER_API_KEY:-}" || { echo 'CI_LIVE_FREE=NO_KEY'; exit 1; }
+          test -n "${OPENROUTER_API_KEY:-}" || { echo 'CI_LIVE_FREE=NO_KEY'; exit 1; }
           echo "::add-mask::$OPENROUTER_API_KEY"
           python3 - <<'PY_PREFLIGHT'
           import json, os
@@ -1209,7 +1209,7 @@ jobs:
           BOTMODE_IMAGE: ${{ env.BOTMODE_TEST_IMAGE }}
         run: docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
 
-          old_image="test \"\${BOTMODE_PUBLISHED_IMAGE:-}\" = 'ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0'"
+          old_image="test \"${BOTMODE_PUBLISHED_IMAGE:-}\" = 'ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0'"
           assert source.count(old_pattern)==1, 'CI_FREE_ARCHIVAL_PROJECT_GUARD_CHANGED'
           assert source.count(old_image)==1, 'CI_FREE_ARCHIVAL_IMAGE_GUARD_CHANGED'
           source=source.replace(old_pattern, r'^botmode-zod4-ci-[0-9]+-[0-9]+        if: always()
@@ -1219,7 +1219,7 @@ jobs:
           BOTMODE_IMAGE: ${{ env.BOTMODE_TEST_IMAGE }}
         run: docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
 )
-          source=source.replace(old_image, 'test "\${BOTMODE_PUBLISHED_IMAGE:-}" = "\${BOTMODE_TEST_IMAGE:?}"')
+          source=source.replace(old_image, 'test "${BOTMODE_PUBLISHED_IMAGE:-}" = "${BOTMODE_TEST_IMAGE:?}"')
           target=Path('/tmp/botmode-zod4-real-free-preflight.sh')
           target.write_text(source)
           print('CI_FREE_EXACT_HEAD_EPHEMERAL_GUARDS=PASS',flush=True)
