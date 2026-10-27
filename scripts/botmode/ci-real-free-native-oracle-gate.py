@@ -123,13 +123,15 @@ def read_native_terminal_stream(helpers, stream_id):
         "User-Agent": helpers["UA"],
         "Accept": "text/event-stream",
     }, method="GET")
-    deadline = time.monotonic() + 210
+    # Up to four upstream free-only calls can each wait 90 seconds.
+    # Observation cannot time out before the configured provider bound.
+    deadline = time.monotonic() + 450
     events = []
     seen = set()
     attempts = 0
     last_http = 0
     last_reason = "NOT_ATTEMPTED"
-    while time.monotonic() < deadline and attempts < 55:
+    while time.monotonic() < deadline and attempts < 250:
         attempts += 1
         timeout = max(1, min(65, deadline - time.monotonic()))
         try:
@@ -172,7 +174,59 @@ def read_native_terminal_stream(helpers, stream_id):
             return last_http, events, "SSE_TRANSPORT_ERROR", attempts
         if time.monotonic() < deadline:
             time.sleep(min(2.0, max(0, deadline - time.monotonic())))
-    return last_http, events, last_reason if attempts < 55 else "SSE_RECONNECT_LIMIT", attempts
+    return last_http, events, last_reason if attempts < 250 else "SSE_RECONNECT_LIMIT", attempts
+
+
+def bounded_failure_diagnostics(helpers, stream_id, parent_id, events):
+    """Print classifications and counts only, never upstream text or identities."""
+    allowed={"queued","pending","running","completed","complete","failed","error","paused","cancelled"}
+    try:
+        status, plan, oracle, response_id, pending = read_p6(stream_id, helpers)
+        print("CI_NATIVE_REAL_REDIS_STATUS="+(status if status in allowed else "OTHER_OR_MISSING"),flush=True)
+        print("CI_NATIVE_REAL_REDIS_PLAN_PRESENT="+str(bool(plan)).upper(),flush=True)
+        print("CI_NATIVE_REAL_REDIS_ORACLE_PRESENT="+str(bool(oracle)).upper(),flush=True)
+        print("CI_NATIVE_REAL_REDIS_RESPONSE_ID_PRESENT="+str(bool(response_id)).upper(),flush=True)
+        print("CI_NATIVE_REAL_REDIS_PERSISTENCE_PENDING="+("TRUE" if pending.lower() in ("true","1") else "FALSE_OR_ABSENT"),flush=True)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        print("CI_NATIVE_REAL_REDIS_DIAG_UNAVAILABLE=TRUE",flush=True)
+    try:
+        with urlopen("http://127.0.0.1:8088/provider-diagnostics",timeout=5) as r:
+            data=json.load(r)
+        rec=data.get("records") or []
+        if not isinstance(rec,list): rec=[]
+        print("CI_NATIVE_REAL_PROVIDER_REQUEST_COUNT="+str(len(rec)),flush=True)
+        print("CI_NATIVE_REAL_PROVIDER_LOCAL_REJECTIONS="+str(len(data.get("local_rejections") or [])),flush=True)
+        phases={"waiting_headers","reading_body","response_complete","transport_error"}
+        statuses={"200","400","401","403","404","408","422","429","500","502","503","504"}
+        for i,record in enumerate(rec[:4],1):
+            phase=record.get("phase")
+            code=str(record.get("http_status"))
+            print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_PHASE="+(phase if phase in phases else "OTHER"),flush=True)
+            print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_HTTP="+(code if code in statuses else "OTHER_OR_PENDING"),flush=True)
+            print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_SUBAGENT_TOOL="+str("subagent" in (record.get("tool_names") or [])).upper(),flush=True)
+    except (OSError, ValueError, TypeError):
+        print("CI_NATIVE_REAL_PROVIDER_DIAG_UNAVAILABLE=TRUE",flush=True)
+    allowed_events={"on_subagent_update","on_run_step","on_run_step_closed","error","on_message_delta","on_chain_end","on_chain_start"}
+    print("CI_NATIVE_REAL_SSE_NATIVE_CHILD_UPDATES="+str(sum(x.get("event")=="on_subagent_update" for x in events)),flush=True)
+    print("CI_NATIVE_REAL_SSE_RECOGNIZED_EVENTS="+",".join(sorted({x.get("event") for x in events if x.get("event") in allowed_events})),flush=True)
+    js = r"""
+const mongoose=require('mongoose');
+(async()=>{
+ await mongoose.connect(process.env.MONGO_URI);
+ const count=await mongoose.connection.db.collection('conversations').countDocuments(
+   {'subagentThread.parentConversationId':process.env.CI_REAL_PARENT_ID});
+ console.log('CI_NATIVE_REAL_DIAG_PERSISTED_CHILD_COUNT='+count);
+ await mongoose.disconnect();
+})().catch(e=>{console.log('CI_NATIVE_REAL_DIAG_CHILD_READBACK_CLASS='+e.name);process.exitCode=1});
+"""
+    try:
+        p=subprocess.run(helpers["COMPOSE"]+["exec","-T","-e","CI_REAL_PARENT_ID="+parent_id,
+          "api","node","-e",js],capture_output=True,text=True,timeout=25)
+        for ln in p.stdout.splitlines():
+            if ln.startswith("CI_NATIVE_REAL_DIAG_"):
+                print(ln,flush=True)
+    except (OSError,subprocess.SubprocessError):
+        print("CI_NATIVE_REAL_DIAG_CHILD_UNAVAILABLE=TRUE",flush=True)
 
 
 def live_gate():
@@ -251,6 +305,7 @@ def live_gate():
     print("CI_NATIVE_REAL_SSE_FINAL_COUNT=" + str(len(finals)), flush=True)
     print("CI_NATIVE_REAL_SSE_ERROR_COUNT=" + str(len(errors)), flush=True)
     if sse_status != 200 or outcome != "TERMINAL_FRAME" or len(finals) != 1 or errors:
+        bounded_failure_diagnostics(helpers, stream_id, parent_id, events)
         fail("NATIVE_MISSION_TERMINAL_STREAM_INVALID")
     print("CI_NATIVE_REAL_ONE_FINAL_EVENT=PASS", flush=True)
     started = [e.get("data") for e in events if e.get("event") == "on_subagent_update"
