@@ -1009,19 +1009,26 @@ export function convertJsonSchemaToZod(
       shape[key] = fieldSchema;
     }
 
+    // In Zod 4 descriptions are metadata on the schema instance. Wrapping a
+    // field in optional/nullable creates a new instance, so reattach metadata.
+    const optionalNullable = (field: z.ZodType): z.ZodType => {
+      const wrapped = field.optional().nullable();
+      return field.description ? wrapped.describe(field.description) : wrapped;
+    };
+
     let objectSchema = z.object(shape);
 
     if (Array.isArray(schema.required) && schema.required.length > 0) {
       const partial = Object.fromEntries(
         Object.entries(shape).map(([key, value]) => [
           key,
-          schema.required?.includes(key) === true ? value : value.optional().nullable(),
+          schema.required?.includes(key) === true ? value : optionalNullable(value),
         ]),
       );
       objectSchema = z.object(partial);
     } else {
       const partialNullable = Object.fromEntries(
-        Object.entries(shape).map(([key, value]) => [key, value.optional().nullable()]),
+        Object.entries(shape).map(([key, value]) => [key, optionalNullable(value)]),
       );
       objectSchema = z.object(partialNullable);
     }
