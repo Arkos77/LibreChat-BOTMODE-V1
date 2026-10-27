@@ -241,9 +241,9 @@ export function generateDynamicSchema(settings: SettingsConfiguration) {
 }
 
 const ZodTypeToSettingType: Record<string, string | undefined> = {
-  ZodString: 'string',
-  ZodNumber: 'number',
-  ZodBoolean: 'boolean',
+  string: 'string',
+  number: 'number',
+  boolean: 'boolean',
 };
 
 const minColumns = 1;
@@ -503,7 +503,9 @@ export function validateSettingDefinitions(settings: SettingsConfiguration): voi
           path: ['optionType'],
         });
       } else {
-        const zodType = conversationSchema._def.typeName;
+        const zodType = conversationSchema instanceof z.ZodOptional
+          ? conversationSchema.unwrap().def.type
+          : conversationSchema.def.type;
         const settingTypeEquivalent = ZodTypeToSettingType[zodType] || null;
         if (settingTypeEquivalent !== setting.type) {
           errors.push({
