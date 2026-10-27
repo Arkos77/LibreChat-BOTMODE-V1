@@ -109,6 +109,72 @@ const mongoose = require('mongoose');
         fail("P6_PARENT_MONGO_READBACK_FAILED")
 
 
+def read_native_terminal_stream(helpers, stream_id):
+    """Observe one already-admitted mission; reconnect only GET, never POST.
+
+    LibreChat can close an SSE subscription after returning a nonterminal
+    event. EOF is not mission failure. Reattach with resume=true, bounded by
+    elapsed time; retain nonduplicated child start/stop events for correlation.
+    """
+    import socket
+    url = helpers["BASE"] + "/api/agents/chat/stream/" + stream_id + "?resume=true"
+    req = Request(url, headers={
+        "Authorization": "Bearer " + helpers["TOKEN"],
+        "User-Agent": helpers["UA"],
+        "Accept": "text/event-stream",
+    }, method="GET")
+    deadline = time.monotonic() + 210
+    events = []
+    seen = set()
+    attempts = 0
+    last_http = 0
+    last_reason = "NOT_ATTEMPTED"
+    while time.monotonic() < deadline and attempts < 55:
+        attempts += 1
+        timeout = max(1, min(65, deadline - time.monotonic()))
+        try:
+            with urlopen(req, timeout=timeout) as response:
+                last_http = response.status
+                for raw_line in response:
+                    if time.monotonic() >= deadline:
+                        last_reason = "OVERALL_DEADLINE"
+                        break
+                    if not raw_line.startswith(b"data:"):
+                        continue
+                    raw_item = raw_line[5:].strip()
+                    if len(raw_item) > 262144:
+                        fail("SSE_FRAME_TOO_LARGE")
+                    try:
+                        item = json.loads(raw_item)
+                    except (TypeError, ValueError):
+                        continue
+                    if not isinstance(item, dict):
+                        continue
+                    # Replayed frames can appear on each resubscription.
+                    # Deduplicate only exact identical frames, retaining distinct
+                    # native child start/stop updates from the same run.
+                    signature = raw_item
+                    if signature in seen:
+                        continue
+                    seen.add(signature)
+                    events.append(item)
+                    if len(events) > 2000:
+                        fail("SSE_EVENT_LIMIT_EXCEEDED")
+                    if item.get("final") is True or item.get("event") == "error" or item.get("type") == "error":
+                        return last_http, events, "TERMINAL_FRAME", attempts
+                else:
+                    last_reason = "NONTERMINAL_EOF"
+        except HTTPError as exc:
+            return exc.code, events, "HTTP_ERROR", attempts
+        except (socket.timeout, TimeoutError):
+            last_reason = "SSE_IDLE_TIMEOUT"
+        except (URLError, ConnectionError, OSError):
+            return last_http, events, "SSE_TRANSPORT_ERROR", attempts
+        if time.monotonic() < deadline:
+            time.sleep(min(2.0, max(0, deadline - time.monotonic())))
+    return last_http, events, last_reason if attempts < 55 else "SSE_RECONNECT_LIMIT", attempts
+
+
 def live_gate():
     if os.environ.get("CI_NATIVE_REAL_INTEGRATED") != "1":
         fail("EXPLICIT_OPT_IN_REQUIRED")
@@ -175,15 +241,16 @@ def live_gate():
     except (KeyError, ValueError, TypeError):
         fail("MISSION_START_ENVELOPE_INVALID")
     print("CI_NATIVE_REAL_SINGLE_MISSION_STARTED=PASS", flush=True)
-    sse_status, raw_sse = helpers["request"](
-        "GET", "/api/agents/chat/stream/" + stream_id + "?resume=true")
-    events = helpers["result_events"](raw_sse)
+    sse_status, events, outcome, subscriptions = read_native_terminal_stream(helpers, stream_id)
     finals = [e for e in events if e.get("final") is True]
     errors = [e for e in events if e.get("event") == "error" or e.get("type") == "error"]
-    if sse_status != 200 or len(finals) != 1 or errors:
-        print("CI_NATIVE_REAL_SSE_HTTP=" + str(sse_status), flush=True)
-        print("CI_NATIVE_REAL_SSE_FINAL_COUNT=" + str(len(finals)), flush=True)
-        print("CI_NATIVE_REAL_SSE_ERROR_COUNT=" + str(len(errors)), flush=True)
+    print("CI_NATIVE_REAL_SSE_HTTP=" + str(sse_status), flush=True)
+    print("CI_NATIVE_REAL_SSE_OUTCOME=" + outcome, flush=True)
+    print("CI_NATIVE_REAL_SSE_SUBSCRIPTIONS=" + str(subscriptions), flush=True)
+    print("CI_NATIVE_REAL_SSE_EVENT_COUNT=" + str(len(events)), flush=True)
+    print("CI_NATIVE_REAL_SSE_FINAL_COUNT=" + str(len(finals)), flush=True)
+    print("CI_NATIVE_REAL_SSE_ERROR_COUNT=" + str(len(errors)), flush=True)
+    if sse_status != 200 or outcome != "TERMINAL_FRAME" or len(finals) != 1 or errors:
         fail("NATIVE_MISSION_TERMINAL_STREAM_INVALID")
     print("CI_NATIVE_REAL_ONE_FINAL_EVENT=PASS", flush=True)
     started = [e.get("data") for e in events if e.get("event") == "on_subagent_update"
