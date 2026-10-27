@@ -1265,6 +1265,30 @@ jobs:
           else:
               raise SystemExit('CI_NATIVE_REAL_FAIL=LIVE_RELAY_NOT_READY')
           PY_RELAY_READY
+          # Previous step verifies persistence *by restarting* the API. Mongo
+          # linkage may be readable while HTTP admission is still restarting.
+          # Never retry an ambiguous POST: wait for both readiness and the
+          # authenticated native-agent setup-status GET before the one mission.
+          ready=0
+          browser_ua='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+          for i in $(seq 1 45); do
+            if curl -fsS --max-time 3 http://127.0.0.1:3090/readyz >/dev/null 2>&1; then
+              auth_http=$(curl -sS --max-time 4 -o /dev/null -w '%{http_code}' \
+                -H "User-Agent: $browser_ua" \
+                -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" \
+                http://127.0.0.1:3090/api/agents/botmode/setup-status) || auth_http=CURL_ERROR
+              if [ "$auth_http" = 200 ]; then
+                ready=1
+                break
+              fi
+            fi
+            sleep 2
+          done
+          if [ "$ready" != 1 ]; then
+            echo 'CI_NATIVE_REAL_FAIL=API_NOT_READY_AFTER_RESTART'
+            exit 1
+          fi
+          echo 'CI_NATIVE_REAL_API_READY_AFTER_RESTART=PASS'
           python3 scripts/botmode/ci-real-free-native-oracle-gate.py
       - name: Explicit opt-in — one real free-only Worker specialist Oracle P6 mission
         if: github.event_name == 'workflow_dispatch' && inputs.live_free_provider == true
