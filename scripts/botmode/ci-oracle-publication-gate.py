@@ -369,6 +369,19 @@ def verify(label, review, expected_status):
     if len(verdicts) != 1 or verdicts[0].get("status") != expected_status:
         print("CI_ORACLE_" + label + "_STATUS=" +
               ",".join(str(v.get("status")) for v in verdicts))
+        # Bounded, non-content diagnostic: never print model outputs or evidence.
+        for verdict in verdicts[:3]:
+            if not isinstance(verdict, dict):
+                continue
+            print("CI_ORACLE_" + label + "_VERDICT_FIELDS=" +
+                  ",".join(sorted(str(k) for k in verdict.keys()))[:160], flush=True)
+            for field in ("code", "reasonCode", "failureCode", "criterionId"):
+                value = verdict.get(field)
+                if isinstance(value, str) and len(value) <= 64 and all(c.isalnum() or c in "_-" for c in value):
+                    print("CI_ORACLE_" + label + "_" + field.upper() + "=" + value, flush=True)
+        outcome = state.get("results", {}).get(task_id, {})
+        print("CI_ORACLE_" + label + "_OUTCOME_FIELDS=" +
+              ",".join(sorted(str(k) for k in outcome.keys()))[:160], flush=True)
         fail(label + "_UNEXPECTED_ORACLE_VERDICT")
     print("CI_ORACLE_" + label + "_PERSISTED_STATUS=" + expected_status, flush=True)
     print("CI_ORACLE_" + label + "_DURABLE_PLAN=PASS", flush=True)
