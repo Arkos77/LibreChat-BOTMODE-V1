@@ -102,6 +102,10 @@ export const updateSchedulePayloadSchema = createSchedulePayloadSchema
   .omit({ clientRequestId: true })
   .partial()
   .extend({
+    // Zod 4 retains defaults from the CREATE schema through partial(). A PATCH
+    // with no changes must not synthesize target/enabled and rotate the claim token.
+    target: z.enum(scheduleTargets).optional(),
+    enabled: z.boolean().optional(),
     /**
      * The configRevision the client's edit was computed from (captured when the
      * dialog opened). The server fences the update on it, so a concurrent edit
