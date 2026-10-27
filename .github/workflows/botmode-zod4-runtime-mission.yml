@@ -1202,23 +1202,11 @@ jobs:
           # Never alter the original immutable-candidate workflow or script.
           p=Path('scripts/botmode/ci-live-free-child-preflight.sh')
           source=p.read_text()
-          old_pattern=r'^botmode-oci-child-[0-9]+-[0-9]+        if: always()
-        env:
-          BOTMODE_MONGO_PASSWORD: ci-isolated-only
-          POSTGRES_PASSWORD: ci-isolated-only
-          BOTMODE_IMAGE: ${{ env.BOTMODE_TEST_IMAGE }}
-        run: docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
-
+          old_pattern=r'^botmode-oci-child-[0-9]+-[0-9]+$'
           old_image="test \"${BOTMODE_PUBLISHED_IMAGE:-}\" = 'ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0'"
           assert source.count(old_pattern)==1, 'CI_FREE_ARCHIVAL_PROJECT_GUARD_CHANGED'
           assert source.count(old_image)==1, 'CI_FREE_ARCHIVAL_IMAGE_GUARD_CHANGED'
-          source=source.replace(old_pattern, r'^botmode-zod4-ci-[0-9]+-[0-9]+        if: always()
-        env:
-          BOTMODE_MONGO_PASSWORD: ci-isolated-only
-          POSTGRES_PASSWORD: ci-isolated-only
-          BOTMODE_IMAGE: ${{ env.BOTMODE_TEST_IMAGE }}
-        run: docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
-)
+          source=source.replace(old_pattern, r'^botmode-zod4-ci-[0-9]+-[0-9]+$')
           source=source.replace(old_image, 'test "${BOTMODE_PUBLISHED_IMAGE:-}" = "${BOTMODE_TEST_IMAGE:?}"')
           target=Path('/tmp/botmode-zod4-real-free-preflight.sh')
           target.write_text(source)
