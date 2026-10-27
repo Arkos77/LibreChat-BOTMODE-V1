@@ -6,7 +6,7 @@ import { Constants } from 'librechat-data-provider';
  * Only allows fields that users should be able to modify.
  * Sensitive fields like author, authorName, _id, productionId, etc. are excluded.
  */
-export const updatePromptGroupSchema = z
+export const updatePromptGroupSchema: z.ZodType<{ name?: string; oneliner?: string; category?: string; command?: string | null }> = z
   .object({
     /** The name of the prompt group */
     name: z.string().min(1).max(255).optional(),
