@@ -403,7 +403,7 @@ export const agentSubagentsSchema: z.ZodOptional<z.ZodType<AgentSubagentsConfig>
 /** Base agent schema with all common fields */
 const agentCodeEnvironmentIdSchema: z.ZodString = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
 
-const createAgentBaseSchema = () => z.object({
+const agentBaseShape = {
   name: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
   instructions: z.string().nullable().optional(),
@@ -431,9 +431,9 @@ const createAgentBaseSchema = () => z.object({
   subagents: agentSubagentsSchema,
   support_contact: agentSupportContactSchema,
   category: z.string().optional(),
-});
+};
 
-export const agentBaseSchema: ReturnType<typeof createAgentBaseSchema> = createAgentBaseSchema();
+export const agentBaseSchema: z.ZodObject<typeof agentBaseShape> = z.object(agentBaseShape);
 
 /** Create schema extends base with required fields for creation */
 export const agentCreateSchema: z.ZodObject<typeof agentBaseSchema.shape & { provider: z.ZodString; model: z.ZodNullable<z.ZodString>; tools: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString>>> }> = agentBaseSchema.extend({
