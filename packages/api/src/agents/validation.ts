@@ -9,7 +9,7 @@ import {
   MAX_SUBAGENT_GRAPH_NODES,
   MAX_GRAPH_SUBAGENT_MEMBERS,
 } from 'librechat-data-provider';
-import type { Agent, TModelsConfig, AgentSubagentsConfig } from 'librechat-data-provider';
+import type { Agent, TModelsConfig } from 'librechat-data-provider';
 import type { Request, Response } from 'express';
 
 /**
