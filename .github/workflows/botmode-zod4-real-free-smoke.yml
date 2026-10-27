@@ -41,8 +41,9 @@ jobs:
                   raise SystemExit('CI_FREE=ROUTER_PRICE_NONZERO')
               print('CI_FREE_PRICE_ZERO=PASS',flush=True)
               body={'model':'openrouter/free',
-                    'messages':[{'role':'user','content':'Reply with OK only.'}],
-                    'max_tokens':16,'stream':False}
+                    'messages':[{'role':'user','content':'Return strictly this JSON object with no surrounding text: {"ok":true}'}],
+                    'response_format':{'type':'json_object'},
+                    'max_tokens':64,'stream':False}
               request=Request(base+'/chat/completions',data=json.dumps(body).encode(),
                 headers={'Authorization':'Bearer '+key,'Content-Type':'application/json','Accept':'application/json'},
                 method='POST')
@@ -54,6 +55,11 @@ jobs:
               model=result.get('model','')
               if not (model=='openrouter/free' or (isinstance(model,str) and model.endswith(':free'))):
                   raise SystemExit('CI_FREE=RETURNED_MODEL_NOT_FREE')
+              output=result['choices'][0].get('message',{}).get('content','')
+              try: structured=json.loads(output)
+              except (ValueError,TypeError): raise SystemExit('CI_FREE=STRUCTURED_JSON_NOT_RETURNED')
+              if structured != {'ok':True}: raise SystemExit('CI_FREE=STRICT_ORACLE_JSON_NOT_RETURNED')
+              print('CI_FREE_STRICT_JSON_OBJECT=PASS',flush=True)
               print('CI_FREE_REAL_COMPLETION=PASS',flush=True)
               after=read('/key',True).get('data') or {}
               for k in ('usage','usage_daily'):
