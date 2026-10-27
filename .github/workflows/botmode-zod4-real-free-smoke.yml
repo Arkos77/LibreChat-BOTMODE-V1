@@ -42,8 +42,8 @@ jobs:
               print('CI_FREE_PRICE_ZERO=PASS',flush=True)
               body={'model':'liquid/lfm-2.5-2.6b:free',
                     'messages':[{'role':'user','content':'Return strictly this JSON object with no surrounding text: {"ok":true}'}],
-                    'response_format':{'type':'json_object'},
-                    'max_tokens':64,'stream':False}
+                    'response_format':{'type':'json_schema','json_schema':{'name':'botmode_oracle_ok','strict':True,'schema':{'type':'object','properties':{'ok':{'type':'boolean','const':True}},'required':['ok'],'additionalProperties':False}}},
+                    'max_tokens':256,'stream':False}
               request=Request(base+'/chat/completions',data=json.dumps(body).encode(),
                 headers={'Authorization':'Bearer '+key,'Content-Type':'application/json','Accept':'application/json'},
                 method='POST')
@@ -57,7 +57,11 @@ jobs:
                   raise SystemExit('CI_FREE=RETURNED_MODEL_NOT_FREE')
               output=result['choices'][0].get('message',{}).get('content','')
               try: structured=json.loads(output)
-              except (ValueError,TypeError): raise SystemExit('CI_FREE=STRUCTURED_JSON_NOT_RETURNED')
+              except (ValueError,TypeError):
+                  finish=result['choices'][0].get('finish_reason')
+                  print('CI_FREE_FINISH_REASON='+str(finish if finish in ('stop','length','error','content_filter') else 'OTHER'),flush=True)
+                  print('CI_FREE_CONTENT_LENGTH='+str(len(output) if isinstance(output,str) else -1),flush=True)
+                  raise SystemExit('CI_FREE=STRUCTURED_JSON_NOT_RETURNED')
               if structured != {'ok':True}: raise SystemExit('CI_FREE=STRICT_ORACLE_JSON_NOT_RETURNED')
               print('CI_FREE_STRICT_JSON_OBJECT=PASS',flush=True)
               print('CI_FREE_REAL_COMPLETION=PASS',flush=True)
