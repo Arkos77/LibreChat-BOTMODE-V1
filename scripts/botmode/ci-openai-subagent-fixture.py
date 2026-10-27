@@ -421,7 +421,7 @@ class Handler(BaseHTTPRequestHandler):
         forced_web=isinstance(choice,dict) and choice.get('type')=='function' and isinstance(choice.get('function'),dict) and choice['function'].get('name')=='web_search'
         if forced_web and not web_advertised:
             return self.send({'error':'fixture_tool_choice_schema_mismatch'},400)
-        if SOURCE_MODE and planned_contract=='result-v1' and not forced_web:
+        if planned_contract=='result-v1' and not forced_web:
             with lock: calls['planned_final']=calls.get('planned_final',0)+1
             message={'role':'assistant','content':SOURCE_RESULT}
             reason='stop'
@@ -429,7 +429,7 @@ class Handler(BaseHTTPRequestHandler):
             with lock: calls['source_tool_requests']=calls.get('source_tool_requests',0)+1
             message={'role':'assistant','content':None,'tool_calls':[{'id':'call_ci_search_'+str(number),'type':'function','function':{'name':'web_search','arguments':json.dumps({'query':'CI synthetic source'})}}]}
             reason='tool_calls'
-        elif SOURCE_MODE and research_contract and web_advertised and web_completed:
+        elif research_contract and web_advertised and web_completed:
             with lock: calls['source_final']=calls.get('source_final',0)+1
             message={'role':'assistant','content':SOURCE_RESULT}
             reason='stop'
