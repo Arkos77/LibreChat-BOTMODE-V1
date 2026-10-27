@@ -12,6 +12,11 @@ on:
         type: boolean
         required: true
         default: false
+      native_real_free_provider:
+        description: 'One zero-priced real native child + Oracle + P6 + restart, max four requests'
+        type: boolean
+        required: true
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -1181,6 +1186,44 @@ jobs:
           helpers['verify_lineage_across_api_restart'](parent)
           print('BOTMODE_NATIVE_NESTED_CHILD_DURABLE_RESTART=PASS',flush=True)
           PY_NATIVE_CHILD
+      - name: Explicit opt-in — real free native child Oracle P6 restart
+        if: github.event_name == 'workflow_dispatch' && inputs.native_real_free_provider == true && inputs.live_free_provider != true
+        timeout-minutes: 15
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CI_NATIVE_REAL_INTEGRATED: '1'
+          CI_REAL_FREE_PROVIDER: '1'
+        run: |
+          set -euo pipefail
+          test "${#OPENROUTER_API_KEY}" -gt 16 || exit 3
+          echo "::add-mask::$OPENROUTER_API_KEY"
+          python3 scripts/botmode/ci-real-free-native-oracle-gate.py --preflight
+          python3 - <<'PY_REAL_RELAY'
+          from pathlib import Path
+          p=Path('/tmp/botmode-ci-model-fixture.py')
+          s=p.read_text()
+          patches={
+            "REAL_MODEL = 'nvidia/nemotron-3.5-super-vl:free'": "REAL_MODEL = 'liquid/lfm-2.5-2.6b:free'",
+            "if request.get('model') != REAL_MODEL or any(k in request for k in ('models', 'plugins', 'web_search_options')):": "if request.get('model') not in (MODEL, REAL_MODEL) or any(k in request for k in ('models', 'plugins', 'web_search_options')):",
+            "if request.get('reasoning') != {'enabled': False}:": "if request.get('reasoning') not in (None, {'enabled': False}):",
+            "    result = dict(request)\n    for key in ('max_tokens', 'max_completion_tokens'):": "    result = dict(request)\n    result['model'] = REAL_MODEL\n    result['reasoning'] = {'enabled': False}\n    for key in ('max_tokens', 'max_completion_tokens'):",
+          }
+          for old,new in patches.items():
+            assert s.count(old)==1,'CI_REAL_RELAY_SOURCE_DRIFT'
+            s=s.replace(old,new)
+          p.write_text(s)
+          PY_REAL_RELAY
+          python3 -m py_compile /tmp/botmode-ci-model-fixture.py scripts/botmode/ci-real-free-native-oracle-gate.py
+          kill "$(cat /tmp/botmode-ci-fixture.pid)"
+          CI_REAL_FREE_PROVIDER=1 CI_MISSION_SOURCE_MODE=1 CI_OPENROUTER_KEY="$OPENROUTER_API_KEY" python3 /tmp/botmode-ci-model-fixture.py >/tmp/botmode-ci-real-relay.log 2>&1 &
+          echo "$!" > /tmp/botmode-ci-fixture.pid
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 3 http://127.0.0.1:8088/provider-diagnostics >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl -fsS --max-time 3 http://127.0.0.1:8088/provider-diagnostics >/dev/null
+          python3 scripts/botmode/ci-real-free-native-oracle-gate.py
       - name: Explicit opt-in — one real free-only Worker specialist Oracle P6 mission
         if: github.event_name == 'workflow_dispatch' && inputs.live_free_provider == true
         timeout-minutes: 15
