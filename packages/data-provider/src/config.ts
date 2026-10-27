@@ -1438,7 +1438,7 @@ export const paramDefinitionSchema = z.object({
       path: ['positiveMin'],
     })
     .optional(),
-  enumMappings: z.record(z.union([z.number(), z.boolean(), z.string()])).optional(),
+  enumMappings: z.record(z.string(), z.union([z.number(), z.boolean(), z.string()])).optional(),
   component: z.nativeEnum(ComponentTypes).optional(),
   optionType: z.nativeEnum(OptionTypes).optional(),
   columnSpan: z.number().int().nonnegative().optional(),
@@ -1483,9 +1483,8 @@ export const endpointSchema = baseEndpointSchema.merge(
           ctx.addIssue({
             code: z.ZodIssueCode.too_small,
             minimum: 1,
-            type: 'array',
+            origin: 'array',
             inclusive: true,
-            exact: false,
             message: 'At least one default model is required when model fetching is disabled',
             path: ['default'],
           });
@@ -1522,6 +1521,7 @@ export const endpointSchema = baseEndpointSchema.merge(
     /** Static per-model token config: context window and per-million-token rates */
     tokenConfig: z
       .record(
+        z.string(),
         z.object({
           prompt: z.number(),
           completion: z.number(),
@@ -2412,7 +2412,7 @@ export const memorySchema = z.object({
         provider: z.string(),
         model: z.string(),
         instructions: z.string().optional(),
-        model_parameters: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+        model_parameters: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
       }),
     ])
     .optional(),
@@ -2452,7 +2452,7 @@ export const summarizationConfigSchema = z.object({
   enabled: z.boolean().optional(),
   provider: z.string().optional(),
   model: z.string().optional(),
-  parameters: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+  parameters: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
   trigger: summarizationTriggerSchema.optional(),
   prompt: z.string().optional(),
   updatePrompt: z.string().optional(),
