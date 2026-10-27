@@ -195,7 +195,9 @@ def live_gate():
     attempts = after.get("provider_requests", 0) - baseline.get("provider_requests", 0)
     if type(attempts) is not int or not 3 <= attempts <= 4:
         fail("REAL_PROVIDER_REQUEST_COUNT_NOT_BOUNDED_THREE_TO_FOUR")
-    records = (after.get("provider_records") or [])[len(baseline.get("provider_records") or []):]
+    with urlopen("http://127.0.0.1:8088/provider-diagnostics", timeout=8) as diagnostic_response:
+        diagnostics = json.load(diagnostic_response)
+    records = diagnostics.get("records") or []
     if len(records) != attempts or any(r.get("http_status") != 200 for r in records):
         fail("REAL_PROVIDER_RESPONSES_NOT_ALL_200")
     if not any("subagent" in (r.get("tool_names") or []) for r in records):
