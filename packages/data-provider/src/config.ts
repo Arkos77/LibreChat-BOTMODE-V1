@@ -1979,6 +1979,7 @@ export const interfaceSchema = z
       .optional(),
   })
   .default({
+    retentionMode: RetentionMode.TEMPORARY,
     modelSelect: true,
     parameters: true,
     presets: true,
