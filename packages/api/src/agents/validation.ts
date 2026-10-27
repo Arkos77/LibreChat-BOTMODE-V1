@@ -403,151 +403,7 @@ export const agentSubagentsSchema: z.ZodOptional<z.ZodType<AgentSubagentsConfig>
 /** Base agent schema with all common fields */
 const agentCodeEnvironmentIdSchema: z.ZodString = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
 
-export const agentBaseSchema: z.ZodObject<
-  {
-    name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-    description: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-    instructions: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-    avatar: z.ZodOptional<
-      z.ZodNullable<
-        z.ZodObject<
-          {
-            filepath: z.ZodString;
-            source: z.ZodString;
-          },
-          'strip',
-          z.ZodTypeAny,
-          {
-            source: string;
-            filepath: string;
-          },
-          {
-            source: string;
-            filepath: string;
-          }
-        >
-      >
-    >;
-    model_parameters: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
-    tools: z.ZodOptional<z.ZodArray<z.ZodString, 'many'>>;
-    skills: z.ZodOptional<z.ZodArray<z.ZodString, 'many'>>;
-    skills_enabled: z.ZodOptional<z.ZodBoolean>;
-    skill_authoring_enabled: z.ZodOptional<z.ZodBoolean>;
-    skills_scope: z.ZodOptional<z.ZodNativeEnum<typeof SkillsScope>>;
-    memory_scope: z.ZodOptional<z.ZodNativeEnum<typeof MemoryScope>>;
-    /** @deprecated Use edges instead */
-    agent_ids: z.ZodOptional<z.ZodArray<z.ZodString, 'many'>>;
-    edges: z.ZodOptional<
-      z.ZodArray<
-        z.ZodObject<
-          {
-            from: z.ZodUnion<[z.ZodString, z.ZodArray<z.ZodString, 'many'>]>;
-            to: z.ZodUnion<[z.ZodString, z.ZodArray<z.ZodString, 'many'>]>;
-            description: z.ZodEffects<
-              z.ZodOptional<z.ZodString>,
-              string | undefined,
-              string | undefined
-            >;
-            edgeType: z.ZodOptional<z.ZodEnum<['handoff', 'direct']>>;
-            prompt: z.ZodEffects<
-              z.ZodOptional<
-                z.ZodUnion<[z.ZodString, z.ZodFunction<z.ZodTuple<[], z.ZodUnknown>, z.ZodUnknown>]>
-              >,
-              string | ((...args: unknown[]) => unknown) | undefined,
-              string | ((...args: unknown[]) => unknown) | undefined
-            >;
-            excludeResults: z.ZodOptional<z.ZodBoolean>;
-            promptKey: z.ZodEffects<
-              z.ZodOptional<z.ZodString>,
-              string | undefined,
-              string | undefined
-            >;
-          },
-          'strip',
-          z.ZodTypeAny,
-          {
-            from: string | string[];
-            to: string | string[];
-            description?: string | undefined;
-            prompt?: string | ((...args: unknown[]) => unknown) | undefined;
-            edgeType?: 'direct' | 'handoff' | undefined;
-            excludeResults?: boolean | undefined;
-            promptKey?: string | undefined;
-          },
-          {
-            from: string | string[];
-            to: string | string[];
-            description?: string | undefined;
-            prompt?: string | ((...args: unknown[]) => unknown) | undefined;
-            edgeType?: 'direct' | 'handoff' | undefined;
-            excludeResults?: boolean | undefined;
-            promptKey?: string | undefined;
-          }
-        >,
-        'many'
-      >
-    >;
-    end_after_tools: z.ZodOptional<z.ZodBoolean>;
-    hide_sequential_outputs: z.ZodOptional<z.ZodBoolean>;
-    stateful_code_sessions: z.ZodOptional<z.ZodBoolean>;
-    stateful_code_environment: z.ZodOptional<z.ZodEnum<['user', 'agent-user', 'conversation']>>;
-    code_environment_id: z.ZodOptional<z.ZodString>;
-    artifacts: z.ZodOptional<z.ZodString>;
-    recursion_limit: z.ZodOptional<z.ZodNumber>;
-    conversation_starters: z.ZodOptional<z.ZodArray<z.ZodString, 'many'>>;
-    tool_resources: typeof agentToolResourcesSchema;
-    tool_options: z.ZodOptional<
-      z.ZodRecord<
-        z.ZodString,
-        z.ZodObject<
-          {
-            defer_loading: z.ZodOptional<z.ZodBoolean>;
-            allowed_callers: z.ZodOptional<
-              z.ZodArray<z.ZodEnum<['direct', 'code_execution']>, 'many'>
-            >;
-            run_in_background: z.ZodOptional<z.ZodBoolean>;
-            describe_intent: z.ZodOptional<z.ZodBoolean>;
-          },
-          'strip',
-          z.ZodTypeAny,
-          {
-            defer_loading?: boolean | undefined;
-            allowed_callers?: ('direct' | 'code_execution')[] | undefined;
-            run_in_background?: boolean | undefined;
-            describe_intent?: boolean | undefined;
-          },
-          {
-            defer_loading?: boolean | undefined;
-            allowed_callers?: ('direct' | 'code_execution')[] | undefined;
-            run_in_background?: boolean | undefined;
-            describe_intent?: boolean | undefined;
-          }
-        >
-      >
-    >;
-    subagents: typeof agentSubagentsSchema;
-    support_contact: z.ZodOptional<
-      z.ZodObject<
-        {
-          name: z.ZodOptional<z.ZodString>;
-          email: z.ZodOptional<z.ZodUnion<[z.ZodLiteral<''>, z.ZodString]>>;
-        },
-        'strip',
-        z.ZodTypeAny,
-        {
-          name?: string | undefined;
-          email?: string | undefined;
-        },
-        {
-          name?: string | undefined;
-          email?: string | undefined;
-        }
-      >
-    >;
-    category: z.ZodOptional<z.ZodString>;
-  },
-  'strip'
-> = z.object({
+const createAgentBaseSchema = () => z.object({
   name: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
   instructions: z.string().nullable().optional(),
@@ -576,6 +432,8 @@ export const agentBaseSchema: z.ZodObject<
   support_contact: agentSupportContactSchema,
   category: z.string().optional(),
 });
+
+export const agentBaseSchema: ReturnType<typeof createAgentBaseSchema> = createAgentBaseSchema();
 
 /** Create schema extends base with required fields for creation */
 export const agentCreateSchema: z.ZodObject<typeof agentBaseSchema.shape & { provider: z.ZodString; model: z.ZodNullable<z.ZodString>; tools: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString>>> }> = agentBaseSchema.extend({
