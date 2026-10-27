@@ -933,7 +933,7 @@ export const toolApprovalHookConfigSchema = z.object({
   /** Optional regex matched against the tool name; omit to run for every tool. */
   matcher: z.string().optional(),
   /** Static options forwarded to the module's builder; the hook's own per-call config. */
-  options: z.record(z.unknown()).optional(),
+  options: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type TToolApprovalHookConfig = z.infer<typeof toolApprovalHookConfigSchema>;
@@ -1105,7 +1105,7 @@ export const agentsEndpointSchema = baseEndpointSchema
       /** Per-tool overrides of `maxToolCallArgBytes`, keyed by model-facing tool name; `0`
        * disables the guard for that tool only. Merged over LibreChat's shipped default of
        * `{ create_file: 131072 }`. */
-      maxToolCallArgBytesByTool: z.record(z.number()).optional(),
+      maxToolCallArgBytesByTool: z.record(z.string(), z.number()).optional(),
       maxCitations: z.number().min(1).max(50).optional().default(30),
       maxCitationsPerFile: z.number().min(1).max(10).optional().default(7),
       minRelevanceScore: z.number().min(0.0).max(1.0).optional().default(0.45),
@@ -2306,7 +2306,7 @@ export const webSearchSchema = z.object({
       changeTrackingOptions: z
         .object({
           modes: z.array(z.string()).optional(),
-          schema: z.record(z.unknown()).optional(),
+          schema: z.record(z.string(), z.unknown()).optional(),
           prompt: z.string().optional(),
           tag: z.string().nullable().optional(),
         })

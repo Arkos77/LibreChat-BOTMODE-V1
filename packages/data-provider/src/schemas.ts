@@ -887,7 +887,7 @@ export const tMessageSchema = z.object({
   iconURL: z.string().nullable().optional(),
   feedback: feedbackSchema.optional(),
   /** metadata */
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
   /** Output tokens for assistant messages, calibrated prompt-side estimate for user messages */
   tokenCount: z.number().optional(),
   contextMeta: z
@@ -1158,7 +1158,7 @@ export const tConversationSchema = z.object({
   additional_instructions: z.string().optional(),
   append_current_datetime: z.boolean().optional(),
   /** Used to overwrite active conversation settings when saving a Preset */
-  presetOverride: z.record(z.unknown()).optional(),
+  presetOverride: z.record(z.string(), z.unknown()).optional(),
   stop: z.array(z.string()).optional(),
   /* frontend components */
   greeting: z.string().optional(),
