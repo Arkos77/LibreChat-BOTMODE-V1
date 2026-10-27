@@ -172,6 +172,19 @@ def read_native_terminal_stream(helpers, stream_id):
             last_reason = "SSE_IDLE_TIMEOUT"
         except (URLError, ConnectionError, OSError):
             return last_http, events, "SSE_TRANSPORT_ERROR", attempts
+        # Local relay rejection happens before provider inference. Fail fast on
+        # that deterministic class rather than spending 450s reconnecting to
+        # a mission that cannot advance. No new generation request is sent.
+        if attempts % 2 == 0:
+            try:
+                with urlopen("http://127.0.0.1:8088/provider-diagnostics",timeout=3) as diag_response:
+                    diag=json.load(diag_response)
+                if (diag.get("simulated") is False and
+                        diag.get("route") == MODEL and
+                        diag.get("local_rejections")):
+                    return last_http, events, "RELAY_LOCAL_REJECTION", attempts
+            except (OSError, ValueError, TypeError):
+                pass
         if time.monotonic() < deadline:
             time.sleep(min(2.0, max(0, deadline - time.monotonic())))
     return last_http, events, last_reason if attempts < 250 else "SSE_RECONNECT_LIMIT", attempts
@@ -195,7 +208,17 @@ def bounded_failure_diagnostics(helpers, stream_id, parent_id, events):
         rec=data.get("records") or []
         if not isinstance(rec,list): rec=[]
         print("CI_NATIVE_REAL_PROVIDER_REQUEST_COUNT="+str(len(rec)),flush=True)
-        print("CI_NATIVE_REAL_PROVIDER_LOCAL_REJECTIONS="+str(len(data.get("local_rejections") or [])),flush=True)
+        rejections=data.get("local_rejections") or []
+        print("CI_NATIVE_REAL_PROVIDER_LOCAL_REJECTIONS="+str(len(rejections)),flush=True)
+        # These labels are constants raised by the checked-in relay. Strictly
+        # allowlist to prevent accidental logging of provider or prompt content.
+        approved={"REAL_FREE_ROUTE_REQUIRED","REAL_REASONING_DISABLED_REQUIRED",
+                  "REAL_SINGLE_CHOICE_REQUIRED","REAL_FUNCTION_SCHEMA_REQUIRED",
+                  "REAL_TOKEN_LIMIT_REQUIRED","REAL_REQUEST_BUDGET_EXHAUSTED",
+                  "NATIVE_FALLBACK_ROUTE_REQUIRED","NATIVE_FALLBACK_SYSTEM_REQUIRED"}
+        for item in rejections[:4]:
+            code=item.get("code") if isinstance(item,dict) else None
+            print("CI_NATIVE_REAL_LOCAL_REJECTION_CLASS="+(code if code in approved else "OTHER"),flush=True)
         phases={"waiting_headers","reading_body","response_complete","transport_error"}
         statuses={"200","400","401","403","404","408","422","429","500","502","503","504"}
         for i,record in enumerate(rec[:4],1):
