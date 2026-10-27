@@ -1189,11 +1189,14 @@ jobs:
               quota=info.get('free_model_daily_requests') or {}
               if info.get('is_management_key') or type(quota.get('remaining')) is not int or quota['remaining']<2:
                   raise SystemExit('CI_LIVE_FREE=QUOTA_NOT_CONFIRMED_FOR_TWO_NODES')
-              rows=[m for m in read('/models').get('data',[]) if m.get('id')=='openrouter/free']
+              rows=[m for m in read('/models').get('data',[]) if m.get('id')=='liquid/lfm-2.5-2.6b:free']
               if len(rows)!=1: raise SystemExit('CI_LIVE_FREE=ROUTER_NOT_IN_CATALOG')
               prices=rows[0].get('pricing') or {}
               if any(Decimal(str(prices.get(k,'1')))!=0 for k in ('prompt','completion')):
                   raise SystemExit('CI_LIVE_FREE=ROUTER_NOT_ZERO_PRICE')
+              params=rows[0].get('supported_parameters') or []
+              if not all(k in params for k in ('response_format','structured_outputs')):
+                  raise SystemExit('CI_LIVE_FREE=STRUCTURED_MODEL_CAPABILITY_NOT_VERIFIED')
           except (HTTPError,URLError,TimeoutError,KeyError,ValueError,ArithmeticError) as e:
               print('CI_LIVE_FREE_PREFLIGHT_ERROR_CLASS='+type(e).__name__,flush=True)
               raise SystemExit('CI_LIVE_FREE=PROVIDER_PREFLIGHT_FAILED')
@@ -1208,6 +1211,18 @@ jobs:
           assert source.count(old_image)==1, 'CI_FREE_ARCHIVAL_IMAGE_GUARD_CHANGED'
           source=source.replace(old_pattern, r'^botmode-zod4-ci-[0-9]+-[0-9]+$')
           source=source.replace(old_image, 'test "${BOTMODE_PUBLISHED_IMAGE:-}" = "${BOTMODE_TEST_IMAGE:?}"')
+          # Runner-only: select catalog-verified free model and strict JSON schema.
+          named_line="model='openrouter/free'"
+          assert source.count(named_line)==1, 'CI_FREE_NAMED_MODEL_SOURCE_DRIFT'
+          source=source.replace(named_line, "model='liquid/lfm-2.5-2.6b:free'\nPath('/tmp/botmode-ci-named-free-model').write_text(model)")
+          model_line="        item['models']={'fetch':False,'default':allowed_free}"
+          assert source.count(model_line)==1, 'CI_FREE_MODEL_ALLOWLIST_SOURCE_DRIFT'
+          structured="        item['addParams']={'response_format':{'type':'json_schema','json_schema':{'name':'botmode_oracle_ok','strict':True,'schema':{'type':'object','properties':{'ok':{'type':'boolean','const':True}},'required':['ok'],'additionalProperties':False}}}}"
+          source=source.replace(model_line,model_line+'\n'+structured)
+          patch_gate='if test "${CI_LIVE_FREE_FIVE_TASKS:-false}" = true; then'
+          assert source.count(patch_gate)==2, 'CI_FREE_AGENT_PATCH_GATE_SOURCE_DRIFT'
+          source=source.replace(patch_gate, 'if true; then', 1)
+          print('CI_FREE_RUNNER_ONLY_NAMED_JSON_MODEL_AND_NATIVE_AGENT_BINDINGS=PASS',flush=True)
           target=Path('/tmp/botmode-zod4-real-free-preflight.sh')
           target.write_text(source)
           print('CI_FREE_EXACT_HEAD_EPHEMERAL_GUARDS=PASS',flush=True)
