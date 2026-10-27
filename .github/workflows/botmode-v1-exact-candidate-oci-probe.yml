@@ -203,6 +203,17 @@ jobs:
               if endpoint.get('name') == 'OpenRouter':
                   endpoint['baseURL'] = 'http://host.docker.internal:8088/v1'
                   endpoint['models'] = {'fetch': False, 'default': ['openrouter/free']}
+          # CI browser research needs an authenticated search implementation.
+          # The repository default selects Serper/Firecrawl API keys, which
+          # this isolated runner deliberately does not provision. Bind SearXNG
+          # to the fixture's /search endpoint; the scraper uses the keyless
+          # Keenable implementation. Production settings remain untouched.
+          conf['webSearch'] = {
+              'searchProvider': 'searxng',
+              'searxngInstanceUrl': 'http://host.docker.internal:8088',
+              'scraperProvider': 'keenable',
+              'allowedAddresses': ['host.docker.internal:8088']
+          }
           path.write_text(json.dumps(conf,ensure_ascii=False,indent=2)+'\n')
           print('CI_HOST_MODEL_ROUTING_DISABLED_FOR_ISOLATED_TEST='+str(len(routes)))
           PY
