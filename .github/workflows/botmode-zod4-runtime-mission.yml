@@ -1206,13 +1206,25 @@ jobs:
           patches={
             "REAL_MODEL = 'nvidia/nemotron-3.5-super-vl:free'": "REAL_MODEL = 'liquid/lfm-2.5-2.6b:free'",
             "if request.get('model') != REAL_MODEL or any(k in request for k in ('models', 'plugins', 'web_search_options')):": "if request.get('model') not in (MODEL, REAL_MODEL) or any(k in request for k in ('models', 'plugins', 'web_search_options')):",
-            "if request.get('reasoning') != {'enabled': False}:": "if request.get('reasoning') not in (None, {'enabled': False}):",
+            "    if request.get('reasoning') != {'enabled': False}:\n        raise ValueError('REAL_REASONING_DISABLED_REQUIRED')": "    # Runner-only normalization: ignore the SDK reasoning setting; force off downstream.",
             "    result = dict(request)\n    for key in ('max_tokens', 'max_completion_tokens'):": "    result = dict(request)\n    result['model'] = REAL_MODEL\n    result['reasoning'] = {'enabled': False}\n    for key in ('max_tokens', 'max_completion_tokens'):",
           }
           for old,new in patches.items():
             assert s.count(old)==1,'CI_REAL_RELAY_SOURCE_DRIFT'
             s=s.replace(old,new)
           p.write_text(s)
+          # Local/no-network contract proof: regardless of incoming SDK
+          # reasoning defaults, the provider request MUST have reasoning off.
+          import runpy
+          guard=runpy.run_path(str(p), run_name='ci_relay_helper_library')['bounded_real_request']
+          for incoming in ({'effort':'high'}, {'enabled':True}, None):
+            payload={'model':'openrouter/free','messages':[{'role':'user','content':'CI'}],
+                     'reasoning':incoming,'max_tokens':256,'n':1}
+            bounded=guard(payload)
+            assert bounded['model']=='liquid/lfm-2.5-2.6b:free', 'CI_RELAY_NONFREE_ROUTE'
+            assert bounded['reasoning']=={'enabled':False}, 'CI_RELAY_REASONING_NOT_DISABLED'
+            assert bounded['max_tokens']==256 and bounded['n']==1, 'CI_RELAY_REQUEST_DRIFT'
+          print('CI_NATIVE_REAL_RELAY_FORCES_REASONING_DISABLED=PASS',flush=True)
           PY_REAL_RELAY
           python3 -m py_compile /tmp/botmode-ci-model-fixture.py scripts/botmode/ci-real-free-native-oracle-gate.py
           # Old fixture and new relay share port 8088. Do not mistake a
