@@ -3,7 +3,7 @@ import type { OracleInput, OracleProvider, OracleVerdict } from './types';
 import { supportsResearchResult } from './sources';
 
 const scalar = z.union([z.string(), z.number().finite(), z.boolean(), z.null()]);
-const candidateSchema = z.record(scalar);
+const candidateSchema = z.record(z.string(), scalar);
 
 /** Verifies scalar JSON conformance, not the truth of unconstrained real-world claims. */
 export const deterministicOracle: OracleProvider = {
@@ -92,7 +92,7 @@ function evaluate(input: OracleInput, verdict: OracleVerdict): void {
     verdict.uncertainty.push('CANDIDATE_MISSING');
     return;
   }
-  let parsed: z.SafeParseReturnType<unknown, Record<string, z.infer<typeof scalar>>>;
+  let parsed: ReturnType<typeof candidateSchema.safeParse>;
   try {
     parsed = candidateSchema.safeParse(JSON.parse(input.candidate));
   } catch {
