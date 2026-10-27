@@ -1157,6 +1157,30 @@ jobs:
 
           echo '### Zod4 exact-HEAD Oracle/QA E2E (local synthetic provider)' >> "$GITHUB_STEP_SUMMARY"
           echo 'Exact experimental Zod4 HEAD image tested with local synthetic subagent model; no real-provider inference; not a production release.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify genuine native nested child lineage survives API restart
+        shell: bash
+        env:
+          BOTMODE_MONGO_PASSWORD: ci-isolated-only
+          POSTGRES_PASSWORD: ci-isolated-only
+          BOTMODE_IMAGE: ${{ env.BOTMODE_TEST_IMAGE }}
+          BOTMODE_HOST_PORT: '3090'
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_NATIVE_CHILD'
+          import runpy
+          from pathlib import Path
+          # The earlier fixture invoked the native subagent tool and emitted
+          # both parent_tool_requests and child_responses; use the *same*
+          # Mongo parent conversation, not a synthetic placeholder.
+          parent=Path('/tmp/botmode-ci-mission-id').read_text().strip()
+          if not parent:
+              raise SystemExit('CI_NESTED_CHILD_PARENT_MISSING')
+          helpers=runpy.run_path(
+              'scripts/botmode/ci-oracle-delegated-mission-gate.py',
+              run_name='nested_child_helper_library')
+          helpers['verify_lineage_across_api_restart'](parent)
+          print('BOTMODE_NATIVE_NESTED_CHILD_DURABLE_RESTART=PASS',flush=True)
+          PY_NATIVE_CHILD
       - name: Explicit opt-in — one real free-only Worker specialist Oracle P6 mission
         if: github.event_name == 'workflow_dispatch' && inputs.live_free_provider == true
         timeout-minutes: 15
