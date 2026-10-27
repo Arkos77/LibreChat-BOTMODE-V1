@@ -34,13 +34,13 @@ jobs:
               if before.get('is_management_key') or type(quota.get('remaining')) is not int or quota['remaining']<1:
                   raise SystemExit('CI_FREE=NOT_AUTHORIZED_OR_NO_QUOTA')
               print('CI_FREE_AUTH_AND_QUOTA=PASS',flush=True)
-              router=[m for m in read('/models').get('data',[]) if m.get('id')=='openrouter/free']
+              router=[m for m in read('/models').get('data',[]) if m.get('id')=='liquid/lfm-2.5-2.6b:free']
               if len(router)!=1:raise SystemExit('CI_FREE=ROUTER_NOT_IN_CATALOG')
               price=router[0].get('pricing') or {}
               if any(Decimal(str(price.get(k,'1')))!=0 for k in ('prompt','completion')):
                   raise SystemExit('CI_FREE=ROUTER_PRICE_NONZERO')
               print('CI_FREE_PRICE_ZERO=PASS',flush=True)
-              body={'model':'openrouter/free',
+              body={'model':'liquid/lfm-2.5-2.6b:free',
                     'messages':[{'role':'user','content':'Return strictly this JSON object with no surrounding text: {"ok":true}'}],
                     'response_format':{'type':'json_object'},
                     'max_tokens':64,'stream':False}
@@ -53,7 +53,7 @@ jobs:
                   if response.status!=200:raise SystemExit('CI_FREE=BAD_HTTP')
               if not result.get('choices'):raise SystemExit('CI_FREE=NO_COMPLETION')
               model=result.get('model','')
-              if not (model=='openrouter/free' or (isinstance(model,str) and model.endswith(':free'))):
+              if not (model=='liquid/lfm-2.5-2.6b:free' or (isinstance(model,str) and model=='liquid/lfm-2.5-2.6b:free')):
                   raise SystemExit('CI_FREE=RETURNED_MODEL_NOT_FREE')
               output=result['choices'][0].get('message',{}).get('content','')
               try: structured=json.loads(output)
