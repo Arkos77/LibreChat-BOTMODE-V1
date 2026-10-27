@@ -9,7 +9,7 @@ export default defineConfig({
   entry: ['src/index.ts', 'src/telemetry.ts', 'src/credentials.ts'],
   format: ['cjs'],
   platform: 'node',
-  dts: { oxc: true },
+  dts: { generator: 'tsc' },
   outDir: 'dist',
   sourcemap: true,
   // Warn on module cycles at build time; CI enforces via config/circular-deps.mjs.
