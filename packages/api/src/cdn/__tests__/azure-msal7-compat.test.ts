@@ -44,61 +44,56 @@ describe('Azure MSAL 7 compatibility (offline)', () => {
     );
     expect(typeof client?.getContainerClient).toBe('function');
   });
-  it(
-    'obtains a managed identity token from a disposable local App Service endpoint',
-    async () => {
-      const keys = ['IDENTITY_ENDPOINT', 'IDENTITY_HEADER', 'MSI_ENDPOINT', 'MSI_SECRET'] as const;
-      const previous = new Map(keys.map((key) => [key, process.env[key]]));
-      const requests: Array<{ url: string; header: string | undefined }> = [];
-      const server = createServer((request, response) => {
-        requests.push({
-          url: request.url ?? '',
-          header: request.headers['x-identity-header'] as string | undefined,
-        });
-        response.writeHead(200, { 'Content-Type': 'application/json' });
-        response.end(
-          JSON.stringify({
-            access_token: 'botmode-local-synthetic-token',
-            token_type: 'Bearer',
-            expires_on: String(Math.floor(Date.now() / 1000) + 3600),
-            resource: 'https://storage.azure.com/',
-            client_id: '00000000-0000-0000-0000-000000000001',
-          }),
-        );
+  it('obtains a managed identity token from a disposable local App Service endpoint', async () => {
+    const keys = ['IDENTITY_ENDPOINT', 'IDENTITY_HEADER', 'MSI_ENDPOINT', 'MSI_SECRET'] as const;
+    const previous = new Map(keys.map((key) => [key, process.env[key]]));
+    const requests: Array<{ url: string; header: string | undefined }> = [];
+    const server = createServer((request, response) => {
+      requests.push({
+        url: request.url ?? '',
+        header: request.headers['x-identity-header'] as string | undefined,
       });
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          access_token: 'botmode-local-synthetic-token',
+          token_type: 'Bearer',
+          expires_on: String(Math.floor(Date.now() / 1000) + 3600),
+          resource: 'https://storage.azure.com/',
+          client_id: '00000000-0000-0000-0000-000000000001',
+        }),
+      );
+    });
 
-      try {
-        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-        const address = server.address();
-        if (!address || typeof address === 'string') {
-          throw new Error('CI_AZURE_LOCAL_LISTENER_UNAVAILABLE');
-        }
-        delete process.env.MSI_ENDPOINT;
-        delete process.env.MSI_SECRET;
-        process.env.IDENTITY_ENDPOINT = `http://127.0.0.1:${address.port}/MSI/token`;
-        process.env.IDENTITY_HEADER = 'botmode-local-header';
-        const token = await new ManagedIdentityCredential().getToken(
-          'https://storage.azure.com/.default',
-        );
+    try {
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        throw new Error('CI_AZURE_LOCAL_LISTENER_UNAVAILABLE');
+      }
+      delete process.env.MSI_ENDPOINT;
+      delete process.env.MSI_SECRET;
+      process.env.IDENTITY_ENDPOINT = `http://127.0.0.1:${address.port}/MSI/token`;
+      process.env.IDENTITY_HEADER = 'botmode-local-header';
+      const token = await new ManagedIdentityCredential().getToken(
+        'https://storage.azure.com/.default',
+      );
 
-        expect(token?.token).toBe('botmode-local-synthetic-token');
-        expect(requests).toHaveLength(1);
-        expect(new URL(requests[0].url, 'http://127.0.0.1').searchParams.get('api-version')).toBe(
-          '2019-08-01',
-        );
-        expect(requests[0].header).toBe('botmode-local-header');
-      } finally {
-        await new Promise<void>((resolve) => server.close(() => resolve()));
-        for (const [key, value] of previous) {
-          if (value === undefined) {
-            delete process.env[key];
-          } else {
-            process.env[key] = value;
-          }
+      expect(token?.token).toBe('botmode-local-synthetic-token');
+      expect(requests).toHaveLength(1);
+      expect(new URL(requests[0].url, 'http://127.0.0.1').searchParams.get('api-version')).toBe(
+        '2019-08-01',
+      );
+      expect(requests[0].header).toBe('botmode-local-header');
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      for (const [key, value] of previous) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
         }
       }
-    },
-    20000,
-  );
-
+    }
+  }, 20000);
 });
