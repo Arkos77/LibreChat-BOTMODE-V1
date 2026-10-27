@@ -305,7 +305,9 @@ export const agentSubagentsSchema = z
   .optional();
 
 /** Base agent schema with all common fields */
-const agentCodeEnvironmentIdSchema: z.ZodString = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
+const agentCodeEnvironmentIdSchema: z.ZodString = z
+  .string()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
 
 const agentBaseShape = {
   name: z.string().nullable().optional(),

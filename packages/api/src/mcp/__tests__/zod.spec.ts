@@ -136,7 +136,9 @@ describe('convertJsonSchemaToZod', () => {
       expect(parsedMinimal).toBeDefined();
       expect(parsedMinimal).toHaveProperty('numberField', 2.5);
       // Optional fields may be undefined or null when not provided
-      expect(parsedMinimal).not.toEqual(expect.objectContaining({ integerField: expect.anything() }));
+      expect(parsedMinimal).not.toEqual(
+        expect.objectContaining({ integerField: expect.anything() }),
+      );
       expect(parsedMinimal).not.toEqual(expect.objectContaining({ floatField: expect.anything() }));
     });
   });

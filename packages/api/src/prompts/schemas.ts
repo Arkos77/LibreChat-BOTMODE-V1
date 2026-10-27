@@ -6,7 +6,12 @@ import { Constants } from 'librechat-data-provider';
  * Only allows fields that users should be able to modify.
  * Sensitive fields like author, authorName, _id, productionId, etc. are excluded.
  */
-export const updatePromptGroupSchema: z.ZodType<{ name?: string; oneliner?: string; category?: string; command?: string | null }> = z
+export const updatePromptGroupSchema: z.ZodType<{
+  name?: string;
+  oneliner?: string;
+  category?: string;
+  command?: string | null;
+}> = z
   .object({
     /** The name of the prompt group */
     name: z.string().min(1).max(255).optional(),
@@ -44,6 +49,8 @@ export function validatePromptGroupUpdate(data: unknown): TUpdatePromptGroupSche
  * @param data - The raw request body to validate
  * @returns A SafeParseResult with either the validated data or validation errors
  */
-export function safeValidatePromptGroupUpdate(data: unknown): ReturnType<typeof updatePromptGroupSchema.safeParse> {
+export function safeValidatePromptGroupUpdate(
+  data: unknown,
+): ReturnType<typeof updatePromptGroupSchema.safeParse> {
   return updatePromptGroupSchema.safeParse(data);
 }

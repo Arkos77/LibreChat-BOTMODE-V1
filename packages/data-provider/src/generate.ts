@@ -503,9 +503,10 @@ export function validateSettingDefinitions(settings: SettingsConfiguration): voi
           path: ['optionType'],
         });
       } else {
-        const zodType = conversationSchema instanceof z.ZodOptional
-          ? conversationSchema.unwrap().def.type
-          : conversationSchema.def.type;
+        const zodType =
+          conversationSchema instanceof z.ZodOptional
+            ? conversationSchema.unwrap().def.type
+            : conversationSchema.def.type;
         const settingTypeEquivalent = ZodTypeToSettingType[zodType] || null;
         if (settingTypeEquivalent !== setting.type) {
           errors.push({

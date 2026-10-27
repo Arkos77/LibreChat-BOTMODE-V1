@@ -500,8 +500,7 @@ export type SkillSyncGitHubSourceConfig = z.infer<typeof skillSyncGitHubSourceSc
 type SchemaShape<T> = T extends z.ZodObject<infer U> ? U : never;
 
 // Helper type to determine the default value or undefined based on whether the field has a default
-type DefaultValue<T> =
-  T extends z.ZodDefault<infer Inner> ? z.output<Inner> : undefined;
+type DefaultValue<T> = T extends z.ZodDefault<infer Inner> ? z.output<Inner> : undefined;
 
 // Extract default values or undefined from the schema shape
 type ExtractDefaults<T> = {
@@ -2413,7 +2412,9 @@ export const memorySchema = z.object({
         provider: z.string(),
         model: z.string(),
         instructions: z.string().optional(),
-        model_parameters: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+        model_parameters: z
+          .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+          .optional(),
       }),
     ])
     .optional(),
@@ -2453,7 +2454,9 @@ export const summarizationConfigSchema = z.object({
   enabled: z.boolean().optional(),
   provider: z.string().optional(),
   model: z.string().optional(),
-  parameters: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+  parameters: z
+    .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
+    .optional(),
   trigger: summarizationTriggerSchema.optional(),
   prompt: z.string().optional(),
   updatePrompt: z.string().optional(),

@@ -766,7 +766,11 @@ export function matchModelName(
   return matchedPattern || modelName;
 }
 
-export const modelSchema: z.ZodType<{ id: string; pricing: { prompt: string; completion: string }; context_length: number }> = z.object({
+export const modelSchema: z.ZodType<{
+  id: string;
+  pricing: { prompt: string; completion: string };
+  context_length: number;
+}> = z.object({
   id: z.string(),
   pricing: z.object({
     prompt: z.string(),
@@ -775,7 +779,13 @@ export const modelSchema: z.ZodType<{ id: string; pricing: { prompt: string; com
   context_length: z.number(),
 });
 
-export const inputSchema: z.ZodType<{ data: Array<{ id: string; pricing: { prompt: string; completion: string }; context_length: number }> }> = z.object({
+export const inputSchema: z.ZodType<{
+  data: Array<{
+    id: string;
+    pricing: { prompt: string; completion: string };
+    context_length: number;
+  }>;
+}> = z.object({
   data: z.array(modelSchema),
 });
 
