@@ -1089,6 +1089,29 @@ jobs:
                   r'error|exception|tool|web_search|mission|failed',line,re.I)]
               print('CI_BROWSER_API_LOG_SCAN='+('PASS' if log_proc.returncode==0 else 'FAIL'),flush=True)
               print('CI_BROWSER_API_LOG_MATCH_COUNT='+str(len(interesting)),flush=True)
+              # The controller already logs the original exception. Read only
+              # matching logger headers and classify their immediately adjacent
+              # stack line; never print stack values, prompts, URLs or secrets.
+              headers=[i for i,line in enumerate(loglines) if (
+                  'Generation error for' in line or
+                  'Unhandled error in background generation' in line or
+                  'Initialization error:' in line)]
+              print('CI_BROWSER_GENERATION_EXCEPTION_HEADERS='+str(len(headers)),flush=True)
+              for n in headers[-4:]:
+                  window=' '.join(loglines[n:n+5])
+                  types=sorted(set(re.findall(r'\\b(?:TypeError|SyntaxError|ReferenceError|RangeError|ValidationError|ZodError|AxiosError|APIError|Error)\\b',window)))
+                  tags=[name for name,pattern in {
+                      'FORCED_WEB':r'web_search|tool_choice',
+                      'TOOL_CALL':r'tool_calls|tool call|tool invocation',
+                      'ARGUMENTS':r'arguments|parameters|schema',
+                      'SEARCH_FAILURE':r'search.*fail|failed.*search',
+                      'MODEL_FORMAT':r'parse|invalid json|response_format',
+                      'NO_RESULT':r'no result|not found',
+                      'PROVIDER':r'provider|openrouter',
+                      'STREAM':r'stream|sse',
+                  }.items() if re.search(pattern,window,re.I)]
+                  print('CI_BROWSER_GENERATION_EXCEPTION_TYPES='+(','.join(types) if types else 'UNKNOWN'),flush=True)
+                  print('CI_BROWSER_GENERATION_EXCEPTION_TAGS='+(','.join(tags) if tags else 'OTHER'),flush=True)
               for line in interesting[-35:]:
                   cls=','.join(k for k,pat in {
                       'SEARCH':r'web_search|search',
