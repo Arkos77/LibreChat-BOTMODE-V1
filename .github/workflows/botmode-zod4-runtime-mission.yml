@@ -736,7 +736,7 @@ jobs:
           BOTMODE_IMAGE: ${{ env.BOTMODE_TEST_IMAGE }}
         run: |
           set -euo pipefail
-          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T -w /app/api api node - <<'NODE_AZURE_DISABLED'
+          timeout 120s docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T -w /app/api api node - <<'NODE_AZURE_DISABLED'
           const fs = require('node:fs');
           const config = JSON.parse(fs.readFileSync('/app/librechat.yaml', 'utf8'));
           const strategies = [config.fileStrategy, ...Object.values(config.fileStrategies || {})];
@@ -767,9 +767,10 @@ jobs:
             }
             console.log('CI_AZURE_DISABLED_SOURCE_CONFIGURATION=PASS');
             console.log('CI_AZURE_DISABLED_RUNTIME=PASS');
+            process.exit(0);
           })().catch((error) => {
             console.error(error.name + ':' + error.message);
-            process.exitCode = 1;
+            process.exit(1);
           });
           NODE_AZURE_DISABLED
       - name: Browser acceptance — actual candidate UI and agent selector
