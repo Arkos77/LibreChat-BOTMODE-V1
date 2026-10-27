@@ -1,0 +1,86 @@
+name: BOTMODE Zod4 Real Free Subagent Tool Choice Probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  free-model-tool-call:
+    if: github.ref == 'refs/heads/experiment/botmode-zod4-security-20261027'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify zero-price free provider emits a subagent tool call, no tool execution
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          from decimal import Decimal
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError, URLError
+          key=os.environ.get('OPENROUTER_API_KEY','')
+          if len(key)<17: raise SystemExit('CI_REAL_TOOL=KEY_MISSING')
+          base='https://openrouter.ai/api/v1'
+          def get(path,authorized=False):
+              h={'Accept':'application/json'}
+              if authorized: h['Authorization']='Bearer '+key
+              with urlopen(Request(base+path,headers=h),timeout=20) as r:
+                  return json.load(r)
+          try:
+              quota=get('/key',True).get('data') or {}
+              remaining=(quota.get('free_model_daily_requests') or {}).get('remaining')
+              if quota.get('is_management_key') or type(remaining) is not int or remaining<1:
+                  raise SystemExit('CI_REAL_TOOL=NO_FREE_QUOTA')
+              model='liquid/lfm-2.5-2.6b:free'
+              models=[m for m in get('/models').get('data',[]) if m.get('id')==model]
+              if len(models)!=1: raise SystemExit('CI_REAL_TOOL=MODEL_MISSING')
+              prices=models[0].get('pricing') or {}
+              if any(Decimal(str(prices.get(k,'1')))!=0 for k in ('prompt','completion')):
+                  raise SystemExit('CI_REAL_TOOL=NONZERO_PRICE')
+              parameters=models[0].get('supported_parameters') or []
+              if not all(k in parameters for k in ('tools','tool_choice')):
+                  raise SystemExit('CI_REAL_TOOL=TOOL_SUPPORT_MISSING')
+              print('CI_REAL_TOOL_FREE_QUOTA_PRICE_AND_CAPABILITY=PASS',flush=True)
+              body={
+                'model':model,
+                'messages':[{'role':'user','content':'Use the subagent tool exactly once to delegate this task. Do not write a plain text response.'}],
+                'tools':[{'type':'function','function':{
+                    'name':'subagent','description':'Delegate a task to an authorized specialist',
+                    'parameters':{'type':'object','properties':{
+                      'description':{'type':'string'},
+                      'subagent_type':{'type':'string','enum':['ci-authorized-child']},
+                      'run_in_background':{'type':'boolean'}},
+                      'required':['description','subagent_type'],'additionalProperties':False}
+                }}],
+                'tool_choice':{'type':'function','function':{'name':'subagent'}},
+                'max_tokens':256,'temperature':0,'stream':False
+              }
+              req=Request(base+'/chat/completions',data=json.dumps(body).encode(),method='POST',
+                  headers={'Authorization':'Bearer '+key,'Content-Type':'application/json','Accept':'application/json'})
+              print('CI_REAL_TOOL_GENERATION_REQUESTS=1',flush=True)
+              with urlopen(req,timeout=90) as response: result=json.load(response)
+              options=result.get('choices') or []
+              if not options:raise SystemExit('CI_REAL_TOOL=NO_CHOICES')
+              message=options[0].get('message') or {}
+              calls=message.get('tool_calls') or []
+              if len(calls)!=1 or (calls[0].get('function') or {}).get('name')!='subagent':
+                  raise SystemExit('CI_REAL_TOOL=SUBAGENT_CALL_NOT_OBSERVED')
+              args=json.loads(calls[0]['function'].get('arguments',''))
+              if args.get('subagent_type')!='ci-authorized-child' or not isinstance(args.get('description'),str) or not args.get('description').strip():
+                  raise SystemExit('CI_REAL_TOOL=UNAUTHORIZED_OR_INVALID_TOOL_ARGS')
+              print('CI_REAL_PROVIDER_NATIVE_SUBAGENT_TOOL_CALL_SHAPE=PASS',flush=True)
+              after=get('/key',True).get('data') or {}
+              for field in ('usage','usage_daily'):
+                  if quota.get(field) is not None and after.get(field) is not None and Decimal(str(after[field]))>Decimal(str(quota[field])):
+                      raise SystemExit('CI_REAL_TOOL=POSITIVE_SPEND')
+              print('CI_REAL_TOOL_NO_POSITIVE_SPEND=PASS',flush=True)
+              print('CI_REAL_TOOL_NOT_EXECUTED_BY_THIS_PROBE=TRUE',flush=True)
+          except HTTPError as exc:
+              print('CI_REAL_TOOL_UPSTREAM_HTTP='+str(exc.code),flush=True)
+              raise SystemExit('CI_REAL_TOOL=PROVIDER_HTTP_FAILURE')
+          except (URLError,TimeoutError,ValueError,KeyError,ArithmeticError) as exc:
+              print('CI_REAL_TOOL_ERROR_CLASS='+type(exc).__name__,flush=True)
+              raise SystemExit('CI_REAL_TOOL=PROBE_ERROR')
+          PY
