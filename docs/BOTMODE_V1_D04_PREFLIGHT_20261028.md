@@ -10,7 +10,7 @@
 
 ## Empilement Git et protection de livraison
 
-Selon GitHub, `main` est protégée, et `compare/main...7605e9186b84d4a7eb6d14be1bc9528c6033bbd8` annonce **371 commits d'avance, zéro en retard** et 231 fichiers modifiés. PR #86 dépend de #85 → #84 → #83 → #82 → #81 → #80 → #79 → #78 → `test/botmode-host-research-20261024` (branche intermédiaire sans PR ouverte correspondante). Toutes les PR #78–86 sont encore DRAFT. **Aucune intégration en bloc de 371 commits n'est autorisée** : revoir l'ensemble du diff cumulé, les conflits, les fonctionnalités et l'ordre de fusion avant une décision.
+Selon GitHub, `main` est protégée, et `compare/main...7605e9186b84d4a7eb6d14be1bc9528c6033bbd8` annonce **371 commits d'avance, zéro en retard** et 231 fichiers modifiés. PR #86 dépend de #85 → #84 → #83 → #82 → #81 → #80 → #79 → #78 → `test/botmode-host-research-20261024` (branche intermédiaire désormais lié par la [PR #87 DRAFT](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/87), basée sur #76). Toutes les PR #78–86 sont encore DRAFT. **Aucune intégration en bloc de 371 commits n'est autorisée** : revoir l'ensemble du diff cumulé, les conflits, les fonctionnalités et l'ordre de fusion avant une décision.
 
 ## Détail de la filiation et exclusion des doublons
 
