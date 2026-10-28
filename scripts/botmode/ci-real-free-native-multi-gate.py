@@ -101,6 +101,83 @@ const crypto=require('crypto');
     return report["fingerprint"]
 
 
+def observe_parent_mission(helpers, stream_id, parent, elapsed):
+    """Read-only parent/P6 evidence while the exact epoch still exists.
+
+    Never log contents, message IDs, tenant IDs, credentials or tool arguments.
+    A missing terminal here is a diagnostic, never a successful assertion.
+    """
+    allowed = {"queued", "pending", "running", "completed", "complete",
+               "failed", "error", "paused", "cancelled"}
+    prefix = "CI_REAL_MULTI_TRACE_" + str(elapsed)
+    try:
+        status, plan, oracle, response_id, pending = core["read_p6"](stream_id, helpers)
+        print(prefix + "_REDIS_STATUS=" +
+              (status if status in allowed else "OTHER_OR_MISSING"), flush=True)
+        for name, value in (("PLAN", plan), ("ORACLE", oracle),
+                            ("RESPONSE_ID", response_id)):
+            print(prefix + "_" + name + "_PRESENT=" + str(bool(value)).upper(), flush=True)
+        if oracle:
+            try:
+                data = json.loads(oracle)
+                statuses = {v.get("status") for value in
+                            (data.get("results") or {}).values()
+                            if isinstance(value, dict)
+                            for v in (value.get("verdicts") or [])
+                            if isinstance(v, dict)}
+                verdict = ("VERIFIED" if statuses == {"VERIFIED"} else
+                           "REJECTED" if "REJECTED" in statuses else "OTHER_OR_MISSING")
+            except (ValueError, TypeError, AttributeError):
+                verdict = "OTHER_OR_MISSING"
+            print(prefix + "_ORACLE_VERDICT_CLASS=" + verdict, flush=True)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        print(prefix + "_REDIS_UNAVAILABLE=TRUE", flush=True)
+    node = r"""
+const mongoose=require('mongoose');
+(async()=>{
+ await mongoose.connect(process.env.MONGO_URI);
+ const db=mongoose.connection.db;
+ const parent=process.env.CI_REAL_PARENT_ID;
+ const ms=await db.collection('messages').find(
+  {conversationId:parent,isCreatedByUser:false},
+  {projection:{unfinished:1,error:1,subagentTask:1}}).limit(15).toArray();
+ const children=await db.collection('conversations').find(
+  {'subagentThread.parentConversationId':parent},
+  {projection:{conversationId:1}}).limit(5).toArray();
+ let finished=0,errored=0;
+ for(const c of children){
+   const terminal=await db.collection('messages').findOne(
+    {conversationId:c.conversationId,'subagentTask.status':'completed'},
+    {projection:{_id:1}});
+   if(terminal)finished++;
+   const failure=await db.collection('messages').findOne(
+    {conversationId:c.conversationId,'subagentTask.status':{$in:['error','cancelled']}},
+    {projection:{_id:1}});
+   if(failure)errored++;
+ }
+ console.log(JSON.stringify({parent_messages:ms.length,
+   parent_completed:ms.filter(m=>m.unfinished===false&&m.error!==true).length,
+   parent_errors:ms.filter(m=>m.error===true).length,
+   children:children.length,child_completed:finished,child_error:errored}));
+ await mongoose.disconnect();
+})().catch(e=>{console.log(JSON.stringify({error_class:e.name}));process.exitCode=2});
+"""
+    try:
+        r = subprocess.run(helpers["COMPOSE"] + [
+            "exec", "-T", "-e", "CI_REAL_PARENT_ID=" + parent,
+            "api", "node", "-e", node], text=True, capture_output=True, timeout=20)
+        report = json.loads(r.stdout.strip())
+        if r.returncode or not isinstance(report, dict):
+            raise ValueError("invalid parent readback")
+        for field in ("parent_messages", "parent_completed", "parent_errors",
+                      "children", "child_completed", "child_error"):
+            n = report.get(field)
+            print(prefix + "_" + field.upper() + "=" +
+                  (str(n) if type(n) is int and 0 <= n <= 15 else "UNKNOWN"), flush=True)
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+        print(prefix + "_PARENT_READBACK_UNAVAILABLE=TRUE", flush=True)
+
+
 def run():
     if not (os.environ.get("CI_REAL_FREE_PROVIDER") == "1" and
             os.environ.get("CI_NATIVE_REAL_INTEGRATED") == "1" and
@@ -175,7 +252,9 @@ def run():
     except (KeyError, ValueError, TypeError):
         fail("MISSION_START_ENVELOPE_INVALID")
     print("CI_REAL_MULTI_SINGLE_PARENT_MISSION_STARTED=PASS", flush=True)
-    http, events, outcome, subscriptions = core["read_native_terminal_stream"](helpers, stream_id)
+    http, events, outcome, subscriptions = core["read_native_terminal_stream"](
+        helpers, stream_id,
+        observation=lambda seconds: observe_parent_mission(helpers, stream_id, parent, seconds))
     finals = [e for e in events if e.get("final") is True]
     errors = [e for e in events if e.get("event") == "error" or e.get("type") == "error"]
     print("CI_REAL_MULTI_SSE_OUTCOME=" + outcome, flush=True)
