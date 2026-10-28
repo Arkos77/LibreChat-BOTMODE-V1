@@ -26,6 +26,9 @@ FALLBACK_MODE = os.environ.get('CI_NATIVE_FALLBACK') == '1'
 REAL_KEY = os.environ.get('CI_OPENROUTER_KEY', '')
 REAL_URL = 'https://openrouter.ai/api/v1/chat/completions'
 REAL_MODEL = 'nvidia/nemotron-3.5-super-vl:free'
+# Exactly one CI-opted-in two-child mission may use six free requests.
+# All other test modes retain their previous four-request hard limit.
+REAL_REQUEST_LIMIT = 6 if REAL_MODE and os.environ.get('CI_NATIVE_REAL_MULTI') == '1' else 4
 provider_records = []
 provider_started = {}
 provider_finished = {}
@@ -80,7 +83,7 @@ def bounded_real_request(request):
 def reserve_real_request():
     with lock:
         count = calls.get('provider_requests', 0)
-        if count >= 4:
+        if count >= REAL_REQUEST_LIMIT:
             raise ValueError('REAL_REQUEST_BUDGET_EXHAUSTED')
         calls['provider_requests'] = count + 1
         return count + 1
@@ -277,7 +280,7 @@ class Handler(BaseHTTPRequestHandler):
                 rejections = list(local_rejections)
                 fallback = {'enabled': FALLBACK_MODE, 'records': list(fallback_records),
                             'mismatches': list(fallback_mismatches)}
-            return self.send({'route': REAL_MODEL, 'reasoning_enabled': False, 'limit_requests': 4,
+            return self.send({'route': REAL_MODEL, 'reasoning_enabled': False, 'limit_requests': REAL_REQUEST_LIMIT,
                               'limit_output_tokens': 2048, 'records': snapshot,
                               'local_rejections': rejections, 'fallback': fallback,
                               'simulated': not REAL_MODE})
