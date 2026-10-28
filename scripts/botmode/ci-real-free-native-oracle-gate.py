@@ -338,9 +338,23 @@ def bounded_failure_diagnostics(helpers, stream_id, parent_id, events):
 const mongoose=require('mongoose');
 (async()=>{
  await mongoose.connect(process.env.MONGO_URI);
- const count=await mongoose.connection.db.collection('conversations').countDocuments(
-   {'subagentThread.parentConversationId':process.env.CI_REAL_PARENT_ID});
- console.log('CI_NATIVE_REAL_DIAG_PERSISTED_CHILD_COUNT='+count);
+ const db=mongoose.connection.db;
+ const children=await db.collection('conversations').find(
+   {'subagentThread.parentConversationId':process.env.CI_REAL_PARENT_ID},
+   {projection:{conversationId:1}}).limit(5).toArray();
+ console.log('CI_NATIVE_REAL_DIAG_PERSISTED_CHILD_COUNT='+children.length);
+ const statuses=[];
+ for(const child of children){
+   const ms=await db.collection('messages').find(
+     {conversationId:child.conversationId},
+     {projection:{subagentTask:1,error:1}}).limit(25).toArray();
+   statuses.push(...ms.filter(m=>m.subagentTask).map(m=>m.subagentTask.status));
+ }
+ const allow=['running','pause_requested','paused','completed','error','cancelled'];
+ for(const status of allow){
+   console.log('CI_NATIVE_REAL_DIAG_CHILD_'+status.toUpperCase()+'_COUNT='+
+     statuses.filter(s=>s===status).length);
+ }
  await mongoose.disconnect();
 })().catch(e=>{console.log('CI_NATIVE_REAL_DIAG_CHILD_READBACK_CLASS='+e.name);process.exitCode=1});
 """
@@ -386,16 +400,18 @@ def live_gate():
             "Tu DOIS appeler l'outil natif subagent exactement une fois, avec "
             "run_in_background=true, pour demander au spécialiste autorisé de "
             "retourner l'objet JSON exact {\"ok\":true}. "
-            "Utilise check_background_task pour confirmer son achèvement réel "
-            "avant toute réponse finale. Attends le résultat de l'enfant. "
-            "Retourne seulement {\"ok\":true} si le résultat est confirmé."
+            "Une notification de fin automatique de l'enfant est prise en charge. "
+            "Ne répète pas check_background_task tant que la tâche est inchangée. "
+            "Termine le tour en attendant la reprise automatique de l'hôte; "
+            "après réception de l'achèvement enfant, retourne {\"ok\":true}."
         ),
         "orchestratorMission": {
             "mission": {
                 "missionId": mission_id, "taskId": mission_id,
                 "objective": "Délégation native réelle, confirmation enfant, Oracle et publication unique.",
                 "constraints": ["Appeler subagent avec run_in_background=true",
-                                "Vérifier le résultat enfant via check_background_task avant conclusion",
+                                "Laisser l'hôte livrer automatiquement l'achèvement enfant, sans polling répétitif",
+                                "Ne publier que lorsque le résultat enfant a été confirmé",
                                 "Répondre exclusivement en JSON strict après exécution."],
                 "requiredCapabilities": ["basic"],
                 "validation": {"criteria": [{"id": "ci-ok", "field": "ok", "expected": True}]},
