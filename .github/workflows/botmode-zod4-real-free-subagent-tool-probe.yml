@@ -22,6 +22,11 @@ on:
         type: boolean
         required: false
         default: false
+      probe_native_n_shape:
+        description: '2-call unforced zero-price subagent/tool-result/final-JSON shape probe (no Docker)'
+        type: boolean
+        required: false
+        default: false
       alternative_mode:
         description: 'all (three models) or nvidia_only (two requests max)'
         type: choice
@@ -43,6 +48,18 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+      - name: Probe unforced native N tool calls and final Oracle JSON (no Docker, max two free calls)
+        if: github.event_name == 'workflow_dispatch' && inputs.probe_native_n_shape == true && inputs.probe_multi_specialist != true && inputs.probe_autonomous_choice != true && inputs.probe_autonomous_json != true && inputs.probe_free_alternatives != true
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CI_FREE_N_SHAPE_OPT_IN: '1'
+        run: |
+          set -euo pipefail
+          test "${#OPENROUTER_API_KEY}" -gt 16
+          echo "::add-mask::$OPENROUTER_API_KEY"
+          python3 -m py_compile scripts/botmode/ci-free-native-n-shape-probe.py
+          python3 scripts/botmode/ci-free-native-n-shape-probe.py
       - name: Probe two distinct autonomous specialists (no Docker, max two free calls)
         if: github.event_name == 'workflow_dispatch' && inputs.probe_multi_specialist == true && inputs.probe_autonomous_choice != true && inputs.probe_autonomous_json != true && inputs.probe_free_alternatives != true
         shell: bash
@@ -82,7 +99,7 @@ jobs:
           python3 -m py_compile scripts/botmode/ci-free-alternative-selection.py
           python3 scripts/botmode/ci-free-alternative-selection.py
       - name: Verify zero-price free provider emits a subagent tool call, no tool execution
-        if: github.event_name == 'workflow_dispatch' && inputs.probe_free_alternatives != true && inputs.probe_autonomous_choice != true && inputs.probe_autonomous_json != true && inputs.probe_multi_specialist != true
+        if: github.event_name == 'workflow_dispatch' && inputs.probe_free_alternatives != true && inputs.probe_autonomous_choice != true && inputs.probe_autonomous_json != true && inputs.probe_multi_specialist != true && inputs.probe_native_n_shape != true
         shell: bash
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
