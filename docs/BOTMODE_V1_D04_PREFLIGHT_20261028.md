@@ -12,6 +12,14 @@
 
 Selon GitHub, `main` est protégée, et `compare/main...7605e9186b84d4a7eb6d14be1bc9528c6033bbd8` annonce **371 commits d'avance, zéro en retard** et 231 fichiers modifiés. PR #86 dépend de #85 → #84 → #83 → #82 → #81 → #80 → #79 → #78 → `test/botmode-host-research-20261024` (branche intermédiaire sans PR ouverte correspondante). Toutes les PR #78–86 sont encore DRAFT. **Aucune intégration en bloc de 371 commits n'est autorisée** : revoir l'ensemble du diff cumulé, les conflits, les fonctionnalités et l'ordre de fusion avant une décision.
 
+## Détail de la filiation et exclusion des doublons
+
+- Le nœud `test/botmode-host-research-20261024` pointe sur `a617052e3ffdbb5b4147e4f2cf9fb8cfae898b20`, à **219 commits d'avance sur main, 0 de retard**, avec **163 fichiers modifiés** ; aucune PR ouverte de ce nom n'a été trouvée lors de l'inventaire. Il faut donc créer/revoir une vraie proposition d'intégration de ce socle avant les PR #78–86, ou restructurer une pile équivalente avec preuve de provenance.
+- Du socle `a617052e3` jusqu'à la source `7605e9186`, GitHub indique **152 commits d'avance, 0 de retard** et **81 fichiers modifiés** : ce segment porte la pile visible des PR #78–86.
+- La PR [#76](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/76), HEAD `e001fad28d54953455ccdb5f7825016bbdb6fbea`, est **déjà un ancêtre** du runtime candidat (271 commits d'avance depuis ce point, 0 de retard) : ne pas redéployer ni fusionner son contenu en doublon.
+- La PR [#77](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/77), HEAD `7ed5ec4cb3626afcb6df0180694266857ccd8eb7`, est au contraire **divergente** : comparaison vers le runtime candidat `ahead=262`, `behind=29`. **Ne pas la fusionner automatiquement** ; relever d'abord ses 29 commits absents et traiter uniquement les exigences encore utiles, avec validation des régressions.
+- Le champ GitHub `mergeable=true` de la PR #86 ne prouve que sa faisabilité de fusion avec sa **branche de base #85** ; il ne certifie ni la pile entière vers `main`, ni la candidate D-03 sur un commit de release final.
+
 ## Provenance des références actuelles — conditions bloquantes
 
 - `v1.0.0` pointe sur le commit **antérieur** `59598c2f4e333c256296bbb8c6f45a024832745b`. **Ne jamais réécrire ce tag.**
