@@ -62,7 +62,9 @@ const crypto=require('crypto');
     completed:successes.length===1 && failures.length===0 && messages.length>=2});
  }
  const types=details.map(x=>x.type);
- const known=details.every(x=>expected.includes(x.type));
+ const roles=types.map(t=>t===expected[0] || t==='RECHERCHE' ? 'research' :
+                            t===expected[1] || t==='ANALYSE' ? 'analysis' : null);
+ const known=roles.length===2 && roles.includes('research') && roles.includes('analysis');
  const valid=details.length===2 && details.every(x=>x.linked && x.completed) &&
    new Set(details.map(x=>x.thread)).size===2 &&
    new Set(details.map(x=>x.toolCall)).size===2 &&
@@ -215,7 +217,7 @@ def run():
     if inspect_children(parent, helpers, "AFTER_RESTART") != fingerprint:
         fail("CHILD_IDENTITIES_CHANGED_AFTER_RESTART")
     post = core["read_p6"](stream_id, helpers)
-    if post != (status, plan_raw, oracle_raw, response_id, pending):
+    if list(post) != [status, plan_raw, oracle_raw, response_id, pending]:
         fail("ORACLE_P6_CHANGED_AFTER_RESTART")
     core["verify_parent_message"](parent, response_id, helpers)
     after = core["quota_and_price"](min_remaining=0)
