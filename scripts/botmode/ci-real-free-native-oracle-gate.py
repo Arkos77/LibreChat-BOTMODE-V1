@@ -212,6 +212,17 @@ def bounded_failure_diagnostics(helpers, stream_id, parent_id, events):
         print("CI_NATIVE_REAL_PROVIDER_REQUEST_COUNT="+str(len(rec)),flush=True)
         rejections=data.get("local_rejections") or []
         print("CI_NATIVE_REAL_PROVIDER_LOCAL_REJECTIONS="+str(len(rejections)),flush=True)
+        try:
+            with urlopen("http://127.0.0.1:8088/metrics", timeout=5) as mr:
+                m=json.load(mr)
+            for field in ("completion_calls", "advertised_subagent_requests",
+                          "requests_without_subagent_tool", "last_advertised_subagent",
+                          "last_tool_choice_forced"):
+                v=m.get(field)
+                print("CI_NATIVE_REAL_RELAY_"+field.upper()+"="+
+                      (str(v) if type(v) is int and 0 <= v <= 100 else "OTHER"),flush=True)
+        except (OSError, ValueError, TypeError):
+            print("CI_NATIVE_REAL_RELAY_METRICS_UNAVAILABLE=TRUE", flush=True)
         # These labels are constants raised by the checked-in relay. Strictly
         # allowlist to prevent accidental logging of provider or prompt content.
         approved={"REAL_FREE_ROUTE_REQUIRED","REAL_REASONING_DISABLED_REQUIRED",
@@ -259,6 +270,14 @@ def bounded_failure_diagnostics(helpers, stream_id, parent_id, events):
     allowed_events={"on_subagent_update","on_run_step","on_run_step_closed","error","on_message_delta","on_chain_end","on_chain_start"}
     print("CI_NATIVE_REAL_SSE_NATIVE_CHILD_UPDATES="+str(sum(x.get("event")=="on_subagent_update" for x in events)),flush=True)
     print("CI_NATIVE_REAL_SSE_RECOGNIZED_EVENTS="+",".join(sorted({x.get("event") for x in events if x.get("event") in allowed_events})),flush=True)
+    names={"on_subagent_update","on_run_step","on_run_step_closed","on_message_delta",
+           "on_chain_end","on_chain_start","final","message","status","progress","done",
+           "on_agent_action","on_tool_start","on_tool_end"}
+    print("CI_NATIVE_REAL_SSE_KNOWN_EVENT_TYPES="+",".join(sorted({
+        str(x.get("event")) for x in events if x.get("event") in names
+    })),flush=True)
+    print("CI_NATIVE_REAL_SSE_UNKNOWN_TYPE_COUNT="+str(sum(
+        x.get("event") not in names for x in events)),flush=True)
     js = r"""
 const mongoose=require('mongoose');
 (async()=>{
@@ -362,10 +381,19 @@ def live_gate():
                and isinstance(e.get("data"), dict) and e["data"].get("phase") == "start"]
     ended = [e.get("data") for e in events if e.get("event") == "on_subagent_update"
              and isinstance(e.get("data"), dict) and e["data"].get("phase") == "stop"]
-    if not any(s.get("subagentAgentId") == child and s.get("parentRunId") and
-               s.get("parentToolCallId") and s.get("subagentRunId") and
-               any(e.get("subagentRunId") == s["subagentRunId"] for e in ended)
-               for s in started):
+    linked = [s for s in started if s.get("subagentAgentId") == child and
+              s.get("parentRunId") and s.get("parentToolCallId") and s.get("subagentRunId")]
+    linked_and_stopped = any(
+        any(e.get("subagentRunId") == s["subagentRunId"] for e in ended)
+        for s in linked)
+    print("CI_NATIVE_REAL_CHILD_SSE_START_COUNT=" + str(len(started)), flush=True)
+    print("CI_NATIVE_REAL_CHILD_SSE_STOP_COUNT=" + str(len(ended)), flush=True)
+    print("CI_NATIVE_REAL_CHILD_SSE_LINKED_START_COUNT=" + str(len(linked)), flush=True)
+    print("CI_NATIVE_REAL_CHILD_SSE_MATCHED_STOP=" + str(linked_and_stopped).upper(), flush=True)
+    if not linked_and_stopped:
+        # Preserve strict fail-closed behavior; emit only safe status/count
+        # telemetry to distinguish no model tool call from malformed SSE.
+        bounded_failure_diagnostics(helpers, stream_id, parent_id, events)
         fail("NATIVE_CHILD_START_STOP_SSE_NOT_CORRELATED")
     print("CI_NATIVE_REAL_CHILD_SSE_CORRELATED=PASS", flush=True)
     with urlopen("http://127.0.0.1:8088/provider-diagnostics", timeout=8) as diagnostic_response:
