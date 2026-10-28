@@ -1,6 +1,12 @@
 name: BOTMODE Zod4 Real Free Subagent Tool Choice Probe
 on:
   workflow_dispatch:
+    inputs:
+      probe_free_alternatives:
+        description: 'Try up to three named zero-price models, max six calls, tool plus strict JSON'
+        type: boolean
+        required: false
+        default: false
   pull_request:
     paths:
       - '.github/workflows/botmode-zod4-real-free-subagent-tool-probe.yml'
@@ -12,7 +18,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Probe alternative zero-price tools and strict JSON (no Docker, max six calls)
+        if: github.event_name == 'workflow_dispatch' && inputs.probe_free_alternatives == true
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CI_FREE_ALTERNATIVES_OPT_IN: '1'
+        run: |
+          set -euo pipefail
+          test "${#OPENROUTER_API_KEY}" -gt 16
+          echo "::add-mask::$OPENROUTER_API_KEY"
+          python3 -m py_compile scripts/botmode/ci-free-alternative-selection.py
+          python3 scripts/botmode/ci-free-alternative-selection.py
       - name: Verify zero-price free provider emits a subagent tool call, no tool execution
+        if: github.event_name == 'workflow_dispatch' && inputs.probe_free_alternatives != true
         shell: bash
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
