@@ -109,6 +109,62 @@ const mongoose = require('mongoose');
         fail("P6_PARENT_MONGO_READBACK_FAILED")
 
 
+
+def verify_detached_child_completed(parent_id, helpers, phase):
+    """Require a single durable, successful native child; never log identifiers or contents."""
+    js = r"""
+const mongoose=require('mongoose');
+(async()=>{
+  await mongoose.connect(process.env.MONGO_URI);
+  const db=mongoose.connection.db;
+  const parent=process.env.CI_REAL_PARENT_ID;
+  const children=await db.collection('conversations').find(
+    {'subagentThread.parentConversationId':parent},
+    {projection:{conversationId:1,subagentThread:1}}
+  ).limit(3).toArray();
+  let accepted=false,completed=0,errors=0,childMessages=0;
+  if(children.length===1){
+    const child=children[0],link=child.subagentThread||{};
+    const messages=await db.collection('messages').find(
+      {conversationId:child.conversationId},
+      {projection:{messageId:1,text:1,error:1,isCreatedByUser:1,subagentTask:1}}
+    ).limit(30).toArray();
+    childMessages=messages.length;
+    const parentRunIds=[...new Set(messages.map(m=>m.subagentTask?.parentRunId).filter(Boolean))];
+    const successes=messages.filter(m=>m.subagentTask?.status==='completed' &&
+      m.error!==true && m.isCreatedByUser===false && m.unfinished!==true &&
+      typeof m.text==='string' && m.text.trim().length>0);
+    completed=successes.length;
+    errors=messages.filter(m=>m.error===true ||
+      ['error','cancelled'].includes(m.subagentTask?.status)).length;
+    accepted=link.parentConversationId===parent && link.rootConversationId===parent &&
+      typeof link.parentToolCallId==='string' && link.parentToolCallId.length>0 &&
+      typeof link.parentMessageId==='string' && link.parentMessageId.length>0 &&
+      parentRunIds.length===1 && link.parentMessageId===parentRunIds[0] &&
+      completed===1 && errors===0 && childMessages>=2;
+  }
+  console.log('CI_REAL_DETACHED_CHILD_COUNT='+children.length);
+  console.log('CI_REAL_DETACHED_CHILD_MESSAGES='+childMessages);
+  console.log('CI_REAL_DETACHED_CHILD_COMPLETED='+completed);
+  console.log('CI_REAL_DETACHED_CHILD_ERRORS='+errors);
+  console.log('CI_REAL_DETACHED_CHILD_STRICT_OK='+String(accepted).toUpperCase());
+  await mongoose.disconnect();
+  if(!accepted)process.exitCode=3;
+})().catch(e=>{console.log('CI_REAL_DETACHED_CHILD_READ_ERROR_CLASS='+e.name);process.exitCode=2});
+"""
+    command = helpers["COMPOSE"] + [
+        "exec", "-T", "-e", "CI_REAL_PARENT_ID=" + parent_id,
+        "api", "node", "-e", js,
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=55)
+    for line in result.stdout.splitlines():
+        if line.startswith("CI_REAL_DETACHED_CHILD_"):
+            print("CI_NATIVE_REAL_" + phase + "_" + line[3:], flush=True)
+    if result.returncode:
+        fail(phase + "_DETACHED_CHILD_NOT_DURABLY_COMPLETED")
+    print("CI_NATIVE_REAL_" + phase + "_DETACHED_CHILD_COMPLETED=PASS", flush=True)
+
+
 def read_native_terminal_stream(helpers, stream_id):
     """Observe one already-admitted mission; reconnect only GET, never POST.
 
@@ -394,12 +450,16 @@ def live_gate():
     print("CI_NATIVE_REAL_CHILD_SSE_STOP_COUNT=" + str(len(ended)), flush=True)
     print("CI_NATIVE_REAL_CHILD_SSE_LINKED_START_COUNT=" + str(len(linked)), flush=True)
     print("CI_NATIVE_REAL_CHILD_SSE_MATCHED_STOP=" + str(linked_and_stopped).upper(), flush=True)
-    if not linked_and_stopped:
-        # Preserve strict fail-closed behavior; emit only safe status/count
-        # telemetry to distinguish no model tool call from malformed SSE.
-        bounded_failure_diagnostics(helpers, stream_id, parent_id, events)
-        fail("NATIVE_CHILD_START_STOP_SSE_NOT_CORRELATED")
-    print("CI_NATIVE_REAL_CHILD_SSE_CORRELATED=PASS", flush=True)
+    # Foreground native children produce ON_SUBAGENT_UPDATE on the parent.
+    # Detached children instead persist their own task transcript and activity
+    # stream, so a parent-SSE-only assertion is inapplicable. Require the
+    # stronger durable MongoDB lineage + successful task receipt in that case.
+    detached_path = not linked_and_stopped
+    if detached_path:
+        verify_detached_child_completed(parent_id, helpers, "BEFORE_RESTART")
+        print("CI_NATIVE_REAL_CHILD_DETACHED_WITHOUT_PARENT_SSE=PASS", flush=True)
+    else:
+        print("CI_NATIVE_REAL_CHILD_SSE_CORRELATED=PASS", flush=True)
     with urlopen("http://127.0.0.1:8088/provider-diagnostics", timeout=8) as diagnostic_response:
         diagnostics = json.load(diagnostic_response)
     if (diagnostics.get("route") != MODEL or diagnostics.get("simulated") is not False
@@ -439,6 +499,8 @@ def live_gate():
     verify_parent_message(parent_id, response_id, helpers)
     print("CI_NATIVE_REAL_P6_SINGLE_PUBLISHED_MESSAGE=PASS", flush=True)
     helpers["verify_lineage_across_api_restart"](parent_id)
+    if detached_path:
+        verify_detached_child_completed(parent_id, helpers, "AFTER_RESTART")
     status2, _, raw_oracle2, response_id2, pending2 = read_p6(stream_id, helpers)
     if status2 != status or raw_oracle2 != raw_oracle or response_id2 != response_id or pending2 != pending:
         fail("ORACLE_P6_STATE_CHANGED_AFTER_RESTART")
