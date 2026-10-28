@@ -327,16 +327,20 @@ def live_gate():
         "parentMessageId": "00000000-0000-0000-0000-000000000000",
         "isNewConvo": True,
         "text": (
-            "Tu DOIS utiliser l'outil natif subagent exactement une fois pour demander "
-            "au spécialiste autorisé de retourner le JSON exact {\"ok\":true}. "
-            "Attends son résultat, puis retourne seulement {\"ok\":true}. "
-            "Ne publie rien avant son retour."
+            "Tu DOIS appeler l'outil natif subagent exactement une fois, avec "
+            "run_in_background=true, pour demander au spécialiste autorisé de "
+            "retourner l'objet JSON exact {\"ok\":true}. "
+            "Utilise check_background_task pour confirmer son achèvement réel "
+            "avant toute réponse finale. Attends le résultat de l'enfant. "
+            "Retourne seulement {\"ok\":true} si le résultat est confirmé."
         ),
         "orchestratorMission": {
             "mission": {
                 "missionId": mission_id, "taskId": mission_id,
                 "objective": "Délégation native réelle, confirmation enfant, Oracle et publication unique.",
-                "constraints": ["Appeler subagent avant toute réponse finale", "Répondre exclusivement en JSON strict."],
+                "constraints": ["Appeler subagent avec run_in_background=true",
+                                "Vérifier le résultat enfant via check_background_task avant conclusion",
+                                "Répondre exclusivement en JSON strict après exécution."],
                 "requiredCapabilities": ["basic"],
                 "validation": {"criteria": [{"id": "ci-ok", "field": "ok", "expected": True}]},
             },
