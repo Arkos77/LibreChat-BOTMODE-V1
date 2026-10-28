@@ -290,13 +290,29 @@ def bounded_failure_diagnostics(helpers, stream_id, parent_id, events):
             print("CI_NATIVE_REAL_LOCAL_REJECTION_CLASS="+(code if code in approved else "OTHER"),flush=True)
         phases={"waiting_headers","reading_body","response_complete","transport_error"}
         statuses={"200","400","401","403","404","408","422","429","500","502","503","504"}
-        for i,record in enumerate(rec[:4],1):
+        for i,record in enumerate(rec[:6],1):
             phase=record.get("phase")
             code=str(record.get("http_status"))
             print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_PHASE="+(phase if phase in phases else "OTHER"),flush=True)
             print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_HTTP="+(code if code in statuses else "OTHER_OR_PENDING"),flush=True)
             print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_SUBAGENT_TOOL="+str("subagent" in (record.get("tool_names") or [])).upper(),flush=True)
+            safe_reasons={"stop","length","tool_calls","content_filter","function_call"}
+            reasons=record.get("finish_reasons") or []
+            print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_FINISH_REASON="+
+                  (",".join(sorted(x for x in reasons if x in safe_reasons)) or "NONE_OR_OTHER"),flush=True)
             p=record.get("request_parameters") or {}
+            for field in ("message_count","tool_result_count","assistant_message_count",
+                          "prior_subagent_calls"):
+                n=p.get(field)
+                print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_"+field.upper()+"="+
+                      (str(n) if type(n) is int and 0 <= n <= 100 else "UNKNOWN"),flush=True)
+            allowed_roles={"system","developer","user","assistant","tool","other"}
+            role=p.get("tail_role")
+            print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_TAIL_ROLE="+
+                  (role if role in allowed_roles else "UNKNOWN"),flush=True)
+            choice=p.get("tool_choice_class")
+            print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_TOOL_CHOICE="+
+                  (choice if choice in {"auto","forced_subagent","other"} else "UNKNOWN"),flush=True)
             allowed_format={"json_schema","json_object"}
             fmt=p.get("response_format")
             print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_FORMAT="+(fmt if fmt in allowed_format else "NONE_OR_OTHER"),flush=True)
@@ -344,11 +360,19 @@ const mongoose=require('mongoose');
    {projection:{conversationId:1}}).limit(5).toArray();
  console.log('CI_NATIVE_REAL_DIAG_PERSISTED_CHILD_COUNT='+children.length);
  const statuses=[];
+ const allowedStatus=new Set(['running','pause_requested','paused','completed','error','cancelled']);
  for(const child of children){
    const ms=await db.collection('messages').find(
      {conversationId:child.conversationId},
      {projection:{subagentTask:1,error:1}}).limit(25).toArray();
-   statuses.push(...ms.filter(m=>m.subagentTask).map(m=>m.subagentTask.status));
+   const sequence=ms.filter(m=>m.subagentTask).map(m=>m.subagentTask.status);
+   statuses.push(...sequence);
+   const sanitized=sequence.map(s=>allowedStatus.has(s)?s:'other');
+   console.log('CI_NATIVE_REAL_DIAG_CHILD_STATUS_SEQUENCE='+sanitized.join(',').slice(0,150));
+   console.log('CI_NATIVE_REAL_DIAG_CHILD_EXPLICIT_ERROR_MESSAGES='+
+     ms.filter(m=>m.error===true).length);
+   console.log('CI_NATIVE_REAL_DIAG_CHILD_TERMINAL_STATUS='+
+     (sanitized.length?sanitized[sanitized.length-1]:'none'));
  }
  const allow=['running','pause_requested','paused','completed','error','cancelled'];
  for(const status of allow){
