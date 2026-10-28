@@ -226,14 +226,14 @@ def run():
             "Deux travaux indépendants sont obligatoires dans une seule mission. "
             "Sélectionne les deux spécialistes autorisés distincts RECHERCHE et ANALYSE. "
             "Lance immédiatement DEUX appels natifs subagent, un par spécialiste, chacun "
-            "avec run_in_background=true, sans attendre la fin du premier pour lancer "
-            "le second. RECHERCHE produit un constat court; ANALYSE réalise une vérification "
-            "indépendante. Après le lancement de ces deux tâches, termine ce tour pour "
-            "permettre les notifications automatiques de l'hôte. "
-            "N'appelle PAS check_background_task sur des tâches en cours et ne fais "
-            "aucun polling: la reprise automatique fournit les résultats persistés. "
-            "Ne publie aucun résultat avant confirmation des DEUX achèvements distincts. "
-            "Seulement ensuite retourne le JSON exact {\"ok\":true}."
+            "avec run_in_background=false. RECHERCHE produit un constat court; "
+            "ANALYSE réalise une vérification indépendante. Émets les deux appels dans "
+            "le même tour, puis attends que chacun retourne un résultat complet. "
+            "Ne conclus JAMAIS sur un simple reçu de démarrage. "
+            "N'appelle PAS check_background_task ni web_search. "
+            "Après deux résultats natifs terminés et distincts, le contenu ENTIER "
+            "du seul message final doit être exactement {\"ok\":true}, sans "
+            "Markdown, bloc de code, préfixe, suffixe ou explication."
         ),
         "orchestratorMission": {
             "mission": {
