@@ -7,18 +7,48 @@ on:
         required: true
         type: choice
         options: [NO, AUTHORIZE_D03_CANDIDATE_ONLY]
+      source_sha_confirmation:
+        description: Full source SHA must be entered for actual GHCR candidate publication
+        required: false
+        type: string
+        default: 'NO'
 permissions:
   contents: read
   packages: write
 concurrency:
-  group: botmode-d03-59598c2f4e33
+  group: botmode-d03-7605e9186b84
   cancel-in-progress: false
 env:
-  SOURCE_SHA: 59598c2f4e333c256296bbb8c6f45a024832745b
+  SOURCE_SHA: 7605e9186b84d4a7eb6d14be1bc9528c6033bbd8
   IMAGE: ghcr.io/arkos77/librechat-botmode-v1
-  CANDIDATE_TAG: candidate-botmode-v1-59598c2f4e33
-  SHA_TAG: sha-59598c2f4e33
+  CANDIDATE_TAG: candidate-botmode-v1-7605e9186b84
+  SHA_TAG: sha-7605e9186b84
 jobs:
+  prepare-only:
+    if: ${{ inputs.approval == 'NO' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout D03 preparation control plane (not publishing runtime)
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Read-only exact-source and GHCR tag availability checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$SOURCE_SHA" = '7605e9186b84d4a7eb6d14be1bc9528c6033bbd8'
+          test "$CANDIDATE_TAG" = 'candidate-botmode-v1-7605e9186b84'
+          test "$SHA_TAG" = 'sha-7605e9186b84'
+          git fetch --no-tags --depth=1 origin "$SOURCE_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$SOURCE_SHA"
+          env GITHUB_SHA="$SOURCE_SHA" GITHUB_REF_TYPE=branch bash scripts/botmode/guard-candidate-ghcr.sh
+          echo "D03_PREPARE_ONLY_READ_ONLY=PASS"
   preflight:
     if: ${{ inputs.approval == 'AUTHORIZE_D03_CANDIDATE_ONLY' }}
     runs-on: ubuntu-latest
@@ -27,10 +57,13 @@ jobs:
         with:
           ref: ${{ env.SOURCE_SHA }}
           persist-credentials: false
-      - name: Verify immutable candidate tag availability
+      - name: Require separate exact-SHA publication approval and absent immutable tags
         env:
           GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA_CONFIRMATION: ${{ inputs.source_sha_confirmation }}
         run: |
+          set -euo pipefail
+          test "$SOURCE_SHA_CONFIRMATION" = "$SOURCE_SHA"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           env GITHUB_SHA="$SOURCE_SHA" GITHUB_REF_TYPE=branch bash scripts/botmode/guard-candidate-ghcr.sh
   build:
@@ -61,7 +94,7 @@ jobs:
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
             BUILD_COMMIT=${{ env.SOURCE_SHA }}
-            BUILD_BRANCH=botmode-v1-final-source-qualified-20261019
+            BUILD_BRANCH=experiment/botmode-zod4-security-20261027
       - name: Store digest
         env:
           DIGEST: ${{ steps.build.outputs.digest }}

@@ -15,12 +15,12 @@ jobs:
       - name: Checkout exact D03-approved pinned runtime source
         uses: actions/checkout@v4
         with:
-          ref: 59598c2f4e333c256296bbb8c6f45a024832745b
+          ref: 7605e9186b84d4a7eb6d14be1bc9528c6033bbd8
           persist-credentials: false
       - name: Verify exact candidate and pristine installation
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '59598c2f4e333c256296bbb8c6f45a024832745b'
+          test "$(git rev-parse HEAD)" = '7605e9186b84d4a7eb6d14be1bc9528c6033bbd8'
           test ! -e .env
           test ! -e .botmode-database-auth-initialized
           echo 'CI_FRESH_INSTALL_INPUT=PRISTINE'
@@ -28,9 +28,9 @@ jobs:
         run: |
           set -euo pipefail
           docker logout ghcr.io >/dev/null 2>&1 || true
-          docker pull ghcr.io/arkos77/librechat-botmode-v1:candidate-botmode-v1-59598c2f4e33
-          docker image inspect ghcr.io/arkos77/librechat-botmode-v1:candidate-botmode-v1-59598c2f4e33 >/dev/null
-          echo 'CI_FRESH_RUNTIME_IMAGE=PUBLIC_GHCR_SHA_D4E82DDED5DF'
+          docker pull ghcr.io/arkos77/librechat-botmode-v1:candidate-botmode-v1-7605e9186b84
+          docker image inspect ghcr.io/arkos77/librechat-botmode-v1:candidate-botmode-v1-7605e9186b84 >/dev/null
+          echo 'CI_FRESH_RUNTIME_IMAGE=PUBLIC_GHCR_SHA_7605E9186B84'
       - name: Install Lite using the published installer contract
         run: |
           set -euo pipefail
@@ -40,8 +40,8 @@ jobs:
             exit 1
           }
           grep -q '^BOTMODE_BOOTSTRAP=PASS$' /tmp/botmode-fresh-install.log
-          sudo grep -Fxq 'BOTMODE_IMAGE=ghcr.io/arkos77/librechat-botmode-v1:sha-59598c2f4e33' .env
-          docker image inspect 'ghcr.io/arkos77/librechat-botmode-v1:sha-59598c2f4e33' >/dev/null
+          sudo grep -Fxq 'BOTMODE_IMAGE=ghcr.io/arkos77/librechat-botmode-v1:sha-7605e9186b84' .env
+          docker image inspect 'ghcr.io/arkos77/librechat-botmode-v1:sha-7605e9186b84' >/dev/null
           echo 'CI_LITE_DEFAULT_IMAGE_EXACT_SHA=PASS'
           test -f .botmode-database-auth-initialized
           test "$(stat -c %a .env)" = 600
@@ -269,7 +269,7 @@ jobs:
         run: |
           {
             echo '### BOT MODE V1 — First-user native agent onboarding'
-            echo 'Pinned head: 59598c2f4e333c256296bbb8c6f45a024832745b'
+            echo 'Pinned head: 7605e9186b84d4a7eb6d14be1bc9528c6033bbd8'
             echo 'Pulls immutable D03 public GHCR candidate without auth, runs actual ./install.sh --lite with the exact candidate image pin and verifies first-user native onboarding, JWT and persistence.'
             echo 'Checks real first-user HTTP onboarding (6 agents, owner ACL, Worker delegation, idempotence, and restart durability).'
             echo 'Validates public GHCR anonymous pull. Does not validate externally hosted LLM.'
