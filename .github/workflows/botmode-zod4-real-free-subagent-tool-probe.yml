@@ -27,6 +27,13 @@ on:
         type: boolean
         required: false
         default: false
+      native_n_shape_mode:
+        description: 'Probe either detached or synchronous subagent requests; max two free calls'
+        type: choice
+        options:
+          - background
+          - synchronous
+        default: background
       alternative_mode:
         description: 'all (three models) or nvidia_only (two requests max)'
         type: choice
@@ -54,6 +61,7 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CI_FREE_N_SHAPE_OPT_IN: '1'
+          CI_FREE_N_SHAPE_BACKGROUND_MODE: ${{ inputs.native_n_shape_mode }}
         run: |
           set -euo pipefail
           test "${#OPENROUTER_API_KEY}" -gt 16
