@@ -226,12 +226,15 @@ def run():
             "Deux travaux indépendants sont obligatoires dans une seule mission. "
             "Sélectionne les deux spécialistes autorisés distincts RECHERCHE et ANALYSE. "
             "Lance immédiatement DEUX appels natifs subagent, un par spécialiste, chacun "
-            "avec run_in_background=false. RECHERCHE produit un constat court; "
-            "ANALYSE réalise une vérification indépendante. Émets les deux appels dans "
-            "le même tour, puis attends que chacun retourne un résultat complet. "
-            "Ne conclus JAMAIS sur un simple reçu de démarrage. "
-            "N'appelle PAS check_background_task ni web_search. "
-            "Après deux résultats natifs terminés et distincts, le contenu ENTIER "
+            "avec run_in_background=true pour créer deux enfants durables distincts. "
+            "RECHERCHE produit un constat court; ANALYSE réalise une vérification "
+            "indépendante. Émets les deux appels dans le même tour. Les reçus "
+            "de lancement running ne sont pas des résultats terminés. Utilise "
+            "check_background_task sur chaque tâche pour constater completed et "
+            "son résultat, sans redéléguer ni changer de spécialiste. Si un enfant "
+            "reste running, ne produis pas de final prématuré. N'appelle pas "
+            "web_search. Après deux résultats natifs terminés et distincts, "
+            "le contenu ENTIER "
             "du seul message final doit être exactement {\"ok\":true}, sans "
             "Markdown, bloc de code, préfixe, suffixe ou explication."
         ),
@@ -241,7 +244,7 @@ def run():
                 "objective": "Deux enfants natifs réels Recherche et Analyse, Oracle et P6 uniques.",
                 "constraints": [
                     "Déléguer à deux spécialistes distincts autorisés",
-                    "Lancer les deux enfants avant toute attente, puis attendre leur fin durable sans polling",
+                    "Lancer les deux enfants détachés, puis vérifier les deux résultats durables avant publication",
                     "Ne publier qu'après les deux résultats",
                     "Répondre en JSON uniquement après achèvement",
                 ],
