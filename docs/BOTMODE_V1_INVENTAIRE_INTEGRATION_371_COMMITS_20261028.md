@@ -690,6 +690,19 @@ La comparaison cumulative classe 128 ajouts, 102 modifications et 1 suppressions
 | `scripts/botmode/tests/test_source_fixture.py` | added | 0 |
 | `scripts/botmode/validate-host-research-config.cjs` | added | 0 |
 
+## 5 bis. Triage initial des patches sensibles de PR #87 (sans prétendre une revue intégrale du code)
+
+Comparaison GitHub `e001fad28d54953455ccdb5f7825016bbdb6fbea...a617052e3ffdbb5b4147e4f2cf9fb8cfae898b20` : **156 fichiers** du segment, **154 patches textuels** disponibles, **2 archives SDK binaires** sans diff textuel ; **63 chemins applicatifs/scripts hors tests et documentation** d'après le filtre conservateur, **22 chemins** contenant des indices de provenance/permissions/Oracle/P6/outil/fournisseur à examiner spécifiquement. Un mot-clé n'est **pas** une faille confirmée.
+
+**Examen des garde-fous de l'ancien HEAD #87** :
+- `api/server/controllers/agents/orchestratorMissionBindings.js` refuse un Worker non présent parmi les agents réellement initialisés, un spécialiste inconnu et une tâche visant un agent absent de l'ensemble autorisé. Ce fichier est **identique bit pour bit** à celui de PR #75 (même Git blob `af2a14f15cd2714594ec61afff60679d3ee4f1e0`) déjà contenu dans le runtime final.
+- `packages/api/src/agents/orchestrator/admission.ts` utilise les agents initialisés, refuse le Worker indisponible, les ID spécialistes dupliqués/inconnus, les rôles non pris en charge et les contraintes héritées non associées. Ces conditions sont en lecture de code ; leur couverture de tous les cas réels ne peut être déclarée exhaustive.
+- `packages/api/src/agents/orchestrator/publication.ts` refait la validation Oracle par tâche, exige `VERIFIED`, vérifie unicité des `taskId`, cohérence des résultats, et exige des sources de recherche exploitables avant de rendre un rapport `research-v2`. Ceci concerne spécifiquement la publication de recherche V2, **pas l'ensemble des chemins de publication P6**, déjà couverts par le run réel sur le candidat ultérieur.
+- Le correctif OpenRouter dans `packages/api/src/endpoints/openai/config.ts` autorise l'adaptateur OpenAI-compatible seulement si `customParams.defaultParamsEndpoint=openAI` est **explicitement** choisi ; il n'active pas un fallback payant par défaut.
+- Le tarball vendor `@librechat/agents` n'est pas lisible comme patch Git : `vendor/librechat-agents/README.md` documente son origine `145865e`, l'artefact dérivé `fallback-context-v1` (SHA-256 `28d5c2f2858feb3c0468cc50dbf43232989f9c8ed625e7d777f032d28dd312ea`) et un générateur de régénération à partir d'une base vérifiée. **Conserver ce contrôle de chaîne d'approvisionnement** à l'intégration, sans déclarer qu'un examen du code source SDK complet a été fait par ce tri.
+
+**État de revue** : premiers garde-fous présents, pas de faille établie par ce tri ; relecture manuelle du cumul et des binaires toujours requise avant fusion. Les tests du runtime `7605e91` sont PASS, mais on n'attribue **pas** ces PASS à chacun des HEAD historiques isolés.
+
 ## 6. Distinction PASS / NON CONCLUANT / FAIL
 
 - **PASS** : chaîne N réelle, Oracle P6, Playwright, source D-03, installation fraîche Lite, Full/Mongo rollback CI (dans son périmètre), licence SUL AMD64/ARM64 ; audit npm production à zéro conseil sur SHA `7605e9186b84d4a7eb6d14be1bc9528c6033bbd8`.
