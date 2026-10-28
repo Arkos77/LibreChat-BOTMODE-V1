@@ -22,6 +22,11 @@ on:
         type: boolean
         required: false
         default: false
+      native_real_two_children:
+        description: 'One free no-force parent mission with TWO distinct durable children, max six provider calls'
+        type: boolean
+        required: false
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -1199,12 +1204,36 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CI_NATIVE_REAL_INTEGRATED: '1'
           CI_REAL_FREE_PROVIDER: '1'
-          CI_REAL_FORCE_FIRST_TOOL: ${{ inputs.native_real_unforced_choice && '0' || '1' }}
+          CI_REAL_FORCE_FIRST_TOOL: ${{ (inputs.native_real_unforced_choice || inputs.native_real_two_children) && '0' || '1' }}
+          CI_NATIVE_REAL_MULTI: ${{ inputs.native_real_two_children && '1' || '0' }}
         run: |
           set -euo pipefail
           test "${#OPENROUTER_API_KEY}" -gt 16 || exit 3
           echo "::add-mask::$OPENROUTER_API_KEY"
-          python3 scripts/botmode/ci-real-free-native-oracle-gate.py --preflight
+          if [ "$CI_NATIVE_REAL_MULTI" = '1' ]; then
+            python3 scripts/botmode/ci-real-free-native-multi-gate.py --preflight
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE_MULTI_AUTH' > /tmp/botmode-ci-real-multi-child-map.json
+          const mongoose=require('mongoose');
+          (async()=>{
+            await mongoose.connect(process.env.MONGO_URI);
+            const db=mongoose.connection.db;
+            const worker=await db.collection('agents').findOne({name:'BOT MODE Worker'},{projection:{subagents:1}});
+            const ids=worker?.subagents?.agent_ids;
+            if(!worker?.subagents?.enabled || !Array.isArray(ids) || ids.length < 2)
+              throw new Error('TWO_NATIVE_SPECIALISTS_NOT_AUTHORIZED');
+            const docs=await db.collection('agents').find({name:{$in:['RECHERCHE','ANALYSE']}},{projection:{id:1,name:1}}).toArray();
+            const map=Object.fromEntries(docs.map(d=>[d.name,d.id]));
+            if(docs.length!==2 || !ids.includes(map.RECHERCHE) || !ids.includes(map.ANALYSE) ||
+               map.RECHERCHE===map.ANALYSE)throw new Error('CI_NATIVE_TWO_SPECIALISTS_INVALID');
+            process.stdout.write(JSON.stringify({research:map.RECHERCHE,analysis:map.ANALYSE}));
+            await mongoose.disconnect();
+          })().catch(e=>{console.error('CI_MULTI_AUTH_ERROR_CLASS='+e.name);process.exit(1)});
+          NODE_MULTI_AUTH
+            test -s /tmp/botmode-ci-real-multi-child-map.json
+            echo 'CI_REAL_MULTI_TWO_DISTINCT_AUTHORIZED_SPECIALISTS=PASS'
+          else
+            python3 scripts/botmode/ci-real-free-native-oracle-gate.py --preflight
+          fi
           python3 - <<'PY_REAL_RELAY'
           from pathlib import Path
           p=Path('/tmp/botmode-ci-model-fixture.py')
@@ -1257,7 +1286,7 @@ jobs:
           print('CI_NATIVE_REAL_UNFORCED_MODE_STATIC=PASS',flush=True)
           print('CI_NATIVE_REAL_MODE='+('AUTO' if os.environ.get('CI_REAL_FORCE_FIRST_TOOL')=='0' else 'FORCED'),flush=True)
           PY_REAL_RELAY
-          python3 -m py_compile /tmp/botmode-ci-model-fixture.py scripts/botmode/ci-real-free-native-oracle-gate.py
+          python3 -m py_compile /tmp/botmode-ci-model-fixture.py scripts/botmode/ci-real-free-native-oracle-gate.py scripts/botmode/ci-real-free-native-multi-gate.py
           # Old fixture and new relay share port 8088. Do not mistake a
           # response from the dying process for readiness of the live relay.
           old_pid="$(cat /tmp/botmode-ci-fixture.pid)"
@@ -1278,7 +1307,7 @@ jobs:
           test -s /tmp/botmode-ci-child-id
           # This identifier was read from the authenticated Worker's Mongo
           # subagents.agent_ids; the relay cannot create/authorize a child.
-          CI_AUTHORIZED_CHILD_ID="$(cat /tmp/botmode-ci-child-id)" CI_REAL_FREE_PROVIDER=1 CI_MISSION_SOURCE_MODE=1 CI_OPENROUTER_KEY="$OPENROUTER_API_KEY" python3 /tmp/botmode-ci-model-fixture.py >/tmp/botmode-ci-real-relay.log 2>&1 &
+          CI_AUTHORIZED_CHILD_ID="$(cat /tmp/botmode-ci-child-id)" CI_NATIVE_REAL_MULTI="$CI_NATIVE_REAL_MULTI" CI_REAL_FORCE_FIRST_TOOL="$CI_REAL_FORCE_FIRST_TOOL" CI_REAL_FREE_PROVIDER=1 CI_MISSION_SOURCE_MODE=1 CI_OPENROUTER_KEY="$OPENROUTER_API_KEY" python3 /tmp/botmode-ci-model-fixture.py >/tmp/botmode-ci-real-relay.log 2>&1 &
           echo "$!" > /tmp/botmode-ci-fixture.pid
           # Check two different endpoints on the actual configured live-only relay.
           # A successful HTTP handshake alone is not a readiness assertion.
@@ -1297,7 +1326,7 @@ jobs:
                       met=json.load(r)
                   if (diag.get('route')=='nvidia/nemotron-3.5-super-vl:free'
                           and diag.get('simulated') is False
-                          and diag.get('limit_requests')==4
+                          and diag.get('limit_requests')==(6 if os.environ.get('CI_NATIVE_REAL_MULTI')=='1' else 4)
                           and isinstance(met.get('completion_calls'),int)
                           and isinstance(met.get('provider_requests',0),int)):
                       time.sleep(.4)
@@ -1335,7 +1364,11 @@ jobs:
             exit 1
           fi
           echo 'CI_NATIVE_REAL_API_READY_AFTER_RESTART=PASS'
-          python3 scripts/botmode/ci-real-free-native-oracle-gate.py
+          if [ "$CI_NATIVE_REAL_MULTI" = '1' ]; then
+            python3 scripts/botmode/ci-real-free-native-multi-gate.py
+          else
+            python3 scripts/botmode/ci-real-free-native-oracle-gate.py
+          fi
       - name: Explicit opt-in — one real free-only Worker specialist Oracle P6 mission
         if: github.event_name == 'workflow_dispatch' && inputs.live_free_provider == true
         timeout-minutes: 15
