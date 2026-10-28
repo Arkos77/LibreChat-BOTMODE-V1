@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-MODEL = "liquid/lfm-2.5-2.6b:free"
+MODEL = "nvidia/nemotron-3.5-super-vl:free"
 API = "https://openrouter.ai/api/v1"
 METRICS = "http://127.0.0.1:8088/metrics"
 STATE = Path("/tmp/botmode-native-free-price-preflight.json")
@@ -49,7 +49,7 @@ def quota_and_price(min_remaining=4):
     if any(Decimal(str(prices.get(k, "1"))) != 0 for k in ("prompt", "completion")):
         fail("MODEL_HAS_POSITIVE_PRICE")
     params = matches[0].get("supported_parameters") or []
-    if not all(x in params for x in ("tools", "tool_choice")):
+    if not all(x in params for x in ("tools", "tool_choice", "response_format", "structured_outputs")):
         fail("MODEL_CANNOT_GENERATE_NATIVE_TOOL_CALL")
     return {k: str(info[k]) for k in ("usage", "usage_daily") if info.get(k) is not None}
 
