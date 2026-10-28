@@ -177,6 +177,13 @@ def run():
     finals = [e for e in events if e.get("final") is True]
     errors = [e for e in events if e.get("event") == "error" or e.get("type") == "error"]
     print("CI_REAL_MULTI_SSE_OUTCOME=" + outcome, flush=True)
+    # Never print any HTTP response body; a restricted code alone separates
+    # missing/reclaimed streams, authorization failures and transport errors.
+    safe_http={200,400,401,403,404,408,409,410,422,429,500,502,503,504}
+    print("CI_REAL_MULTI_SSE_HTTP="+(str(http) if http in safe_http else "OTHER"),flush=True)
+    print("CI_REAL_MULTI_SSE_SUBSCRIPTIONS="+
+          (str(subscriptions) if isinstance(subscriptions,int) and 0<=subscriptions<=250
+           else "OTHER"),flush=True)
     print("CI_REAL_MULTI_SSE_FINAL_COUNT=" + str(len(finals)), flush=True)
     if http != 200 or outcome != "TERMINAL_FRAME" or len(finals) != 1 or errors:
         core["bounded_failure_diagnostics"](helpers, stream_id, parent, events)
