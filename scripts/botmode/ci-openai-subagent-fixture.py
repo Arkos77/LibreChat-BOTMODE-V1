@@ -142,13 +142,45 @@ def provider_request_parameters(request):
     fmt = obj(request.get('response_format'))
     structured = obj(fmt.get('json_schema'))
     required = obj(structured.get('schema')).get('required')
+    # Metadata only: distinguish parent/child request phases without retaining
+    # model prompts, arguments, credentials, identifiers or response content.
+    messages = request.get('messages')
+    messages = messages if isinstance(messages, list) else []
+    role_counts = {role: 0 for role in ('system', 'developer', 'user', 'assistant', 'tool')}
+    prior_native_calls = 0
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        role = message.get('role')
+        if role in role_counts:
+            role_counts[role] += 1
+        if role == 'assistant':
+            for call in message.get('tool_calls') or []:
+                if (isinstance(call, dict)
+                        and isinstance(call.get('function'), dict)
+                        and call['function'].get('name') == 'subagent'):
+                    prior_native_calls += 1
+    tail = messages[-1] if messages else None
+    tail_role = tail.get('role') if isinstance(tail, dict) else None
+    choice = request.get('tool_choice')
+    choice_class = ('auto' if choice == 'auto'
+                    else 'forced_subagent' if isinstance(choice, dict)
+                    and isinstance(choice.get('function'), dict)
+                    and choice['function'].get('name') == 'subagent'
+                    else 'other')
     return {'response_format': fmt.get('type') if fmt.get('type') in ('json_object', 'json_schema') else None,
         'strict': structured.get('strict') is True,
         'required_output_fields': [name for name in ('result', 'sources', 'ok') if isinstance(required, list) and name in required],
         'require_parameters': obj(request.get('provider')).get('require_parameters') is True,
         'model': request.get('model') if request.get('model') == REAL_MODEL else None,
         'reasoning_enabled': obj(request.get('reasoning')).get('enabled'),
-        'max_tokens': request.get('max_tokens'), 'max_completion_tokens': request.get('max_completion_tokens')}
+        'max_tokens': request.get('max_tokens'), 'max_completion_tokens': request.get('max_completion_tokens'),
+        'message_count': len(messages), 'tool_result_count': role_counts['tool'],
+        'assistant_message_count': role_counts['assistant'],
+        'prior_subagent_calls': prior_native_calls,
+        'tail_role': tail_role if tail_role in role_counts else 'other',
+        'tool_choice_class': choice_class,
+        'advertised_subagent': tool_name(request) == 'subagent'}
 
 
 def start_provider_request(number, request):
