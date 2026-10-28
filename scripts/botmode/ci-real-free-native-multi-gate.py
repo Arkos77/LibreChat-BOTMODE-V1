@@ -125,15 +125,17 @@ def run():
         "parentMessageId": "00000000-0000-0000-0000-000000000000",
         "isNewConvo": True,
         "text": (
-            "Mission en deux étapes obligatoires, avec deux spécialistes distincts "
-            "déjà autorisés dans ton registre. Appelle d'abord l'outil natif subagent "
-            "pour RECHERCHE avec run_in_background=true, en demandant un constat court. "
-            "Attends la notification d'achèvement automatique. Ensuite appelle subagent "
-            "pour ANALYSE avec run_in_background=true, en lui demandant une vérification "
-            "indépendante. Attends son achèvement automatique. N'appelle pas deux fois "
-            "le même spécialiste. Ne termine jamais avant les deux résultats enfants. "
-            "Après les deux résultats seulement, retourne le JSON exact {\"ok\":true}. "
-            "Ne lance aucun polling répétitif."
+            "Deux travaux indépendants sont obligatoires dans une seule mission. "
+            "Sélectionne les deux spécialistes autorisés distincts RECHERCHE et ANALYSE. "
+            "Lance immédiatement DEUX appels natifs subagent, un par spécialiste, chacun "
+            "avec run_in_background=true, sans attendre la fin du premier pour lancer "
+            "le second. RECHERCHE produit un constat court; ANALYSE réalise une vérification "
+            "indépendante. Après le lancement de ces deux tâches, termine ce tour pour "
+            "permettre les notifications automatiques de l'hôte. "
+            "N'appelle PAS check_background_task sur des tâches en cours et ne fais "
+            "aucun polling: la reprise automatique fournit les résultats persistés. "
+            "Ne publie aucun résultat avant confirmation des DEUX achèvements distincts. "
+            "Seulement ensuite retourne le JSON exact {\"ok\":true}."
         ),
         "orchestratorMission": {
             "mission": {
@@ -141,7 +143,7 @@ def run():
                 "objective": "Deux enfants natifs réels Recherche et Analyse, Oracle et P6 uniques.",
                 "constraints": [
                     "Déléguer à deux spécialistes distincts autorisés",
-                    "Attendre la fin durable des deux enfants sans polling",
+                    "Lancer les deux enfants avant toute attente, puis attendre leur fin durable sans polling",
                     "Ne publier qu'après les deux résultats",
                     "Répondre en JSON uniquement après achèvement",
                 ],
@@ -187,6 +189,12 @@ def run():
     print("CI_REAL_MULTI_SSE_FINAL_COUNT=" + str(len(finals)), flush=True)
     if http != 200 or outcome != "TERMINAL_FRAME" or len(finals) != 1 or errors:
         core["bounded_failure_diagnostics"](helpers, stream_id, parent, events)
+        # Preserve discriminating evidence even when the parent stream fails
+        # before Oracle/P6: this NEVER turns a missing final into PASS.
+        try:
+            inspect_children(parent, helpers, "FAILED_STREAM_DIAGNOSTIC")
+        except (SystemExit, OSError, ValueError, subprocess.SubprocessError):
+            print("CI_REAL_MULTI_FAILED_STREAM_TWO_CHILDREN=NOT_PROVEN", flush=True)
         fail("TERMINAL_STREAM_INVALID")
     fingerprint = inspect_children(parent, helpers, "BEFORE_RESTART")
     with urlopen("http://127.0.0.1:8088/provider-diagnostics", timeout=8) as response:
@@ -194,7 +202,7 @@ def run():
     records = diagnostics.get("records")
     if (diagnostics.get("route") != MODEL or diagnostics.get("simulated") is not False or
             diagnostics.get("limit_requests") != 6 or not isinstance(records, list) or
-            not 5 <= len(records) <= 6 or
+            not 4 <= len(records) <= 6 or
             any(not isinstance(r, dict) or r.get("http_status") != 200 for r in records)):
         fail("REAL_PROVIDER_LIMIT_OR_STATUS_INVALID")
     if sum("subagent" in (r.get("tool_names") or []) for r in records) < 2:
