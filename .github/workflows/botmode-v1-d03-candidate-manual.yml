@@ -6,7 +6,7 @@ on:
         description: Explicit D03 candidate approval
         required: true
         type: choice
-        options: [NO, AUTHORIZE_D03_CANDIDATE_ONLY]
+        options: ['NO', 'AUTHORIZE_D03_CANDIDATE_ONLY']
       source_sha_confirmation:
         description: Full source SHA must be entered for actual GHCR candidate publication
         required: false
