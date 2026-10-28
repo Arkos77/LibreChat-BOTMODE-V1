@@ -99,6 +99,11 @@ def tool_works(model):
         "tool_choice": {"type": "function", "function": {"name": "subagent"}},
         "provider": {"require_parameters": True},
     }
+    if os.environ.get("CI_FREE_ALTERNATIVE_TEST_MODE") == "nvidia_only":
+        # Parent task currently requests structured JSON while advertising
+        # subagent. Probe the exact coexistence that production needs.
+        body["response_format"] = {"type": "json_object"}
+        print("CI_FREE_ALTERNATIVE_FORCED_TOOL_PLUS_JSON_OBJECT=TRUE", flush=True)
     result = probe(model, body, "TOOL")
     if not isinstance(result, dict):
         return False
