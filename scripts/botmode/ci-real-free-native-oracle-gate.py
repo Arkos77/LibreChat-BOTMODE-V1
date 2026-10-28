@@ -217,7 +217,7 @@ def bounded_failure_diagnostics(helpers, stream_id, parent_id, events):
                 m=json.load(mr)
             for field in ("completion_calls", "advertised_subagent_requests",
                           "requests_without_subagent_tool", "last_advertised_subagent",
-                          "last_tool_choice_forced"):
+                          "last_tool_choice_forced", "ci_forced_first_subagent"):
                 v=m.get(field)
                 print("CI_NATIVE_REAL_RELAY_"+field.upper()+"="+
                       (str(v) if type(v) is int and 0 <= v <= 100 else "OTHER"),flush=True)
