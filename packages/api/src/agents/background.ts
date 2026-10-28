@@ -403,7 +403,8 @@ const CHECK_BACKGROUND_TASK_PARAMETERS = Object.freeze<CheckBackgroundTaskParame
     },
     wait_for_completion: {
       type: 'boolean',
-      description: 'Optional for one subagent poll: wait up to 90 seconds inside this tool call for completion without another model request.',
+      description:
+        'Optional for one subagent poll: wait up to 90 seconds inside this tool call for completion without another model request.',
     },
   },
   required: [],

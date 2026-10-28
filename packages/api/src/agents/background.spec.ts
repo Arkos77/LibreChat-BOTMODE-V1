@@ -2520,13 +2520,19 @@ describe('runCheckBackgroundTask (singleton)', () => {
       }),
     );
     expect(started.every((child) => child.accepted)).toBe(true);
+    const acceptedTasks = started.map((child) => {
+      if (!child.accepted) {
+        throw new Error('Expected detached child task to be accepted.');
+      }
+      return child.task;
+    });
     const results = await Promise.all(
-      started.map(async (child, index) =>
+      acceptedTasks.map(async (task, index) =>
         JSON.parse(
           await runCheckBackgroundTask({
             userId: 'owner',
             conversationId: 'bounded-parent',
-            args: { background_task_id: child.task.taskId, wait_for_completion: true },
+            args: { background_task_id: task.taskId, wait_for_completion: true },
             toolCallId: `poll-${index}`,
             subagentTasks,
           }),
