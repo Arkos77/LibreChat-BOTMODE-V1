@@ -1221,10 +1221,27 @@ jobs:
             const ids=worker?.subagents?.agent_ids;
             if(!worker?.subagents?.enabled || !Array.isArray(ids) || ids.length < 2)
               throw new Error('TWO_NATIVE_SPECIALISTS_NOT_AUTHORIZED');
-            const docs=await db.collection('agents').find({name:{$in:['RECHERCHE','ANALYSE']}},{projection:{id:1,name:1}}).toArray();
+            const docs=await db.collection('agents').find({name:{$in:['RECHERCHE','ANALYSE']}},{projection:{id:1,name:1,tools:1}}).toArray();
             const map=Object.fromEntries(docs.map(d=>[d.name,d.id]));
             if(docs.length!==2 || !ids.includes(map.RECHERCHE) || !ids.includes(map.ANALYSE) ||
                map.RECHERCHE===map.ANALYSE)throw new Error('CI_NATIVE_TWO_SPECIALISTS_INVALID');
+            // This isolated subagent-engine smoke tests two REAL model-backed
+            // children without adding web_search inference turns to the fixed
+            // six-request budget. Do not modify the actual candidate or users.
+            // Normal default RECHERCHE and its full browser/search qualification
+            // retain their own independent acceptance criteria.
+            const research=docs.find(d=>d.name==='RECHERCHE');
+            if(!Array.isArray(research?.tools) || !research.tools.includes('web_search'))
+              throw new Error('CI_RESEARCH_ORIGINAL_WEB_CAPABILITY_NOT_PRESENT');
+            const narrowed=await db.collection('agents').updateOne(
+              {id:map.RECHERCHE,name:'RECHERCHE'},{$set:{tools:[]}}
+            );
+            const verified=await db.collection('agents').findOne(
+              {id:map.RECHERCHE,name:'RECHERCHE'},{projection:{id:1,tools:1}}
+            );
+            if(narrowed.matchedCount!==1 || !Array.isArray(verified?.tools) ||
+               verified.tools.length!==0)throw new Error('CI_RESEARCH_SELF_CONTAINED_SCOPE_FAILED');
+            console.error('CI_REAL_MULTI_DISPOSABLE_RESEARCH_WEB_TOOL_DISABLED=PASS');
             process.stdout.write(JSON.stringify({research:map.RECHERCHE,analysis:map.ANALYSE}));
             await mongoose.disconnect();
           })().catch(e=>{console.error('CI_MULTI_AUTH_ERROR_CLASS='+e.name);process.exit(1)});
