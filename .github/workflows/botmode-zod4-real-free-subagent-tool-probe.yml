@@ -12,6 +12,11 @@ on:
         type: boolean
         required: false
         default: false
+      probe_autonomous_json:
+        description: 'One zero-price free model call with both tool_choice auto and json_object'
+        type: boolean
+        required: false
+        default: false
       alternative_mode:
         description: 'all (three models) or nvidia_only (two requests max)'
         type: choice
@@ -34,11 +39,12 @@ jobs:
         with:
           persist-credentials: false
       - name: Probe autonomous zero/one selection (no forced tool, no Docker)
-        if: github.event_name == 'workflow_dispatch' && inputs.probe_autonomous_choice == true && inputs.probe_free_alternatives != true
+        if: github.event_name == 'workflow_dispatch' && (inputs.probe_autonomous_choice == true || inputs.probe_autonomous_json == true) && inputs.probe_free_alternatives != true
         shell: bash
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CI_FREE_AUTONOMOUS_OPT_IN: '1'
+          CI_FREE_AUTO_JSON_ONLY: ${{ inputs.probe_autonomous_json && '1' || '0' }}
         run: |
           set -euo pipefail
           test "${#OPENROUTER_API_KEY}" -gt 16
@@ -59,7 +65,7 @@ jobs:
           python3 -m py_compile scripts/botmode/ci-free-alternative-selection.py
           python3 scripts/botmode/ci-free-alternative-selection.py
       - name: Verify zero-price free provider emits a subagent tool call, no tool execution
-        if: github.event_name == 'workflow_dispatch' && inputs.probe_free_alternatives != true && inputs.probe_autonomous_choice != true
+        if: github.event_name == 'workflow_dispatch' && inputs.probe_free_alternatives != true && inputs.probe_autonomous_choice != true && inputs.probe_autonomous_json != true
         shell: bash
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
