@@ -1204,7 +1204,7 @@ jobs:
           p=Path('/tmp/botmode-ci-model-fixture.py')
           s=p.read_text()
           patches={
-            "REAL_MODEL = 'nvidia/nemotron-3.5-super-vl:free'": "REAL_MODEL = 'liquid/lfm-2.5-2.6b:free'",
+            "REAL_MODEL = 'nvidia/nemotron-3.5-super-vl:free'": "REAL_MODEL = 'nvidia/nemotron-3.5-super-vl:free'",
             "if request.get('model') != REAL_MODEL or any(k in request for k in ('models', 'plugins', 'web_search_options')):": "if request.get('model') not in (MODEL, REAL_MODEL) or any(k in request for k in ('models', 'plugins', 'web_search_options')):",
             "    if request.get('reasoning') != {'enabled': False}:\n        raise ValueError('REAL_REASONING_DISABLED_REQUIRED')": "    # Runner-only normalization: ignore incoming SDK reasoning; omit provider-unsupported control.",
             "    result = dict(request)\n    for key in ('max_tokens', 'max_completion_tokens'):": "    result = dict(request)\n    result['model'] = REAL_MODEL\n    result.pop('reasoning', None)  # rejected optional parameter is never forwarded\n    for key in ('max_tokens', 'max_completion_tokens'):",
@@ -1221,7 +1221,7 @@ jobs:
             payload={'model':'openrouter/free','messages':[{'role':'user','content':'CI'}],
                      'reasoning':incoming,'max_tokens':256,'n':1}
             bounded=guard(payload)
-            assert bounded['model']=='liquid/lfm-2.5-2.6b:free', 'CI_RELAY_NONFREE_ROUTE'
+            assert bounded['model']=='nvidia/nemotron-3.5-super-vl:free', 'CI_RELAY_NONFREE_ROUTE'
             assert 'reasoning' not in bounded, 'CI_RELAY_UNSUPPORTED_REASONING_FORWARDED'
             assert bounded['max_tokens']==256 and bounded['n']==1, 'CI_RELAY_REQUEST_DRIFT'
           print('CI_NATIVE_REAL_RELAY_OMITS_UNSUPPORTED_REASONING=PASS',flush=True)
@@ -1261,7 +1261,7 @@ jobs:
                       diag=json.load(r)
                   with urlopen('http://127.0.0.1:8088/metrics',timeout=2) as r:
                       met=json.load(r)
-                  if (diag.get('route')=='liquid/lfm-2.5-2.6b:free'
+                  if (diag.get('route')=='nvidia/nemotron-3.5-super-vl:free'
                           and diag.get('simulated') is False
                           and diag.get('limit_requests')==4
                           and isinstance(met.get('completion_calls'),int)
