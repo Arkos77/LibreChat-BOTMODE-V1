@@ -85,6 +85,43 @@ describe('validated native output contract', () => {
     },
   );
 
+  it('allows unforced native OpenRouter subagent calls without implicit json_object', () => {
+    const input = new Map(bindings);
+    const options = { model: 'nvidia/nemotron-3.5-super-vl:free' };
+    input.set('worker', {
+      ...bindings.get('worker')!,
+      provider: Providers.OPENROUTER,
+      toolDefinitions: [{ name: 'subagent' }],
+      clientOptions: options,
+    });
+    const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
+    expect(agent.clientOptions).toMatchObject({
+      model: options.model,
+      modelKwargs: { tool_choice: 'auto' },
+    });
+    expect(agent.clientOptions).not.toHaveProperty('modelKwargs.response_format');
+    expect(input.get('worker')!.clientOptions).toBe(options);
+  });
+
+  it('preserves owner JSON schema even when OpenRouter native tools are authorized', () => {
+    const json_schema = {
+      name: 'owner',
+      strict: true,
+      schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] },
+    };
+    const input = new Map(bindings);
+    input.set('worker', {
+      ...bindings.get('worker')!,
+      provider: Providers.OPENROUTER,
+      toolDefinitions: [{ name: 'subagent' }],
+      clientOptions: { modelKwargs: { response_format: { type: 'json_schema', json_schema } } },
+    });
+    const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
+    expect(agent.clientOptions).toMatchObject({
+      modelKwargs: { response_format: { type: 'json_schema', json_schema }, tool_choice: 'auto' },
+    });
+  });
+
   it.each(['tools', 'toolDefinitions', 'graphTools'] as const)(
     'keeps implicit tool choice across nested fallback bindings with %s',
     (field) => {
