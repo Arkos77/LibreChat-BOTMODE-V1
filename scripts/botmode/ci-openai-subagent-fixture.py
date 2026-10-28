@@ -227,6 +227,9 @@ def record_provider_response(number, status, body, request=None):
     models = set()
     finishes = set()
     tools = set()
+    # Count distinct native tool-call slots. A set of names loses multiplicity:
+    # two subagent calls in one provider response otherwise look like one.
+    subagent_slots = set()
     usage = {}
     errors = []
     for item in items:
@@ -243,12 +246,32 @@ def record_provider_response(number, status, body, request=None):
             message = choice.get('delta') or choice.get('message') or {}
             if not isinstance(message, dict): continue
             if isinstance(message.get('content'), str): content.append(message['content'])
-            for call in message.get('tool_calls', []):
-                name = call.get('function', {}).get('name')
-                if isinstance(name, str): tools.add(name)
+            for position, call in enumerate(message.get('tool_calls') or []):
+                if not isinstance(call, dict): continue
+                function = call.get('function')
+                name = function.get('name') if isinstance(function, dict) else None
+                if not isinstance(name, str): continue
+                tools.add(name)
+                if name == 'subagent':
+                    # SSE chunks may mention the same index repeatedly.
+                    # For full non-stream responses, use call ID or position.
+                    choice_index = choice.get('index', 0)
+                    index = call.get('index')
+                    call_id = call.get('id')
+                    if type(index) is int and index >= 0:
+                        slot = ('index', choice_index, index)
+                    elif isinstance(call_id, str) and call_id:
+                        slot = ('id', call_id)
+                    elif 'delta' not in choice:
+                        slot = ('position', choice_index, position)
+                    else:
+                        # Never count unidentified repeated SSE fragments as new calls.
+                        slot = ('unknown', choice_index)
+                    subagent_slots.add(slot)
     candidate = ''.join(content)
     record = {'request': number, 'http_status': status, 'models': sorted(models),
-              'finish_reasons': sorted(finishes), 'tool_names': sorted(tools), 'usage': usage,
+              'finish_reasons': sorted(finishes), 'tool_names': sorted(tools),
+              'subagent_tool_call_count': min(len(subagent_slots), 16), 'usage': usage,
               'candidate_text': candidate[:8192], 'candidate_truncated': len(candidate) > 8192,
               'errors': errors[:2]}
     if request is not None:

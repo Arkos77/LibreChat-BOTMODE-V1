@@ -316,7 +316,14 @@ def run():
             not 4 <= len(records) <= 6 or
             any(not isinstance(r, dict) or r.get("http_status") != 200 for r in records)):
         fail("REAL_PROVIDER_LIMIT_OR_STATUS_INVALID")
-    if sum("subagent" in (r.get("tool_names") or []) for r in records) < 2:
+    # Distinct tool calls may share a *single* model response. Counting
+    # records containing the name undercounts genuine parallel delegation.
+    call_counts = [r.get("subagent_tool_call_count") for r in records]
+    if any(type(n) is not int or not 0 <= n <= 16 for n in call_counts):
+        fail("NATIVE_TOOL_CALL_COUNT_INVALID")
+    native_calls = sum(call_counts)
+    print("CI_REAL_MULTI_NATIVE_TOOL_CALL_COUNT=" + str(native_calls), flush=True)
+    if native_calls < 2:
         fail("TWO_NATIVE_TOOL_CALLS_NOT_ADVERTISED")
     if any(Decimal(str((r.get("usage") or {}).get("cost", 0))) > 0 for r in records):
         fail("POSITIVE_PROVIDER_COST_DETECTED")
