@@ -20,6 +20,12 @@ Selon GitHub, `main` est protégée, et `compare/main...7605e9186b84d4a7eb6d14be
 - La PR [#77](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/77), HEAD `7ed5ec4cb3626afcb6df0180694266857ccd8eb7`, est au contraire **divergente** : comparaison vers le runtime candidat `ahead=262`, `behind=29`. **Ne pas la fusionner automatiquement** ; relever d'abord ses 29 commits absents et traiter uniquement les exigences encore utiles, avec validation des régressions.
 - Le champ GitHub `mergeable=true` de la PR #86 ne prouve que sa faisabilité de fusion avec sa **branche de base #85** ; il ne certifie ni la pile entière vers `main`, ni la candidate D-03 sur un commit de release final.
 
+## Tri du diff cumulé vers main (sans refaire les tests PASS)
+
+L'inventaire GitHub des **231 fichiers modifiés** se répartit en 57 fichiers `packages/api` (orchestration, sous-agents, Oracle et tests), 34 `api` (auth, contrôleurs, reprise), 39 `client` (panneau progression, chat/agents, projets), 16 autres fichiers `packages`, 26 scripts/infrastructure, 9 workflows, 44 documents et 6 fichiers racine/vendor. Cette lecture est un **inventaire de portée**, pas encore une revue ligne par ligne des 371 commits.
+
+**Ordre de revue pour une future intégration** : (1) identité/ACL et réentrance du Worker ; (2) Oracle/P6 exactement une publication ; (3) fallback gratuit et plafond d'appels ; (4) expérience utilisateur Progression et Used tools, création de projet ; (5) sauts de dépendances Zod 4.6.7, SDK OpenAI 7, MSAL et tarball vendor ; (6) manifests Lite/Full et workflows non publiants ; (7) contrôle des licences et vulnérabilités. Les contrôles PASS du SHA `7605e9186` sont conservés et ne seront relancés **que si la source réellement intégrée change ou si une régression est démontrée**.
+
 ## Provenance des références actuelles — conditions bloquantes
 
 - `v1.0.0` pointe sur le commit **antérieur** `59598c2f4e333c256296bbb8c6f45a024832745b`. **Ne jamais réécrire ce tag.**
