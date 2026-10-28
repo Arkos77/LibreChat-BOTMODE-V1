@@ -296,7 +296,13 @@ def run():
         except (SystemExit, OSError, ValueError, subprocess.SubprocessError):
             print("CI_REAL_MULTI_FAILED_STREAM_TWO_CHILDREN=NOT_PROVEN", flush=True)
         fail("TERMINAL_STREAM_INVALID")
-    fingerprint = inspect_children(parent, helpers, "BEFORE_RESTART")
+    try:
+        fingerprint = inspect_children(parent, helpers, "BEFORE_RESTART")
+    except SystemExit:
+        # The parent may emit a valid SSE final without ever delegating.
+        # Capture allowlisted provider metadata before the fail-closed exit.
+        core["bounded_failure_diagnostics"](helpers, stream_id, parent, events)
+        raise
     with urlopen("http://127.0.0.1:8088/provider-diagnostics", timeout=8) as response:
         diagnostics = json.load(response)
     records = diagnostics.get("records")
