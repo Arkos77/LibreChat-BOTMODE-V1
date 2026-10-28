@@ -372,6 +372,7 @@ interface CheckBackgroundTaskParameters {
     action: { type: 'string'; enum: string[]; description: string };
     message: BoundedStringSchema;
     control_id: BoundedStringSchema;
+    wait_for_completion: { type: 'boolean'; description: string };
   };
   required: string[];
 }
@@ -399,6 +400,10 @@ const CHECK_BACKGROUND_TASK_PARAMETERS = Object.freeze<CheckBackgroundTaskParame
       type: 'string',
       maxLength: MAX_BACKGROUND_CONTROL_ID_CHARS,
       description: 'Required for cancel_message; use the id returned by a prior control action.',
+    },
+    wait_for_completion: {
+      type: 'boolean',
+      description: 'Optional for one subagent poll: wait up to 90 seconds inside this tool call for completion without another model request.',
     },
   },
   required: [],
@@ -1942,6 +1947,8 @@ export async function runCheckBackgroundTask(params: {
   /** Scopes that tool-call id, whose provider ids repeat across runs and agents. */
   agentId?: string;
   runId?: string;
+  /** Cancels a bounded host wait when the generation is aborted. */
+  signal?: AbortSignal;
   subagentTasks?: SubagentTaskConfig;
   claimBackgroundToolResult?: (params: {
     userId: string;
@@ -1968,6 +1975,13 @@ export async function runCheckBackgroundTask(params: {
   }
   const taskId = typeof rawId === 'string' && rawId.trim() !== '' ? rawId.trim() : undefined;
   const action = typeof args.action === 'string' && args.action !== '' ? args.action : 'poll';
+  const waitForCompletion = args.wait_for_completion === true;
+  if (waitForCompletion && (!taskId || action !== 'poll' || params.subagentTasks == null)) {
+    return JSON.stringify({
+      status: 'invalid',
+      message: 'Completion waiting requires one subagent id and action poll.',
+    });
+  }
   const invocationId = controlInvocationId(params);
 
   if (taskId) {
@@ -2164,16 +2178,46 @@ export async function runCheckBackgroundTask(params: {
       try {
         const routedStore = routedSubagentStore(subagentTasks.store);
         if (action === 'poll') {
-          const claim =
+          const readClaim = () =>
             routedStore == null
-              ? subagentTasks.store.claim(subagentTasks.scopeId, taskId)
-              : await routedStore.claimTask(subagentTasks.scopeId, taskId, invocationId);
+              ? Promise.resolve(subagentTasks.store.claim(subagentTasks.scopeId, taskId))
+              : routedStore.claimTask(subagentTasks.scopeId, taskId, invocationId);
+          let claim = await readClaim();
+          const deadline = waitForCompletion ? Date.now() + 90_000 : 0;
+          while (waitForCompletion && claim.status === 'running' && Date.now() < deadline) {
+            if (params.signal?.aborted) {
+              return JSON.stringify({
+                status: 'interrupted',
+                background_task_id: taskId,
+                message: 'Parent generation aborted; no result was claimed.',
+              });
+            }
+            await new Promise<void>((resolve) =>
+              setTimeout(resolve, Math.min(1_000, Math.max(1, deadline - Date.now()))),
+            );
+            if (params.signal?.aborted) {
+              return JSON.stringify({
+                status: 'interrupted',
+                background_task_id: taskId,
+                message: 'Parent generation aborted; no result was claimed.',
+              });
+            }
+            claim = await readClaim();
+          }
           const claimed = serializeSubagentClaim(
             claim,
             agentUsesSubagentCompletionWakeups(subagentTasks, params.agentId),
           );
           if (claimed != null) {
-            return JSON.stringify(claimed);
+            return JSON.stringify(
+              waitForCompletion && claim.status === 'running'
+                ? {
+                    ...claimed,
+                    wait_expired: true,
+                    message: 'Bounded wait expired. The child is still running; do not publish.',
+                  }
+                : claimed,
+            );
           }
         } else {
           const command = buildSubagentControlCommand(args, action);
