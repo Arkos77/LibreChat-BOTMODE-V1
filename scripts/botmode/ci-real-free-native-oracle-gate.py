@@ -127,7 +127,7 @@ const mongoose=require('mongoose');
     const child=children[0],link=child.subagentThread||{};
     const messages=await db.collection('messages').find(
       {conversationId:child.conversationId},
-      {projection:{messageId:1,text:1,error:1,isCreatedByUser:1,subagentTask:1}}
+      {projection:{messageId:1,text:1,error:1,unfinished:1,isCreatedByUser:1,subagentTask:1}}
     ).limit(30).toArray();
     childMessages=messages.length;
     const parentRunIds=[...new Set(messages.map(m=>m.subagentTask?.parentRunId).filter(Boolean))];
