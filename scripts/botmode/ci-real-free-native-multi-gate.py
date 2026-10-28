@@ -130,6 +130,27 @@ def observe_parent_mission(helpers, stream_id, parent, elapsed):
             except (ValueError, TypeError, AttributeError):
                 verdict = "OTHER_OR_MISSING"
             print(prefix + "_ORACLE_VERDICT_CLASS=" + verdict, flush=True)
+            # Only bounded reason codes and counts; no text or identifiers.
+            allow = {"INVALID_CANDIDATE", "CANDIDATE_MISSING", "CRITERION_FAILED",
+                     "CRITERION_MET", "INDEPENDENT_EVIDENCE_MISSING",
+                     "CONTRADICTORY_EVIDENCE", "INVALID_CONTRACT",
+                     "HUMAN_REVIEW_REQUIRED", "VALIDATOR_NOT_INDEPENDENT",
+                     "CRITERIA_MISSING"}
+            reasons = [v.get("reasons") or [] for value in
+                       (data.get("results") or {}).values() if isinstance(value, dict)
+                       for v in (value.get("verdicts") or []) if isinstance(v, dict)]
+            codes = sorted({str(reason.get("code")) for group in reasons
+                            for reason in group if isinstance(reason, dict)
+                            and reason.get("code") in allow})
+            failed = sum(1 for value in (data.get("results") or {}).values()
+                         if isinstance(value, dict)
+                         for v in (value.get("verdicts") or [])
+                         if isinstance(v, dict)
+                         for check in (v.get("checks") or [])
+                         if isinstance(check, dict) and check.get("passed") is False)
+            print(prefix + "_ORACLE_REASON_CODES=" +
+                  (",".join(codes) if codes else "NONE_OR_OTHER"), flush=True)
+            print(prefix + "_ORACLE_FAILED_CHECKS=" + str(min(failed, 99)), flush=True)
     except (OSError, ValueError, subprocess.SubprocessError):
         print(prefix + "_REDIS_UNAVAILABLE=TRUE", flush=True)
     node = r"""
