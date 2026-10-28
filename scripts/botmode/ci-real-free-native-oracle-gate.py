@@ -300,7 +300,20 @@ def bounded_failure_diagnostics(helpers, stream_id, parent_id, events):
             reasons=record.get("finish_reasons") or []
             print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_FINISH_REASON="+
                   (",".join(sorted(x for x in reasons if x in safe_reasons)) or "NONE_OR_OTHER"),flush=True)
+            # "SUBAGENT_TOOL" above describes an emitted tool-call, not a
+            # tool offered to the model. Keep these as distinct measurements.
             p=record.get("request_parameters") or {}
+            advertised=p.get("advertised_subagent")
+            print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_SUBAGENT_ADVERTISED="+
+                  ("TRUE" if advertised is True else "FALSE" if advertised is False else "UNKNOWN"),
+                  flush=True)
+            allowed_tool_names={"subagent","check_background_task","web_search",
+                                "file_search","execute_code","terminal"}
+            emitted=record.get("tool_names") or []
+            emitted_classes=sorted({t if t in allowed_tool_names else "OTHER"
+                                    for t in emitted if isinstance(t,str)})
+            print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_EMITTED_TOOLS="+
+                  (",".join(emitted_classes) if emitted_classes else "NONE"),flush=True)
             for field in ("message_count","tool_result_count","assistant_message_count",
                           "prior_subagent_calls"):
                 n=p.get(field)
