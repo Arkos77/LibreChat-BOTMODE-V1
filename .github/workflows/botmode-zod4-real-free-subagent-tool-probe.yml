@@ -34,7 +34,7 @@ jobs:
           try:
               quota=get('/key',True).get('data') or {}
               remaining=(quota.get('free_model_daily_requests') or {}).get('remaining')
-              if quota.get('is_management_key') or type(remaining) is not int or remaining<1:
+              if quota.get('is_management_key') or type(remaining) is not int or remaining<5:
                   raise SystemExit('CI_REAL_TOOL=NO_FREE_QUOTA')
               model='liquid/lfm-2.5-2.6b:free'
               models=[m for m in get('/models').get('data',[]) if m.get('id')==model]
@@ -82,6 +82,32 @@ jobs:
               print('CI_REAL_TOOL_NOT_EXECUTED_BY_THIS_PROBE=TRUE',flush=True)
           except HTTPError as exc:
               print('CI_REAL_TOOL_UPSTREAM_HTTP='+str(exc.code),flush=True)
+              if exc.code==429:
+                  # Never log raw error bodies, response headers, or provider text.
+                  # Distinguish account-minute/day throttling from upstream model
+                  # capacity. One request only; never retry or fall back to paid.
+                  try:
+                      issue=json.loads(exc.read(8192))
+                      err=issue.get('error') if isinstance(issue,dict) else None
+                      msg=(str(err.get('message','')) if isinstance(err,dict) else '').lower()
+                      meta=err.get('metadata') if isinstance(err,dict) else {}
+                      raw=str(meta.get('raw','')).lower()[:2048] if isinstance(meta,dict) else ''
+                      reason=' '.join((msg,raw))
+                  except (ValueError,TypeError):
+                      reason=''
+                  if any(t in reason for t in ('daily','per day','free model limit','free tier limit','50 requests')):
+                      category='DAILY_LIMIT'
+                  elif any(t in reason for t in ('per minute','rpm','too many requests per minute')):
+                      category='MINUTE_LIMIT'
+                  elif any(t in reason for t in ('upstream','provider','capacity','saturated','temporarily unavailable','rate-limited')):
+                      category='PROVIDER_CAPACITY_OR_RATE_LIMIT'
+                  elif 'rate limit' in reason or '429' in reason:
+                      category='RATE_LIMIT_UNSPECIFIED'
+                  else:
+                      category='UNCLASSIFIED_429'
+                  print('CI_REAL_TOOL_429_CLASS='+category,flush=True)
+                  print('CI_REAL_TOOL_RETRY_AFTER_HEADER_PRESENT='+str(bool(exc.headers.get('Retry-After'))).upper(),flush=True)
+                  print('CI_REAL_TOOL_PROVIDER_DIAGNOSTIC_ONLY=TRUE',flush=True)
               raise SystemExit('CI_REAL_TOOL=PROVIDER_HTTP_FAILURE')
           except (URLError,TimeoutError,ValueError,KeyError,ArithmeticError) as exc:
               print('CI_REAL_TOOL_ERROR_CLASS='+type(exc).__name__,flush=True)
