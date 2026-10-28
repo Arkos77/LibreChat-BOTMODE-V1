@@ -7,6 +7,13 @@ on:
         type: boolean
         required: false
         default: false
+      alternative_mode:
+        description: 'all (three models) or nvidia_only (two requests max)'
+        type: choice
+        options:
+          - all
+          - nvidia_only
+        default: all
   pull_request:
     paths:
       - '.github/workflows/botmode-zod4-real-free-subagent-tool-probe.yml'
@@ -27,6 +34,7 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CI_FREE_ALTERNATIVES_OPT_IN: '1'
+          CI_FREE_ALTERNATIVE_TEST_MODE: ${{ inputs.alternative_mode }}
         run: |
           set -euo pipefail
           test "${#OPENROUTER_API_KEY}" -gt 16
