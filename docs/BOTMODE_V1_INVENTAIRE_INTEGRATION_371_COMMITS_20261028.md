@@ -5,7 +5,7 @@
 ## 1. Sources immuables et état
 
 - `main` `4d7b4922ab35838fd6b89938e6704bd4d1bbc86f` : branche protégée.
-- Socle indépendant `test/botmode-host-research-20261024` `a617052e3ffdbb5b4147e4f2cf9fb8cfae898b20`, 219 commits d'avance sur main, sans PR ouverte dédiée.
+- Socle indépendant `test/botmode-host-research-20261024` `a617052e3ffdbb5b4147e4f2cf9fb8cfae898b20`, 219 commits d'avance sur main, maintenant soumis à une **revue DRAFT [PR #87](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/87)**, avec base #76.
 - Source fonctionnelle et D-03 `7605e9186b84d4a7eb6d14be1bc9528c6033bbd8`, PR #86 DRAFT, 371 commits au-dessus de main, pas de retard.
 - D-03 OCI AMD64/ARM64 `ghcr.io/arkos77/librechat-botmode-v1@sha256:ed493e0ffdfc7a1056d11834474b4127e0ae27ea52421e8d5fa9aa26e686c8a1`. La source ne doit pas être confondue avec les commits de cette branche de documents.
 - Six preuves PASS, à ne pas relancer : N réel/Oracle/P6/reboot [#40750429460](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/40750429460) ; Playwright [#40750154581](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/40750154581) ; candidate D-03 [#40757067711](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/40757067711) ; fresh Lite [#40767920565](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/40767920565) ; Full/Mongo/rollback [#40769097230](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/40769097230) ; licences AMD64/ARM64 [#40769106150](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/40769106150).
