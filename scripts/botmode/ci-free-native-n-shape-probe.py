@@ -66,6 +66,10 @@ def call(messages, phase):
 def main():
     if os.environ.get("CI_FREE_N_SHAPE_OPT_IN") != "1" or len(KEY) < 17:
         fail("OPT_IN_OR_KEY_MISSING")
+    mode = os.environ.get("CI_FREE_N_SHAPE_BACKGROUND_MODE", "background")
+    if mode not in ("background", "synchronous"):
+        fail("INVALID_PROBE_MODE")
+    synchronous = mode == "synchronous"
     quota = get("/key", True).get("data") or {}
     remaining = (quota.get("free_model_daily_requests") or {}).get("remaining")
     if quota.get("is_management_key") or type(remaining) is not int or remaining < 2:
@@ -87,7 +91,7 @@ def main():
         {"role": "system", "content":
          "Tu es le Worker autonome. Délègue obligatoirement deux tâches distinctes, puis termine avec le seul objet JSON brut {\"ok\":true}. Ne génère aucune explication finale."},
         {"role": "user", "content":
-         "Dans un même tour, lance deux appels subagent distincts, RECHERCHE et ANALYSE, avec run_in_background=true. Après réception des deux résultats terminés, renvoie exactement {\"ok\":true}, sans Markdown ni autre texte."},
+         "Dans un même tour, lance deux appels subagent distincts, RECHERCHE et ANALYSE, avec run_in_background=" + ("false" if synchronous else "true") + ". Après réception des deux résultats terminés, renvoie exactement {\"ok\":true}, sans Markdown ni autre texte."},
     ]
     first = call(messages, "FIRST")
     calls = first.get("tool_calls") or []
@@ -107,6 +111,8 @@ def main():
         if (args.get("subagent_type") not in ("research", "analysis") or
                 not isinstance(args.get("description"), str) or not args["description"].strip()):
             fail("FIRST_UNAUTHORIZED_OR_EMPTY")
+        if synchronous and args.get("run_in_background") is not False:
+            fail("FIRST_SYNC_ARGUMENT_MISMATCH")
         ids.append(tc.get("id"))
         roles.append(args["subagent_type"])
     if (len(set(ids)) != 2 or not all(isinstance(i, str) and i for i in ids) or
