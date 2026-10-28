@@ -4,7 +4,7 @@ set -euo pipefail
 [[ "${CI:-}" == true && -n "${GITHUB_RUN_ID:-}" ]] || { echo 'CI_ONLY_REFUSED'; exit 2; }
 test -f "${RUNNER_TEMP:?}/restore-compose.yml"
 old='ghcr.io/arkos77/librechat-botmode-v1@sha256:e76d39172c62b543756c6f9af740a9e43b4289a0990af879234acae295788c9a'
-new='ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0'
+new='ghcr.io/arkos77/librechat-botmode-v1@sha256:ed493e0ffdfc7a1056d11834474b4127e0ae27ea52421e8d5fa9aa26e686c8a1'
 compose() {
   local image=$1; shift
   sudo env -u BOTMODE_MONGO_PASSWORD -u POSTGRES_PASSWORD -u MEILI_MASTER_KEY \

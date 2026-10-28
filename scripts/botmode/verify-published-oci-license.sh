@@ -2,8 +2,8 @@
 # Read-only evidence probe against the exact already-published candidate OCI image.
 set -euo pipefail
 
-IMAGE='ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0'
-EXPECTED_COMMIT='5fb904d375bffd6c54b5830cb1536088a9e77211'
+IMAGE='ghcr.io/arkos77/librechat-botmode-v1@sha256:ed493e0ffdfc7a1056d11834474b4127e0ae27ea52421e8d5fa9aa26e686c8a1'
+EXPECTED_COMMIT='7605e9186b84d4a7eb6d14be1bc9528c6033bbd8'
 EXPECTED_SUL_SHA256='5aca9a36f98d883157f1d1a567347c3d776b7ae60bf93fbb7bfa190f1e3ccf46'
 
 test "${CI:-}" = 'true' || { echo 'Run only on a disposable CI runner' >&2; exit 2; }

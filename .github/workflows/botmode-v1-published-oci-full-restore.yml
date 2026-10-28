@@ -1,10 +1,6 @@
-name: BOTMODE V1 Published OCI Full Restore and ACL Qualification
+name: BOTMODE D03 Published Exact OCI Full Restore and Rollback
 
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/botmode-v1-published-oci-full-restore.yml'
-      - 'scripts/botmode/ci-full-cross-version-rollback.sh'
   workflow_dispatch:
 
 permissions:
@@ -16,14 +12,23 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Verify isolated source-derived qualification checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor '7605e9186b84d4a7eb6d14be1bc9528c6033bbd8' HEAD
+          echo 'CI_D03_FULL_PREP_SOURCE_ANCESTRY=PASS'
       - name: Verify exact OCI digest and anonymous multiarch manifest
         run: |
           set -euo pipefail
           docker logout ghcr.io >/dev/null 2>&1 || true
-          img='ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0'
+          img='ghcr.io/arkos77/librechat-botmode-v1@sha256:ed493e0ffdfc7a1056d11834474b4127e0ae27ea52421e8d5fa9aa26e686c8a1'
           docker pull "$img" >/dev/null
           actual="$(docker image inspect "$img" --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^BUILD_COMMIT=//p' | head -1)"
-          test "$actual" = '5fb904d375bffd6c54b5830cb1536088a9e77211'
+          test "$actual" = '7605e9186b84d4a7eb6d14be1bc9528c6033bbd8'
           echo 'CI_FULL_PUBLISHED_OCI_SOURCE_VERIFIED=PASS'
       - name: Prepare isolated credentials
         shell: bash
@@ -38,7 +43,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,MEILI_MASTER_KEY,BOTMODE_HOST_PORT,ADMIN_PANEL_PORT ./install.sh --full --image ghcr.io/arkos77/librechat-botmode-v1@sha256:ee4af50a8baa8795509fb3c0abba362a104fbae7b0de5eac8a9f1afb8e4a60d0
+          sudo --preserve-env=BOTMODE_MONGO_PASSWORD,POSTGRES_PASSWORD,MEILI_MASTER_KEY,BOTMODE_HOST_PORT,ADMIN_PANEL_PORT ./install.sh --full --image ghcr.io/arkos77/librechat-botmode-v1@sha256:ed493e0ffdfc7a1056d11834474b4127e0ae27ea52421e8d5fa9aa26e686c8a1
           for n in $(seq 1 90); do
             if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then break; fi
             sleep 2
