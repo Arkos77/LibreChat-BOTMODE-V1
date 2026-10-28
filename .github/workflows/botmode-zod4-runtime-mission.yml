@@ -17,6 +17,11 @@ on:
         type: boolean
         required: true
         default: false
+      native_real_unforced_choice:
+        description: 'Probe real native mission with model auto tool choice; never force subagent'
+        type: boolean
+        required: false
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -1194,6 +1199,7 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CI_NATIVE_REAL_INTEGRATED: '1'
           CI_REAL_FREE_PROVIDER: '1'
+          CI_REAL_FORCE_FIRST_TOOL: ${{ inputs.native_real_unforced_choice && '0' || '1' }}
         run: |
           set -euo pipefail
           test "${#OPENROUTER_API_KEY}" -gt 16 || exit 3
@@ -1207,7 +1213,7 @@ jobs:
             "REAL_MODEL = 'nvidia/nemotron-3.5-super-vl:free'": "REAL_MODEL = 'nvidia/nemotron-3.5-super-vl:free'",
             "if request.get('model') != REAL_MODEL or any(k in request for k in ('models', 'plugins', 'web_search_options')):": "if request.get('model') not in (MODEL, REAL_MODEL) or any(k in request for k in ('models', 'plugins', 'web_search_options')):",
             "    if request.get('reasoning') != {'enabled': False}:\n        raise ValueError('REAL_REASONING_DISABLED_REQUIRED')": "    # Runner-only normalization: ignore incoming SDK reasoning; omit provider-unsupported control.",
-            "    result = dict(request)\n    for key in ('max_tokens', 'max_completion_tokens'):": "    result = dict(request)\n    result['model'] = REAL_MODEL\n    result.pop('reasoning', None)  # rejected optional parameter is never forwarded\n    # CI transport-only forced first delegation; never alter agent authority or later turns.\n    if calls.get('provider_requests',0)==0 and child_id and tool_name(result)=='subagent':\n        if result.get('tool_choice') not in (None,'auto'):\n            raise ValueError('REAL_UNEXPECTED_FIRST_TOOL_CHOICE')\n        result['tool_choice']={'type':'function','function':{'name':'subagent'}}\n        with lock: calls['ci_forced_first_subagent']=1\n    for key in ('max_tokens', 'max_completion_tokens'):",
+            "    result = dict(request)\n    for key in ('max_tokens', 'max_completion_tokens'):": "    result = dict(request)\n    result['model'] = REAL_MODEL\n    result.pop('reasoning', None)  # rejected optional parameter is never forwarded\n    # CI transport-only forced first delegation; never alter agent authority or later turns.\n    if os.environ.get('CI_REAL_FORCE_FIRST_TOOL')=='1' and calls.get('provider_requests',0)==0 and child_id and tool_name(result)=='subagent':\n        if result.get('tool_choice') not in (None,'auto'):\n            raise ValueError('REAL_UNEXPECTED_FIRST_TOOL_CHOICE')\n        result['tool_choice']={'type':'function','function':{'name':'subagent'}}\n        with lock: calls['ci_forced_first_subagent']=1\n    for key in ('max_tokens', 'max_completion_tokens'):",
           }
           for old,new in patches.items():
             assert s.count(old)==1,'CI_REAL_RELAY_SOURCE_DRIFT'
@@ -1236,13 +1242,20 @@ jobs:
                   'tools':[{'type':'function','function':{'name':'subagent','parameters':{
                     'type':'object','properties':{},'additionalProperties':False}}}],
                   'tool_choice':'auto','max_tokens':256}
-          first=selected_guard(target)
-          assert first['tool_choice']=={'type':'function','function':{'name':'subagent'}}
-          assert helper['calls']['ci_forced_first_subagent']==1
-          helper['calls']['provider_requests']=1
-          later=selected_guard(target)
-          assert later['tool_choice']=='auto','CI_NATIVE_REPEAT_FORCING_FORBIDDEN'
+          with patch.dict(os.environ, {'CI_REAL_FORCE_FIRST_TOOL':'1'}):
+            first=selected_guard(target)
+            assert first['tool_choice']=={'type':'function','function':{'name':'subagent'}}
+            assert helper['calls']['ci_forced_first_subagent']==1
+            helper['calls']['provider_requests']=1
+            later=selected_guard(target)
+            assert later['tool_choice']=='auto','CI_NATIVE_REPEAT_FORCING_FORBIDDEN'
+          with patch.dict(os.environ, {'CI_REAL_FORCE_FIRST_TOOL':'0'}):
+            helper['calls']['provider_requests']=0
+            unforced=selected_guard(target)
+            assert unforced['tool_choice']=='auto', 'CI_NATIVE_AUTO_TOOL_CHOICE_OVERWRITTEN'
           print('CI_NATIVE_REAL_FIRST_TURN_ONLY_DELEGATION=PASS',flush=True)
+          print('CI_NATIVE_REAL_UNFORCED_MODE_STATIC=PASS',flush=True)
+          print('CI_NATIVE_REAL_MODE='+('AUTO' if os.environ.get('CI_REAL_FORCE_FIRST_TOOL')=='0' else 'FORCED'),flush=True)
           PY_REAL_RELAY
           python3 -m py_compile /tmp/botmode-ci-model-fixture.py scripts/botmode/ci-real-free-native-oracle-gate.py
           # Old fixture and new relay share port 8088. Do not mistake a
