@@ -181,7 +181,7 @@ def read_native_terminal_stream(helpers, stream_id):
     }, method="GET")
     # Up to four upstream free-only calls can each wait 90 seconds.
     # Observation cannot time out before the configured provider bound.
-    deadline = time.monotonic() + 450
+    deadline = time.monotonic() + (600 if os.environ.get('CI_NATIVE_REAL_MULTI') == '1' else 450)
     events = []
     seen = set()
     attempts = 0
