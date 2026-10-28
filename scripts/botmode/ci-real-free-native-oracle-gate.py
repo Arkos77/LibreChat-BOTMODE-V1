@@ -251,6 +251,15 @@ def read_native_terminal_stream(helpers, stream_id, observation=None):
                     records=diag.get("records") or []
                     if any(r.get("http_status") not in (None,200) for r in records if isinstance(r,dict)):
                         return last_http, events, "PROVIDER_NON200_RESPONSE", attempts
+                    # One exhausted parent turn without tool calls cannot delegate.
+                    # Fail early, preserve the original evidence/Oracle gates.
+                    if os.environ.get('CI_NATIVE_REAL_MULTI') == '1' and records:
+                        first=records[0]
+                        if (isinstance(first,dict) and first.get('phase')=='response_complete'
+                                and first.get('http_status')==200
+                                and 'length' in (first.get('finish_reasons') or [])
+                                and not (first.get('tool_names') or [])):
+                            return last_http, events, "FIRST_TURN_TOKEN_EXHAUSTED", attempts
             except (OSError, ValueError, TypeError):
                 pass
         if time.monotonic() < deadline:
@@ -343,7 +352,7 @@ def bounded_failure_diagnostics(helpers, stream_id, parent_id, events):
             print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_REASONING_DISABLED="+str(p.get("reasoning_enabled") is False).upper(),flush=True)
             for field in ("max_tokens","max_completion_tokens"):
                 value=p.get(field)
-                print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_"+field.upper()+"_BAND="+("VALID" if type(value) is int and 0 < value <= 2048 else "MISSING_OR_OTHER"),flush=True)
+                print("CI_NATIVE_REAL_PROVIDER_"+str(i)+"_"+field.upper()+"_BAND="+("VALID" if type(value) is int and 0 < value <= (8192 if os.environ.get('CI_NATIVE_REAL_MULTI') == '1' else 2048) else "MISSING_OR_OTHER"),flush=True)
             # The relay stores upstream errors privately. Only classify
             # known parameter keywords; never emit model text or raw errors.
             error_text=" ".join(str(e).lower() for e in (record.get("errors") or [])[:2])

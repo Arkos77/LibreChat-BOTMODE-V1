@@ -29,6 +29,7 @@ REAL_MODEL = 'nvidia/nemotron-3.5-super-vl:free'
 # Exactly one CI-opted-in two-child mission may use six free requests.
 # All other test modes retain their previous four-request hard limit.
 REAL_REQUEST_LIMIT = 6 if REAL_MODE and os.environ.get('CI_NATIVE_REAL_MULTI') == '1' else 4
+REAL_OUTPUT_TOKEN_LIMIT = 8192 if REAL_MODE and os.environ.get('CI_NATIVE_REAL_MULTI') == '1' else 2048
 provider_records = []
 provider_started = {}
 provider_finished = {}
@@ -74,10 +75,10 @@ def bounded_real_request(request):
     result = dict(request)
     for key in ('max_tokens', 'max_completion_tokens'):
         value = result.get(key)
-        if value is not None and (type(value) is not int or not 1 <= value <= 2048):
+        if value is not None and (type(value) is not int or not 1 <= value <= REAL_OUTPUT_TOKEN_LIMIT):
             raise ValueError('REAL_TOKEN_LIMIT_REQUIRED')
     if result.get('max_tokens') is None and result.get('max_completion_tokens') is None:
-        result['max_tokens'] = 2048
+        result['max_tokens'] = REAL_OUTPUT_TOKEN_LIMIT
     return result
 
 def reserve_real_request():
@@ -313,7 +314,7 @@ class Handler(BaseHTTPRequestHandler):
                 fallback = {'enabled': FALLBACK_MODE, 'records': list(fallback_records),
                             'mismatches': list(fallback_mismatches)}
             return self.send({'route': REAL_MODEL, 'reasoning_enabled': False, 'limit_requests': REAL_REQUEST_LIMIT,
-                              'limit_output_tokens': 2048, 'records': snapshot,
+                              'limit_output_tokens': REAL_OUTPUT_TOKEN_LIMIT, 'records': snapshot,
                               'local_rejections': rejections, 'fallback': fallback,
                               'simulated': not REAL_MODE})
         if self.path.startswith('/search?'):
