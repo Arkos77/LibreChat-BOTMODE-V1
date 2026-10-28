@@ -124,7 +124,7 @@ def json_works(model):
                    "required": ["ok"], "additionalProperties": False},
     }
     body = {
-        "model": model, "stream": False, "max_tokens": 120, "temperature": 0,
+        "model": model, "stream": False, "max_tokens": 768, "temperature": 0,
         "messages": [{"role": "system", "content": "Reply using the specified JSON schema."},
                      {"role": "user", "content": "Return ok=true."}],
         "response_format": {"type": "json_schema", "json_schema": schema},
@@ -136,10 +136,18 @@ def json_works(model):
     options = result.get("choices") or []
     msg = (options[0].get("message") or {}) if options and isinstance(options[0], dict) else {}
     raw = msg.get("content")
+    finish = options[0].get("finish_reason") if options and isinstance(options[0], dict) else None
+    allow_finishes = {"stop", "length", "tool_calls", "content_filter"}
+    print("CI_FREE_ALTERNATIVE_JSON_FINISH=" + (finish if finish in allow_finishes else "OTHER"), flush=True)
+    print("CI_FREE_ALTERNATIVE_JSON_CONTENT_CLASS=" +
+          ("TEXT" if isinstance(raw, str) and raw.strip() else "EMPTY_OR_NONTEXT"), flush=True)
     try:
-        return isinstance(raw, str) and json.loads(raw) == {"ok": True}
+        parsed = json.loads(raw) if isinstance(raw, str) else None
     except (TypeError, ValueError):
+        print("CI_FREE_ALTERNATIVE_JSON_PARSE=FAIL", flush=True)
         return False
+    print("CI_FREE_ALTERNATIVE_JSON_PARSE=" + ("PASS" if isinstance(parsed, dict) else "NONOBJECT"), flush=True)
+    return parsed == {"ok": True}
 
 
 def main():
@@ -149,12 +157,17 @@ def main():
         die("SECRET_MISSING")
     before = get("/key", True).get("data") or {}
     remaining = (before.get("free_model_daily_requests") or {}).get("remaining")
-    if before.get("is_management_key") or type(remaining) is not int or remaining < MAX_CALLS:
-        die("FREE_QUOTA_NOT_CONFIRMED_FOR_SIX")
+    mode = os.environ.get("CI_FREE_ALTERNATIVE_TEST_MODE", "all")
+    if mode not in ("all", "nvidia_only"):
+        die("INVALID_TEST_MODE")
+    candidates = CANDIDATES if mode == "all" else (CANDIDATES[-1],)
+    needed = MAX_CALLS if mode == "all" else 2
+    if before.get("is_management_key") or type(remaining) is not int or remaining < needed:
+        die("FREE_QUOTA_NOT_CONFIRMED")
     catalog = get("/models").get("data") or []
     models = {item.get("id"): item for item in catalog if isinstance(item, dict)}
     print("CI_FREE_ALTERNATIVE_MAX_GENERATIONS=" + str(MAX_CALLS), flush=True)
-    for index, model_id in enumerate(CANDIDATES, 1):
+    for index, model_id in enumerate(candidates, 1):
         model = models.get(model_id)
         if not model or not zero_price(model):
             print("CI_FREE_ALTERNATIVE_" + str(index) + "_CATALOG=SKIP_NOT_ZERO_PRICE", flush=True)
