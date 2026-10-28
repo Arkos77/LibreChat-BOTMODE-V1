@@ -28,7 +28,7 @@ def read_json(path, auth=False):
         return json.load(resp)
 
 
-def call_model(mode, messages):
+def call_model(mode, messages, structured=False):
     tool = {"type": "function", "function": {
         "name": "subagent",
         "description": "Delegate an analysis step to an authorized specialist",
@@ -55,6 +55,8 @@ def call_model(mode, messages):
     }
     if body["tool_choice"] != "auto":
         fail("FORCED_TOOL_CHOICE_NOT_ALLOWED")
+    if structured:
+        body["response_format"] = {"type": "json_object"}
     req = Request(API + "/chat/completions",
                   data=json.dumps(body, separators=(",", ":")).encode(),
                   method="POST", headers={
@@ -106,7 +108,8 @@ def main():
         fail("KEY_MISSING")
     before = read_json("/key", True).get("data") or {}
     quota = (before.get("free_model_daily_requests") or {}).get("remaining")
-    if before.get("is_management_key") or type(quota) is not int or quota < BUDGET:
+    if before.get("is_management_key") or type(quota) is not int or quota < (
+            1 if os.environ.get("CI_FREE_AUTO_JSON_ONLY") == "1" else BUDGET):
         fail("FREE_QUOTA_NOT_CONFIRMED")
     matches = [m for m in read_json("/models").get("data", []) if m.get("id") == MODEL]
     if len(matches) != 1:
@@ -122,24 +125,31 @@ def main():
     if not {"tools", "tool_choice"}.issubset(set(m.get("supported_parameters") or [])):
         fail("MODEL_LACKS_TOOL_SUPPORT")
     print("CI_FREE_AUTO_MODEL_PRICE_AND_QUOTA=PASS", flush=True)
-    simple = call_model("SIMPLE", [
+    json_only = os.environ.get("CI_FREE_AUTO_JSON_ONLY") == "1"
+    simple = True if json_only else call_model("SIMPLE", [
         {"role": "system", "content": "You may delegate only when a specialist is needed."},
         {"role": "user", "content": "What is 2+2? Return 4 directly; no specialist needed."},
     ])
-    delegated = call_model("DELEGATE", [
+    delegated = call_model("DELEGATE_JSON" if json_only else "DELEGATE", [
         {"role": "system", "content":
          "You are an orchestrator. Delegate verification tasks to authorized specialists "
          "using the subagent tool, then synthesize their result."},
         {"role": "user", "content":
          "Verify a separate specialist's assessment of the CI task before final synthesis. "
          "Delegate the verification now to the authorized specialist. Do not guess its result."},
-    ])
+    ], structured=json_only)
     after = read_json("/key", True).get("data") or {}
     for field in ("usage", "usage_daily"):
         if before.get(field) is not None and after.get(field) is not None:
             if Decimal(str(after[field])) > Decimal(str(before[field])):
                 fail("POSITIVE_ACCOUNT_SPEND_DETECTED")
     print("CI_FREE_AUTO_NO_POSITIVE_SPEND=PASS", flush=True)
+    if json_only:
+        print("CI_FREE_AUTO_JSON_DELEGATE=" + ("PASS" if delegated else "FAIL"), flush=True)
+        if not delegated:
+            fail("JSON_FORMAT_BLOCKED_AUTONOMOUS_TOOL_CHOICE")
+        print("BOTMODE_FREE_AUTONOMOUS_JSON_TOOL_CHOICE=PASS", flush=True)
+        return
     print("CI_FREE_AUTO_SIMPLE=" + ("PASS" if simple else "FAIL"), flush=True)
     print("CI_FREE_AUTO_DELEGATE=" + ("PASS" if delegated else "FAIL"), flush=True)
     if not simple or not delegated:
