@@ -63,6 +63,13 @@ function validatedTransportOptions(
   // Keep explicit choices (including "none") and allow the model to finish
   // after tool results; forcing "required" on every turn would prevent that.
   const needsToolChoice = hasTools && options?.modelKwargs?.tool_choice == null;
+  // Some free OpenRouter tool-capable models treat an implicit json_object
+  // format as a request to answer immediately instead of calling subagent.
+  // Never override an owner's explicit JSON format. For implicit tool phases,
+  // let the model select its authorized tool; the mission Oracle still verifies
+  // the final JSON before publication.
+  const deferImplicitJsonUntilValidation =
+    provider.toLowerCase() === 'openrouter' && hasTools && !hasJsonFormat;
   if (hasJsonFormat && !needsToolChoice && options?.fallbacks == null) {
     return options;
   }
@@ -80,7 +87,8 @@ function validatedTransportOptions(
     }),
     modelKwargs: {
       ...options?.modelKwargs,
-      ...(!hasJsonFormat && { response_format: { type: 'json_object' } }),
+      ...(!hasJsonFormat &&
+        !deferImplicitJsonUntilValidation && { response_format: { type: 'json_object' } }),
       ...(needsToolChoice && { tool_choice: 'auto' }),
     },
   };
