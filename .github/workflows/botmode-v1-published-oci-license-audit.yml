@@ -18,6 +18,7 @@ jobs:
       - name: Checkout source only for license evidence script
         uses: actions/checkout@v4
         with:
+          fetch-depth: 8
           persist-credentials: false
       - name: Verify D03 source ancestry and exact published OCI license documents
         shell: bash

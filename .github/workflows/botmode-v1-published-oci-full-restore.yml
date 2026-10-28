@@ -13,6 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          fetch-depth: 8
           persist-credentials: false
       - name: Verify isolated source-derived qualification checkout
         shell: bash
