@@ -165,7 +165,7 @@ const mongoose=require('mongoose');
     print("CI_NATIVE_REAL_" + phase + "_DETACHED_CHILD_COMPLETED=PASS", flush=True)
 
 
-def read_native_terminal_stream(helpers, stream_id):
+def read_native_terminal_stream(helpers, stream_id, observation=None):
     """Observe one already-admitted mission; reconnect only GET, never POST.
 
     LibreChat can close an SSE subscription after returning a nonterminal
@@ -184,10 +184,20 @@ def read_native_terminal_stream(helpers, stream_id):
     deadline = time.monotonic() + (600 if os.environ.get('CI_NATIVE_REAL_MULTI') == '1' else 450)
     events = []
     seen = set()
+    started = time.monotonic()
+    next_observation = 0
+    observation_seconds = (10, 30, 70, 140, 240)
     attempts = 0
     last_http = 0
     last_reason = "NOT_ATTEMPTED"
     while time.monotonic() < deadline and attempts < 250:
+        # Snapshot the live job *before* Redis expiry/cleanup. Read-only,
+        # bounded and disabled for the historical mono-specialist test.
+        if observation is not None and next_observation < len(observation_seconds):
+            age = time.monotonic() - started
+            if age >= observation_seconds[next_observation]:
+                observation(observation_seconds[next_observation])
+                next_observation += 1
         attempts += 1
         timeout = max(1, min(65, deadline - time.monotonic()))
         try:
