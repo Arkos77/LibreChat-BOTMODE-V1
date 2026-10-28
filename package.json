@@ -203,7 +203,7 @@
     },
     "@xmldom/xmldom": "^0.8.15",
     "@humanfs/node": "^0.16.8",
-    "qs": "^6.16.0",
+    "qs": "^6.17.0",
     "baseline-browser-mapping": "^2.11.0",
     "browserslist": "^4.28.7",
     "elliptic": "^6.6.1",
