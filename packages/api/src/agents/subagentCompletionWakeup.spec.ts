@@ -1450,18 +1450,18 @@ describe('createSubagentCompletionWakeupResolver', () => {
             { messageId: 'task-2:user', conversationId: 'thread-2', isCreatedByUser: true },
             siblingTerminal,
           ]
-        : originalGetMessages(filter),
+        : originalGetMessages(filter as { conversationId: string }),
     );
     const firstClaim = methods.claimSubagentTaskResult.getMockImplementation()!;
-    methods.claimSubagentTaskResult.mockImplementation(async (input) =>
+    methods.claimSubagentTaskResult.mockImplementation((async (input: { conversationId: string }) =>
       input.conversationId === 'thread-2'
         ? { status: 'acquired', message: siblingTerminal }
         : firstClaim(),
-    );
+    ) as never);
     const getMissionOrigin = jest.fn(async () => original);
     const resolve = createSubagentCompletionWakeupResolver({
       methods: methods as never,
-      getGenerationJob,
+      getGenerationJob: getGenerationJob as never,
       getMissionOrigin,
     });
     const firstEnvelope = wakeupEnvelope();
