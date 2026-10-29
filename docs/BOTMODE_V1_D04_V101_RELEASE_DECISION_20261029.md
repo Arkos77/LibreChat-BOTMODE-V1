@@ -1,5 +1,7 @@
 # BOT MODE V1 — D-04, décisions et preuves v1.0.1
 
+> **Delta fonctionnel du 29/10 :** [checkpoint de clôture](BOTMODE_V1_CLOTURE_CHECKPOINT_20261029.md). La release `v1.0.1` reste immuable ; le [run réel #40901989622](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/40901989622) démontre désormais le chemin **synchrone** OpenRouter gratuit → subagent → Oracle VERIFIED → P6 unique → redémarrage, et son absence de dépense positive détectée. Le parcours **asynchrone wakeup → second tour → Oracle/P6** et l'acceptation du Chromebook réel ne sont pas certifiés par ce run. Ce delta prime sur les anciennes mentions « pas d'essai OpenRouter réel » relatives au périmètre antérieur.
+
 ## État ACTUEL après publication — 29 octobre 2026
 
 **PASS — publication GitHub Release v1.0.1 et promotion GHCR stable/latest terminées.** Le statut `NO-GO` et les interdictions mentionnées plus bas décrivent exclusivement le **checkpoint historique de préparation**, rédigé AVANT les autorisations humaines des étapes Git tag, promotion puis Release ; ils ne s'appliquent plus à ces trois opérations désormais exécutées et vérifiées.
