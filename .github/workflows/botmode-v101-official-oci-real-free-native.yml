@@ -510,22 +510,36 @@ jobs:
           if "run_in_background=true" in patched:
               raise SystemExit("CI_NATIVE_REAL_BACKGROUND_CONTRACT_NOT_REMOVED")
           print("CI_NATIVE_REAL_FOREGROUND_CONTRACT=PASS", flush=True)
-          # Foreground acceptance must NOT fall back to the detached-child
-          # database assertion. When no linked native start/stop is observed,
-          # emit only existing redacted provider/Redis/Mongo diagnostics and
-          # fail closed. Do not mistake a terminal SSE for delegated execution.
-          foreground_guard_anchor = "    detached_path = not linked_and_stopped"
-          if patched.count(foreground_guard_anchor) != 1:
+          # Foreground SDK tools return inline. They need no detached Mongo
+          # thread or on_subagent_update SSE. Require the actual provider
+          # call, a distinct child response and a tool result to the parent.
+          foreground_anchor = "    detached_path = not linked_and_stopped"
+          if patched.count(foreground_anchor) != 1:
               raise SystemExit("CI_NATIVE_REAL_FOREGROUND_GUARD_DRIFT")
-          patched = patched.replace(
-              foreground_guard_anchor,
-              '    if not linked_and_stopped:\n'
-              '        bounded_failure_diagnostics(helpers, stream_id, parent_id, events)\n'
-              '        fail("FOREGROUND_NATIVE_CHILD_NOT_CORRELATED")\n'
-              '    detached_path = False',
-              1,
+          foreground_proof = "\n    try:\n        with urlopen(\"http://127.0.0.1:8088/provider-diagnostics\", timeout=8) as response:\n            proof = json.load(response)\n        records = proof.get(\"records\")\n        valid = (proof.get(\"simulated\") is False and proof.get(\"route\") == MODEL\n                 and proof.get(\"limit_requests\") == 4 and isinstance(records, list)\n                 and 3 <= len(records) <= 4\n                 and all(isinstance(r, dict) and r.get(\"http_status\") == 200\n                         and r.get(\"phase\") == \"response_complete\"\n                         and not r.get(\"errors\") for r in records))\n        if valid:\n            parent_first, child, parent_last = records[0], records[1], records[-1]\n            a = parent_first.get(\"request_parameters\") or {}\n            b = child.get(\"request_parameters\") or {}\n            c = parent_last.get(\"request_parameters\") or {}\n            valid = (parent_first.get(\"subagent_tool_call_count\") == 1\n                     and sum(r.get(\"subagent_tool_call_count\", 0) for r in records) == 1\n                     and \"subagent\" in (parent_first.get(\"tool_names\") or [])\n                     and a.get(\"tool_choice_class\") == \"auto\"\n                     and a.get(\"advertised_subagent\") is True\n                     and b.get(\"advertised_subagent\") is False\n                     and isinstance(child.get(\"candidate_text\"), str)\n                     and bool(child[\"candidate_text\"].strip())\n                     and child.get(\"candidate_truncated\") is False\n                     and c.get(\"advertised_subagent\") is True\n                     and c.get(\"prior_subagent_calls\") == 1\n                     and c.get(\"tool_result_count\", 0) >= 1\n                     and c.get(\"tail_role\") == \"tool\")\n        if not valid:\n            bounded_failure_diagnostics(helpers, stream_id, parent_id, events)\n            fail(\"FOREGROUND_PROVIDER_CHILD_PARENT_CYCLE_UNPROVEN\")\n    except (OSError, ValueError, TypeError, KeyError, TimeoutError):\n        bounded_failure_diagnostics(helpers, stream_id, parent_id, events)\n        fail(\"FOREGROUND_PROVIDER_PROOF_UNAVAILABLE\")\n    print(\"CI_NATIVE_REAL_FOREGROUND_PROVIDER_CHILD_PARENT_CYCLE=PASS\", flush=True)\n    detached_path = False"
+          patched = patched.replace(foreground_anchor, foreground_proof, 1)
+          child_anchor = '    helpers["verify_mongo_child_lineage"](parent_id, "BEFORE_RESTART")'
+          if patched.count(child_anchor) != 1:
+              raise SystemExit("CI_NATIVE_REAL_FOREGROUND_MONGO_DRIFT")
+          patched = patched.replace(child_anchor,
+              '    print("CI_NATIVE_REAL_FOREGROUND_CHILD_PROVIDER_RECEIPT=PASS", flush=True)', 1)
+          restart_anchor = '    helpers["verify_lineage_across_api_restart"](parent_id)'
+          if patched.count(restart_anchor) != 1:
+              raise SystemExit("CI_NATIVE_REAL_FOREGROUND_RESTART_DRIFT")
+          restart_script = (
+              '    restarted = subprocess.run(helpers["COMPOSE"] + ["restart", "api"],\\n'
+              '                              capture_output=True, text=True, timeout=120)\\n'
+              '    if restarted.returncode:\\n'
+              '        fail("FOREGROUND_API_RESTART_FAILED")\\n'
+              '    print("CI_NATIVE_REAL_FOREGROUND_API_RESTART=PASS", flush=True)'
           )
-          print("CI_NATIVE_REAL_FOREGROUND_PROOF_GUARD_PATCH=PASS", flush=True)
+          patched = patched.replace(restart_anchor, restart_script, 1)
+          receipt_anchor = '    print("BOTMODE_REAL_FREE_NATIVE_CHILD_ORACLE_P6_RESTART=PASS", flush=True)'
+          if patched.count(receipt_anchor) != 1:
+              raise SystemExit("CI_NATIVE_REAL_FOREGROUND_RECEIPT_DRIFT")
+          patched = patched.replace(receipt_anchor,
+              '    print("BOTMODE_REAL_FREE_FOREGROUND_PROVIDER_CHILD_ORACLE_P6_RESTART=PASS", flush=True)', 1)
+          print("CI_NATIVE_REAL_FOREGROUND_PROVIDER_EVIDENCE_PATCH=PASS", flush=True)
           compile(patched, str(path), "exec")
           path.write_text(patched)
           print("CI_NATIVE_REAL_SNAPSHOT_RUNNER_ONLY_PATCH=PASS", flush=True)
