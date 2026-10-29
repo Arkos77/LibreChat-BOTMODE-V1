@@ -74,7 +74,9 @@ async function saveNativeMissionWakeupOrigin(input) {
     !capabilityAttestation ||
     !Number.isSafeInteger(createdAt) ||
     createdAt <= 0 ||
-    JSON.stringify(plan.mission) !== JSON.stringify(orchestratorMission.mission)
+    plan.mission.missionId !== orchestratorMission.mission.missionId ||
+    plan.mission.taskId !== orchestratorMission.mission.taskId ||
+    plan.mission.objective !== orchestratorMission.mission.objective
   ) {
     throw new Error('MISSION_ORIGIN_PLAN_INVALID');
   }
