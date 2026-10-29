@@ -127,4 +127,29 @@ async function getNativeMissionWakeupOrigin(scope) {
   };
 }
 
-module.exports = { saveNativeMissionWakeupOrigin, getNativeMissionWakeupOrigin };
+/** Called only after the authorized conversation deletion fence. The scope is
+ * mandatory even for delete-all, so a tenant cannot erase another owner's data. */
+async function deleteNativeMissionWakeupOrigins({ userId, tenantId, conversationIds }) {
+  if (typeof userId !== 'string' || !userId || userId.length > 256) {
+    throw new Error('MISSION_ORIGIN_DELETE_SCOPE_INVALID');
+  }
+  if (tenantId != null && (typeof tenantId !== 'string' || tenantId.length > 256)) {
+    throw new Error('MISSION_ORIGIN_DELETE_SCOPE_INVALID');
+  }
+  if (conversationIds != null && (!Array.isArray(conversationIds) ||
+      conversationIds.some((id) => typeof id !== 'string' || !id || id.length > 256))) {
+    throw new Error('MISSION_ORIGIN_DELETE_SCOPE_INVALID');
+  }
+  if (conversationIds != null && conversationIds.length === 0) return;
+  await model.deleteMany({
+    userId,
+    tenantId: tenantId ?? '',
+    ...(conversationIds == null ? {} : { conversationId: { $in: conversationIds } }),
+  });
+}
+
+module.exports = {
+  saveNativeMissionWakeupOrigin,
+  getNativeMissionWakeupOrigin,
+  deleteNativeMissionWakeupOrigins,
+};
