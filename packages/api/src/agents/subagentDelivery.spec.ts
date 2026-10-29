@@ -1,11 +1,11 @@
 import type { TAgentsEndpoint } from 'librechat-data-provider';
 import type { PostToolUseHookInput } from '@librechat/agents';
-import { deterministicOracle } from './oracle/deterministic';
 import {
   SUBAGENT_WAKEUP_GUIDANCE,
   backgroundCompletionWakeupsEnabled,
   createSubagentWakeupHandleHook,
 } from './subagentDelivery';
+import { deterministicOracle } from './oracle/deterministic';
 
 describe('background completion wakeup policy', () => {
   it('defaults to automatic delivery and honors the administrator opt-out', () => {
@@ -81,7 +81,10 @@ describe('createSubagentWakeupHandleHook', () => {
     };
     const pendingCandidate = result.updatedOutput as string;
     expect(JSON.parse(pendingCandidate)).toMatchObject({ status: 'running' });
-    const pending = await deterministicOracle.validate({ ...oracleInput, candidate: pendingCandidate });
+    const pending = await deterministicOracle.validate({
+      ...oracleInput,
+      candidate: pendingCandidate,
+    });
     expect(pending.status).toBe('REJECTED');
 
     const absent = await deterministicOracle.validate({ ...oracleInput, candidate: undefined });
