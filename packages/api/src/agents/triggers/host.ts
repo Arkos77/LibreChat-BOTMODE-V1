@@ -686,6 +686,7 @@ async function startRun(
           ...(envelope.mode === 'continue' &&
             envelope.event.source.type === 'internal' &&
             envelope.event.source.id === 'subagent-completion' &&
+            envelope.event.type === 'subagent.completion' &&
             readyPreparation?.missionContext != null && {
               ...(readyPreparation.missionContext.botMode == null
                 ? {}
