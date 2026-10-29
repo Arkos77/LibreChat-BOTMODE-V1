@@ -81,10 +81,11 @@ describe('createSubagentWakeupHandleHook', () => {
     };
     const pendingCandidate = result.updatedOutput as string;
     expect(JSON.parse(pendingCandidate)).toMatchObject({ status: 'running' });
-    expect((await deterministicOracle.validate({ ...oracleInput, candidate: pendingCandidate })).status)
-      .toBe('REJECTED');
-    expect((await deterministicOracle.validate({ ...oracleInput, candidate: undefined })).status)
-      .toBe('UNKNOWN');
+    const pending = await deterministicOracle.validate({ ...oracleInput, candidate: pendingCandidate });
+    expect(pending.status).toBe('REJECTED');
+
+    const absent = await deterministicOracle.validate({ ...oracleInput, candidate: undefined });
+    expect(absent.status).toBe('UNKNOWN');
 
     // This is a separate, later output: the wakeup handle must not be
     // promoted or rewritten into a passing answer by the host.
