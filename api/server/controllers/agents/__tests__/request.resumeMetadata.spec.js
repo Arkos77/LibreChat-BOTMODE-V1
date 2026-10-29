@@ -253,6 +253,12 @@ const mockCleanupMCPRequestContextForReq = jest.fn(async (req) => {
   }
 });
 
+jest.mock('~/server/services/Endpoints/agents/nativeMissionWakeupOriginStore', () => ({
+  saveNativeMissionWakeupOrigin: jest.fn().mockResolvedValue({ planId: 'test-plan' }),
+  getNativeMissionWakeupOrigin: jest.fn().mockResolvedValue(null),
+  deleteNativeMissionWakeupOrigins: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock('@librechat/data-schemas', () => ({
   logger: mockLogger,
 }));
