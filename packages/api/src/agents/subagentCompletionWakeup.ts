@@ -184,8 +184,7 @@ function missionContextForWakeup(
     parentJob.metadata?.agent_id !== envelope.target.agentId ||
     JSON.stringify(sourceMission) !== JSON.stringify(plan.mission) ||
     (record(savedBotMode) &&
-      (savedBotMode.workerAgentId !== envelope.target.agentId ||
-        savedBotMode.mode === 'fast'))
+      (savedBotMode.workerAgentId !== envelope.target.agentId || savedBotMode.mode === 'fast'))
   ) {
     throw executionError('Stored mission does not match the originating parent.', {
       code: 'MISSION_WAKEUP_ORIGIN_MISMATCH',
