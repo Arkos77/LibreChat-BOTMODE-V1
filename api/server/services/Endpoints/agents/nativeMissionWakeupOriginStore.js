@@ -17,6 +17,7 @@ const originSchema = new mongoose.Schema(
     agentId: { type: String, required: true, maxlength: 256 },
     planId: { type: String, required: true, maxlength: 256 },
     originalCreatedAt: { type: Number, required: true, min: 1 },
+    hasAttachments: { type: Boolean, required: true, default: false },
     fingerprint: { type: String, required: true, minlength: 64, maxlength: 64 },
     botMode: { type: mongoose.Schema.Types.Mixed, select: false },
     orchestratorMission: { type: mongoose.Schema.Types.Mixed, required: true, select: false },
