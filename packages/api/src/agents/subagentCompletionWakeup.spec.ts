@@ -1401,60 +1401,59 @@ describe('createSubagentCompletionWakeupResolver', () => {
     ).resolves.toMatchObject({ status: 'ready' });
   });
 
-  it('restores only the original persisted mission and never trusts child input as a plan', async () => {
+  it('restores the original mission despite replacement of the active Redis job', async () => {
     const { methods } = resolverMethods();
-    const mission = {
-      missionId: 'mission-1',
-      taskId: 'mission-task-1',
-      objective: 'Analyze',
-      requiredCapabilities: [],
-      constraints: [],
-    };
-    const originalRequest = { mission };
-    const getGenerationJob = jest.fn(async () => ({
-      status: 'complete',
+    const mission = { missionId: 'mission-1', taskId: 'mission-task-1' };
+    const original = {
       userId: 'user-1',
       tenantId: 'tenant-1',
-      metadata: {
-        responseMessageId: 'response-1',
-        agent_id: 'agent_parent_1',
-        orchestratorPlan: { planId: 'plan-1', mission },
-        mcpRequestBody: { orchestratorMission: originalRequest },
-      },
+      conversationId: 'conversation-1',
+      parentResponseMessageId: 'response-1',
+      agentId: 'agent_parent_1',
+      planId: 'plan-1',
+      plan: { planId: 'plan-1', mission },
+      orchestratorMission: { mission },
+    };
+    const getGenerationJob = jest.fn(async () => ({
+      status: 'complete',
+      metadata: { responseMessageId: 'later-wakeup-response' },
     }));
+    const getMissionOrigin = jest.fn(async () => original);
     const resolve = createSubagentCompletionWakeupResolver({
       methods: methods as never,
       getGenerationJob,
+      getMissionOrigin,
     });
-    const prepared = await resolve(wakeupEnvelope(), {
-      idempotencyKey: 'trigger_claim_1',
-    } as never);
-    expect(prepared).toMatchObject({
-      status: 'ready',
-      missionContext: {
-        orchestratorMission: originalRequest,
-        originalPlanId: 'plan-1',
-        originalResponseMessageId: 'response-1',
-      },
-    });
-    expect(methods.claimSubagentTaskResult).toHaveBeenCalledTimes(1);
+    for (const idempotencyKey of ['first-child-wakeup', 'second-sibling-wakeup']) {
+      const prepared = await resolve(wakeupEnvelope(), { idempotencyKey } as never);
+      expect(prepared).toMatchObject({
+        status: 'ready',
+        missionContext: {
+          orchestratorMission: { mission },
+          originalPlanId: 'plan-1',
+          originalResponseMessageId: 'response-1',
+        },
+      });
+    }
+    expect(getMissionOrigin).toHaveBeenCalledTimes(2);
+    expect(methods.claimSubagentTaskResult).toHaveBeenCalledTimes(2);
   });
 
-  it('does not claim the child result when the stored mission belongs to another parent', async () => {
+  it('does not claim a child result when the immutable mission belongs to another parent', async () => {
     const { methods } = resolverMethods();
     const mission = { missionId: 'mission-1', taskId: 'mission-task-1' };
     const resolve = createSubagentCompletionWakeupResolver({
       methods: methods as never,
-      getGenerationJob: async () => ({
-        status: 'complete',
+      getGenerationJob: async () => ({ status: 'complete' }),
+      getMissionOrigin: async () => ({
         userId: 'user-1',
         tenantId: 'tenant-1',
-        metadata: {
-          responseMessageId: 'different-parent-response',
-          agent_id: 'agent_parent_1',
-          orchestratorPlan: { planId: 'plan-1', mission },
-          mcpRequestBody: { orchestratorMission: { mission } },
-        },
+        conversationId: 'conversation-1',
+        parentResponseMessageId: 'different-parent-response',
+        agentId: 'agent_parent_1',
+        planId: 'plan-1',
+        plan: { planId: 'plan-1', mission },
+        orchestratorMission: { mission },
       }),
     });
     await expect(
