@@ -1466,6 +1466,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
     const wakeupSource = req.body?.nativeMissionWakeupSource;
     let originalWakeupPlan;
     let originalWakeupCapabilities;
+    let originalWakeupHasAttachments;
     if (wakeupSource != null) {
       if (
         !isTriggerContinuation ||
