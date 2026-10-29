@@ -86,6 +86,7 @@ async function saveNativeMissionWakeupOrigin(input) {
     agentId,
     planId: plan.planId,
     originalCreatedAt: createdAt,
+    hasAttachments: input.hasAttachments === true,
     ...(botMode != null && { botMode }),
     orchestratorMission,
     plan,
