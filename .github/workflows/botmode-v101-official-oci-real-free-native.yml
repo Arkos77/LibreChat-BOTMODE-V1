@@ -484,6 +484,32 @@ jobs:
               "        observation=lambda second: observe_live_mission_snapshot(second, helpers, stream_id, parent_id))"
           )
           patched = patched.replace(call_anchor, replacement, 1)
+          # The same-turn Oracle/P6 acceptance must await a foreground native
+          # child. Detached wakeup delivery is a separate, later-turn contract
+          # and cannot satisfy this terminal result in the original run.
+          ci_foreground_contract = [
+              ("run_in_background=true, pour demander au spécialiste autorisé de ",
+               "run_in_background=false, pour demander au spécialiste autorisé de "),
+              ("Une notification de fin automatique de l'enfant est prise en charge. ",
+               "Attends la fin de l'appel synchrone du specialiste. "),
+              ("Ne répète pas check_background_task tant que la tâche est inchangée. ",
+               "N'utilise pas check_background_task pour cet appel synchrone. "),
+              ("Termine le tour en attendant la reprise automatique de l'hôte; ",
+               "Ne termine pas ton tour avant la fin du sous-agent; "),
+              ("après réception de l'achèvement enfant, retourne ",
+               "apres reception du resultat de l'enfant, retourne "),
+              ("Appeler subagent avec run_in_background=true",
+               "Appeler subagent avec run_in_background=false"),
+              ("Laisser l'hôte livrer automatiquement l'achèvement enfant, sans polling répétitif",
+               "Attendre le resultat synchrone du sous-agent, sans polling"),
+          ]
+          for original_fragment, foreground_fragment in ci_foreground_contract:
+              if patched.count(original_fragment) != 1:
+                  raise SystemExit("CI_NATIVE_REAL_FOREGROUND_CONTRACT_DRIFT")
+              patched = patched.replace(original_fragment, foreground_fragment, 1)
+          if "run_in_background=true" in patched:
+              raise SystemExit("CI_NATIVE_REAL_BACKGROUND_CONTRACT_NOT_REMOVED")
+          print("CI_NATIVE_REAL_FOREGROUND_CONTRACT=PASS", flush=True)
           compile(patched, str(path), "exec")
           path.write_text(patched)
           print("CI_NATIVE_REAL_SNAPSHOT_RUNNER_ONLY_PATCH=PASS", flush=True)
