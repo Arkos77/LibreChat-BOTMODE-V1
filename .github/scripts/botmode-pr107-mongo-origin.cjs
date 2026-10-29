@@ -46,30 +46,6 @@ async function main() {
     }
 
     // This process is distinct from the writer: no process-local or Redis state is reused.
-    // Synthetic CI-only fixture: expose structural differences without logging real mission payloads.
-    const raw = await collection.findOne(scope);
-    const { _id, __v, createdAt, updatedAt, fingerprint, ...source } = raw;
-    const expected = {
-      ...scope,
-      planId: original.plan.planId,
-      originalCreatedAt: original.createdAt,
-      hasAttachments: false,
-      botMode: original.botMode,
-      orchestratorMission: original.orchestratorMission,
-      plan: original.plan,
-      capabilityAttestation: original.capabilityAttestation,
-    };
-    const { createHash } = require('node:crypto');
-    const digest = (object) => createHash('sha256').update(JSON.stringify(object)).digest('hex');
-    console.log('CI_MONGO_ORIGIN_DIAGNOSTIC', JSON.stringify({
-      storedKeys: Object.keys(source),
-      originalKeys: Object.keys(expected),
-      topLevelDifferences: [...new Set([...Object.keys(source), ...Object.keys(expected)])]
-        .filter((key) => JSON.stringify(source[key]) !== JSON.stringify(expected[key])),
-      fingerprintMatchesExpected: fingerprint === digest(expected),
-      fingerprintMatchesRead: fingerprint === digest(source),
-      planIdMatches: source.plan?.planId === source.planId,
-    }));
     const firstChild = await getNativeMissionWakeupOrigin(scope);
     const secondChild = await getNativeMissionWakeupOrigin(scope);
     assert.equal(firstChild.planId, original.plan.planId);

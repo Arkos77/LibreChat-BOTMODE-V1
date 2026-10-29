@@ -82,6 +82,20 @@ describe('immutable BOT MODE mission wakeup origin', () => {
     expect(mongoose.__rows.size).toBe(1);
   });
 
+  it('accepts MongoDB key reordering while still checking the original fingerprint', async () => {
+    await saveNativeMissionWakeupOrigin(original);
+    const [key, stored] = [...mongoose.__rows.entries()][0];
+    const reordered = Object.fromEntries(Object.entries(stored).reverse());
+    reordered.plan = {
+      mission: Object.fromEntries(Object.entries(stored.plan.mission).reverse()),
+      planId: stored.plan.planId,
+    };
+    mongoose.__rows.set(key, reordered);
+    await expect(getNativeMissionWakeupOrigin(original)).resolves.toMatchObject({
+      planId: original.plan.planId,
+    });
+  });
+
   it('accepts exact retry but rejects replacement of an original mission', async () => {
     await saveNativeMissionWakeupOrigin(original);
     await expect(saveNativeMissionWakeupOrigin(original)).resolves.toBeDefined();

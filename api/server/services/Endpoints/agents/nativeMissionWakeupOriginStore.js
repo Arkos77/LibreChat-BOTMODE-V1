@@ -48,6 +48,25 @@ function ensureIndex() {
   }
   return ensureIndexPromise;
 }
+/** MongoDB may reorder top-level and nested object fields. Hash the canonical
+ * JSON representation so the integrity check detects changes, not key order. */
+function canonicalMissionJson(value) {
+  return JSON.stringify(value, (_key, field) => {
+    if (field == null || typeof field !== 'object' || Array.isArray(field)) {
+      return field;
+    }
+    const prototype = Object.getPrototypeOf(field);
+    if (prototype !== Object.prototype && prototype !== null) {
+      return field;
+    }
+    return Object.fromEntries(
+      Object.keys(field)
+        .sort()
+        .map((key) => [key, field[key]]),
+    );
+  });
+}
+
 function requireScope(scope) {
   const fields = ['userId', 'conversationId', 'parentResponseMessageId', 'agentId'];
   if (
@@ -94,7 +113,7 @@ async function saveNativeMissionWakeupOrigin(input) {
     plan,
     capabilityAttestation,
   };
-  const source = JSON.stringify(data);
+  const source = canonicalMissionJson(data);
   if (Buffer.byteLength(source, 'utf8') > 131_072) {
     throw new Error('MISSION_ORIGIN_TOO_LARGE');
   }
@@ -122,7 +141,7 @@ async function getNativeMissionWakeupOrigin(scope) {
     return null;
   }
   const { _id, __v, createdAt: _createdAt, updatedAt: _updatedAt, fingerprint, ...source } = record;
-  const observed = createHash('sha256').update(JSON.stringify(source)).digest('hex');
+  const observed = createHash('sha256').update(canonicalMissionJson(source)).digest('hex');
   if (observed !== fingerprint || record.plan?.planId !== record.planId) {
     throw new Error('MISSION_ORIGIN_INTEGRITY_FAILED');
   }
