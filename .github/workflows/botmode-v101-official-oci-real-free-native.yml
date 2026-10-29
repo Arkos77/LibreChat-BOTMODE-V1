@@ -1,0 +1,529 @@
+# Manual-only post-release live/native acceptance on the IMMUTABLE official OCI digest.
+# Never build, push, promote, retag or change user machines.
+# Without explicit execute_live_free=true, the entire job is skipped.
+name: BOTMODE V1.0.1 Published OCI Real Free Native Gate
+on:
+  workflow_dispatch:
+    inputs:
+      execute_live_free:
+        type: boolean
+        required: true
+        default: false
+        description: 'Authorize one bounded real OpenRouter native child test (max 4 zero-price calls)'
+permissions:
+  contents: read
+concurrency:
+  group: botmode-v101-official-free-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  BOTMODE_CANDIDATE_SHA: 1478fb34e15e1bad7c07e4928ee8812e47bea064
+  BOTMODE_TEST_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:97e74b9b780c6a8742a6427c49378583f4b8a4213ec43877181372852b6cf5e2
+  BOTMODE_PUBLISHED_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:97e74b9b780c6a8742a6427c49378583f4b8a4213ec43877181372852b6cf5e2
+  COMPOSE_PROJECT_NAME: botmode-v101-live-${{ github.run_id }}-${{ github.run_attempt }}
+jobs:
+  official-oci-real-native:
+    if: ${{ inputs.execute_live_free == true }}
+    name: Published digest native Worker-to-child Oracle P6 (zero-price only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact immutable v1.0.1 source
+        uses: actions/checkout@v5
+        with:
+          ref: 1478fb34e15e1bad7c07e4928ee8812e47bea064
+          persist-credentials: false
+      - name: Fail closed on source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BOTMODE_CANDIDATE_SHA"
+          echo 'CI_V101_SOURCE_IDENTITY=PASS'
+      - name: Read-only zero-price and free daily quota preflight (no generation)
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          if ! python3 scripts/botmode/ci-real-free-native-oracle-gate.py --preflight; then
+            echo 'CI_V101_VERDICT=NON_CONCLUANT_FOUR_REQUEST_QUOTA_OR_FREE_MODEL_PREFLIGHT'
+            exit 1
+          fi
+      - name: Pull official published OCI by immutable digest (no build)
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          docker pull "$BOTMODE_PUBLISHED_IMAGE"
+          docker image inspect "$BOTMODE_PUBLISHED_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -Fx "BUILD_COMMIT=$BOTMODE_CANDIDATE_SHA"
+          docker run --rm --entrypoint node "$BOTMODE_PUBLISHED_IMAGE" -e "const {Run}=require('@librechat/agents');if(typeof Run?.prototype?.getAgentOutputs!=='function')throw Error('AGENT_SDK_INVALID');console.log('CI_V101_PUBLISHED_RUNTIME_SDK=PASS')"
+          echo 'CI_V101_OFFICIAL_IMMUTABLE_OCI=PASS'
+      - name: Provision isolated Mongo/Redis/native agents without a generation request
+        env:
+          OPENROUTER_API_KEY: ci-local-fixture-no-real-key
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          # CI-only disposable Redis: durable Mission Oracle result readback.
+          # Modify the ephemeral checkout, never the checked-out candidate.
+          sed -i '/      - SCHEDULES_SINGLE_PROCESS=true/a\      - USE_REDIS=true\n      - USE_REDIS_STREAMS=true\n      - REDIS_URI=redis://redis:6379\n      - STREAM_KEEP_COMPLETED_JOBS=true' docker-compose.botmode-lite.yml
+          # Append a true service under the existing services: map.
+          # Avoid a second 'services.depends_on' key, which Compose rejects.
+          cat >> docker-compose.botmode-lite.yml <<'YAML'
+            redis:
+              image: redis:7-alpine
+              command: ["redis-server", "--save", "", "--appendonly", "no"]
+          YAML
+          # Fixture comes from the exact same Git checkout as the runtime image.
+          # No network-fetched harness can silently test a different revision.
+          cp scripts/botmode/ci-openai-subagent-fixture.py /tmp/botmode-ci-model-fixture.py
+          # In the SINGLE planned graph the selected specialist is a direct
+          # model node, so its output must satisfy the original Oracle JSON
+          # criterion. Keep tool-call native delegation behavior unchanged.
+          python3 - <<'PY_MODEL'
+          from pathlib import Path
+          p=Path('/tmp/botmode-ci-model-fixture.py')
+          source=p.read_text()
+          marker='"content":"CI_DELEGATED_CHILD_RECEIPT"'
+          assert source.count(marker)==1
+          source=source.replace(marker,'"content":\'{"ok":true}\'')
+          p.write_text(source)
+          print('CI_SYNTHETIC_PLANNED_SPECIALIST_JSON=PASS')
+          PY_MODEL
+          python3 /tmp/botmode-ci-model-fixture.py >/tmp/botmode-ci-fixture.log 2>&1 &
+          fixture_pid=$!
+          echo "$fixture_pid" > /tmp/botmode-ci-fixture.pid
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8088/health >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8088/health >/dev/null
+          echo 'CI_SYNTHETIC_FIXTURE_HEALTH=PASS'
+          # Disposable GitHub runner: the non-root LibreChat API must read this bind-mounted file.
+          # Isolated, runtime-only signing material. Never reuse in production.
+          ci_jwt_secret=$(openssl rand -hex 48)
+          ci_jwt_refresh_secret=$(openssl rand -hex 48)
+          {
+            :
+          } >/dev/null
+          sed -i "s/^JWT_SECRET=.*/JWT_SECRET=$ci_jwt_secret/" .env
+          sed -i "s/^JWT_REFRESH_SECRET=.*/JWT_REFRESH_SECRET=$ci_jwt_refresh_secret/" .env
+          unset ci_jwt_secret ci_jwt_refresh_secret
+          # The candidate LibreChat YAML resolves OpenRouter through OPENROUTER_KEY.
+          test -n "${OPENROUTER_API_KEY:-}" || { echo "::error::OPENROUTER_API_KEY secret missing"; exit 1; }
+          printf '\nOPENROUTER_KEY=%s\n' "$OPENROUTER_API_KEY" >> .env
+          # CI-only Compose patch: explicitly pass provider key into the API environment.
+          # Mounted .env is used for Compose interpolation, not automatic container injection.
+          export OPENROUTER_KEY="$OPENROUTER_API_KEY"
+          sed -i '/      - HOST=0.0.0.0/a\      - OPENROUTER_KEY=${OPENROUTER_KEY:?Missing CI OpenRouter key}' docker-compose.botmode.yml
+          sed -i '/      - HOST=0.0.0.0/a\      - SEARXNG_INSTANCE_URL=http://host.docker.internal:8088' docker-compose.botmode.yml
+          {
+            echo 'BOTMODE_MONGO_PASSWORD=ci-isolated-only'
+            echo 'POSTGRES_PASSWORD=ci-isolated-only'
+          } >> .env
+          # Deterministic integration: only the already live-tested OpenRouter free route.
+          # Patch the ephemeral checkout, never the checked-out source.
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path('librechat.yaml')
+          conf=json.loads(path.read_text())
+          # Native agent setup already stores OpenRouter/openrouter-free.
+          # Omit optional host router in this single-provider isolation test.
+          routes=conf['endpoints']['agents'].pop('hostModelRouting',[])
+          # Point ONLY this disposable checkout's OpenRouter adapter at the
+          # runner-local fixture, retaining the real provider adapter and SDK.
+          for endpoint in conf['endpoints']['custom']:
+              if endpoint.get('name') == 'OpenRouter':
+                  endpoint['baseURL'] = 'http://host.docker.internal:8088/v1'
+                  endpoint['models'] = {'fetch': False, 'default': ['openrouter/free']}
+          # CI browser research needs an authenticated search implementation.
+          # The repository default selects Serper/Firecrawl API keys, which
+          # this isolated runner deliberately does not provision. Bind SearXNG
+          # to the fixture's /search endpoint; the scraper uses the keyless
+          # Keenable implementation. Production settings remain untouched.
+          conf['webSearch'] = {
+              'searchProvider': 'searxng',
+              'searxngInstanceUrl': '${SEARXNG_INSTANCE_URL}',
+              'scraperProvider': 'keenable',
+              'allowedAddresses': ['host.docker.internal:8088']
+          }
+          path.write_text(json.dumps(conf,ensure_ascii=False,indent=2)+'\n')
+          print('CI_HOST_MODEL_ROUTING_DISABLED_FOR_ISOLATED_TEST='+str(len(routes)))
+          PY
+          sudo chown 1000:$(id -g) .env
+          sudo chmod 640 .env
+          export BOTMODE_MONGO_PASSWORD=ci-isolated-only
+          export POSTGRES_PASSWORD=ci-isolated-only
+          export BOTMODE_IMAGE=${BOTMODE_PUBLISHED_IMAGE}
+          export BOTMODE_HOST_PORT=3090
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml up -d
+          ready=0
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:3090/api/config -o /tmp/botmode-e2e-api-config.json >/dev/null 2>&1; then
+              ready=1; break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps
+            echo "::error::Current candidate API was not ready"
+            exit 1
+          fi
+          api_id="$(docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps -q api)"
+          test -n "$api_id"
+          test "$(docker inspect "$api_id" --format '{{.Config.Image}}')" = "$BOTMODE_PUBLISHED_IMAGE"
+          echo 'CI_PUBLISHED_OCI_SUBAGENT_EXACT_IMAGE_RUNNING=PASS'
+          # Use a recognized browser UA for API requests; LibreChat blocks and scores curl clients.
+          browser_ua='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+          # Compare exact runtime SDK with the offline pinned SDK check.
+          # No prompt/model/credential data is emitted.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T -w /app/api api node - <<'NODE_SDK'
+          const { Run } = require('@librechat/agents');
+          const output = typeof Run?.prototype?.getAgentOutputs;
+          const messages = typeof Run?.prototype?.getRunMessages;
+          console.log('CI_DOCKER_SDK_GET_AGENT_OUTPUTS=' + output);
+          console.log('CI_DOCKER_SDK_GET_RUN_MESSAGES=' + messages);
+          NODE_SDK
+          # Test the real mounted route without a token, not a simulated router.
+          unauth_status=$(curl -sS -o /tmp/botmode-unauth.json -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' -H "User-Agent: $browser_ua" \
+            -d '{}' http://127.0.0.1:3090/api/agents/botmode/setup)
+          if [ "$unauth_status" != "401" ]; then
+            echo "::error::Unauthenticated BOTMODE setup expected HTTP 401, got $unauth_status"
+            exit 1
+          fi
+          echo 'BOTMODE_CURRENT_UNAUTHENTICATED_SETUP=401_PASS'
+          # Create an isolated database-backed test principal and sign a real JWT
+          # with the exact API runtime's secret. No production account or secret used.
+          export CI_JWT_SECRET="$(sed -n 's/^JWT_SECRET=//p' .env)"
+          test -n "$CI_JWT_SECRET"
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T -e CI_JWT_SECRET api node - <<'NODE' > /tmp/botmode-e2e-test-token
+          const signingSecret = process.env.CI_JWT_SECRET;
+          const mongoose = require('mongoose');
+          const jwt = require('jsonwebtoken');
+          (async () => {
+            console.error('CI_PHASE=mongo_connect_begin');
+            await mongoose.connect(process.env.MONGO_URI);
+            console.error('CI_PHASE=mongo_connect_pass');
+            const id = new mongoose.Types.ObjectId();
+            console.error('CI_PHASE=user_insert_begin');
+            await mongoose.connection.db.collection('users').insertOne({
+              _id: id,
+              name: 'BOT MODE CI Agent',
+              username: 'botmode-ci-agent',
+              email: 'botmode-ci-agent@example.invalid',
+              role: 'ADMIN',
+              provider: 'local',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+            console.error('CI_PHASE=user_insert_pass');
+            if (!signingSecret) throw new Error('JWT_SECRET unavailable in mounted .env');
+            console.error('CI_PHASE=jwt_sign_begin');
+            process.stdout.write(jwt.sign({ id: String(id) }, signingSecret, { expiresIn: '15m' }));
+            console.error('CI_PHASE=jwt_sign_pass');
+            await mongoose.disconnect();
+          })().catch((error) => { console.error('CI principal creation:', JSON.stringify({name:error?.name,code:error?.code,codeName:error?.codeName,phase:error?.errorLabelSet ? 'mongo' : undefined,messageClass: /auth/i.test(error?.message || '') ? 'authentication' : /connect|network|server selection/i.test(error?.message || '') ? 'connection' : /module/i.test(error?.message || '') ? 'module' : 'other'})); process.exit(1); });
+          NODE
+          unset CI_JWT_SECRET
+          chmod 600 /tmp/botmode-e2e-test-token
+          test -s /tmp/botmode-e2e-test-token
+          auth_status=$(curl -sS -o /tmp/botmode-auth-status.json -w '%{http_code}' \
+            -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" -H "User-Agent: $browser_ua" \
+            http://127.0.0.1:3090/api/agents/botmode/setup-status)
+          if [ "$auth_status" != "200" ]; then
+            echo "CI_AUTH_RESPONSE_STATUS=$auth_status"
+            python3 - <<'PY'
+          import json
+          try:
+           d=json.load(open("/tmp/botmode-auth-status.json"))
+           print("CI_AUTH_RESPONSE_FIELDS="+",".join(sorted(d.keys())))
+           print("CI_AUTH_ERROR_CODE="+str(d.get("code","absent"))[:60])
+          except Exception:
+           print("CI_AUTH_RESPONSE_FORMAT=non_json")
+          PY
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node -e "const crypto=require('crypto'); const fs=require('fs'); const x=(fs.readFileSync('/app/.env','utf8').match(/^JWT_SECRET=(.*)$/m)||[])[1]; console.log('CI_RUNTIME_JWT_SECRET_PRESENT='+Boolean(process.env.JWT_SECRET)); console.log('CI_ENV_FILE_JWT_SECRET_PRESENT='+Boolean(x)); console.log('CI_RUNTIME_JWT_MATCH='+Boolean(x && process.env.JWT_SECRET === x));"
+            echo "::error::Authenticated BOT MODE setup-status expected HTTP 200; received $auth_status"
+            exit 1
+          fi
+          echo 'BOTMODE_CURRENT_AUTHENTICATED_STATUS=200_PASS'
+          # Real native provisioning; verification of persisted inventory and routing.
+          setup_status=$(curl -sS -o /tmp/botmode-setup-result.json -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' -H "User-Agent: $browser_ua" \
+            -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" \
+            --data '{"provider":"OpenRouter","model":"openrouter/free"}' \
+            http://127.0.0.1:3090/api/agents/botmode/setup)
+          echo "CI_BOTMODE_SETUP_HTTP=$setup_status"
+          if [ "$setup_status" != "200" ] && [ "$setup_status" != "201" ]; then
+            echo "::error::Native six-agent setup rejected; status $setup_status"
+            python3 - <<'PY'
+          import json
+          try:
+              data=json.load(open('/tmp/botmode-setup-result.json'))
+              print('CI_SETUP_RESPONSE_KEYS='+','.join(sorted(data.keys())))
+              print('CI_SETUP_FAILED_AGENT='+str(data.get('failedAgent','none'))[:60])
+              print('CI_SETUP_ERROR='+str(data.get('error','none'))[:150])
+              print('CI_SETUP_MESSAGE='+str(data.get('message','none'))[:160])
+          except Exception:
+              print('CI_SETUP_RESPONSE_NON_JSON')
+          PY
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE'
+          const mongoose=require('mongoose');
+          (async()=>{
+            await mongoose.connect(process.env.MONGO_URI);
+            const roles=await mongoose.connection.db.collection('roles').find({}, {projection:{name:1,permissions:1}}).limit(12).toArray();
+            for (const role of roles) {
+              console.log('CI_ROLE='+String(role.name)+' AGENTS_PERMISSIONS='+JSON.stringify(role.permissions?.AGENTS??role.permissions?.agents??null));
+            }
+            await mongoose.disconnect();
+          })().catch(e=>{console.error('CI_ROLE_DIAGNOSTIC='+String(e.name));process.exitCode=1});
+          NODE
+            exit 1
+          fi
+          inventory_status=$(curl -sS -o /tmp/botmode-inventory.json -w '%{http_code}' \
+            -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" -H "User-Agent: $browser_ua" \
+            http://127.0.0.1:3090/api/agents/botmode/setup-status)
+          test "$inventory_status" = "200"
+          python3 - <<'PY'
+          import json
+          data=json.load(open('/tmp/botmode-inventory.json'))
+          for name in ('inventoryComplete','permissionsComplete','delegationConfigured'):
+              print('CI_'+name+'='+str(data.get(name)))
+              if data.get(name) is not True:
+                  raise SystemExit('Incomplete native agent setup: '+name)
+          PY
+          echo 'BOTMODE_CURRENT_SIX_AGENT_PROVISIONING=PASS'
+          # HTTP/SSE mission admission is a separate gate from successful setup.
+          # This is a real Worker turn, never a fabricated oracle/publication PASS.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE' > /tmp/botmode-ci-worker-id
+          const mongoose = require('mongoose');
+          (async () => {
+            await mongoose.connect(process.env.MONGO_URI);
+            const worker = await mongoose.connection.db.collection('agents').findOne(
+              {name:'BOT MODE Worker'},
+              {projection:{id:1,name:1}}
+            );
+            if (!worker?.id) throw new Error('Native Worker ID not found');
+            process.stdout.write(worker.id);
+            await mongoose.disconnect();
+          })().catch((e)=>{console.error('CI_WORKER_LOOKUP='+String(e.name));process.exit(1)});
+          NODE
+          test -s /tmp/botmode-ci-worker-id
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE_CHILD' > /tmp/botmode-ci-child-id
+          const mongoose=require('mongoose');
+          (async()=>{
+            await mongoose.connect(process.env.MONGO_URI);
+            const worker=await mongoose.connection.db.collection('agents').findOne({name:'BOT MODE Worker'},{projection:{subagents:1}});
+            const ids=worker?.subagents?.agent_ids;
+            if(!worker?.subagents?.enabled || !Array.isArray(ids) || !ids.length) throw new Error('Worker lacks authorized subagent');
+            process.stdout.write(ids[0]);
+            await mongoose.disconnect();
+          })().catch(e=>{console.error('CI_CHILD_SETUP='+e.name);process.exit(1)});
+          NODE_CHILD
+          test -s /tmp/botmode-ci-child-id
+          python3 - <<'PY_CFG'
+          import json,urllib.request
+          child=open('/tmp/botmode-ci-child-id').read().strip()
+          req=urllib.request.Request('http://127.0.0.1:8088/configure',data=json.dumps({'childId':child}).encode(),headers={'Content-Type':'application/json'},method='POST')
+          with urllib.request.urlopen(req,timeout=5) as r: assert json.load(r)['ok']
+          print('CI_NATIVE_CHILD_FIXTURE_CONFIGURED=PASS')
+          PY_CFG
+      - name: Real zero-price native child Oracle P6 restart (unforced auto tool-choice)
+        if: github.event_name == 'workflow_dispatch' && inputs.native_real_free_provider == true && inputs.live_free_provider != true
+        timeout-minutes: 15
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CI_NATIVE_REAL_INTEGRATED: '1'
+          CI_REAL_FREE_PROVIDER: '1'
+          CI_REAL_FORCE_FIRST_TOOL: '0'
+          CI_NATIVE_REAL_MULTI: '0'
+        run: |
+          set -euo pipefail
+          test "${#OPENROUTER_API_KEY}" -gt 16 || exit 3
+          echo "::add-mask::$OPENROUTER_API_KEY"
+          if [ "$CI_NATIVE_REAL_MULTI" = '1' ]; then
+            python3 scripts/botmode/ci-real-free-native-multi-gate.py --preflight
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE_MULTI_AUTH' > /tmp/botmode-ci-real-multi-child-map.json
+          const mongoose=require('mongoose');
+          (async()=>{
+            await mongoose.connect(process.env.MONGO_URI);
+            const db=mongoose.connection.db;
+            const worker=await db.collection('agents').findOne({name:'BOT MODE Worker'},{projection:{subagents:1}});
+            const ids=worker?.subagents?.agent_ids;
+            if(!worker?.subagents?.enabled || !Array.isArray(ids) || ids.length < 2)
+              throw new Error('TWO_NATIVE_SPECIALISTS_NOT_AUTHORIZED');
+            const docs=await db.collection('agents').find({name:{$in:['RECHERCHE','ANALYSE']}},{projection:{id:1,name:1,tools:1}}).toArray();
+            const map=Object.fromEntries(docs.map(d=>[d.name,d.id]));
+            if(docs.length!==2 || !ids.includes(map.RECHERCHE) || !ids.includes(map.ANALYSE) ||
+               map.RECHERCHE===map.ANALYSE)throw new Error('CI_NATIVE_TWO_SPECIALISTS_INVALID');
+            // This isolated subagent-engine smoke tests two REAL model-backed
+            // children without adding web_search inference turns to the fixed
+            // six-request budget. Do not modify the actual candidate or users.
+            // Normal default RECHERCHE and its full browser/search qualification
+            // retain their own independent acceptance criteria.
+            const research=docs.find(d=>d.name==='RECHERCHE');
+            if(!Array.isArray(research?.tools) || !research.tools.includes('web_search'))
+              throw new Error('CI_RESEARCH_ORIGINAL_WEB_CAPABILITY_NOT_PRESENT');
+            const narrowed=await db.collection('agents').updateOne(
+              {id:map.RECHERCHE,name:'RECHERCHE'},{$set:{tools:[]}}
+            );
+            const verified=await db.collection('agents').findOne(
+              {id:map.RECHERCHE,name:'RECHERCHE'},{projection:{id:1,tools:1}}
+            );
+            if(narrowed.matchedCount!==1 || !Array.isArray(verified?.tools) ||
+               verified.tools.length!==0)throw new Error('CI_RESEARCH_SELF_CONTAINED_SCOPE_FAILED');
+            console.error('CI_REAL_MULTI_DISPOSABLE_RESEARCH_WEB_TOOL_DISABLED=PASS');
+            process.stdout.write(JSON.stringify({research:map.RECHERCHE,analysis:map.ANALYSE}));
+            await mongoose.disconnect();
+          })().catch(e=>{console.error('CI_MULTI_AUTH_ERROR_CLASS='+e.name);process.exit(1)});
+          NODE_MULTI_AUTH
+            test -s /tmp/botmode-ci-real-multi-child-map.json
+            echo 'CI_REAL_MULTI_TWO_DISTINCT_AUTHORIZED_SPECIALISTS=PASS'
+          else
+            python3 scripts/botmode/ci-real-free-native-oracle-gate.py --preflight
+          fi
+          python3 - <<'PY_REAL_RELAY'
+          import os
+          from pathlib import Path
+          p=Path('/tmp/botmode-ci-model-fixture.py')
+          s=p.read_text()
+          patches={
+            "REAL_MODEL = 'nvidia/nemotron-3.5-super-vl:free'": "REAL_MODEL = 'nvidia/nemotron-3.5-super-vl:free'",
+            "if request.get('model') != REAL_MODEL or any(k in request for k in ('models', 'plugins', 'web_search_options')):": "if request.get('model') not in (MODEL, REAL_MODEL) or any(k in request for k in ('models', 'plugins', 'web_search_options')):",
+            "    if request.get('reasoning') != {'enabled': False}:\n        raise ValueError('REAL_REASONING_DISABLED_REQUIRED')": "    # Runner-only normalization: ignore incoming SDK reasoning; omit provider-unsupported control.",
+            "    result = dict(request)\n    for key in ('max_tokens', 'max_completion_tokens'):": "    result = dict(request)\n    result['model'] = REAL_MODEL\n    result.pop('reasoning', None)  # rejected optional parameter is never forwarded\n    if os.environ.get('CI_NATIVE_REAL_MULTI')=='1':\n        result.pop('max_completion_tokens', None)\n        result['max_tokens']=REAL_OUTPUT_TOKEN_LIMIT\n    # CI transport-only forced first delegation; never alter agent authority or later turns.\n    if os.environ.get('CI_REAL_FORCE_FIRST_TOOL')=='1' and calls.get('provider_requests',0)==0 and child_id and tool_name(result)=='subagent':\n        if result.get('tool_choice') not in (None,'auto'):\n            raise ValueError('REAL_UNEXPECTED_FIRST_TOOL_CHOICE')\n        result['tool_choice']={'type':'function','function':{'name':'subagent'}}\n        with lock: calls['ci_forced_first_subagent']=1\n    for key in ('max_tokens', 'max_completion_tokens'):",
+          }
+          for old,new in patches.items():
+            assert s.count(old)==1,'CI_REAL_RELAY_SOURCE_DRIFT'
+            s=s.replace(old,new)
+          p.write_text(s)
+          # Local/no-network contract proof: regardless of incoming SDK
+          # reasoning defaults, the provider request MUST omit that field.
+          import runpy
+          guard=runpy.run_path(str(p), run_name='ci_relay_helper_library')['bounded_real_request']
+          for incoming in ({'effort':'high'}, {'enabled':True}, None):
+            payload={'model':'openrouter/free','messages':[{'role':'user','content':'CI'}],
+                     'reasoning':incoming,'max_tokens':256,'n':1}
+            bounded=guard(payload)
+            assert bounded['model']=='nvidia/nemotron-3.5-super-vl:free', 'CI_RELAY_NONFREE_ROUTE'
+            assert 'reasoning' not in bounded, 'CI_RELAY_UNSUPPORTED_REASONING_FORWARDED'
+            expected_tokens=8192 if os.environ.get('CI_NATIVE_REAL_MULTI')=='1' else 256
+            assert bounded['max_tokens']==expected_tokens and bounded['n']==1, 'CI_RELAY_REQUEST_DRIFT'
+          print('CI_NATIVE_REAL_RELAY_OMITS_UNSUPPORTED_REASONING=PASS',flush=True)
+          # Verify first-turn forcing is confined to a selected native agent
+          # tool; no repeated forcing after a completed request.
+          import os
+          from unittest.mock import patch
+          with patch.dict(os.environ, {'CI_AUTHORIZED_CHILD_ID':'ci-authorized-fixture-child'}):
+            helper=runpy.run_path(str(p),run_name='ci_guard_test')
+          selected_guard=helper['bounded_real_request']
+          target={'model':'openrouter/free','messages':[{'role':'user','content':'test'}],
+                  'tools':[{'type':'function','function':{'name':'subagent','parameters':{
+                    'type':'object','properties':{},'additionalProperties':False}}}],
+                  'tool_choice':'auto','max_tokens':256}
+          with patch.dict(os.environ, {'CI_REAL_FORCE_FIRST_TOOL':'1'}):
+            first=selected_guard(target)
+            assert first['tool_choice']=={'type':'function','function':{'name':'subagent'}}
+            assert helper['calls']['ci_forced_first_subagent']==1
+            helper['calls']['provider_requests']=1
+            later=selected_guard(target)
+            assert later['tool_choice']=='auto','CI_NATIVE_REPEAT_FORCING_FORBIDDEN'
+          with patch.dict(os.environ, {'CI_REAL_FORCE_FIRST_TOOL':'0'}):
+            helper['calls']['provider_requests']=0
+            unforced=selected_guard(target)
+            assert unforced['tool_choice']=='auto', 'CI_NATIVE_AUTO_TOOL_CHOICE_OVERWRITTEN'
+          print('CI_NATIVE_REAL_FIRST_TURN_ONLY_DELEGATION=PASS',flush=True)
+          print('CI_NATIVE_REAL_UNFORCED_MODE_STATIC=PASS',flush=True)
+          print('CI_NATIVE_REAL_MODE='+('AUTO' if os.environ.get('CI_REAL_FORCE_FIRST_TOOL')=='0' else 'FORCED'),flush=True)
+          PY_REAL_RELAY
+          python3 -m py_compile /tmp/botmode-ci-model-fixture.py scripts/botmode/ci-real-free-native-oracle-gate.py scripts/botmode/ci-real-free-native-multi-gate.py
+          # Old fixture and new relay share port 8088. Do not mistake a
+          # response from the dying process for readiness of the live relay.
+          old_pid="$(cat /tmp/botmode-ci-fixture.pid)"
+          kill "$old_pid"
+          python3 - <<'PY_WAIT_STOP'
+          import socket,time
+          deadline=time.monotonic()+30
+          while time.monotonic()<deadline:
+              with socket.socket() as sock:
+                  sock.settimeout(.4)
+                  if sock.connect_ex(('127.0.0.1',8088)) != 0:
+                      print('CI_NATIVE_REAL_OLD_FIXTURE_PORT_CLOSED=PASS',flush=True)
+                      break
+              time.sleep(.25)
+          else:
+              raise SystemExit('CI_NATIVE_REAL_FAIL=OLD_FIXTURE_STILL_OWNS_PORT')
+          PY_WAIT_STOP
+          test -s /tmp/botmode-ci-child-id
+          # This identifier was read from the authenticated Worker's Mongo
+          # subagents.agent_ids; the relay cannot create/authorize a child.
+          CI_AUTHORIZED_CHILD_ID="$(cat /tmp/botmode-ci-child-id)" CI_NATIVE_REAL_MULTI="$CI_NATIVE_REAL_MULTI" CI_REAL_FORCE_FIRST_TOOL="$CI_REAL_FORCE_FIRST_TOOL" CI_REAL_FREE_PROVIDER=1 CI_MISSION_SOURCE_MODE=1 CI_OPENROUTER_KEY="$OPENROUTER_API_KEY" python3 /tmp/botmode-ci-model-fixture.py >/tmp/botmode-ci-real-relay.log 2>&1 &
+          echo "$!" > /tmp/botmode-ci-fixture.pid
+          # Check two different endpoints on the actual configured live-only relay.
+          # A successful HTTP handshake alone is not a readiness assertion.
+          python3 - <<'PY_RELAY_READY'
+          import json,os,time
+          from pathlib import Path
+          from urllib.request import urlopen
+          pid=int(Path('/tmp/botmode-ci-fixture.pid').read_text().strip())
+          deadline=time.monotonic()+25
+          while time.monotonic()<deadline:
+              try:
+                  os.kill(pid,0)
+                  with urlopen('http://127.0.0.1:8088/provider-diagnostics',timeout=2) as r:
+                      diag=json.load(r)
+                  with urlopen('http://127.0.0.1:8088/metrics',timeout=2) as r:
+                      met=json.load(r)
+                  if (diag.get('route')=='nvidia/nemotron-3.5-super-vl:free'
+                          and diag.get('simulated') is False
+                          and diag.get('limit_requests')==(6 if os.environ.get('CI_NATIVE_REAL_MULTI')=='1' else 4)
+                          and isinstance(met.get('completion_calls'),int)
+                          and isinstance(met.get('provider_requests',0),int)):
+                      time.sleep(.4)
+                      with urlopen('http://127.0.0.1:8088/metrics',timeout=2) as r:
+                          assert isinstance(json.load(r).get('completion_calls'),int)
+                      print('CI_NATIVE_REAL_LIVE_RELAY_READY=PASS',flush=True)
+                      break
+              except (OSError,ValueError,AssertionError):
+                  pass
+              time.sleep(.5)
+          else:
+              raise SystemExit('CI_NATIVE_REAL_FAIL=LIVE_RELAY_NOT_READY')
+          PY_RELAY_READY
+          # Previous step verifies persistence *by restarting* the API. Mongo
+          # linkage may be readable while HTTP admission is still restarting.
+          # Never retry an ambiguous POST: wait for both readiness and the
+          # authenticated native-agent setup-status GET before the one mission.
+          ready=0
+          browser_ua='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+          for i in $(seq 1 45); do
+            if curl -fsS --max-time 3 http://127.0.0.1:3090/readyz >/dev/null 2>&1; then
+              auth_http=$(curl -sS --max-time 4 -o /dev/null -w '%{http_code}' \
+                -H "User-Agent: $browser_ua" \
+                -H "Authorization: Bearer $(cat /tmp/botmode-e2e-test-token)" \
+                http://127.0.0.1:3090/api/agents/botmode/setup-status) || auth_http=CURL_ERROR
+              if [ "$auth_http" = 200 ]; then
+                ready=1
+                break
+              fi
+            fi
+            sleep 2
+          done
+          if [ "$ready" != 1 ]; then
+            echo 'CI_NATIVE_REAL_FAIL=API_NOT_READY_AFTER_RESTART'
+            exit 1
+          fi
+          echo 'CI_NATIVE_REAL_API_READY_AFTER_RESTART=PASS'
+          if [ "$CI_NATIVE_REAL_MULTI" = '1' ]; then
+            python3 scripts/botmode/ci-real-free-native-multi-gate.py
+          else
+            python3 scripts/botmode/ci-real-free-native-oracle-gate.py
+          fi
+      - name: Always destroy disposable stack
+        if: always()
+        env:
+          BOTMODE_MONGO_PASSWORD: ci-isolated-only
+          POSTGRES_PASSWORD: ci-isolated-only
+          BOTMODE_IMAGE: ${{ env.BOTMODE_TEST_IMAGE }}
+        run: docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
