@@ -214,7 +214,9 @@ async function missionContextForWakeup(
     original.conversationId !== envelope.target.conversationId ||
     original.parentResponseMessageId !== envelope.target.parentMessageId ||
     original.agentId !== envelope.target.agentId ||
-    JSON.stringify(plan.mission) !== JSON.stringify(source.mission) ||
+    plan.mission.missionId !== source.mission.missionId ||
+    plan.mission.taskId !== source.mission.taskId ||
+    plan.mission.objective !== source.mission.objective ||
     (record(savedBotMode) &&
       JSON.stringify(savedBotMode) !== JSON.stringify(original.botMode))
   ) {
