@@ -58,6 +58,14 @@ export type AgentTriggerContinuePreparation =
       files?: Partial<TFile>[];
       quotes?: string[];
       manualSkills?: string[];
+      /** Internal subagent-wakeup only: server-verified original mission.
+       * Never taken from an external envelope or model-authored tool response. */
+      missionContext?: {
+        botMode?: unknown;
+        orchestratorMission: unknown;
+        originalPlanId: string;
+        originalResponseMessageId: string;
+      };
       /** Trusted source identity committed by execution enrollment before the
        * provider-start fence opens. */
       admissionSource?: AgentContinuationAdmissionSource;
@@ -675,6 +683,20 @@ async function startRun(
           isRegenerate: false,
           clientRequestId: context.idempotencyKey,
           generationProtocolVersion: 2,
+          ...(envelope.mode === 'continue' &&
+            envelope.event.source.type === 'internal' &&
+            envelope.event.source.id === 'subagent-completion' &&
+            readyPreparation?.missionContext != null && {
+              ...(readyPreparation.missionContext.botMode == null
+                ? {}
+                : { botMode: readyPreparation.missionContext.botMode }),
+              orchestratorMission: readyPreparation.missionContext.orchestratorMission,
+              nativeMissionWakeupSource: {
+                originalPlanId: readyPreparation.missionContext.originalPlanId,
+                originalResponseMessageId:
+                  readyPreparation.missionContext.originalResponseMessageId,
+              },
+            }),
           ...(readyPreparation?.admissionSource != null && {
             agentContinuationAdmission: readyPreparation.admissionSource,
           }),
