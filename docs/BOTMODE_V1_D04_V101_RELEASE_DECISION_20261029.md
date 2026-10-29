@@ -1,4 +1,30 @@
-# BOT MODE V1 — D-04, stratégie de promotion v1.0.1 (préparation uniquement)
+# BOT MODE V1 — D-04, décisions et preuves v1.0.1
+
+## État ACTUEL après publication — 29 octobre 2026
+
+**PASS — publication GitHub Release v1.0.1 et promotion GHCR stable/latest terminées.** Le statut `NO-GO` et les interdictions mentionnées plus bas décrivent exclusivement le **checkpoint historique de préparation**, rédigé AVANT les autorisations humaines des étapes Git tag, promotion puis Release ; ils ne s'appliquent plus à ces trois opérations désormais exécutées et vérifiées.
+
+| Contrôle | Résultat exact | Preuve |
+| --- | --- | --- |
+| Tag Git `v1.0.1` | PASS — `1478fb34e15e1bad7c07e4928ee8812e47bea064` | [création contrôlée #40824023867](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/40824023867) |
+| Source / OCI AMD64+ARM64 | PASS — candidate `sha256:97e74b9b780c6a8742a6427c49378583f4b8a4213ec43877181372852b6cf5e2` | [publication #40818813544](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/40818813544) |
+| Installation Lite sur runner jetable | PASS — onboarding six agents, ACL, redémarrage/persistance | [acceptation #40819675546](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/40819675546) |
+| GHCR `stable` / `latest` | PASS — le même digest, sans rebuild, index AMD64+ARM64 et contrôle public anonyme | [D-04 #40824924363](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/40824924363) |
+| GitHub Release stable et dernière version | PASS — [v1.0.1 publiée](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.1), non-préversion | API Releases `/latest` et tag vérifiés |
+| Ancienne release `v1.0.0` | PRÉSERVÉE — SHA `59598c2f4e333c256296bbb8c6f45a024832745b` | tag Git distinct |
+| Mise à niveau des machines réelles | NON EXÉCUTÉE — installations utilisateur intactes | hors mandat de publication |
+| Inference OpenRouter Free dans toutes les missions et authentification Azure/MSAL réelle | NON CONCLUANT pour cette release | preuves CI partielles/historiques et pas d'essai utilisateur complet |
+
+**Correctifs présents dans la source Git immuable v1.0.1 (ne pas les réimplémenter) :**
+- Autorisation des spécialistes via le graphe natif initialisé `getReachableMissionAgents()`, vérifiée avant exécution dans `api/server/controllers/agents/request.js`. L'incident Chromebook d'origine était sur `v1.0.0` ([issue #74](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/74)) ; le correctif source ne remplace pas un essai sur le Chromebook réel.
+- `update.sh` refuse avant mutation une API active et les mises à jour interversions Redis sans preuve de quiescence ([issue #42](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/42)) ; la reprise sûre d'une mission Redis active à travers un changement arbitraire de version reste non démontrée.
+- `docker-compose.botmode.yml` isole les clés d'embeddings RAG des clés générales des fournisseurs ; RAG ne reçoit pas de clé OpenAI globale sans accord dédié ([issue #47](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/47)). La présence de la garde source ne constitue pas une autorisation d'appels payants.
+
+**Décision :** distribution officielle `v1.0.1` **PASS / terminée**. Clôture fonctionnelle de tous fournisseurs, intégrations et matériels **NON CONCLUANTE** tant que leurs preuves spécifiques n'existent pas. Aucun retag, rebuild, déploiement ou achat autorisé par ce document. Garder `v1.0.0` et `v1.0.1` immuables, la revue des risques D-02, et les limites du rollback.
+
+---
+
+## Historique de préparation D-04 (conservé comme preuve de décisions antérieures)
 
 **Statut : NO-GO stable.** Document de décision à la date du 29 octobre 2026, après la publication et l'acceptation de la candidate SHA `1478fb34`. **Ne pas créer de tag Git, modifier `stable/latest`, lancer de promotion ou déployer sur les machines de l'utilisateur au titre de ce document.**
 
