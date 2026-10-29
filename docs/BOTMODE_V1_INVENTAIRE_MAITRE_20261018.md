@@ -1,5 +1,7 @@
 # BOT MODE V1 — INVENTAIRE MAÎTRE DES EXIGENCES ET PREUVES
 
+> **Mise à jour vérifiée au 29 octobre 2026 :** lire en priorité le [checkpoint de clôture v1.0.1](BOTMODE_V1_CLOTURE_CHECKPOINT_20261029.md) (release GHCR/GitHub publiée, run réel #40901989622 **PASS** pour le chemin synchrone Worker → spécialiste → Oracle → P6 → restart). Les mentions « NO-GO stable » ci-dessous correspondent à des photographies **historiques antérieures à la publication** ; elles ne révoquent pas la publication officielle déjà effectuée. La continuation asynchrone complète, la machine Chromebook physique et les autres obligations non couvertes restent **NON CONCLUANTES**. Ne pas faire passer les preuves anciennes pour un certificat universel.
+
 **Version du registre :** 2026-10-19, édition 2. **Type :** registre vivant de continuité et de clôture, **pas** certificat de release. **Statut décisionnel : NO-GO stable**, sauf décision ultérieure documentée sur tous les gates.
 
 **Instantané de référence avant commit de documentation :** [PR #29](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/29), branche `botmode-v1-final-integration-qualification-20261016`, base `botmode-v1-integrated-candidate-20261014`, SHA **`a20cb0604a24dc5f4da9b41d30d5bcfa0831fc0a`**. Vérification 18/10/2026 via `git` + `gh`, worktree propre, PR OPEN/Draft, **28 workflows : 27 SUCCESS, 1 SKIPPED (accessibilité), 0 FAILURE**. Ce comptage est attaché à CE SHA antérieur à la version documentaire ; nouveau commit = refaire la lecture des statuts et la correspondance des preuves.
