@@ -1,15 +1,15 @@
-import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { z } from 'zod';
+import { createServer } from 'node:http';
 import { Run, Providers } from '@librechat/agents';
 import { HumanMessage } from '@librechat/agents/langchain/messages';
 import { DynamicStructuredTool } from '@librechat/agents/langchain/tools';
+import type { AddressInfo } from 'node:net';
+import type { OracleSourceObservation } from '../oracle';
+import { validateMissionTask, assertMissionTaskVerified } from './missionOracle';
+import { buildWebSearchContext } from '~/tools/toolkits/web';
 import { deterministicPlanner } from './planner';
 import { prepareBotModeMission } from './output';
-import { buildWebSearchContext } from '~/tools/toolkits/web';
 import { compileNativePlan } from './native';
-import { validateMissionTask, assertMissionTaskVerified } from './missionOracle';
-import type { OracleSourceObservation } from '../oracle';
 
 it.each(['success', 'prose', 'tool-error', 'fallback429'])(
   'executes native research phases over real SDK HTTP: %s',

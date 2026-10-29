@@ -1,6 +1,5 @@
-import { deterministicPlanner } from './planner';
-
 import { resolveNativeMissionToolAgentId } from './evidenceContext';
+import { deterministicPlanner } from './planner';
 
 it('resolves task nodes through the authorized plan to existing tool contexts', () => {
   expect(typeof resolveNativeMissionToolAgentId).toBe('function');

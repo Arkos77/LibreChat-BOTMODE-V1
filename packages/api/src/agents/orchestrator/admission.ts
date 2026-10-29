@@ -1,6 +1,6 @@
 import type { TBotModeSettings } from 'librechat-data-provider';
-import type { InitializedAgent } from '../initialize';
 import type { Mission, MissionPlan, PlannerContext, SpecialistDefinition } from './types';
+import type { InitializedAgent } from '../initialize';
 import { getBotModeObjectives } from './objectives';
 import { prepareBotModeMission } from './output';
 import { deterministicPlanner } from './planner';

@@ -45,9 +45,9 @@ import {
   markTitleGenerationProcessed,
 } from '~/data-provider';
 import useFocusRegeneratedResponse from '~/hooks/Chat/useFocusRegeneratedResponse';
-import { getBotModeSearchParams } from '~/hooks/Chat/mission';
 import { shouldResetSubagentAtomsOnConversationChange } from './cleanup';
 import useAttachmentHandler from '~/hooks/SSE/useAttachmentHandler';
+import { getBotModeSearchParams } from '~/hooks/Chat/mission';
 import useContentHandler from '~/hooks/SSE/useContentHandler';
 import useStepHandler from '~/hooks/SSE/useStepHandler';
 import { useApplyAgentTemplate } from '~/hooks/Agents';

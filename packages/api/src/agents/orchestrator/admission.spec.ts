@@ -1,5 +1,5 @@
-import type { InitializedAgent } from '../initialize';
 import type { TBotModeSettings } from 'librechat-data-provider';
+import type { InitializedAgent } from '../initialize';
 import type { Mission } from './types';
 import { prepareBotModePlan } from './admission';
 

@@ -464,7 +464,11 @@ class SourceFixtureTests(unittest.TestCase):
             'response_format': 'json_schema', 'strict': True,
             'required_output_fields': ['result', 'sources', 'ok'],
             'require_parameters': True, 'max_tokens': 2048, 'max_completion_tokens': None,
-            'model': 'nvidia/nemotron-3.5-super-vl:free', 'reasoning_enabled': False})
+            'model': 'nvidia/nemotron-3.5-super-vl:free', 'reasoning_enabled': False,
+            'advertised_subagent': True, 'assistant_message_count': 0,
+            'message_count': 1, 'prior_subagent_calls': 0,
+            'tail_role': 'system', 'tool_choice_class': 'auto',
+            'tool_result_count': 0})
         self.assertNotIn('PRIVATE_INPUT_NOT_FOR_DIAGNOSTICS', json.dumps(evidence))
         self.assertNotIn(key, json.dumps(evidence))
         self.assertEqual(evidence['records'][0]['candidate_text'], '{"ok": true, "result": "[redacted]"}')

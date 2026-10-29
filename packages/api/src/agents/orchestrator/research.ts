@@ -7,8 +7,8 @@ import type {
 } from '@librechat/agents';
 import type { AIMessage } from '@librechat/agents/langchain/messages';
 import type { PlannedTask } from './types';
-import { requireNativeParameters } from './schema';
 import { buildWebSearchContext } from '~/tools/toolkits/web';
+import { requireNativeParameters } from './schema';
 
 export const isResearchTask = (task: Pick<PlannedTask, 'validation'>): boolean =>
   task.validation.some((requirement) =>

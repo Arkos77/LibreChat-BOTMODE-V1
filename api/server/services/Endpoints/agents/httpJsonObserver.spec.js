@@ -21,12 +21,12 @@ describe('bounded read-only HTTP JSON observation', () => {
         request: { jsonObjectRequested: true, requireParameters: true },
         response: { content: describeContent(candidate) },
       };
-      const records =
-        mode === 'changed'
-          ? [{ ...matched, response: { content: describeContent('different') } }]
-          : mode === 'ambiguous'
-            ? [matched, matched]
-            : [matched];
+      let records = [matched];
+      if (mode === 'changed') {
+        records = [{ ...matched, response: { content: describeContent('different') } }];
+      } else if (mode === 'ambiguous') {
+        records = [matched, matched];
+      }
       const result = compareHttpOracle({
         plan: { tasks: [{ key: 'worker', taskId: 'private-task-id' }] },
         state: {
@@ -40,16 +40,15 @@ describe('bounded read-only HTTP JSON observation', () => {
         },
         records,
       });
-      expect(result.stages[0].boundary).toBe(
-        mode === 'changed'
-          ? 'HTTP_TO_ORACLE_CHANGED_OR_UNOBSERVED'
-          : mode === 'same-valid'
-            ? 'VERIFIED_JSON_OBJECT'
-            : 'HTTP_RESPONSE_NOT_JSON',
-      );
-      expect(result.stages[0].wireMatchCount).toBe(
-        mode === 'changed' ? 0 : mode === 'ambiguous' ? 2 : 1,
-      );
+      const boundaries = {
+        changed: 'HTTP_TO_ORACLE_CHANGED_OR_UNOBSERVED',
+        'same-valid': 'VERIFIED_JSON_OBJECT',
+        'same-invalid': 'HTTP_RESPONSE_NOT_JSON',
+        ambiguous: 'HTTP_RESPONSE_NOT_JSON',
+      };
+      const wireCounts = { changed: 0, ambiguous: 2, 'same-valid': 1, 'same-invalid': 1 };
+      expect(result.stages[0].boundary).toBe(boundaries[mode]);
+      expect(result.stages[0].wireMatchCount).toBe(wireCounts[mode]);
       expect(result.stages[0].uniqueWireMatch).toBe(
         mode === 'same-invalid' || mode === 'same-valid',
       );

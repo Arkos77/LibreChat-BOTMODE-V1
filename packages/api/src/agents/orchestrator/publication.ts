@@ -1,11 +1,11 @@
-import type { MissionPlan } from './types';
 import type { MissionOracleState } from './missionOracle';
-import { normalizeSourceUrls, supportsResearchResult } from '../oracle/sources';
+import type { MissionPlan } from './types';
 import {
   areMissionOracleResultsEquivalent,
   normalizeMissionOracleState,
   validateMissionTask,
 } from './missionOracle';
+import { normalizeSourceUrls, supportsResearchResult } from '../oracle/sources';
 
 export async function renderMissionPublication(
   plan: MissionPlan,

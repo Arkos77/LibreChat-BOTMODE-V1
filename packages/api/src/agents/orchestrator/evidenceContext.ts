@@ -1,7 +1,7 @@
-import type { MissionPlan } from './types';
-import { nodeIdentity } from './planner';
-import { isResearchTask, researchObservationNodeId } from './research';
 import type { ToolEvidenceIntentDeclaration } from './toolEvidenceIntent';
+import type { MissionPlan } from './types';
+import { isResearchTask, researchObservationNodeId } from './research';
+import { nodeIdentity } from './planner';
 
 interface TaskScope {
   nodeId: string;

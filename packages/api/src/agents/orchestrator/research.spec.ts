@@ -1,26 +1,20 @@
-import { BaseCallbackHandler } from '@langchain/core/callbacks/base';
-import { buildHITLRunWiring } from '../hitl/runtime';
-import { createToolExecuteHandler } from '../handlers';
-import { MemorySaver, Command } from '@langchain/langgraph';
-import { DynamicStructuredTool } from '@librechat/agents/langchain/tools';
 import { z } from 'zod';
+import { Run, Providers } from '@librechat/agents';
+import { MemorySaver, Command } from '@langchain/langgraph';
+import { BaseCallbackHandler } from '@langchain/core/callbacks/base';
+import { DynamicStructuredTool } from '@librechat/agents/langchain/tools';
 import {
   AIMessage,
   ToolMessage,
   HumanMessage,
   AIMessageChunk,
 } from '@librechat/agents/langchain/messages';
-import { Run, Providers } from '@librechat/agents';
 import type {
   AgentInputs,
   BaseGraphState,
   OpenAIClientOptions,
   FallbackConfig,
 } from '@librechat/agents';
-import { deterministicPlanner } from './planner';
-import { prepareBotModeMission } from './output';
-import { buildWebSearchContext } from '~/tools/toolkits/web';
-import { compileNativePlan } from './native';
 import {
   createMissionEvidenceContext,
   resolveNativeMissionToolAgentId,
@@ -31,6 +25,12 @@ import {
   researchPhaseBinding,
   requireResearchObservation,
 } from './research';
+import { buildWebSearchContext } from '~/tools/toolkits/web';
+import { createToolExecuteHandler } from '../handlers';
+import { buildHITLRunWiring } from '../hitl/runtime';
+import { deterministicPlanner } from './planner';
+import { prepareBotModeMission } from './output';
+import { compileNativePlan } from './native';
 
 const plan = deterministicPlanner.planMission(
   prepareBotModeMission({

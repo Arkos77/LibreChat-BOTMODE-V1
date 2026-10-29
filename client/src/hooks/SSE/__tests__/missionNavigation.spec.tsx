@@ -1,11 +1,11 @@
 import { act, renderHook } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Constants, EModelEndpoint } from 'librechat-data-provider';
-import type { PropsWithChildren } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { EventSubmission, TMessage } from 'librechat-data-provider';
-import useEventHandlers from '../useEventHandlers';
+import type { PropsWithChildren } from 'react';
 import { shouldUseBotModeMission } from '~/hooks/Chat/useChatFunctions';
+import useEventHandlers from '../useEventHandlers';
 
 jest.mock('recoil', () => ({
   ...jest.requireActual('recoil'),

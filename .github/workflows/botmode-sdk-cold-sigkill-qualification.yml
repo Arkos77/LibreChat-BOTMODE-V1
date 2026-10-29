@@ -141,6 +141,7 @@ jobs:
         run: |
           docker run --rm --network none --memory 720m --cpus 1 --read-only \
             --mount "type=bind,src=$PWD/packages/api/src/agents/orchestrator/missionOracle.ts,dst=/work/packages/api/src/agents/orchestrator/missionOracle.ts,readonly" \
+            --mount "type=bind,src=$PWD/packages/api/src/agents/oracle/sources.ts,dst=/work/packages/api/src/agents/oracle/sources.ts,readonly" \
             --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveredOraclePersister.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveredOraclePersister.js,readonly" \
             --mount "type=bind,src=$PWD/scripts/botmode/native-recovered-oracle-real-contract-regression.cjs,dst=/app/native-recovered-oracle-real-contract-regression.cjs,readonly" \
             --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-recovered-oracle-real-contract-regression.cjs
