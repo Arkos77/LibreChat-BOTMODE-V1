@@ -510,6 +510,22 @@ jobs:
           if "run_in_background=true" in patched:
               raise SystemExit("CI_NATIVE_REAL_BACKGROUND_CONTRACT_NOT_REMOVED")
           print("CI_NATIVE_REAL_FOREGROUND_CONTRACT=PASS", flush=True)
+          # Foreground acceptance must NOT fall back to the detached-child
+          # database assertion. When no linked native start/stop is observed,
+          # emit only existing redacted provider/Redis/Mongo diagnostics and
+          # fail closed. Do not mistake a terminal SSE for delegated execution.
+          foreground_guard_anchor = "    detached_path = not linked_and_stopped"
+          if patched.count(foreground_guard_anchor) != 1:
+              raise SystemExit("CI_NATIVE_REAL_FOREGROUND_GUARD_DRIFT")
+          patched = patched.replace(
+              foreground_guard_anchor,
+              '    if not linked_and_stopped:\n'
+              '        bounded_failure_diagnostics(helpers, stream_id, parent_id, events)\n'
+              '        fail("FOREGROUND_NATIVE_CHILD_NOT_CORRELATED")\n'
+              '    detached_path = False',
+              1,
+          )
+          print("CI_NATIVE_REAL_FOREGROUND_PROOF_GUARD_PATCH=PASS", flush=True)
           compile(patched, str(path), "exec")
           path.write_text(patched)
           print("CI_NATIVE_REAL_SNAPSHOT_RUNNER_ONLY_PATCH=PASS", flush=True)
