@@ -50,6 +50,10 @@ const {
   assertAuthorizedOrchestratorTasks,
 } = require('./orchestratorMissionBindings');
 const { prepareBotModeSettings } = require('./botModeSettings');
+const {
+  getNativeMissionWakeupOrigin,
+  saveNativeMissionWakeupOrigin,
+} = require('~/server/services/Endpoints/agents/nativeMissionWakeupOriginStore');
 const { disposeClient } = require('~/server/cleanup');
 const { observeMtoEvent } = require('~/server/services/Endpoints/agents/mtoObservation');
 const {
@@ -1474,30 +1478,26 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       ) {
         throw new Error('MISSION_WAKEUP_UNAUTHORIZED');
       }
-      const previousJob = await GenerationJobManager.getJob(streamId);
-      const previousPlan = previousJob?.metadata?.orchestratorPlan;
-      const previousRequest = previousJob?.metadata?.mcpRequestBody?.orchestratorMission;
+      const original = await getNativeMissionWakeupOrigin({
+        userId,
+        tenantId,
+        conversationId,
+        parentResponseMessageId: wakeupSource.originalResponseMessageId,
+        agentId: endpointOption.agent_id ?? req.body?.agent_id,
+      });
       if (
-        previousJob?.userId !== userId ||
-        (previousJob?.tenantId ?? undefined) !== (tenantId ?? undefined) ||
-        previousJob?.metadata?.responseMessageId !== wakeupSource.originalResponseMessageId ||
-        previousJob?.metadata?.agent_id !== (endpointOption.agent_id ?? req.body?.agent_id) ||
-        previousPlan?.planId !== wakeupSource.originalPlanId ||
-        previousPlan?.mission == null ||
-        previousRequest?.mission == null ||
-        JSON.stringify(previousPlan.mission) !== JSON.stringify(previousRequest.mission) ||
-        JSON.stringify(previousRequest.mission) !==
-          JSON.stringify(req.body.orchestratorMission.mission)
+        original == null ||
+        original.planId !== wakeupSource.originalPlanId ||
+        JSON.stringify(original.orchestratorMission) !==
+          JSON.stringify(req.body.orchestratorMission) ||
+        (original.botMode == null
+          ? req.body?.botMode != null
+          : JSON.stringify(original.botMode) !== JSON.stringify(req.body?.botMode))
       ) {
         throw new Error('MISSION_WAKEUP_ORIGIN_MISMATCH');
       }
-      originalWakeupPlan = structuredClone(previousPlan);
-      originalWakeupCapabilities = structuredClone(
-        previousJob.metadata.nativeMissionCapabilityAttestation,
-      );
-      if (originalWakeupCapabilities == null) {
-        throw new Error('MISSION_WAKEUP_CAPABILITY_BASELINE_MISSING');
-      }
+      originalWakeupPlan = structuredClone(original.plan);
+      originalWakeupCapabilities = structuredClone(original.capabilityAttestation);
     }
 
     const endpointIconURL = getEndpointIconURL(req, endpointOption);
@@ -1968,6 +1968,23 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
           JSON.stringify(nativeMissionCapabilityAttestation)
       ) {
         throw new Error('Orchestrator plan persistence verification failed');
+      }
+      // Persist the *original* mission before any model/tool effect. A later
+      // wakeup replaces the Redis conversation slot, but sibling completions
+      // must still resolve this same mission from a separate immutable record.
+      if (originalWakeupPlan == null) {
+        await saveNativeMissionWakeupOrigin({
+          userId,
+          tenantId,
+          conversationId,
+          parentResponseMessageId: preallocatedResponseMessageId,
+          agentId: primaryAgentId,
+          createdAt: jobCreatedAt,
+          botMode: botModeSettings,
+          orchestratorMission,
+          plan: persistedPlanJob.metadata.orchestratorPlan,
+          capabilityAttestation: persistedPlanJob.metadata.nativeMissionCapabilityAttestation,
+        });
       }
       client.orchestratorPlan = persistedPlanJob.metadata.orchestratorPlan;
       client.publicationBarrier?.activate?.();
