@@ -1499,6 +1499,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       }
       originalWakeupPlan = structuredClone(original.plan);
       originalWakeupCapabilities = structuredClone(original.capabilityAttestation);
+      originalWakeupHasAttachments = original.hasAttachments;
     }
 
     const endpointIconURL = getEndpointIconURL(req, endpointOption);
