@@ -1,0 +1,45 @@
+name: BOTMODE PR107 Real Mongo Mission Origin Qualification
+
+on:
+  pull_request:
+    paths:
+      - 'api/server/services/Endpoints/agents/nativeMissionWakeupOriginStore.js'
+      - '.github/scripts/botmode-pr107-mongo-origin.cjs'
+      - '.github/workflows/botmode-pr107-mongo-origin.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  durable-origin:
+    name: Mongo 4.4 cross-process origin and ACL
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 107
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mongo:
+        image: mongo:4.4.29
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongo --quiet --eval 'db.adminCommand({ping:1}).ok' | grep 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Persist original Oracle mission in real Mongo
+        run: node .github/scripts/botmode-pr107-mongo-origin.cjs seed
+      - name: Reopen original mission in a new API process, verify ACL and clean up
+        run: node .github/scripts/botmode-pr107-mongo-origin.cjs resume
+      - name: Qualification scope
+        run: |
+          echo 'SCOPE=Real MongoDB 4.4, two separate Node processes, two sibling reads, tenant and agent ACL, immutability, tamper detection, cleanup.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'NOT_COVERED=Full two-turn Worker execution, Oracle VERIFIED, P6 unique, restart of Mongo server.' >> "$GITHUB_STEP_SUMMARY"
