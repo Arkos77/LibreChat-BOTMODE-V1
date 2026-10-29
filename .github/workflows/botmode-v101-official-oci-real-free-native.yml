@@ -329,7 +329,7 @@ jobs:
           print('CI_NATIVE_CHILD_FIXTURE_CONFIGURED=PASS')
           PY_CFG
       - name: Real zero-price native child Oracle P6 restart (unforced auto tool-choice)
-        if: github.event_name == 'workflow_dispatch' && inputs.native_real_free_provider == true && inputs.live_free_provider != true
+        if: ${{ inputs.execute_live_free == true }}
         timeout-minutes: 15
         shell: bash
         env:
