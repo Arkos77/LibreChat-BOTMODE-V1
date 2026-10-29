@@ -1418,14 +1418,80 @@ describe('createSubagentCompletionWakeupResolver', () => {
       status: 'complete',
       metadata: { responseMessageId: 'later-wakeup-response' },
     }));
+    const originalGetConvo = methods.getConvo.getMockImplementation()!;
+    methods.getConvo.mockImplementation(async (userId, conversationId) => {
+      if (conversationId !== 'thread-2') return originalGetConvo(userId, conversationId);
+      return {
+        conversationId,
+        tenantId: 'tenant-1',
+        subagentThread: {
+          parentConversationId: 'conversation-1',
+          parentMessageId: 'response-1',
+          parentAgentId: 'agent_parent_1',
+          subagentType: 'analyst',
+        },
+      };
+    });
+    const originalGetMessages = methods.getMessages.getMockImplementation()!;
+    const siblingTerminal = {
+      messageId: 'task-2:assistant',
+      conversationId: 'thread-2',
+      parentMessageId: 'task-2:user',
+      sender: 'analyst',
+      text: 'Second child result',
+      isCreatedByUser: false,
+      createdAt: new Date(NOW),
+      updatedAt: new Date(NOW),
+      subagentTask: { attemptKey: 'attempt-2', parentRunId: 'response-1', status: 'completed' as const },
+    };
+    methods.getMessages.mockImplementation(async (filter: TestMessageFilter, ...rest) =>
+      filter.conversationId === 'thread-2'
+        ? [
+            { messageId: 'task-2:user', conversationId: 'thread-2', isCreatedByUser: true },
+            siblingTerminal,
+          ]
+        : originalGetMessages(filter, ...rest),
+    );
+    const firstClaim = methods.claimSubagentTaskResult.getMockImplementation()!;
+    methods.claimSubagentTaskResult.mockImplementation(async (input) =>
+      input.conversationId === 'thread-2'
+        ? { status: 'acquired', message: siblingTerminal }
+        : firstClaim(input),
+    );
     const getMissionOrigin = jest.fn(async () => original);
     const resolve = createSubagentCompletionWakeupResolver({
       methods: methods as never,
       getGenerationJob,
       getMissionOrigin,
     });
-    for (const idempotencyKey of ['first-child-wakeup', 'second-sibling-wakeup']) {
-      const prepared = await resolve(wakeupEnvelope(), { idempotencyKey } as never);
+    const firstEnvelope = wakeupEnvelope();
+    const siblingEnvelope = createAgentTriggerEnvelope({
+      mode: 'continue',
+      requestId: 'request-2',
+      deliveryId: 'task-2',
+      receivedAt: NOW,
+      principal: { id: 'user-1', tenantId: 'tenant-1' },
+      event: {
+        id: 'task-2',
+        type: 'subagent.completion',
+        occurredAt: NOW,
+        source: { id: 'subagent-completion', type: 'internal' },
+        payload: { taskId: 'task-2', threadId: 'thread-2', subagentType: 'analyst' },
+      },
+      target: {
+        agentId: 'agent_parent_1',
+        conversationId: 'conversation-1',
+        parentMessageId: 'response-1',
+      },
+      input: 'pending',
+    });
+    for (const [envelope, idempotencyKey] of [
+      [firstEnvelope, 'first-child-wakeup'],
+      [siblingEnvelope, 'second-sibling-wakeup'],
+    ] as const) {
+      const prepared = await resolve(envelope as AgentContinueTriggerEnvelope, {
+        idempotencyKey,
+      } as never);
       expect(prepared).toMatchObject({
         status: 'ready',
         missionContext: {
