@@ -43,9 +43,15 @@ type WakeupMethods = Pick<ConversationMethods, 'getConvo'> &
 
 interface GenerationState {
   status?: unknown;
+  userId?: unknown;
+  tenantId?: unknown;
   metadata?: {
     idempotencyClientRequestId?: unknown;
     terminalPersistencePending?: unknown;
+    responseMessageId?: unknown;
+    agent_id?: unknown;
+    orchestratorPlan?: unknown;
+    mcpRequestBody?: unknown;
   };
 }
 
@@ -141,6 +147,58 @@ function isParentActive(job: GenerationState | null): boolean {
 
 function sameTenant(actual: string | undefined, expected: string | undefined): boolean {
   return actual === expected;
+}
+
+/** Only an already persisted, exact parent-generation plan may authorize a
+ * mission-specific wakeup. A model-authored child result cannot supply one. */
+function missionContextForWakeup(
+  parentJob: GenerationState | null,
+  savedBotMode: unknown,
+  envelope: AgentContinueTriggerEnvelope,
+): Extract<AgentTriggerContinuePreparation, { status: 'ready' }>['missionContext'] {
+  const record = (value: unknown): value is Record<string, unknown> =>
+    value != null && typeof value === 'object' && !Array.isArray(value);
+  const plan = parentJob?.metadata?.orchestratorPlan;
+  const botModeRequired = record(savedBotMode) && savedBotMode.mode !== 'fast';
+  if (!record(plan)) {
+    if (!botModeRequired) {
+      return undefined;
+    }
+    throw executionError('Original BOT MODE mission context is unavailable.', {
+      code: 'MISSION_WAKEUP_CONTEXT_UNAVAILABLE',
+      retryable: true,
+      status: 409,
+    });
+  }
+  const requestBody = parentJob?.metadata?.mcpRequestBody;
+  const source = record(requestBody) ? requestBody.orchestratorMission : undefined;
+  const sourceMission = record(source) ? source.mission : undefined;
+  if (
+    !record(sourceMission) ||
+    !record(plan.mission) ||
+    typeof plan.planId !== 'string' ||
+    plan.planId.length === 0 ||
+    parentJob?.userId !== envelope.principal.userId ||
+    (parentJob.tenantId ?? undefined) !== (envelope.principal.tenantId ?? undefined) ||
+    parentJob.metadata?.responseMessageId !== envelope.target.parentMessageId ||
+    parentJob.metadata?.agent_id !== envelope.target.agentId ||
+    JSON.stringify(sourceMission) !== JSON.stringify(plan.mission) ||
+    (record(savedBotMode) &&
+      (savedBotMode.workerAgentId !== envelope.target.agentId ||
+        savedBotMode.mode === 'fast'))
+  ) {
+    throw executionError('Stored mission does not match the originating parent.', {
+      code: 'MISSION_WAKEUP_ORIGIN_MISMATCH',
+      retryable: false,
+      status: 409,
+    });
+  }
+  return {
+    ...(botModeRequired ? { botMode: structuredClone(savedBotMode) } : {}),
+    orchestratorMission: structuredClone(source),
+    originalPlanId: plan.planId,
+    originalResponseMessageId: envelope.target.parentMessageId,
+  };
 }
 
 function timestamp(message: Pick<IMessage, 'createdAt'>): number {
@@ -724,6 +782,8 @@ export function createSubagentCompletionWakeupResolver({
       { sort: { createdAt: 1, _id: 1 } },
     );
 
+    const missionContext = missionContextForWakeup(parentJob, parent.botMode, envelope);
+
     const parentMessageId = latestAssistantDescendant(
       parentMessages,
       envelope.target.parentMessageId,
@@ -779,6 +839,7 @@ export function createSubagentCompletionWakeupResolver({
       status: 'ready',
       parentMessageId,
       input: renderWakeupInput(registration, resultTaskId, claim.message, orchestrationSnapshot),
+      ...(missionContext == null ? {} : { missionContext }),
       releaseOnDefiniteFailure: async () => {
         await methods.releaseSubagentTaskResultClaim({
           userId,
