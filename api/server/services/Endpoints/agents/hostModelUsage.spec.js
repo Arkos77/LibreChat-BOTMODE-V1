@@ -7,6 +7,231 @@ describe('P11 model invocation evidence', () => {
     selectedModel: 'b:free',
     agentId: 'agent-primary',
   };
+  function researchActors() {
+    const {
+      prepareBotModeMission,
+      deterministicPlanner,
+      compileNativePlan,
+    } = require('@librechat/api');
+    const plan = deterministicPlanner.planMission(
+      prepareBotModeMission({
+        missionId: 'usage-phase',
+        taskId: 'usage-root',
+        objective: 'Research',
+        requiredCapabilities: ['web_search'],
+        constraints: [],
+      }),
+      {
+        worker: {
+          id: 'worker',
+          agentId: decision.agentId,
+          role: 'worker',
+          capabilities: ['web_search'],
+          constraints: [],
+        },
+        specialists: [],
+      },
+    );
+    const native = compileNativePlan(
+      plan,
+      new Map([
+        [
+          decision.agentId,
+          {
+            agentId: decision.agentId,
+            provider: 'openai',
+            toolDefinitions: [{ name: 'web_search' }],
+          },
+        ],
+      ]),
+    );
+    return {
+      plan,
+      observation: native.actors.find((actor) => actor.nodeId !== plan.tasks[0].nodeId).nodeId,
+    };
+  }
+
+  it('includes both native research phases in the saved agent usage receipt', () => {
+    const { plan, observation } = researchActors();
+    const receipt = projectHostModelUsage(
+      decision,
+      [
+        {
+          agentId: observation,
+          provider: 'openrouter',
+          model: 'b:free',
+          input_tokens: 2,
+          output_tokens: 1,
+          cost: 0.001,
+        },
+        {
+          agentId: plan.tasks[0].nodeId,
+          provider: 'openrouter',
+          model: 'b:free',
+          input_tokens: 3,
+          output_tokens: 2,
+          cost: 0.002,
+        },
+      ],
+      plan,
+    );
+    expect(receipt.modelCalls.map((call) => call.actorId)).toEqual([
+      observation,
+      plan.tasks[0].nodeId,
+    ]);
+    expect(receipt.total).toMatchObject({ inputTokens: 5, outputTokens: 3, costUsd: 0.003 });
+  });
+
+  it('retains an observation-only fallback even when final output uses the primary', () => {
+    const { plan, observation } = researchActors();
+    const receipt = projectHostModelUsage(
+      {
+        ...decision,
+        selectedProvider: 'openrouter',
+        authorizedBindings: [
+          { provider: 'openrouter', model: 'b:free' },
+          { provider: 'openrouter', model: 'a:free' },
+        ],
+      },
+      [
+        {
+          agentId: observation,
+          provider: 'openrouter',
+          model: 'a:free',
+          input_tokens: 2,
+          output_tokens: 1,
+        },
+        {
+          agentId: plan.tasks[0].nodeId,
+          provider: 'openrouter',
+          model: 'b:free',
+          input_tokens: 3,
+          output_tokens: 2,
+        },
+      ],
+      plan,
+    );
+    expect(receipt.fallbackUsed).toBe(true);
+    expect(receipt.modelCalls).toHaveLength(2);
+    expect(receipt.total.costKnown).toBe(false);
+  });
+
+  it.each(['research-v1', 'research-v2'])(
+    'keeps an observation-only receipt for %s when no final model call completes',
+    (contract) => {
+      const { plan, observation } = researchActors();
+      plan.tasks[0].validation = plan.tasks[0].validation.map((v) =>
+        v.outputContract === 'research-v1' ? { ...v, outputContract: contract } : v,
+      );
+      const receipt = projectHostModelUsage(
+        decision,
+        [
+          {
+            agentId: observation,
+            provider: 'openrouter',
+            model: 'b:free',
+            input_tokens: 2,
+            output_tokens: 1,
+          },
+        ],
+        plan,
+      );
+      expect(receipt.modelCalls).toEqual([
+        expect.objectContaining({ actorId: observation, inputTokens: 2 }),
+      ]);
+    },
+  );
+
+  it.each(['foreign', 'forged', 'ambiguous', 'old-version', 'not-research'])(
+    'does not attribute a %s observation actor',
+    (mode) => {
+      const { plan, observation } = researchActors();
+      if (mode === 'foreign') plan.tasks[0].agentId = 'other';
+      if (mode === 'forged') plan.tasks[0].nodeId = 'forged';
+      if (mode === 'ambiguous') plan.tasks.push({ ...plan.tasks[0], agentId: 'other' });
+      if (mode === 'old-version') delete plan.mission.researchExecutionVersion;
+      if (mode === 'not-research') plan.tasks[0].validation = [];
+      expect(
+        projectHostModelUsage(
+          decision,
+          [
+            {
+              agentId: observation,
+              provider: 'openrouter',
+              model: 'b:free',
+              input_tokens: 2,
+              output_tokens: 1,
+            },
+          ],
+          plan,
+        ),
+      ).toBeUndefined();
+    },
+  );
+
+  it.each(['own', 'foreign', 'forged', 'ambiguous', 'missing-mission'])(
+    'attributes only canonical actors of the selected agent: %s',
+    (mode) => {
+      const { nodeIdentity } = require('@librechat/api');
+      const nodeId = nodeIdentity('fixture-mission', 'task');
+      const plan = {
+        mission: { missionId: mode === 'missing-mission' ? undefined : 'fixture-mission' },
+        tasks: [
+          {
+            key: 'task',
+            nodeId: mode === 'forged' ? 'forged-node' : nodeId,
+            agentId: mode === 'foreign' ? 'foreign-agent' : 'agent-primary',
+          },
+        ],
+      };
+      if (mode === 'ambiguous') plan.tasks.push({ ...plan.tasks[0], agentId: 'foreign-agent' });
+      const receipt = projectHostModelUsage(
+        decision,
+        [
+          {
+            agentId: nodeId,
+            provider: 'openrouter',
+            model: 'b:free',
+            input_tokens: 2,
+            output_tokens: 1,
+          },
+        ],
+        plan,
+      );
+      if (mode === 'own')
+        expect(receipt.modelCalls).toMatchObject([
+          { actorId: nodeId, inputTokens: 2, outputTokens: 1 },
+        ]);
+      else expect(receipt).toBeUndefined();
+    },
+  );
+  it.each(['ambiguous-runtime', 'unapproved-model', 'unapproved-runtime'])(
+    'does not admit ambiguous or unauthorized compatibility usage: %s',
+    (mode) => {
+      const bindings = [{ provider: 'CompatA', runtimeProvider: 'openAI', model: 'm:free' }];
+      if (mode === 'ambiguous-runtime')
+        bindings.push({ provider: 'CompatB', runtimeProvider: 'openAI', model: 'm:free' });
+      expect(
+        projectHostModelUsage(
+          {
+            ...decision,
+            selectedProvider: 'CompatA',
+            selectedModel: 'm:free',
+            authorizedBindings: bindings,
+          },
+          [
+            {
+              agentId: 'agent-primary',
+              provider: mode === 'unapproved-runtime' ? 'other' : 'openAI',
+              model: mode === 'unapproved-model' ? 'other:free' : 'm:free',
+              input_tokens: 1,
+              output_tokens: 1,
+            },
+          ],
+        ),
+      ).toBeUndefined();
+    },
+  );
   it('links the durable decision to bounded primary provider usage', () => {
     const result = projectHostModelUsage(decision, [
       {

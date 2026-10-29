@@ -1,6 +1,8 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { useRecoilValue } from 'recoil';
+import { createPortal } from 'react-dom';
 import { Button } from '@librechat/client';
+import { useAtomValue, useSetAtom } from 'jotai';
 import { ChevronDown, MessageCircleQuestion, Users } from 'lucide-react';
 import { Tools, Constants, ContentTypes, ToolCallTypes } from 'librechat-data-provider';
 import type {
@@ -17,7 +19,12 @@ import {
   getBatchActivityLabelPart,
   getActivityLabelText,
 } from '~/utils';
+import {
+  botModeToolsRightHostAtom,
+  botModeToolsRightCountAtom,
+} from '~/components/Chat/BotModeTools/state';
 import { useLocalize, useExpandCollapse, scheduleMessageContentLayoutReconcile } from '~/hooks';
+import { useBotModeView } from '~/components/Chat/BotModeViewContext';
 import { useMCPIconMap, useMCPServerNames } from '~/hooks/MCP';
 import { isBashProgrammaticToolCall } from './routing';
 import { ASK_USER_QUESTION } from '~/utils/approval';
@@ -126,6 +133,9 @@ export default function ToolCallGroup({
   const localize = useLocalize();
   const mcpIconMap = useMCPIconMap();
   const mcpServerNames = useMCPServerNames();
+  const isBotModeView = useBotModeView();
+  const rightHost = useAtomValue(botModeToolsRightHostAtom);
+  const setRightToolCount = useSetAtom(botModeToolsRightCountAtom);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const cancelLayoutReconcileRef = useRef<(() => void) | null>(null);
   const retainedForPendingApprovalRef = useRef(false);
@@ -146,6 +156,24 @@ export default function ToolCallGroup({
     () => parts.some(({ part }) => hasPendingApprovalInPart(part)),
     [parts],
   );
+
+  // Portal the original interactive group into Progression on the RIGHT.
+  // Approval controls, attachments and nested phase groups stay inline.
+  // When the progress panel closes, rightHost becomes null and the group
+  // remains accessible in the conversation; nothing is copied or persisted.
+  const showOnRight =
+    isBotModeView &&
+    rightHost != null &&
+    count > 0 &&
+    !hasPendingApproval &&
+    !withinActivityPhase &&
+    (groupAttachments?.length ?? 0) === 0;
+
+  useEffect(() => {
+    if (!showOnRight) return;
+    setRightToolCount((current) => current + 1);
+    return () => setRightToolCount((current) => Math.max(0, current - 1));
+  }, [showOnRight, setRightToolCount]);
   const activityLabel = getBatchActivityLabelPart(labelPart?.part);
   const activityLabelText = getActivityLabelText(activityLabel);
   const activityFailed = activityLabel?.status === 'failed' || activityLabel?.status === 'partial';
@@ -338,7 +366,7 @@ export default function ToolCallGroup({
     }
   }, [hasActiveToolCall, userOverride, suppressAutoExpand]);
 
-  return (
+  const groupContent = (
     <div className="mb-2 mt-1" ref={rootRef}>
       <Button
         variant="ghost"
@@ -418,4 +446,6 @@ export default function ToolCallGroup({
       )}
     </div>
   );
+
+  return showOnRight && rightHost != null ? createPortal(groupContent, rightHost) : groupContent;
 }

@@ -34,7 +34,9 @@ conversation_id = str(uuid.uuid4())
 # The deterministic planner must REQUIRE a specialist by a capability gap,
 # rather than relying on prose instructions that a free model may ignore.
 # Two ordered graph tasks exercise real Worker -> specialist -> Oracle actors.
-task_ids = {"worker": mission_id + "/worker", "specialist": mission_id + "/specialist"}
+FIVE_TASKS = os.environ.get("CI_LIVE_FREE_FIVE_TASKS") == "true"
+task_keys = ["worker"] + ([f"specialist_{i}" for i in range(1, 5)] if FIVE_TASKS else ["specialist"])
+task_ids = {key: mission_id + "/" + key for key in task_keys}
 mission = {
     "missionId": mission_id,
     "taskId": mission_id,
@@ -49,6 +51,22 @@ mission = {
     ],
     "validation": {"criteria": [{"id": "ci-ok", "field": "ok", "expected": True}]},
 }
+if FIVE_TASKS:
+    # Four explicitly ordered specialist graph nodes; no model tool-choice
+    # heuristics and no claim of four separate nested child conversations.
+    mission["objectives"] = [
+        {
+            "key": key,
+            "objective": (
+                "Préparer la réponse. Retourne strictement {\"ok\":true}."
+                if key == "worker" else
+                "Vérifier l'étape précédente. Retourne strictement {\"ok\":true}."
+            ),
+            "requiredCapabilities": ["basic"] if key == "worker" else ["research_specialist_ci"],
+            "dependsOn": [task_keys[index - 1]] if index else [],
+        }
+        for index, key in enumerate(task_keys)
+    ]
 payload = {
     "endpoint": "agents",
     "agent_id": worker,
@@ -67,6 +85,12 @@ payload = {
         },
     },
 }
+if FIVE_TASKS:
+    payload["text"] = (
+        "Exécute successivement les cinq étapes, Worker puis quatre étapes spécialistes. "
+        "Chaque résultat doit être le JSON strict {\"ok\":true}, afin d'être validé "
+        "indépendamment par Oracle avant publication."
+    )
 status, raw = request("POST", "/api/agents/chat/agents", payload)
 if status != 200:
     print("CI_LIVE_FREE_MISSION_START_HTTP=" + str(status), flush=True)
@@ -145,6 +169,8 @@ def read_terminal_stream(stream_path):
     )
     started = time.monotonic()
     deadline = started + 210
+    if FIVE_TASKS:
+        deadline = started + 450
     items = []
     retries = 0
     http_status = 0
@@ -173,7 +199,7 @@ def read_terminal_stream(stream_path):
         except HTTPError as exc:
             return exc.code, items, "HTTP_ERROR"
         except (socket.timeout, TimeoutError):
-            if time.monotonic() >= deadline or retries >= 2:
+            if time.monotonic() >= deadline or (retries >= 5 if FIVE_TASKS else retries >= 2):
                 return http_status, items, "SSE_IDLE_TOTAL_DEADLINE"
             retries += 1
             # This GET merely resumes observation of the same already-started
@@ -192,6 +218,125 @@ print("CI_LIVE_FREE_SSE_OUTCOME=" + stream_outcome, flush=True)
 print("CI_LIVE_FREE_SSE_EVENTS_SEEN=" + str(len(events)), flush=True)
 print("CI_LIVE_FREE_FINAL_COUNT=" + str(len(finals)), flush=True)
 print("CI_LIVE_FREE_ERROR_FRAME_COUNT=" + str(len(errors)), flush=True)
+# Terminal classification only; never display model output or identities.
+for item in finals[:1]:
+    msg=item.get("responseMessage")
+    msg=msg if isinstance(msg,dict) else {}
+    print("CI_LIVE_FREE_FINAL_UNFINISHED="+str(msg.get("unfinished","ABSENT")),flush=True)
+    reason=msg.get("finish_reason",msg.get("finishReason"))
+    safe_reasons={"stop","length","tool_calls","content_filter","tool_call_limit","max_tokens","incomplete","error"}
+    print("CI_LIVE_FREE_FINAL_FINISH_REASON="+(reason if isinstance(reason,str) and reason in safe_reasons else "OTHER_OR_ABSENT"),flush=True)
+    parts=msg.get("content")
+    parts=parts if isinstance(parts,list) else []
+    types=sorted({p.get("type") for p in parts if isinstance(p,dict) and isinstance(p.get("type"),str)})
+    print("CI_LIVE_FREE_FINAL_CONTENT_TYPES="+",".join(x for x in types if x in {"text","error","tool_call","think","reasoning","activity_label"}),flush=True)
+    if "error" in types:
+        # Classify internal response error only; never emit raw provider/error
+        # messages, secrets, user content or arbitrary upstream error codes.
+        error_fragments=[]
+        for part in parts:
+            if isinstance(part,dict) and part.get("type")=="error":
+                for key in ("error","message","text"):
+                    val=part.get(key)
+                    if val is not None:
+                        error_fragments.append(str(val)[:2000])
+        raw_error=" ".join(error_fragments).lower()
+        family=("MISSION_ORACLE" if ("mission oracle" in raw_error or "mission_oracle" in raw_error)
+            else "RATE_LIMIT" if ("rate limit" in raw_error or "rate_limit" in raw_error or "429" in raw_error)
+            else "PROVIDER_UNAVAILABLE" if any(t in raw_error for t in ("upstream", "503", "502", "504", "timeout", "temporarily unavailable"))
+            else "STEP_LIMIT" if ("step limit" in raw_error or "recursion_limit" in raw_error or "recursion limit" in raw_error)
+            else "OTHER")
+        print("CI_LIVE_FREE_FINAL_ERROR_CLASS="+family,flush=True)
+        from hashlib import sha256
+        print("CI_LIVE_FREE_FINAL_ERROR_TEXT_LENGTH="+str(len(raw_error)),flush=True)
+        print("CI_LIVE_FREE_FINAL_ERROR_FINGERPRINT="+sha256(raw_error.encode()).hexdigest()[:16],flush=True)
+        # Public CI emits only bounded known diagnostic flags, not exception
+        # messages, provider model output, identities or secrets.
+        safe_patterns={
+            "NO_ADMISSIBLE":("no admissible authorized resource candidates",),
+            "MODEL_ROUTING":("model routing","routing","authorized binding"),
+            "FALLBACK":("fallback","failover","retryon"),
+            "MODEL_INIT":("model initialization","initializeagent","model not found","no models"),
+            "INVALID_CONFIG":("invalid configuration","invalid options","unsupported option"),
+            "MODEL_ERROR":("model","provider","openrouter"),
+            "REQUEST_ERROR":("request","badrequesterror","validationerror","400"),
+            "SDK_ERROR":("typeerror","error:","exception","traceback"),
+        }
+        for diagnostic,phrases in safe_patterns.items():
+            print("CI_LIVE_FREE_FINAL_ERROR_HAS_"+diagnostic+"="+str(any(p in raw_error for p in phrases)).upper(),flush=True)
+        allowed_keys={"type","error","message","text","code","details","data"}
+        import re
+        allowed_words={"an","a","the","error","occurred","while","processing","request","response",
+            "model","models","provider","openrouter","invalid","not","allowed","supported",
+            "available","unavailable","configuration","routing","missing","unsupported","key",
+            "api","failed","failure","no","with","cannot","could","can","use","using",
+            "is","was","for","of","in","to","on","selected","free","quota","limit",
+            "rate","fallback","tool","tools","call","calls","access","denied","permission",
+            "native","requesterror","badrequesterror","client","status","code","unexpected",
+            "format","unsupported","parameter","parameters","json","endpoint"}
+        redacted_words=[(w if w in allowed_words else "_")
+                        for w in re.findall(r"[a-z]{2,}",raw_error)[:35]]
+        print("CI_LIVE_FREE_FINAL_ERROR_APPROVED_WORDS="+" ".join(redacted_words),flush=True)
+        print("CI_LIVE_FREE_FINAL_ERROR_PART_KEYS="+",".join(sorted({
+            k for part in parts if isinstance(part,dict) and part.get("type")=="error"
+            for k in part if k in allowed_keys
+        })),flush=True)
+        # Diagnostic on the ORIGINAL durable job's sanitized error metadata,
+        # never on arbitrary response/model text.
+        from hashlib import sha256
+        error_key=helpers["REDIS_PHYSICAL_PREFIX"]+"stream:{"+stream_id+"}:job"
+        error_probe=subprocess.run(helpers["COMPOSE"]+["exec","-T","redis","redis-cli","--raw","HGET",error_key,"error"],capture_output=True,text=True,timeout=20)
+        if error_probe.returncode==0:
+            error_text=error_probe.stdout.strip().lower()
+            print("CI_LIVE_FREE_TERMINAL_JOB_ERROR_LENGTH="+str(len(error_text)),flush=True)
+            print("CI_LIVE_FREE_TERMINAL_JOB_ERROR_FINGERPRINT="+sha256(error_text.encode()).hexdigest()[:16],flush=True)
+            families={
+                "HOST_ROUTER_NO_CANDIDATES":("no admissible authorized resource candidates",),
+                "HOST_MODEL_ALTERNATIVE_REJECTED":("host model routing alternative failed native validation",),
+                "MODEL_NOT_FOUND":("model not found","no endpoints found","unknown model"),
+                "PROVIDER_RATE_LIMIT":("rate limit","rate_limit","429","quota"),
+                "MISSION_ORACLE":("mission oracle","mission_oracle"),
+                "CHECKPOINT_OR_REDIS":("redis","persist","checkpoint"),
+                "AGENT_MODEL_VALIDATION":("model validation","model is not authorized","model not allowed"),
+                "SDK_FALLBACK":("fallback","failover","retryon"),
+                "GRAPH":("graph","recursion","node"),
+            }
+            for label,patterns in families.items():
+                print("CI_LIVE_FREE_TERMINAL_JOB_ERROR_"+label+"="+str(any(p in error_text for p in patterns)).upper(),flush=True)
+        else:
+            print("CI_LIVE_FREE_TERMINAL_JOB_ERROR_READ_UNAVAILABLE=TRUE",flush=True)
+        try:
+            status_now, raw_plan_now, raw_oracle_now=redis_job(stream_id)
+            if raw_plan_now and raw_oracle_now:
+                parsed_plan_now=json.loads(raw_plan_now)
+                parsed_oracle_now=json.loads(raw_oracle_now)
+                print("CI_LIVE_FREE_TERMINAL_ERROR_PLAN_TASKS="+str(len(parsed_plan_now.get("tasks",[]))),flush=True)
+                print("CI_LIVE_FREE_TERMINAL_ERROR_VERDICT_TASKS="+str(len(parsed_oracle_now.get("results",{}))),flush=True)
+        except (OSError, ValueError, TypeError, AttributeError, subprocess.SubprocessError):
+            print("CI_LIVE_FREE_TERMINAL_ERROR_REDIS_DIAG_UNAVAILABLE=TRUE",flush=True)
+        raise SystemExit("CI_LIVE_FREE_FAIL=TERMINAL_CONTAINS_ERROR_PART")
+
+# Correlate only event metadata with the two deterministic native node ids.
+# Avoid logging event bodies, prompts, model output or identifiers.
+import hashlib
+from collections import Counter
+def node_id(key):
+    compact=json.dumps([mission_id,key],separators=(',',':'),ensure_ascii=False)
+    return 'p6_'+hashlib.sha256(compact.encode()).hexdigest()
+seen=Counter()
+for event in events:
+    if not isinstance(event,dict):
+        continue
+    kind=event.get('event') or event.get('type') or 'other'
+    if kind in ('on_run_step','on_run_step_completed','on_run_step_closed','on_run_step_delta'):
+        seen[str(kind)]+=1
+    metadata=event.get('data') if isinstance(event.get('data'),dict) else {}
+    as_text=json.dumps(metadata,default=str,ensure_ascii=False)
+    for label in task_keys:
+        if node_id(label) in as_text:
+            seen[label+'_node_event']+=1
+for label in [key+'_node_event' for key in task_keys] + ['on_run_step','on_run_step_completed','on_run_step_closed','on_run_step_delta']:
+    print('CI_LIVE_FREE_EVENT_'+label.upper()+'='+str(seen[label]),flush=True)
 if stream_status != 200 or len(finals) != 1 or errors:
     try:
         job_status, raw_plan, raw_state = redis_job(stream_id)
@@ -199,6 +344,105 @@ if stream_status != 200 or len(finals) != 1 or errors:
             job_status = "OTHER_OR_MISSING"
         print("CI_LIVE_FREE_REDIS_JOB_STATUS=" + job_status, flush=True)
         print("CI_LIVE_FREE_REDIS_ORACLE_STATE_PRESENT=" + str(bool(raw_state)).upper(), flush=True)
+        # Existing allowlisted Redis error classifier prints no raw provider text.
+        helpers["classify_durable_failure"](stream_id)
+        # The archival classifier is deliberately narrow; classify the current
+        # provider/model init failure locally without exposing exception text.
+        from hashlib import sha256
+        redis_key=helpers["REDIS_PHYSICAL_PREFIX"]+"stream:{"+stream_id+"}:job"
+        err_read=subprocess.run(helpers["COMPOSE"]+["exec","-T","redis","redis-cli","--raw",
+                         "HGET",redis_key,"error"],capture_output=True,text=True,timeout=20)
+        if err_read.returncode==0:
+            detail=err_read.stdout.strip().lower()
+            kinds={
+                "OPENROUTER_AUTH":("unauthorized","invalid api key","authentication","401"),
+                "PROVIDER_RATE_LIMIT":("rate limit","rate_limit","429","quota","daily limit"),
+                "MODEL_UNAVAILABLE":("model not found","no endpoints found","unsupported model","model unavailable","unknown model","404"),
+                "JSON_MODE_UNSUPPORTED":("response_format","json_schema","json mode","structured output"),
+                "PROVIDER_TRANSPORT":("timeout","econnreset","fetch failed","network error","upstream","503","502"),
+                "AGENT_BINDING":("missing or mismatched authorized binding","invalid agent","agent not found","unsupported provider"),
+                "RUNTIME_CONFIGURATION":("undefined","cannot read properties","typeerror","invalid configuration","missing config"),
+                "RECURSION_BUDGET":("recursion_limit","recursion limit","step limit","max iterations"),
+                "MISSION_ORACLE":("mission oracle","oracle_not","native mission"),
+            }
+            matches=[k for k,patterns in kinds.items() if any(t in detail for t in patterns)]
+            print("CI_LIVE_FREE_INIT_ERROR_CLASSES="+(",".join(matches) if matches else "UNCLASSIFIED"),flush=True)
+            print("CI_LIVE_FREE_INIT_ERROR_TEXT_LENGTH="+str(len(detail)),flush=True)
+            print("CI_LIVE_FREE_INIT_ERROR_FINGERPRINT="+sha256(detail.encode()).hexdigest()[:16],flush=True)
+            # Whitelisted terms only; opaque provider text remains private.
+            diagnostic_words={
+                "NAMED_FREE_MODEL":("gemma-4","gemma","31b-it",":free"),
+                "MODEL_RESOLUTION":("model","tokeniz","tiktoken","encoding","context length"),
+                "GRAPH_SETUP":("graph","agent","compile","node","duplicate","recursion"),
+                "PROVIDER_SETUP":("openrouter","provider","api key","credential","baseurl"),
+                "STREAM_SETUP":("stream","sse","listener","callback","session"),
+                "P6_INIT":("mission","oracle","checkpoint","attestation","recovery"),
+                "FUNCTIONAL_ERROR":("typeerror","rangeerror","syntaxerror","validationerror","error:"),
+                "PERMISSION":("access","permission","forbidden","denied","policy"),
+                "BUDGET":("budget","credit","limit","token","rate"),
+                "NETWORK":("http","connect","fetch","socket","timeout"),
+            }
+            for group,terms in diagnostic_words.items():
+                print("CI_LIVE_FREE_INIT_TERM_"+group+"="+str(any(w in detail for w in terms)).upper(),flush=True)
+            # Emit only dictionary-approved words in the exact order they occur.
+            # No free-form upstream/model text reaches public CI logs.
+            import re
+            safe_terms={"model","models","provider","providers","not","supported","support","unsupported",
+                "cannot","can","be","configured","configuration","custom","endpoint","endpoints","selected",
+                "requested","invalid","missing","unknown","available","unavailable","was","is","for","the",
+                "with","on","in","to","from","no","of","a","an","agent","routing","saved","binding",
+                "found","registered","register","use","using","specification","specifications","at",
+                "allowed","denied","key","option","options","must","match","does","this","that",
+                "name","names","client","setup","resolution","failed","failure","error","resolve",
+                "resolved","and","only","recognized","recognised","openrouter","openai","default",
+                "identity","type","id","value","providerid","modelid","modelname","providername",
+                "baseurl","required","local","notfound","found"}
+            words=[w.lower() for w in re.findall(r"[A-Za-z]{2,}",detail)]
+            public_words=[w if w in safe_terms else "[redacted]" for w in words]
+            print("CI_LIVE_FREE_INIT_ERROR_APPROVED_WORDS="+(" ".join(public_words[:28]))[:250],flush=True)
+            # Exact constant fingerprint observed on disposable CI runs.
+            # Render the error only when it contains no digits, URLs, possible
+            # token values, synthetic identities or unknown punctuation.
+            clean=err_read.stdout.strip()
+            safe_literal=(len(clean)==73 and sha256(clean.lower().encode()).hexdigest().startswith("566d360f31db184e")
+                and bool(re.fullmatch(r"""[A-Za-z\s:{}"',.()/=+_!~-]+""",clean))
+                and not any(token and token in clean for token in (
+                    os.environ.get("OPENROUTER_API_KEY",""),helpers.get("TOKEN",""),worker,child,mission_id,conversation_id
+                )))
+            print("CI_LIVE_FREE_INIT_ERROR_LITERAL_SAFE="+str(bool(safe_literal)).upper(),flush=True)
+            # This fingerprint has reproduced across isolated synthetic CI
+            # identities. Sanitize all non-word characters, digits and any
+            # credentials before printing the bounded constant message.
+            stable=(len(clean)==73 and sha256(clean.lower().encode()).hexdigest().startswith("566d360f31db184e"))
+            masked_secrets=[os.environ.get("OPENROUTER_API_KEY",""),helpers.get("TOKEN",""),worker,child,mission_id,conversation_id]
+            safely_static=stable and not any(tok and tok in clean for tok in masked_secrets)
+            if safely_static:
+                from urllib.parse import urlsplit
+                scrubbed=re.sub(r"https?://[^\s]+","[URL]",clean,flags=re.I)
+                scrubbed=re.sub(r"[0-9]","#",scrubbed)
+                scrubbed=re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+","[EMAIL]",scrubbed)
+                scrubbed=re.sub(r"[^A-Za-z #:/().={}'\"\[\],_!?-]","?",scrubbed)
+                print("CI_LIVE_FREE_INIT_SAFE_FIXED_MESSAGE="+scrubbed[:110],flush=True)
+            # Also inspect a small bounded tail of local API logs for specific
+            # error families, never show upstream text or arbitrary stack frames.
+            try:
+                logs=subprocess.run(helpers["COMPOSE"]+["logs","--no-color","--tail","100","api"],
+                                    capture_output=True,text=True,timeout=18)
+                if logs.returncode==0:
+                    corpus=logs.stdout.lower()
+                    families={
+                        "AGENT_CREATION":("create run failed","could not create","model initialization"),
+                        "MODEL_VALIDATION":("invalid model","model not found","unknown model","model configuration"),
+                        "AUTHORIZATION":("authorization denied","permission denied","forbidden"),
+                        "PROVIDER_HTTP":("openrouter","response_format","429","401","provider error"),
+                        "SDK_GRAPH":("multiagentgraph","invalid graph","langgraph","unsupported graph"),
+                        "RUNTIME_EXCEPTION":("typeerror","referenceerror","syntaxerror","cannot read properties"),
+                        "PERSISTENCE":("redis","mongodb","checkpoint","generation job"),
+                    }
+                    for group,terms in families.items():
+                        print("CI_LIVE_FREE_INIT_API_LOG_"+group+"="+str(any(w in corpus for w in terms)).upper(),flush=True)
+            except (OSError, subprocess.SubprocessError):
+                print("CI_LIVE_FREE_INIT_API_LOG_DIAGNOSTIC=UNAVAILABLE",flush=True)
     except (subprocess.SubprocessError, OSError):
         print("CI_LIVE_FREE_REDIS_DIAG_UNAVAILABLE=TRUE", flush=True)
     try:
@@ -230,6 +474,16 @@ if durable is None:
         print("CI_LIVE_FREE_REDIS_JOB_STATUS=" + (job_status if job_status in allowed else "OTHER_OR_MISSING"), flush=True)
         print("CI_LIVE_FREE_REDIS_PLAN_PRESENT=" + str(bool(raw_plan)).upper(), flush=True)
         print("CI_LIVE_FREE_REDIS_ORACLE_STATE_PRESENT=" + str(bool(raw_state)).upper(), flush=True)
+        if raw_plan:
+            parsed_plan=json.loads(raw_plan)
+            stages=parsed_plan.get('tasks',[]) if isinstance(parsed_plan,dict) else []
+            if not isinstance(stages,list):
+                stages=[]
+            print("CI_LIVE_FREE_PLAN_TASK_COUNT="+str(len(stages)),flush=True)
+            print("CI_LIVE_FREE_PLAN_STRATEGY="+str(parsed_plan.get('strategy','OTHER'))[:32],flush=True)
+            print("CI_LIVE_FREE_PLAN_WORKER_PRESENT="+str(any(isinstance(t,dict) and t.get('key')=='worker' and t.get('agentId')==worker for t in stages)).upper(),flush=True)
+            print("CI_LIVE_FREE_PLAN_SPECIALIST_COUNT="+str(sum(isinstance(t,dict) and t.get('key') in task_keys[1:] and t.get('agentId')==child for t in stages)),flush=True)
+            print("CI_LIVE_FREE_PLAN_CHAIN_VALID="+str(all(any(isinstance(t,dict) and t.get('key')==key and t.get('dependsOn')==([task_keys[i-1]] if i else []) for t in stages) for i,key in enumerate(task_keys))).upper(),flush=True)
         if raw_state:
             parsed = json.loads(raw_state)
             results = parsed.get("results", {}) if isinstance(parsed, dict) else {}
@@ -237,7 +491,7 @@ if durable is None:
                 results = {}
             print("CI_LIVE_FREE_RESULT_TASK_COUNT=" + str(min(len(results), 9999)), flush=True)
             print("CI_LIVE_FREE_WORKER_VERDICT_PRESENT=" + str(bool(results.get(task_ids["worker"], {}).get("verdicts")) if isinstance(results.get(task_ids["worker"]), dict) else False).upper(), flush=True)
-            print("CI_LIVE_FREE_SPECIALIST_VERDICT_PRESENT=" + str(bool(results.get(task_ids["specialist"], {}).get("verdicts")) if isinstance(results.get(task_ids["specialist"]), dict) else False).upper(), flush=True)
+            print("CI_LIVE_FREE_SPECIALIST_VERDICT_COUNT=" + str(sum(bool(results.get(task_ids[k], {}).get("verdicts")) for k in task_keys[1:])), flush=True)
     except (OSError, ValueError, TypeError, AttributeError, subprocess.SubprocessError):
         print("CI_LIVE_FREE_REDIS_DIAG_UNAVAILABLE=TRUE", flush=True)
     try:
@@ -247,8 +501,8 @@ if durable is None:
     raise SystemExit("CI_LIVE_FREE_FAIL=ORACLE_NOT_DURABLE")
 plan, results = durable
 expected_tasks = {
-    "worker": {"taskId": task_ids["worker"], "agentId": worker},
-    "specialist": {"taskId": task_ids["specialist"], "agentId": child},
+    key: {"taskId": task_ids[key], "agentId": worker if key == "worker" else child}
+    for key in task_keys
 }
 actual_tasks = {item.get("key"): item for item in plan.get("tasks", []) if isinstance(item, dict)}
 if (plan.get("mission", {}).get("missionId") != mission_id or
@@ -257,7 +511,8 @@ if (plan.get("mission", {}).get("missionId") != mission_id or
         any(actual_tasks[key].get("taskId") != expected["taskId"] or
             actual_tasks[key].get("agentId") != expected["agentId"]
             for key, expected in expected_tasks.items()) or
-        actual_tasks["specialist"].get("dependsOn") != ["worker"]):
+        any(actual_tasks[key].get("dependsOn") != ([task_keys[i-1]] if i else [])
+            for i, key in enumerate(task_keys))):
     raise SystemExit("CI_LIVE_FREE_FAIL=STRUCTURED_SPECIALIST_PLAN_MISSING")
 print("CI_LIVE_FREE_STRUCTURED_SPECIALIST_PLAN=PASS", flush=True)
 for key, task in expected_tasks.items():
@@ -270,6 +525,8 @@ if not any(response_text(e.get("responseMessage")).strip()
            for e in finals if isinstance(e.get("responseMessage"), dict)):
     raise SystemExit("CI_LIVE_FREE_FAIL=NO_PUBLISHED_RESPONSE")
 print("CI_LIVE_FREE_ORACLE_VERIFIED_AND_PUBLISHED=PASS", flush=True)
+if FIVE_TASKS:
+    print("CI_LIVE_FREE_FIVE_TASKS_ORACLE_VERIFIED=PASS", flush=True)
 
 # Distinguish a real completed child from a running/error child. The
 # synthetic verifier accepts any terminal status; the LIVE gate requires

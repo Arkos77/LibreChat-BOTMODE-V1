@@ -66,6 +66,7 @@ function createNativeMissionRecoveredOraclePersister({
     const nextState = normalizeOracleState({
       evidence: current.evidence,
       results: { ...current.results, [result.taskId]: existing ?? result },
+      ...(current.sources == null ? {} : { sources: current.sources }),
     });
     await assertAuthorized();
     const updated = await store.updateRecoveredMissionEvidence(

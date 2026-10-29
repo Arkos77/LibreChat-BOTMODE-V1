@@ -148,3 +148,49 @@ describe('P10 transient evidence buffer', () => {
     expect(() => createTransientEvidenceBuffer(1.5)).toThrow('capacity');
   });
 });
+
+it('preserves bounded native source URLs without sharing mutable arrays', () => {
+  const buffer = createTransientEvidenceBuffer();
+  const urls = ['https://example.org/report'];
+  buffer.append({
+    toolCallId: 'search',
+    toolName: 'web_search',
+    producerAgentId: 'research',
+    taskId: 'task',
+    sourceUrls: urls,
+  });
+  urls.push('https://fake.example');
+  expect(buffer.snapshot()[0].sourceUrls).toEqual(['https://example.org/report']);
+  buffer.snapshot()[0].sourceUrls?.push('https://fake.example');
+  expect(buffer.snapshot()[0].sourceUrls).toEqual(['https://example.org/report']);
+});
+
+it('keeps criterion evidence and source URLs separately for the same executed call', () => {
+  const buffer = createTransientEvidenceBuffer();
+  const call = {
+    toolCallId: 'call',
+    toolName: 'web_search',
+    producerAgentId: 'agent',
+    taskId: 'task',
+  };
+  buffer.append({ ...call, criterionId: 'checked', value: true });
+  buffer.append({ ...call, sourceUrls: ['https://example.org/report'] });
+  expect(buffer.snapshot()).toHaveLength(2);
+  expect(buffer.snapshot()[1].sourceUrls).toEqual(['https://example.org/report']);
+});
+it('rejects a conflicting repeated source call before persistence', () => {
+  const buffer = createTransientEvidenceBuffer();
+  const call = {
+    toolCallId: 'call',
+    toolName: 'web_search',
+    producerAgentId: 'agent',
+    taskId: 'task',
+    sourceUrls: ['https://example.org/report'],
+  };
+  buffer.append(call);
+  buffer.append(call);
+  expect(buffer.size).toBe(1);
+  expect(() => buffer.append({ ...call, sourceUrls: ['https://fake.example'] })).toThrow(
+    /replay conflict/,
+  );
+});

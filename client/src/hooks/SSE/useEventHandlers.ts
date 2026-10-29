@@ -47,6 +47,7 @@ import {
 import useFocusRegeneratedResponse from '~/hooks/Chat/useFocusRegeneratedResponse';
 import { shouldResetSubagentAtomsOnConversationChange } from './cleanup';
 import useAttachmentHandler from '~/hooks/SSE/useAttachmentHandler';
+import { getBotModeSearchParams } from '~/hooks/Chat/mission';
 import useContentHandler from '~/hooks/SSE/useContentHandler';
 import useStepHandler from '~/hooks/SSE/useStepHandler';
 import { useApplyAgentTemplate } from '~/hooks/Agents';
@@ -743,6 +744,8 @@ export default function useEventHandlers({
         isTemporary: _isTemporary = false,
       } = submission;
       const serverConversation = conversation as TConversation;
+      const missionParams = getBotModeSearchParams(new URLSearchParams(location.search));
+      const missionSearch = missionParams.size ? `?${missionParams.toString()}` : '';
       setSubmissionStart(null);
 
       try {
@@ -786,7 +789,7 @@ export default function useEventHandlers({
           });
           restorePendingQuotes(String(Constants.NEW_CONVO), requestMessage?.quotes);
           if (location.pathname !== `/c/${Constants.NEW_CONVO}`) {
-            navigate(`/c/${Constants.NEW_CONVO}`, { replace: true });
+            navigate(`/c/${Constants.NEW_CONVO}${missionSearch}`, { replace: true });
           }
           return;
         }
@@ -855,7 +858,7 @@ export default function useEventHandlers({
           restorePendingQuotes(currentConvoId, requestMessage?.quotes);
           if (isNewChat) {
             requestChatFocus();
-            navigate(`/c/${Constants.NEW_CONVO}`, { replace: true });
+            navigate(`/c/${Constants.NEW_CONVO}${missionSearch}`, { replace: true });
           }
           return;
         }
@@ -972,7 +975,7 @@ export default function useEventHandlers({
 
           if (location.pathname === `/c/${Constants.NEW_CONVO}`) {
             preserveSubagentAtomsForNewConvoIdRef.current = conversation.conversationId;
-            navigate(`/c/${conversation.conversationId}`, { replace: true });
+            navigate(`/c/${conversation.conversationId}${missionSearch}`, { replace: true });
           }
         }
       } finally {
@@ -993,6 +996,7 @@ export default function useEventHandlers({
       setIsSubmitting,
       setShowStopButton,
       location.pathname,
+      location.search,
       applyAgentTemplate,
       attachmentHandler,
       setSubmissionStart,

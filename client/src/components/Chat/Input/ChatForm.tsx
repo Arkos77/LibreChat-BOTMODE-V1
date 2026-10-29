@@ -32,6 +32,7 @@ import {
   useAssistantsMapContext,
 } from '~/Providers';
 import PendingManualSkillsChips from './PendingManualSkillsChips';
+import BotModeProjectSuggestion from './BotModeProjectSuggestion';
 import usePastedTextEdit from '~/hooks/Files/usePastedTextEdit';
 import useAskAnswerMode from '~/hooks/Input/useAskAnswerMode';
 import AskUserQuestionPopover from './AskUserQuestionPopover';
@@ -603,6 +604,13 @@ const ChatForm = memo(function ChatForm({
               )}
             >
               {project ? <ProjectLandingChip project={project} /> : null}
+              {index === 0 && !isTemporary && !isSubmitting && !composerReserved && (
+                <BotModeProjectSuggestion
+                  text={textValue ?? ''}
+                  conversation={conversation}
+                  disabled={disableInputs}
+                />
+              )}
               <TextareaHeader addedConvo={addedConvo} setAddedConvo={setAddedConvo} />
               <PendingManualSkillsChips conversationId={conversationId} />
               {quotesEnabled && <PendingQuoteChips conversationId={conversationId} />}

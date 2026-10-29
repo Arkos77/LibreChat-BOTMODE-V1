@@ -47,6 +47,7 @@ jest.mock('~/Providers', () => {
     AddedChatContext: Context,
     ChatFormProvider: Passthrough,
     useFileMapContext: () => new Map(),
+    useAgentsMapContext: () => undefined,
   };
 });
 

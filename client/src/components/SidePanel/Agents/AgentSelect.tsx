@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef } from 'react';
-import { EarthIcon } from 'lucide-react';
+import { EarthIcon, Network } from 'lucide-react';
 import { ControlCombobox } from '@librechat/client';
 import { useFormContext, Controller } from 'react-hook-form';
 import { AgentCapabilities, defaultAgentFormValues } from 'librechat-data-provider';
@@ -12,6 +12,14 @@ import { mergeDirtyToolsWithServerActions } from './agentTools';
 import { useListAgentsQuery } from '~/data-provider';
 
 const keys = new Set(Object.keys(defaultAgentFormValues));
+
+/**
+ * The BOT MODE Worker is the orchestrator, not a specialist. Keep it in the
+ * agent editor (so admins can still configure it), but provide a separate
+ * selector and exclude it from the specialist combobox.
+ */
+export const isBotModeOrchestrator = (agent: { name?: string | null }): boolean =>
+  agent.name?.trim() === 'BOT MODE Worker';
 
 function AgentSelect({
   agentQuery,
@@ -252,42 +260,82 @@ function AgentSelect({
   }, [selectedAgentId, agents, onSelect]);
 
   const createAgent = localize('com_ui_create_new_agent');
+  const orchestrator = agents?.find(isBotModeOrchestrator);
+  const specialists = orchestrator
+    ? agents?.filter((agent) => !isBotModeOrchestrator(agent))
+    : agents;
+  const isOrchestratorSelected = orchestrator != null && selectedAgentId === orchestrator.id;
 
   return (
-    <Controller
-      name="agent"
-      control={control}
-      render={({ field }) => (
-        <ControlCombobox
-          containerClassName="px-0"
-          selectedValue={(field?.value?.value ?? '') + ''}
-          displayValue={field?.value?.label ?? ''}
-          selectPlaceholder={field?.value?.value ?? createAgent}
-          iconSide="right"
-          searchPlaceholder={localize('com_agents_search_name')}
-          SelectIcon={field?.value?.icon}
-          setValue={onSelect}
-          items={
-            agents?.map((agent) => ({
-              label: agent.name ?? '',
-              value: agent.id ?? '',
-              icon: agent.icon,
-            })) ?? [
-              {
-                label: 'Loading...',
-                value: '',
-              },
-            ]
-          }
-          className={cn(
-            'z-50 flex h-9 w-full flex-none items-center justify-center truncate rounded-md bg-transparent font-bold',
-          )}
-          ariaLabel={localize('com_ui_agent')}
-          isCollapsed={false}
-          showCarat={true}
-        />
+    <div className="flex w-full flex-col gap-2">
+      {orchestrator != null && (
+        <div className="rounded-lg border border-border-light bg-surface-secondary px-3 py-2">
+          <div className="mb-1 text-xs font-semibold text-text-secondary">
+            {localize('com_agents_botmode_orchestrator')}
+          </div>
+          <button
+            type="button"
+            className={cn(
+              'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-semibold hover:bg-surface-tertiary',
+              isOrchestratorSelected ? 'text-text-primary' : 'text-text-secondary',
+            )}
+            onClick={() => orchestrator.id && onSelect(orchestrator.id)}
+            aria-pressed={isOrchestratorSelected}
+            aria-label={localize('com_agents_botmode_select_orchestrator')}
+          >
+            <Network className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+            <span className="min-w-0 truncate">{orchestrator.name}</span>
+          </button>
+        </div>
       )}
-    />
+      {orchestrator != null && (
+        <div className="px-1 text-xs font-semibold text-text-secondary">
+          {localize('com_agents_botmode_specialists')}
+        </div>
+      )}
+      <Controller
+        name="agent"
+        control={control}
+        render={({ field }) => (
+          <ControlCombobox
+            containerClassName="px-0"
+            selectedValue={isOrchestratorSelected ? '' : (field?.value?.value ?? '') + ''}
+            displayValue={isOrchestratorSelected ? '' : (field?.value?.label ?? '')}
+            selectPlaceholder={
+              isOrchestratorSelected
+                ? localize('com_agents_botmode_select_specialist')
+                : (field?.value?.value ?? createAgent)
+            }
+            iconSide="right"
+            searchPlaceholder={localize('com_agents_search_name')}
+            SelectIcon={isOrchestratorSelected ? undefined : field?.value?.icon}
+            setValue={onSelect}
+            items={
+              specialists?.map((agent) => ({
+                label: agent.name ?? '',
+                value: agent.id ?? '',
+                icon: agent.icon,
+              })) ?? [
+                {
+                  label: 'Loading...',
+                  value: '',
+                },
+              ]
+            }
+            className={cn(
+              'z-50 flex h-9 w-full flex-none items-center justify-center truncate rounded-md bg-transparent font-bold',
+            )}
+            ariaLabel={
+              orchestrator != null
+                ? localize('com_agents_botmode_specialists')
+                : localize('com_ui_agent')
+            }
+            isCollapsed={false}
+            showCarat={true}
+          />
+        )}
+      />
+    </div>
   );
 }
 

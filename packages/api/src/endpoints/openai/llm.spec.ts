@@ -11,6 +11,41 @@ import type * as t from '~/types';
 import { getOpenAILLMConfig, extractDefaultParams, applyDefaultParams } from './llm';
 
 describe('getOpenAILLMConfig', () => {
+  describe('endpoint response format', () => {
+    it('carries JSON mode in SDK request kwargs for chat completions', () => {
+      const { llmConfig } = getOpenAILLMConfig({
+        apiKey: 'fixture',
+        streaming: false,
+        modelOptions: { model: 'fixture:free' },
+        addParams: { response_format: { type: 'json_object' } },
+      });
+      expect(llmConfig.modelKwargs?.response_format).toEqual({ type: 'json_object' });
+    });
+
+    it('keeps the Responses API behavior separate from chat completion kwargs', () => {
+      const { llmConfig } = getOpenAILLMConfig({
+        apiKey: 'fixture',
+        streaming: false,
+        modelOptions: { model: 'fixture:free' },
+        addParams: { response_format: { type: 'json_object' }, useResponsesApi: true },
+      });
+      expect(llmConfig.useResponsesApi).toBe(true);
+      expect(llmConfig.modelKwargs?.response_format).toBeUndefined();
+    });
+
+    it('honors dropping an endpoint response format', () => {
+      const { llmConfig } = getOpenAILLMConfig({
+        apiKey: 'fixture',
+        streaming: false,
+        modelOptions: { model: 'fixture:free' },
+        addParams: { response_format: { type: 'json_object' } },
+        dropParams: ['response_format'],
+      });
+      expect(llmConfig.response_format).toBeUndefined();
+      expect(llmConfig.modelKwargs?.response_format).toBeUndefined();
+    });
+  });
+
   describe('Basic Configuration', () => {
     it('should create a basic configuration with required fields', () => {
       const result = getOpenAILLMConfig({

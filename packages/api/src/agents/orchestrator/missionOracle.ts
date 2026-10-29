@@ -1,8 +1,9 @@
 import type { BaseMessage } from '@librechat/agents/langchain/messages';
+import type { OracleEvidence, OracleVerdict, OracleSourceObservation } from '../oracle';
 import type { TransientToolEvidenceObservation } from './transientEvidenceBuffer';
-import type { OracleEvidence, OracleVerdict } from '../oracle';
 import type { MissionPlan, OracleRequirement } from './types';
 import { createNativeToolEvidence } from './toolEvidence';
+import { normalizeSourceUrls } from '../oracle/sources';
 import { deterministicOracle } from '../oracle';
 
 export interface MissionOracleTaskInput {
@@ -12,6 +13,7 @@ export interface MissionOracleTaskInput {
   candidate?: string;
   requirements: readonly OracleRequirement[];
   evidence?: readonly OracleEvidence[];
+  observedSources?: readonly OracleSourceObservation[];
 }
 
 export interface MissionOracleTaskResult {
@@ -49,6 +51,7 @@ export function areMissionOracleResultsEquivalent(
 export interface MissionOracleState {
   evidence: Record<string, OracleEvidence[]>;
   results: Record<string, MissionOracleTaskResult>;
+  sources?: Record<string, OracleSourceObservation[]>;
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -179,6 +182,32 @@ export function promoteTransientMissionOracleEvidence(
     throw new Error('Mission Oracle evidence requires native_tool_end observation');
   }
   const taskId = requiredText(observation.taskId ?? '', 'taskId');
+  if (observation.sourceUrls != null) {
+    const task = plan.tasks.find((entry) => entry.taskId === taskId);
+    if (
+      observation.toolName !== 'web_search' ||
+      task?.agentId !== observation.producerAgentId ||
+      !task.validation.some((requirement) =>
+        ['research-v1', 'research-v2'].includes(requirement.outputContract ?? ''),
+      )
+    ) {
+      throw new Error('Native source observation is not bound to an admitted research task');
+    }
+    const urls = normalizeSourceUrls(observation.sourceUrls);
+    if (urls.length === 0) throw new Error('Native source observation has no URLs');
+    const next = state == null ? emptyMissionOracleState() : normalizeMissionOracleState(state);
+    const bucket = next.sources?.[taskId] ?? [];
+    const source = { toolCallId: requiredText(observation.toolCallId, 'toolCallId'), urls };
+    const existing = bucket.find((entry) => entry.toolCallId === source.toolCallId);
+    if (existing != null) {
+      if (JSON.stringify(existing) !== JSON.stringify(source))
+        throw new Error('Native source observation replay conflict');
+      return next;
+    }
+    if (bucket.length >= 32) throw new Error('Native source observation limit exceeded');
+    next.sources = { ...next.sources, [taskId]: [...bucket, source] };
+    return next;
+  }
   const criterionId = requiredText(observation.criterionId ?? '', 'criterionId');
   if (
     !Object.prototype.hasOwnProperty.call(observation, 'value') ||
@@ -227,6 +256,36 @@ export function normalizeMissionOracleState(value: unknown): MissionOracleState 
     requireDurableState(Array.isArray(evidenceList), `evidence.${taskId} must be an array`);
     for (const [index, evidence] of evidenceList.entries()) {
       validateEvidence(evidence, `evidence.${taskId}[${index}]`);
+    }
+  }
+
+  if (value.sources != null) {
+    requireDurableState(isPlainRecord(value.sources), 'sources must be task scoped');
+    for (const [taskId, sources] of Object.entries(value.sources)) {
+      requireDurableState(
+        taskId.trim() !== '' && Array.isArray(sources) && sources.length <= 32,
+        'source observations',
+      );
+      const calls = new Set<string>();
+      for (const source of sources) {
+        requireDurableState(
+          isPlainRecord(source) &&
+            typeof source.toolCallId === 'string' &&
+            source.toolCallId.trim() !== '',
+          'source tool identity',
+        );
+        requireDurableState(!calls.has(source.toolCallId), 'duplicate source tool call');
+        calls.add(source.toolCallId);
+        requireDurableState(
+          Array.isArray(source.urls) && source.urls.every((url) => typeof url === 'string'),
+          'source URLs',
+        );
+        const urls = normalizeSourceUrls(source.urls);
+        requireDurableState(
+          urls.length > 0 && JSON.stringify(urls) === JSON.stringify(source.urls),
+          'canonical source URLs',
+        );
+      }
     }
   }
 
@@ -283,6 +342,10 @@ export async function validateMissionTask(
       candidate: input.candidate,
       criteria,
       evidence,
+      ...(input.observedSources == null
+        ? {}
+        : { observedSources: structuredClone([...input.observedSources]) }),
+      ...(requirement.outputContract == null ? {} : { outputContract: requirement.outputContract }),
       ...(requirement.review == null ? {} : { review: structuredClone(requirement.review) }),
     });
     verdicts.push(verdict);
@@ -298,6 +361,31 @@ export function assertMissionTaskVerified(result: MissionOracleTaskResult): void
       `Native mission Oracle blocked task ${result.taskId} (${result.nodeId}): ${blocked.status}`,
     );
   }
+}
+
+/** Recover the host's QA outcome when a graph wraps transition errors in an aggregate. */
+export function getMissionOracleFailure(
+  plan: MissionPlan,
+  state?: MissionOracleState,
+): (Error & { code: 'MISSION_ORACLE_FAILURE' }) | undefined {
+  for (const task of plan.tasks) {
+    const result = state?.results[task.taskId];
+    if (result?.taskId !== task.taskId || result.nodeId !== task.nodeId) {
+      continue;
+    }
+    const blocked = result.verdicts.find((verdict) => verdict.status !== 'VERIFIED');
+    if (blocked == null) {
+      continue;
+    }
+    const reasons = [...new Set(blocked.reasons.map((reason) => reason.code))].join(', ');
+    return Object.assign(
+      new Error(
+        `Native mission Oracle blocked task ${task.taskId} (${task.nodeId}): ${blocked.status}${reasons ? ` [${reasons}]` : ''}`,
+      ),
+      { code: 'MISSION_ORACLE_FAILURE' as const },
+    );
+  }
+  return undefined;
 }
 
 function messageCandidate(output: BaseMessage | undefined): string | undefined {
@@ -330,6 +418,7 @@ export async function assertTerminalMissionTasksVerified(
       candidate: messageCandidate(output),
       requirements: task.validation,
       evidence: state?.evidence[task.taskId] ?? [],
+      observedSources: state?.sources?.[task.taskId] ?? [],
     });
     await persistMissionOracleResult?.(result);
     assertMissionTaskVerified(result);

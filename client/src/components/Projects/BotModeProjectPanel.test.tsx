@@ -7,6 +7,7 @@ const mockUseParentSubagentsQuery = jest.fn();
 const mockUseBotModeProjectProjectionQuery = jest.fn();
 const mockControlMutate = jest.fn();
 const mockUseListAgentsQuery = jest.fn();
+const mockUseGetAgentByIdQuery = jest.fn();
 const mockNavigate = jest.fn();
 const mockGetModels = jest.fn();
 const mockInitialize = jest.fn();
@@ -32,6 +33,7 @@ jest.mock('react-router-dom', () => ({
 
 jest.mock('~/data-provider', () => ({
   useListAgentsQuery: () => mockUseListAgentsQuery(),
+  useGetAgentByIdQuery: () => mockUseGetAgentByIdQuery(),
   useParentSubagentsQuery: (...args: unknown[]) => mockUseParentSubagentsQuery(...args),
   useBotModeProjectProjectionQuery: (...args: unknown[]) =>
     mockUseBotModeProjectProjectionQuery(...args),
@@ -105,6 +107,9 @@ const indexes: Record<string, ParentSubagentIndex> = {
 describe('BotModeProjectPanel', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseGetAgentByIdQuery.mockReturnValue({
+      data: { subagents: { enabled: true, agent_ids: ['agent-research'] } },
+    });
     mockUseListAgentsQuery.mockReturnValue({
       data: { data: [{ id: 'agent-worker', name: 'BOT MODE Worker' }] },
     });
@@ -244,8 +249,82 @@ describe('BotModeProjectPanel', () => {
     render(<BotModeProjectPanel projectId="project-a" conversations={[]} />);
     fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }));
     expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('agent_id=agent-worker'));
+    const launched = mockNavigate.mock.calls.at(-1)?.[0] as string;
+    const params = new URL(launched, 'http://localhost').searchParams;
+    expect(params.get('botmode_agent_mode')).toBe('auto');
+    expect(JSON.parse(params.get('botmode_agent_bindings') ?? '[]')).toEqual([]);
   });
 
+  it('passes actual authorized Mongo agent IDs to automatic routing', () => {
+    mockUseListAgentsQuery.mockReturnValue({
+      data: {
+        data: [
+          { id: 'agent-worker', name: 'BOT MODE Worker' },
+          { id: 'mongo-recherche-123', name: 'RECHERCHE' },
+          { id: 'agent-unapproved', name: 'CODE' },
+        ],
+      },
+    });
+    mockUseGetAgentByIdQuery.mockReturnValue({
+      data: { subagents: { enabled: true, agent_ids: ['mongo-recherche-123'] } },
+    });
+    render(<BotModeProjectPanel projectId="project-a" conversations={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }));
+    const launched = mockNavigate.mock.calls.at(-1)?.[0] as string;
+    const params = new URL(launched, 'http://localhost').searchParams;
+    expect(params.get('botmode_agent_mode')).toBe('auto');
+    expect(JSON.parse(params.get('botmode_agent_bindings') ?? '[]')).toEqual([
+      { id: 'mongo-recherche-123', name: 'RECHERCHE' },
+    ]);
+  });
+
+  it('only offers specialists bound to the Worker', () => {
+    mockUseListAgentsQuery.mockReturnValue({
+      data: {
+        data: [
+          { id: 'agent-worker', name: 'BOT MODE Worker' },
+          { id: 'agent-research', name: 'RECHERCHE' },
+          { id: 'agent-other', name: 'AUTRE' },
+        ],
+      },
+    });
+    render(<BotModeProjectPanel projectId="project-a" conversations={[conversationA]} />);
+    fireEvent.click(screen.getByRole('button', { name: /com_ui_bot_mode_agents_manual/ }));
+    expect(screen.getByText('RECHERCHE')).toBeInTheDocument();
+    expect(screen.queryByText('AUTRE')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }));
+    expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('agent-research'));
+    expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('botmode_agent_bindings='));
+  });
+
+  it('blocks manual mode when the Worker has no authorized specialist', () => {
+    mockUseGetAgentByIdQuery.mockReturnValue({ data: { subagents: { agent_ids: [] } } });
+    mockUseListAgentsQuery.mockReturnValue({
+      data: {
+        data: [
+          { id: 'agent-worker', name: 'BOT MODE Worker' },
+          { id: 'agent-other', name: 'AUTRE' },
+        ],
+      },
+    });
+    render(<BotModeProjectPanel projectId="project-a" conversations={[conversationA]} />);
+    fireEvent.click(screen.getByRole('button', { name: /com_ui_bot_mode_agents_manual/ }));
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' })).toBeDisabled();
+  });
+
+  it('offers Worker initialization rather than launching an unrelated agent', () => {
+    mockUseListAgentsQuery.mockReturnValue({
+      data: { data: [{ id: 'agent-research', name: 'RECHERCHE' }] },
+    });
+    render(<BotModeProjectPanel projectId="project-a" conversations={[conversationA]} />);
+    expect(
+      screen.queryByRole('button', { name: 'com_ui_bot_mode_project_launch' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Initialiser BOT MODE' })).toBeEnabled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
   it('shows the durable SETTLED state when terminal evidence is present', () => {
     mockUseBotModeProjectProjectionQuery.mockReturnValue({
       data: {

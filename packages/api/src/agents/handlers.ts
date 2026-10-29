@@ -5589,6 +5589,7 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                     toolCallId: tc.id,
                     agentId,
                     runId: `${backgroundRunId ?? ''}:${tc.turn ?? ''}`,
+                    signal: runSignal,
                     subagentTasks,
                     claimBackgroundToolResult: backgroundToolCompletion?.claim,
                     recoverDeadBackgroundToolClaim: backgroundToolCompletion?.recoverDeadClaim,

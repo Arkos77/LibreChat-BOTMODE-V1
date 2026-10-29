@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import type { OracleInput, OracleProvider, OracleVerdict } from './types';
+import { supportsResearchResult } from './sources';
 
 const scalar = z.union([z.string(), z.number().finite(), z.boolean(), z.null()]);
-const candidateSchema = z.record(scalar);
+const candidateSchema = z.record(z.string(), scalar);
 
 /** Verifies scalar JSON conformance, not the truth of unconstrained real-world claims. */
 export const deterministicOracle: OracleProvider = {
@@ -32,6 +33,8 @@ function evaluate(input: OracleInput, verdict: OracleVerdict): void {
   const { criteria, evidence, agentId } = input;
   const ids = new Set(criteria.map((criterion) => criterion.id));
   if (
+    (input.outputContract != null &&
+      !['result-v1', 'research-v1', 'research-v2'].includes(input.outputContract)) ||
     !input.taskId ||
     !agentId ||
     ids.size !== criteria.length ||
@@ -89,7 +92,7 @@ function evaluate(input: OracleInput, verdict: OracleVerdict): void {
     verdict.uncertainty.push('CANDIDATE_MISSING');
     return;
   }
-  let parsed: z.SafeParseReturnType<unknown, Record<string, z.infer<typeof scalar>>>;
+  let parsed: ReturnType<typeof candidateSchema.safeParse>;
   try {
     parsed = candidateSchema.safeParse(JSON.parse(input.candidate));
   } catch {
@@ -101,6 +104,32 @@ function evaluate(input: OracleInput, verdict: OracleVerdict): void {
     verdict.status = 'REJECTED';
     verdict.reasons.push({ code: 'INVALID_CANDIDATE' });
     return;
+  }
+
+  if (input.outputContract != null) {
+    const passed = typeof parsed.data.result === 'string' && parsed.data.result.trim() !== '';
+    verdict.checks.push({ criterionId: 'output:result', expected: true, actual: passed, passed });
+    verdict.reasons.push({
+      code: passed ? 'CRITERION_MET' : 'CRITERION_FAILED',
+      criterionId: 'output:result',
+    });
+  }
+
+  if (input.outputContract === 'research-v1' || input.outputContract === 'research-v2') {
+    const passed =
+      typeof parsed.data.result === 'string' &&
+      typeof parsed.data.sources === 'string' &&
+      supportsResearchResult(
+        parsed.data.result,
+        parsed.data.sources,
+        input.observedSources ?? [],
+        input.outputContract,
+      );
+    verdict.checks.push({ criterionId: 'output:sources', expected: true, actual: passed, passed });
+    verdict.reasons.push({
+      code: passed ? 'CRITERION_MET' : 'CRITERION_FAILED',
+      criterionId: 'output:sources',
+    });
   }
 
   for (const criterion of criteria) {

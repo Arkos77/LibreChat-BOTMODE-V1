@@ -1,0 +1,210 @@
+name: BOTMODE Zod4 Real Free Subagent Tool Choice Probe
+on:
+  workflow_dispatch:
+    inputs:
+      probe_free_alternatives:
+        description: 'Try up to three named zero-price models, max six calls, tool plus strict JSON'
+        type: boolean
+        required: false
+        default: false
+      probe_autonomous_choice:
+        description: 'Unforced model choice on simple vs delegated mission, max two free calls'
+        type: boolean
+        required: false
+        default: false
+      probe_autonomous_json:
+        description: 'One zero-price free model call with both tool_choice auto and json_object'
+        type: boolean
+        required: false
+        default: false
+      probe_multi_specialist:
+        description: 'Two automatic free tool calls for distinct research and analysis specialists'
+        type: boolean
+        required: false
+        default: false
+      probe_native_n_shape:
+        description: '2-call unforced zero-price subagent/tool-result/final-JSON shape probe (no Docker)'
+        type: boolean
+        required: false
+        default: false
+      native_n_shape_mode:
+        description: 'Probe either detached or synchronous subagent requests; max two free calls'
+        type: choice
+        options:
+          - background
+          - synchronous
+        default: background
+      alternative_mode:
+        description: 'all (three models) or nvidia_only (two requests max)'
+        type: choice
+        options:
+          - all
+          - nvidia_only
+        default: all
+  pull_request:
+    paths:
+      - '.github/workflows/botmode-zod4-real-free-subagent-tool-probe.yml'
+permissions:
+  contents: read
+jobs:
+  free-model-tool-call:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/experiment/botmode-zod4-security-20261027'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Probe unforced native N tool calls and final Oracle JSON (no Docker, max two free calls)
+        if: github.event_name == 'workflow_dispatch' && inputs.probe_native_n_shape == true && inputs.probe_multi_specialist != true && inputs.probe_autonomous_choice != true && inputs.probe_autonomous_json != true && inputs.probe_free_alternatives != true
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CI_FREE_N_SHAPE_OPT_IN: '1'
+          CI_FREE_N_SHAPE_BACKGROUND_MODE: ${{ inputs.native_n_shape_mode }}
+        run: |
+          set -euo pipefail
+          test "${#OPENROUTER_API_KEY}" -gt 16
+          echo "::add-mask::$OPENROUTER_API_KEY"
+          python3 -m py_compile scripts/botmode/ci-free-native-n-shape-probe.py
+          python3 scripts/botmode/ci-free-native-n-shape-probe.py
+      - name: Probe two distinct autonomous specialists (no Docker, max two free calls)
+        if: github.event_name == 'workflow_dispatch' && inputs.probe_multi_specialist == true && inputs.probe_autonomous_choice != true && inputs.probe_autonomous_json != true && inputs.probe_free_alternatives != true
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CI_FREE_MULTI_OPT_IN: '1'
+        run: |
+          set -euo pipefail
+          test "${#OPENROUTER_API_KEY}" -gt 16
+          echo "::add-mask::$OPENROUTER_API_KEY"
+          python3 -m py_compile scripts/botmode/ci-free-multi-specialist-routing-probe.py
+          python3 scripts/botmode/ci-free-multi-specialist-routing-probe.py
+      - name: Probe autonomous zero/one selection (no forced tool, no Docker)
+        if: github.event_name == 'workflow_dispatch' && (inputs.probe_autonomous_choice == true || inputs.probe_autonomous_json == true) && inputs.probe_free_alternatives != true && inputs.probe_multi_specialist != true
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CI_FREE_AUTONOMOUS_OPT_IN: '1'
+          CI_FREE_AUTO_JSON_ONLY: ${{ inputs.probe_autonomous_json && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          test "${#OPENROUTER_API_KEY}" -gt 16
+          echo "::add-mask::$OPENROUTER_API_KEY"
+          python3 -m py_compile scripts/botmode/ci-free-autonomous-selection-probe.py
+          python3 scripts/botmode/ci-free-autonomous-selection-probe.py
+      - name: Probe alternative zero-price tools and strict JSON (no Docker, max six calls)
+        if: github.event_name == 'workflow_dispatch' && inputs.probe_free_alternatives == true && inputs.probe_autonomous_choice != true && inputs.probe_multi_specialist != true
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CI_FREE_ALTERNATIVES_OPT_IN: '1'
+          CI_FREE_ALTERNATIVE_TEST_MODE: ${{ inputs.alternative_mode }}
+        run: |
+          set -euo pipefail
+          test "${#OPENROUTER_API_KEY}" -gt 16
+          echo "::add-mask::$OPENROUTER_API_KEY"
+          python3 -m py_compile scripts/botmode/ci-free-alternative-selection.py
+          python3 scripts/botmode/ci-free-alternative-selection.py
+      - name: Verify zero-price free provider emits a subagent tool call, no tool execution
+        if: github.event_name == 'workflow_dispatch' && inputs.probe_free_alternatives != true && inputs.probe_autonomous_choice != true && inputs.probe_autonomous_json != true && inputs.probe_multi_specialist != true && inputs.probe_native_n_shape != true
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          from decimal import Decimal
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError, URLError
+          key=os.environ.get('OPENROUTER_API_KEY','')
+          if len(key)<17: raise SystemExit('CI_REAL_TOOL=KEY_MISSING')
+          base='https://openrouter.ai/api/v1'
+          def get(path,authorized=False):
+              h={'Accept':'application/json'}
+              if authorized: h['Authorization']='Bearer '+key
+              with urlopen(Request(base+path,headers=h),timeout=20) as r:
+                  return json.load(r)
+          try:
+              quota=get('/key',True).get('data') or {}
+              remaining=(quota.get('free_model_daily_requests') or {}).get('remaining')
+              if quota.get('is_management_key') or type(remaining) is not int or remaining<5:
+                  raise SystemExit('CI_REAL_TOOL=NO_FREE_QUOTA')
+              model='liquid/lfm-2.5-2.6b:free'
+              models=[m for m in get('/models').get('data',[]) if m.get('id')==model]
+              if len(models)!=1: raise SystemExit('CI_REAL_TOOL=MODEL_MISSING')
+              prices=models[0].get('pricing') or {}
+              if any(Decimal(str(prices.get(k,'1')))!=0 for k in ('prompt','completion')):
+                  raise SystemExit('CI_REAL_TOOL=NONZERO_PRICE')
+              parameters=models[0].get('supported_parameters') or []
+              if not all(k in parameters for k in ('tools','tool_choice')):
+                  raise SystemExit('CI_REAL_TOOL=TOOL_SUPPORT_MISSING')
+              print('CI_REAL_TOOL_FREE_QUOTA_PRICE_AND_CAPABILITY=PASS',flush=True)
+              body={
+                'model':model,
+                'messages':[{'role':'user','content':'Use the subagent tool exactly once to delegate this task. Do not write a plain text response.'}],
+                'tools':[{'type':'function','function':{
+                    'name':'subagent','description':'Delegate a task to an authorized specialist',
+                    'parameters':{'type':'object','properties':{
+                      'description':{'type':'string'},
+                      'subagent_type':{'type':'string','enum':['ci-authorized-child']},
+                      'run_in_background':{'type':'boolean'}},
+                      'required':['description','subagent_type'],'additionalProperties':False}
+                }}],
+                'tool_choice':{'type':'function','function':{'name':'subagent'}},
+                'max_tokens':256,'temperature':0,'stream':False
+              }
+              req=Request(base+'/chat/completions',data=json.dumps(body).encode(),method='POST',
+                  headers={'Authorization':'Bearer '+key,'Content-Type':'application/json','Accept':'application/json'})
+              print('CI_REAL_TOOL_GENERATION_REQUESTS=1',flush=True)
+              with urlopen(req,timeout=90) as response: result=json.load(response)
+              options=result.get('choices') or []
+              if not options:raise SystemExit('CI_REAL_TOOL=NO_CHOICES')
+              message=options[0].get('message') or {}
+              calls=message.get('tool_calls') or []
+              if len(calls)!=1 or (calls[0].get('function') or {}).get('name')!='subagent':
+                  raise SystemExit('CI_REAL_TOOL=SUBAGENT_CALL_NOT_OBSERVED')
+              args=json.loads(calls[0]['function'].get('arguments',''))
+              if args.get('subagent_type')!='ci-authorized-child' or not isinstance(args.get('description'),str) or not args.get('description').strip():
+                  raise SystemExit('CI_REAL_TOOL=UNAUTHORIZED_OR_INVALID_TOOL_ARGS')
+              print('CI_REAL_PROVIDER_NATIVE_SUBAGENT_TOOL_CALL_SHAPE=PASS',flush=True)
+              after=get('/key',True).get('data') or {}
+              for field in ('usage','usage_daily'):
+                  if quota.get(field) is not None and after.get(field) is not None and Decimal(str(after[field]))>Decimal(str(quota[field])):
+                      raise SystemExit('CI_REAL_TOOL=POSITIVE_SPEND')
+              print('CI_REAL_TOOL_NO_POSITIVE_SPEND=PASS',flush=True)
+              print('CI_REAL_TOOL_NOT_EXECUTED_BY_THIS_PROBE=TRUE',flush=True)
+          except HTTPError as exc:
+              print('CI_REAL_TOOL_UPSTREAM_HTTP='+str(exc.code),flush=True)
+              if exc.code==429:
+                  # Never log raw error bodies, response headers, or provider text.
+                  # Distinguish account-minute/day throttling from upstream model
+                  # capacity. One request only; never retry or fall back to paid.
+                  try:
+                      issue=json.loads(exc.read(8192))
+                      err=issue.get('error') if isinstance(issue,dict) else None
+                      msg=(str(err.get('message','')) if isinstance(err,dict) else '').lower()
+                      meta=err.get('metadata') if isinstance(err,dict) else {}
+                      raw=str(meta.get('raw','')).lower()[:2048] if isinstance(meta,dict) else ''
+                      reason=' '.join((msg,raw))
+                  except (ValueError,TypeError):
+                      reason=''
+                  if any(t in reason for t in ('daily','per day','free model limit','free tier limit','50 requests')):
+                      category='DAILY_LIMIT'
+                  elif any(t in reason for t in ('per minute','rpm','too many requests per minute')):
+                      category='MINUTE_LIMIT'
+                  elif any(t in reason for t in ('upstream','provider','capacity','saturated','temporarily unavailable','rate-limited')):
+                      category='PROVIDER_CAPACITY_OR_RATE_LIMIT'
+                  elif 'rate limit' in reason or '429' in reason:
+                      category='RATE_LIMIT_UNSPECIFIED'
+                  else:
+                      category='UNCLASSIFIED_429'
+                  print('CI_REAL_TOOL_429_CLASS='+category,flush=True)
+                  print('CI_REAL_TOOL_RETRY_AFTER_HEADER_PRESENT='+str(bool(exc.headers.get('Retry-After'))).upper(),flush=True)
+                  print('CI_REAL_TOOL_PROVIDER_DIAGNOSTIC_ONLY=TRUE',flush=True)
+              raise SystemExit('CI_REAL_TOOL=PROVIDER_HTTP_FAILURE')
+          except (URLError,TimeoutError,ValueError,KeyError,ArithmeticError) as exc:
+              print('CI_REAL_TOOL_ERROR_CLASS='+type(exc).__name__,flush=True)
+              raise SystemExit('CI_REAL_TOOL=PROBE_ERROR')
+          PY

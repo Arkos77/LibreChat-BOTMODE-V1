@@ -1,7 +1,10 @@
 export * from './capabilityRegistry';
 export * from './types';
 export * from './planner';
+export * from './objectives';
+export * from './admission';
 export * from './native';
+export { researchObservationNodeId } from './research';
 export * from './routing';
 export * from './mto';
 export * from './improvement';
@@ -63,3 +66,10 @@ export * from './a2aReceiver';
 export * from './modelWatch';
 export * from './modelWatchRunner';
 export * from './modelWatchConfig';
+
+export * from './output';
+export * from './publication';
+
+export * from './sources';
+
+export * from './evidenceContext';

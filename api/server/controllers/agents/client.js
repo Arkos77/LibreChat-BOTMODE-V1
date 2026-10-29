@@ -154,8 +154,10 @@ const {
   createContextMetaPublisher,
   selectRunContextMetaToPublish,
   assertTerminalMissionTasksVerified,
+  renderMissionPublication,
   areMissionOracleResultsEquivalent,
   normalizeMissionOracleState,
+  getMissionOracleFailure,
   promoteTransientMissionOracleEvidence,
 } = require('@librechat/api');
 const {
@@ -1772,6 +1774,7 @@ class AgentClient extends BaseClient {
           spec: this.options.spec,
           iconURL: this.options.iconURL,
           chatProjectId: this.options.chatProjectId,
+          ...(this.botModeSettings != null && { botMode: this.botModeSettings }),
           endpoint: this.options.endpoint,
           agent_id: this.options.agent.id,
           modelLabel: this.options.modelLabel,
@@ -3319,6 +3322,7 @@ class AgentClient extends BaseClient {
     const hostModelUsage = projectHostModelUsage(
       this.options.agent?.hostModelDecision,
       usageEvents,
+      plan,
     );
     if (hostModelUsage) metadata.hostModelUsage = hostModelUsage;
     const usage = aggregateEmittedUsage(usageEvents);
@@ -3659,6 +3663,28 @@ class AgentClient extends BaseClient {
    * Tool/activity/steer parts remain available as bounded UI evidence.
    */
   applyBotModePublicationFilter() {
+    const structuredSources = this.orchestratorPlan?.tasks?.some((task) =>
+      task.validation?.some((v) => v.outputContract === 'research-v2'),
+    );
+    if (structuredSources) {
+      if (!Array.isArray(this.contentParts)) {
+        throw Object.assign(new Error('BOTMODE_VERIFIED_PRESENTATION_REQUIRED'), {
+          code: 'MISSION_ORACLE_FAILURE',
+        });
+      }
+      this.contentParts = this.contentParts.filter(
+        (part) =>
+          part != null && part.type !== ContentTypes.TEXT && part.type !== ContentTypes.THINK,
+      );
+      if (this._botModePresentationPaused) return;
+      if (typeof this._botModeRenderedAnswer !== 'string' || !this._botModeRenderedAnswer.trim()) {
+        throw Object.assign(new Error('BOTMODE_VERIFIED_PRESENTATION_REQUIRED'), {
+          code: 'MISSION_ORACLE_FAILURE',
+        });
+      }
+      this.contentParts.push({ type: ContentTypes.TEXT, text: this._botModeRenderedAnswer });
+      return;
+    }
     const agent = this.options?.agent;
     const isBotModeAgent = agent?.metadata?.botmode === true || agent?.name === 'BOT MODE Worker';
     if (!isBotModeAgent || !Array.isArray(this.contentParts)) {
@@ -4567,6 +4593,10 @@ class AgentClient extends BaseClient {
             ? {}
             : {
                 orchestratorPlan: this.orchestratorPlan,
+                resolveMissionOracleSources: async (taskId) => {
+                  await this.persistTransientMissionOracleEvidence(streamId);
+                  return this.missionOracleState?.sources?.[taskId] ?? [];
+                },
                 resolveMissionOracleEvidence: async (taskId) => {
                   await this.persistTransientMissionOracleEvidence(streamId);
                   return this.missionOracleState?.evidence?.[taskId] ?? [];
@@ -4802,12 +4832,32 @@ class AgentClient extends BaseClient {
         );
         throw err;
       }
-      if (err?.code === 'MISSION_ORACLE_FAILURE') {
+      const missionOracleFailure =
+        this.orchestratorPlan == null || abortController.signal.aborted
+          ? undefined
+          : getMissionOracleFailure(this.orchestratorPlan, this.missionOracleState);
+      if (err?.code === 'MISSION_ORACLE_FAILURE' || missionOracleFailure != null) {
         logger.warn(
           '[api/server/controllers/agents/client.js #sendCompletion] Mission Oracle blocked terminal publication',
           { conversationId: this.conversationId },
         );
-        throw err;
+        throw missionOracleFailure ?? err;
+      }
+      if (
+        this.orchestratorPlan != null &&
+        !abortController.signal.aborted &&
+        !isStepLimitError(err)
+      ) {
+        logger.warn(
+          '[api/server/controllers/agents/client.js #sendCompletion] Mission execution failed before publication',
+          getSafeErrorMetadata(err),
+        );
+        throw Object.assign(
+          new Error('Mission execution failed; a final answer was not published.'),
+          {
+            code: 'MISSION_EXECUTION_FAILURE',
+          },
+        );
       }
       if (abortController.signal.aborted) {
         logger.debug(
@@ -5012,7 +5062,7 @@ class AgentClient extends BaseClient {
       return;
     }
     const nextState = {
-      evidence: currentState.evidence,
+      ...currentState,
       results: {
         ...currentState.results,
         [result.taskId]: result,
@@ -5045,10 +5095,13 @@ class AgentClient extends BaseClient {
   }
 
   async assertTerminalMissionOracle(run) {
+    delete this._botModeRenderedAnswer;
+    this._botModePresentationPaused = false;
     if (this.orchestratorPlan == null) {
       return;
     }
     if (run.getInterrupt() != null || run.getHaltReason() != null) {
+      this._botModePresentationPaused = true;
       return;
     }
 
@@ -5062,6 +5115,10 @@ class AgentClient extends BaseClient {
         async (result) => {
           await this.persistMissionOracleResult(result);
         },
+      );
+      this._botModeRenderedAnswer = await renderMissionPublication(
+        this.orchestratorPlan,
+        this.missionOracleState,
       );
     } catch (error) {
       /** Mission Oracle failures are terminal QA failures, not ordinary provider errors.
@@ -5206,6 +5263,8 @@ class AgentClient extends BaseClient {
           conversationId: this.conversationId,
           parentMessageId: this.parentMessageId,
         }),
+      resolveMissionOracleSources: async (taskId) =>
+        this.missionOracleState?.sources?.[taskId] ?? [],
       resolveMissionOracleEvidence: async (taskId) => {
         // The model-only cold initializer rejects all tools. A hidden tool
         // observation must not fall back to an epoch-only Redis write.
@@ -5416,6 +5475,10 @@ class AgentClient extends BaseClient {
           ? {}
           : {
               orchestratorPlan: this.orchestratorPlan,
+              resolveMissionOracleSources: async (taskId) => {
+                await this.persistTransientMissionOracleEvidence(streamId);
+                return this.missionOracleState?.sources?.[taskId] ?? [];
+              },
               resolveMissionOracleEvidence: async (taskId) => {
                 await this.persistTransientMissionOracleEvidence(streamId);
                 return this.missionOracleState?.evidence?.[taskId] ?? [];
@@ -5565,12 +5628,32 @@ class AgentClient extends BaseClient {
         );
         throw err;
       }
-      if (err?.code === 'MISSION_ORACLE_FAILURE') {
+      const missionOracleFailure =
+        this.orchestratorPlan == null || abortController.signal.aborted
+          ? undefined
+          : getMissionOracleFailure(this.orchestratorPlan, this.missionOracleState);
+      if (err?.code === 'MISSION_ORACLE_FAILURE' || missionOracleFailure != null) {
         logger.warn(
           '[api/server/controllers/agents/client.js #resumeCompletion] Mission Oracle blocked terminal publication',
           { conversationId: this.conversationId },
         );
-        throw err;
+        throw missionOracleFailure ?? err;
+      }
+      if (
+        this.orchestratorPlan != null &&
+        !abortController.signal.aborted &&
+        !isStepLimitError(err)
+      ) {
+        logger.warn(
+          '[api/server/controllers/agents/client.js #resumeCompletion] Mission execution failed before publication',
+          getSafeErrorMetadata(err),
+        );
+        throw Object.assign(
+          new Error('Mission execution failed; a final answer was not published.'),
+          {
+            code: 'MISSION_EXECUTION_FAILURE',
+          },
+        );
       }
       if (abortController.signal.aborted) {
         logger.debug(

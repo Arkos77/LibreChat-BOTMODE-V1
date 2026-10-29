@@ -457,7 +457,7 @@ const createMCPServerController = async (req, res) => {
     if (!validation.success) {
       return res.status(400).json({
         message: 'Invalid configuration',
-        errors: validation.error.errors,
+        errors: validation.error.issues,
       });
     }
     if (configHasObo(validation.data) && !(await callerCanConfigureObo(req))) {
@@ -546,7 +546,7 @@ const updateMCPServerController = async (req, res) => {
     if (!validation.success) {
       return res.status(400).json({
         message: 'Invalid configuration',
-        errors: validation.error.errors,
+        errors: validation.error.issues,
       });
     }
 

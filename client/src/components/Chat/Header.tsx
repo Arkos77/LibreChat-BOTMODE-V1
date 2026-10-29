@@ -1,24 +1,30 @@
 import { memo, useMemo } from 'react';
 import { useRecoilValue } from 'recoil';
-import { useParams } from 'react-router-dom';
+import { useAtomValue, useSetAtom } from 'jotai';
+import { useMediaQuery } from '@librechat/client';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { PanelRightClose, PanelRightOpen } from 'lucide-react';
 import {
   getConfigDefaults,
+  resolveBotModeSearchParams,
   Constants,
   PermissionTypes,
   Permissions,
 } from 'librechat-data-provider';
 import type { TConversation } from 'librechat-data-provider';
 import BotModeDashboardDrawer from '~/components/Projects/BotModeDashboardDrawer';
+import { botModeProgressOpenAtom } from '~/components/Chat/BotModeProgress/state';
 import { useGetAgentByIdQuery, useGetStartupConfig } from '~/data-provider';
 import { OpenSidebar, PresetsMenu, NewChat, HeaderMenu } from './Menus';
 import { TemporaryChat, TemporaryChatIndicator } from './TemporaryChat';
+import { useBotModeView } from '~/components/Chat/BotModeViewContext';
 import ModelSelector from './Menus/Endpoints/ModelSelector';
 import ExportAndShareMenu from './ExportAndShareMenu';
 import SubagentThreadLink from './SubagentThreadLink';
+import { useHasAccess, useLocalize } from '~/hooks';
 import { useAgentsMapContext } from '~/Providers';
 import BookmarkMenu from './Menus/BookmarkMenu';
 import AddMultiConvo from './AddMultiConvo';
-import { useHasAccess } from '~/hooks';
 import { cn } from '~/utils';
 import store from '~/store';
 
@@ -44,6 +50,23 @@ function Header({
   botMode?: boolean;
 }) {
   const { data: startupConfig } = useGetStartupConfig();
+  const localize = useLocalize();
+  const isBotModeView = useBotModeView();
+  const progressOverride = useAtomValue(botModeProgressOpenAtom);
+  const isSmallScreen = useMediaQuery('(max-width: 767px)');
+  const progressOpen = progressOverride ?? !isSmallScreen;
+  const setProgressOpen = useSetAtom(botModeProgressOpenAtom);
+  const [searchParams] = useSearchParams();
+  const effectiveParams = resolveBotModeSearchParams(searchParams, conversation);
+  const modeLabels = {
+    auto: 'com_ui_botmode_mode_auto',
+    fast: 'com_ui_botmode_mode_fast',
+    analyze: 'com_ui_botmode_mode_analyze',
+    develop: 'com_ui_botmode_mode_develop',
+    watch: 'com_ui_botmode_mode_watch',
+  } as const;
+  const mode = effectiveParams.get('botmode_mode') ?? 'auto';
+  const modeLabel = modeLabels[mode as keyof typeof modeLabels];
   const agentsMap = useAgentsMapContext();
   const selectedAgentId = useRecoilValue(store.conversationAgentIdByIndex(0));
   const activeAgentId = conversation?.agent_id ?? selectedAgentId;
@@ -102,6 +125,14 @@ function Header({
           <SubagentThreadLink threadId={parentConversationId} labelClassName="hidden lg:inline" />
         )}
         {!readOnly && <ModelSelector startupConfig={startupConfig} />}
+        {!readOnly &&
+          conversation?.endpoint === 'agents' &&
+          effectiveParams.get('botmode') === '1' &&
+          modeLabel && (
+            <span role="status" className="truncate text-xs text-text-secondary">
+              {localize(modeLabel)}
+            </span>
+          )}
         {!readOnly && interfaceConfig.presets === true && interfaceConfig.modelSelect === true && (
           <PresetsMenu />
         )}
@@ -121,6 +152,33 @@ function Header({
         {hasAccessToTemporaryChat === true && <TemporaryChatIndicator />}
         {!isNewChat && <NewChat className="md:hidden" />}
         <HeaderMenu startupConfig={startupConfig} className="md:hidden" />
+        {isBotModeView && !readOnly && (
+          <button
+            type="button"
+            aria-pressed={progressOpen}
+            aria-expanded={progressOpen}
+            aria-controls={progressOpen ? 'botmode-progress-sidebar' : undefined}
+            aria-label={localize(
+              progressOpen ? 'com_ui_botmode_progress_hide' : 'com_ui_botmode_progress_show',
+            )}
+            title={localize(
+              progressOpen ? 'com_ui_botmode_progress_hide' : 'com_ui_botmode_progress_show',
+            )}
+            onClick={() => setProgressOpen((previous) => !(previous ?? !isSmallScreen))}
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-text-primary shadow-sm transition-colors hover:bg-blue-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            {progressOpen ? (
+              <PanelRightClose className="h-4 w-4 text-blue-500" aria-hidden="true" />
+            ) : (
+              <PanelRightOpen className="h-4 w-4 text-blue-500" aria-hidden="true" />
+            )}
+            <span className="hidden sm:inline">
+              {localize(
+                progressOpen ? 'com_ui_botmode_progress_hide' : 'com_ui_botmode_progress_show',
+              )}
+            </span>
+          </button>
+        )}
         <div className="hidden items-center gap-2 md:flex">
           <ExportAndShareMenu isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false} />
           {hasAccessToTemporaryChat === true && <TemporaryChat />}

@@ -31,6 +31,7 @@ const {
   shouldSignalSandboxStart,
   getToolInputValidationDetails,
   resolveToolEvidenceIntent,
+  collectSearchSourceUrls,
 } = require('@librechat/api');
 const { processFileCitations } = require('~/server/services/Files/Citations');
 const { processCodeOutput, runPreviewFinalize } = require('~/server/services/Files/Code/process');
@@ -1030,7 +1031,7 @@ function createToolEndCallback({
 
     const missionEvidenceScope =
       typeof missionEvidenceContext?.resolve === 'function'
-        ? missionEvidenceContext.resolve(metadata?.executingAgentId)
+        ? missionEvidenceContext.resolve(metadata?.agentId ?? metadata?.executingAgentId)
         : undefined;
     const evidenceDeclarations =
       missionEvidenceScope?.declarations ?? improvementEvidenceDeclarations;
@@ -1060,6 +1061,23 @@ function createToolEndCallback({
           ...(metadata?.thread_id ? { threadId: metadata.thread_id } : {}),
           criterionId: declaration.criterionId,
           value: declaration.value,
+        });
+      }
+    }
+
+    if (
+      missionEvidenceScope?.collectSources === true &&
+      output.name === Tools.web_search &&
+      output.status !== 'error'
+    ) {
+      const sourceUrls = collectSearchSourceUrls(output.artifact?.[Tools.web_search]);
+      if (sourceUrls.length > 0) {
+        transientEvidenceBuffer?.append({
+          toolCallId: output.tool_call_id,
+          toolName: output.name,
+          producerAgentId: missionEvidenceScope.producerAgentId,
+          taskId: missionEvidenceScope.taskId,
+          sourceUrls,
         });
       }
     }

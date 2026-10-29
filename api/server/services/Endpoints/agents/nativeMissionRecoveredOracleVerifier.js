@@ -89,6 +89,7 @@ function createNativeMissionRecoveredOracleVerifier({
         candidate: output.content,
         requirements: task.validation,
         evidence: oracle.evidence[task.taskId] ?? [],
+        observedSources: oracle.sources?.[task.taskId] ?? [],
       });
       if (
         verified?.taskId !== task.taskId ||

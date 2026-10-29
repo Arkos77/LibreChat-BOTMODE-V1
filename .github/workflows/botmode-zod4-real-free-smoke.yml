@@ -1,0 +1,79 @@
+name: BOTMODE Zod4 One Real Free OpenRouter Call
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['.github/workflows/botmode-zod4-real-free-smoke.yml']
+permissions:
+  contents: read
+jobs:
+  one-real-free-call:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/experiment/botmode-zod4-security-20261027'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Prove exactly one zero-priced provider completion
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os
+          from decimal import Decimal
+          from urllib.request import Request,urlopen
+          from urllib.error import HTTPError,URLError
+          key=os.getenv('OPENROUTER_API_KEY','')
+          if len(key)<17: raise SystemExit('CI_FREE=NO_KEY')
+          base='https://openrouter.ai/api/v1'
+          def read(uri,auth=False):
+              headers={'Accept':'application/json'}
+              if auth:headers['Authorization']='Bearer '+key
+              with urlopen(Request(base+uri,headers=headers),timeout=20) as res:return json.load(res)
+          try:
+              before=read('/key',True).get('data') or {}
+              quota=before.get('free_model_daily_requests') or {}
+              if before.get('is_management_key') or type(quota.get('remaining')) is not int or quota['remaining']<1:
+                  raise SystemExit('CI_FREE=NOT_AUTHORIZED_OR_NO_QUOTA')
+              print('CI_FREE_AUTH_AND_QUOTA=PASS',flush=True)
+              router=[m for m in read('/models').get('data',[]) if m.get('id')=='liquid/lfm-2.5-2.6b:free']
+              if len(router)!=1:raise SystemExit('CI_FREE=ROUTER_NOT_IN_CATALOG')
+              price=router[0].get('pricing') or {}
+              if any(Decimal(str(price.get(k,'1')))!=0 for k in ('prompt','completion')):
+                  raise SystemExit('CI_FREE=ROUTER_PRICE_NONZERO')
+              print('CI_FREE_PRICE_ZERO=PASS',flush=True)
+              body={'model':'liquid/lfm-2.5-2.6b:free',
+                    'messages':[{'role':'user','content':'Return strictly this JSON object with no surrounding text: {"ok":true}'}],
+                    'response_format':{'type':'json_schema','json_schema':{'name':'botmode_oracle_ok','strict':True,'schema':{'type':'object','properties':{'ok':{'type':'boolean','const':True}},'required':['ok'],'additionalProperties':False}}},
+                    'max_tokens':256,'stream':False}
+              request=Request(base+'/chat/completions',data=json.dumps(body).encode(),
+                headers={'Authorization':'Bearer '+key,'Content-Type':'application/json','Accept':'application/json'},
+                method='POST')
+              print('CI_FREE_REQUEST_COUNT=1',flush=True)
+              with urlopen(request,timeout=90) as response:
+                  result=json.load(response)
+                  if response.status!=200:raise SystemExit('CI_FREE=BAD_HTTP')
+              if not result.get('choices'):raise SystemExit('CI_FREE=NO_COMPLETION')
+              model=result.get('model','')
+              if not (model=='liquid/lfm-2.5-2.6b:free' or (isinstance(model,str) and model=='liquid/lfm-2.5-2.6b:free')):
+                  raise SystemExit('CI_FREE=RETURNED_MODEL_NOT_FREE')
+              output=result['choices'][0].get('message',{}).get('content','')
+              try: structured=json.loads(output)
+              except (ValueError,TypeError):
+                  finish=result['choices'][0].get('finish_reason')
+                  print('CI_FREE_FINISH_REASON='+str(finish if finish in ('stop','length','error','content_filter') else 'OTHER'),flush=True)
+                  print('CI_FREE_CONTENT_LENGTH='+str(len(output) if isinstance(output,str) else -1),flush=True)
+                  raise SystemExit('CI_FREE=STRUCTURED_JSON_NOT_RETURNED')
+              if structured != {'ok':True}: raise SystemExit('CI_FREE=STRICT_ORACLE_JSON_NOT_RETURNED')
+              print('CI_FREE_STRICT_JSON_OBJECT=PASS',flush=True)
+              print('CI_FREE_REAL_COMPLETION=PASS',flush=True)
+              after=read('/key',True).get('data') or {}
+              for k in ('usage','usage_daily'):
+                  if before.get(k) is not None and after.get(k) is not None and Decimal(str(after[k]))>Decimal(str(before[k])):
+                      raise SystemExit('CI_FREE=POSITIVE_SPENDING')
+              print('CI_FREE_NO_POSITIVE_SPEND=PASS',flush=True)
+          except HTTPError as error:
+              print('CI_FREE_UPSTREAM_HTTP='+str(error.code),flush=True)
+              raise SystemExit('CI_FREE=HTTP_FAILURE')
+          except (URLError,TimeoutError,ValueError,ArithmeticError) as error:
+              print('CI_FREE_ERROR_CLASS='+type(error).__name__,flush=True)
+              raise SystemExit('CI_FREE=OTHER_FAILURE')
+          PY

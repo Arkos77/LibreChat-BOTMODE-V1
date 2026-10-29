@@ -1,0 +1,198 @@
+{
+  "source": "8743ae58ab10db50a187279265b4f854c95b0d88",
+  "repository": "https://github.com/Arkos77/LibreChat-BOTMODE-V1",
+  "visibility": "public",
+  "files": [
+    {
+      "path": "api/server/controllers/agents/__tests__/request.resumeMetadata.spec.js",
+      "gitBlob": "b12f13f3d7171f12ca1bf73bb7f66b7290430fa3",
+      "sha256": "caa96904885a3f9a12b486ac6f3440975ddfc146f445bacf3d2699d338628b00",
+      "bytes": 228366
+    },
+    {
+      "path": "api/server/controllers/agents/callbacks.improvementEvidence.spec.js",
+      "gitBlob": "7f0b27da8ab652b07b6eb32b2390462b208543f8",
+      "sha256": "4d42ae41a5887e86b44945f4fb4996f53a9efd016bba80c77918e6719618b919",
+      "bytes": 7296
+    },
+    {
+      "path": "api/server/controllers/agents/callbacks.js",
+      "gitBlob": "2e1343986a3bbdd96b1192108cdf144cab1809de",
+      "sha256": "c4bc1f26042ca774fc95056aed8b4383009ca10bcf64016e5bcdb5de1a389d57",
+      "bytes": 68363
+    },
+    {
+      "path": "api/server/controllers/agents/client.js",
+      "gitBlob": "3649d50fa210f6f6414287d4826b68eba306b1f4",
+      "sha256": "ecc9a7ea54f8067db3733db93ff1590bf98755beca25ac736cdd110dcdd19728",
+      "bytes": 246938
+    },
+    {
+      "path": "api/server/controllers/agents/request.js",
+      "gitBlob": "7883cfb5813392d33cd777e81ab5c808861ff103",
+      "sha256": "07a5306b81d7a1d3c022e5a29875b962902e981ed7b977a8bf99842271c775d6",
+      "bytes": 144338
+    },
+    {
+      "path": "api/server/services/Endpoints/agents/initialize.js",
+      "gitBlob": "fac3fcc6f2ea818b37719dd0ff987ea5bade099d",
+      "sha256": "a666e1e0e867cc450ccbdb5c877d5f83205fb8d663421e71663a5ab2b74fe011",
+      "bytes": 87558
+    },
+    {
+      "path": "api/server/services/Endpoints/agents/initialize.spec.js",
+      "gitBlob": "31fd74dd9c1527c15a81d12fbee5e49fe8a68fdc",
+      "sha256": "c245c32faa03905771401f0dc4f945fa16e86489704252fe3a01b20e5ddd769e",
+      "bytes": 138772
+    },
+    {
+      "path": "docs/BOTMODE_V1_RESULT_SOURCE_CONTRACT_20261023.md",
+      "gitBlob": "cf9c02c5db29dbe4e92a6f37d6185d635ac7e62c",
+      "sha256": "fda6521994fc65cf0954ba87e15d00112365ac256bf138d9fb50cd2c2ba512d3",
+      "bytes": 3480
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-23-mission-result-contract.md",
+      "gitBlob": "2ee61c8bb2d535ed507d21451e319214bb07e65d",
+      "sha256": "ec2364e6db95853d1ca80cdf53cc4880557bf9b93ac76613fd44916c39e5e72e",
+      "bytes": 3107
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-23-mission-source-provenance.md",
+      "gitBlob": "e666ca11ef43d08de8869e630e566af10e50874a",
+      "sha256": "7c039d4a7043d20067f68a0f5f669f5f25b1b40bbaa8c94f55a894148b0180f9",
+      "bytes": 4850
+    },
+    {
+      "path": "packages/api/src/agents/oracle/deterministic.spec.ts",
+      "gitBlob": "b502ea90cee65d426df068c936d765aaf350b9a1",
+      "sha256": "5f8c46bc3f2d0c6c529b9e524c812b10ced562b088f4a98af50e2ea22b3d09e0",
+      "bytes": 9290
+    },
+    {
+      "path": "packages/api/src/agents/oracle/deterministic.ts",
+      "gitBlob": "883a3ca4efb87409e465aea93a903ead44ed703d",
+      "sha256": "99fc0af4961373a8edc3c0a5d5fa7cd0c751ce5f8fda6731c576f5f2903fc809",
+      "bytes": 5972
+    },
+    {
+      "path": "packages/api/src/agents/oracle/sources.ts",
+      "gitBlob": "9f730de24736cd073e630afceac29dccbecf603e",
+      "sha256": "1c8d26c22310b85f79c2787decbe8bf086fc5df56e06885d7ac55e5e84030b05",
+      "bytes": 2077
+    },
+    {
+      "path": "packages/api/src/agents/oracle/types.ts",
+      "gitBlob": "3f6d5a531e1f7c2af122620a8e78285337d270c3",
+      "sha256": "23da5ad3c6e4c32fc416c1444177f3bbc34b7458833a0577a3d9c046498c3092",
+      "bytes": 3109
+    },
+    {
+      "path": "packages/api/src/agents/orchestrator/evidenceContext.spec.ts",
+      "gitBlob": "483addbd7d3079226b5c7d506752889f33abefc9",
+      "sha256": "219b52cfaaa13853e957abe6258b76fbaefde9d256c29c63d33132af3eb096f3",
+      "bytes": 1799
+    },
+    {
+      "path": "packages/api/src/agents/orchestrator/evidenceContext.ts",
+      "gitBlob": "eec52239c5ad99bff2917ab25a9df9b3d2288017",
+      "sha256": "8873b020e5808981333277d11b263ad251888c3b4df2377b4cf64a8227bc18a7",
+      "bytes": 2361
+    },
+    {
+      "path": "packages/api/src/agents/orchestrator/index.ts",
+      "gitBlob": "1a987293e6a825621f7a90e2e20aef20fb75f15b",
+      "sha256": "3dfed561e436d022fceb3d247f0c9385362f469fa47879e819d958462883821c",
+      "bytes": 2005
+    },
+    {
+      "path": "packages/api/src/agents/orchestrator/missionOracle.spec.ts",
+      "gitBlob": "58539e4be812d57ce63130aa824fb6a81d8fdb9f",
+      "sha256": "2372e76221dd8aeccb1cc2c907e648f145728f8a8cff735faa3f04eaf1622d14",
+      "bytes": 17852
+    },
+    {
+      "path": "packages/api/src/agents/orchestrator/missionOracle.ts",
+      "gitBlob": "0b0b1794409d79f770294052ce6f806a16667791",
+      "sha256": "cf1429e68743dc02b8412c022f4fa996a7b5d8c46ea4953d049e9118b83a7ca6",
+      "bytes": 16261
+    },
+    {
+      "path": "packages/api/src/agents/orchestrator/native.spec.ts",
+      "gitBlob": "7a519578ce4120f55d7e75b2745c2a2e84d33fa7",
+      "sha256": "aee61bdd8110999a794ea4a22d958cb23ad19ee72a2115c64f129854df24ed79",
+      "bytes": 23133
+    },
+    {
+      "path": "packages/api/src/agents/orchestrator/native.ts",
+      "gitBlob": "1364f6dec143a1ee1b3c6c7990a3a1bb26131b31",
+      "sha256": "23db8f1a0546a4690fc4c284ebd82aa777f9c7a14076f9ae0c45349dff280018",
+      "bytes": 7418
+    },
+    {
+      "path": "packages/api/src/agents/orchestrator/output.spec.ts",
+      "gitBlob": "8c52da86e730d480bf264cb04e71b63b08d3577a",
+      "sha256": "df0fb10f727e6978ed2c14781071853c39b460540001af5c6f851fc42b08044c",
+      "bytes": 3986
+    },
+    {
+      "path": "packages/api/src/agents/orchestrator/output.ts",
+      "gitBlob": "b0c0eaf76787a87e03af31b1dd035d682dab55ce",
+      "sha256": "35ca13168b8034cbbff5f4f31c855a67697b3f9b47ff13a410284c7333a151d5",
+      "bytes": 1413
+    },
+    {
+      "path": "packages/api/src/agents/orchestrator/sources.spec.ts",
+      "gitBlob": "73fddc81b0fb99389bf609137df81e85c3db7164",
+      "sha256": "32c308e24ff1073da3b04e67656a604af014fd93177fec36f45b5feb2ed1e8e6",
+      "bytes": 2427
+    },
+    {
+      "path": "packages/api/src/agents/orchestrator/sources.ts",
+      "gitBlob": "f17aef90733d933f21d32c68d1d58eb0ead300b3",
+      "sha256": "3ca04ac0ff0038550fa62b4c5b0c49d0f21d295500e5a77c284ba70da8d7973d",
+      "bytes": 1778
+    },
+    {
+      "path": "packages/api/src/agents/orchestrator/transientEvidenceBuffer.spec.ts",
+      "gitBlob": "8c36716beb54b764a017aead76a222a7d38b7a78",
+      "sha256": "0061d1e7c95d693273c94206d3490bf071e828afb15a0aee398b49530950af87",
+      "bytes": 6844
+    },
+    {
+      "path": "packages/api/src/agents/orchestrator/transientEvidenceBuffer.ts",
+      "gitBlob": "335cd58a4d5e786c8fe95f6b2cd630eef46a29f0",
+      "sha256": "d050b59f8a030ed266a299cb551deedc0f8ffde3223aa34e25a898a32da31caf",
+      "bytes": 5303
+    },
+    {
+      "path": "packages/api/src/agents/orchestrator/types.ts",
+      "gitBlob": "88663669fc73de9829b32a96daa328ad559c7c43",
+      "sha256": "151e7655159fb9bec9e1f9c18a530baf7345fa40ed65abca19783367674b0036",
+      "bytes": 2160
+    },
+    {
+      "path": "packages/api/src/agents/run.ts",
+      "gitBlob": "de915b906092786dc3d7a7f6a4ac020ccac515e3",
+      "sha256": "cbe98210033a9514e6a99556721a5a7eef7ced18f83bc1d7bf635ad8c73ee5db",
+      "bytes": 97583
+    },
+    {
+      "path": "scripts/botmode/ci-openai-subagent-fixture.py",
+      "gitBlob": "44448d8496d82e70a84798c1f453f1d3c4d7f3a2",
+      "sha256": "d47a6b5e681c5d32b69fd07fc62667c0fd0838e32c6de1ff920b8f4d64842300",
+      "bytes": 9164
+    }
+  ],
+  "approval": "pending-explicit-public-source-and-tests-sharing",
+  "architectures": ["linux/amd64"],
+  "maxBuilds": 1,
+  "externalInference": 0,
+  "stableLatestMerge": false,
+  "installationPreconditions": [
+    "exact-image qualification successful",
+    "anonymous registry identity verified",
+    "quiesced backup verified",
+    "current image retained for rollback"
+  ]
+}

@@ -36,6 +36,73 @@ const terminalPlan = (candidateExpected = true): MissionPlan => ({
   reasons: [{ code: 'WORKER_CAPABLE' }],
 });
 
+describe('persisted mission failure classification', () => {
+  it('recovers a scoped rejection without exposing the private candidate', async () => {
+    const plan = terminalPlan();
+    const result = await missionOracle.validateMissionTask({
+      taskId: 'task-terminal',
+      nodeId: 'node-terminal',
+      agentId: 'worker',
+      candidate: 'private draft that must never be published',
+      requirements: plan.tasks[0].validation,
+    });
+    const failure = missionOracle.getMissionOracleFailure(plan, {
+      evidence: {},
+      results: { 'task-terminal': result },
+    });
+    expect(failure).toMatchObject({ code: 'MISSION_ORACLE_FAILURE' });
+    expect(failure?.message).toContain('REJECTED');
+    expect(failure?.message).toContain('INVALID_CANDIDATE');
+    expect(failure?.message).not.toContain('private draft');
+  });
+
+  it('does not mistake another task or a verified result for a current rejection', async () => {
+    const plan = terminalPlan();
+    const valid = await missionOracle.validateMissionTask({
+      taskId: 'task-terminal',
+      nodeId: 'node-terminal',
+      agentId: 'worker',
+      candidate: '{"ok":true}',
+      requirements: plan.tasks[0].validation,
+    });
+    const foreign = await missionOracle.validateMissionTask({
+      taskId: 'foreign-task',
+      nodeId: 'foreign-node',
+      agentId: 'worker',
+      candidate: 'private foreign draft',
+      requirements: plan.tasks[0].validation,
+    });
+    expect(missionOracle.getMissionOracleFailure(plan)).toBeUndefined();
+    expect(
+      missionOracle.getMissionOracleFailure(plan, {
+        evidence: {},
+        results: { 'task-terminal': valid, 'foreign-task': foreign },
+      }),
+    ).toBeUndefined();
+  });
+
+  it.each(['UNKNOWN', 'HUMAN_REVIEW'] as const)(
+    'also blocks %s instead of certifying it',
+    async (status) => {
+      const plan = terminalPlan();
+      const result = await missionOracle.validateMissionTask({
+        taskId: 'task-terminal',
+        nodeId: 'node-terminal',
+        agentId: 'worker',
+        candidate: '{"ok":true}',
+        requirements: plan.tasks[0].validation,
+      });
+      result.verdicts[0].status = status;
+      expect(
+        missionOracle.getMissionOracleFailure(plan, {
+          evidence: {},
+          results: { 'task-terminal': result },
+        }),
+      ).toMatchObject({ code: 'MISSION_ORACLE_FAILURE', message: expect.stringContaining(status) });
+    },
+  );
+});
+
 describe('normalizeMissionOracleState', () => {
   it('returns a detached clone for valid durable state', () => {
     const state = {
@@ -400,4 +467,92 @@ describe('terminal mission Oracle', () => {
       missionOracle.assertTerminalMissionTasksVerified(plan, {}),
     ).resolves.toBeUndefined();
   });
+});
+
+it('promotes native research sources, persists task scope and verifies the cited result', async () => {
+  const plan = terminalPlan();
+  plan.tasks[0].validation[0].outputContract = 'research-v1';
+  const state = missionOracle.promoteTransientMissionOracleEvidence(plan, undefined, {
+    source: 'native_tool_end',
+    toolCallId: 'search-call',
+    toolName: 'web_search',
+    producerAgentId: 'worker',
+    taskId: 'task-terminal',
+    sourceUrls: ['https://example.org/report'],
+  });
+  const restored = missionOracle.normalizeMissionOracleState(JSON.parse(JSON.stringify(state)));
+  const result = await missionOracle.validateMissionTask({
+    taskId: 'task-terminal',
+    nodeId: 'node-terminal',
+    agentId: 'worker',
+    requirements: plan.tasks[0].validation,
+    candidate: JSON.stringify({
+      ok: true,
+      result: 'See https://example.org/report',
+      sources: 'https://example.org/report',
+    }),
+    observedSources: restored.sources?.['task-terminal'],
+  });
+  expect(() => missionOracle.assertMissionTaskVerified(result)).not.toThrow();
+  expect(restored.sources?.['foreign-task']).toBeUndefined();
+});
+
+it('denies a foreign task source, a wrong producer and conflicting native replay', () => {
+  const plan = terminalPlan();
+  plan.tasks[0].validation[0].outputContract = 'research-v1';
+  const observation = {
+    source: 'native_tool_end' as const,
+    toolCallId: 'search-call',
+    toolName: 'web_search',
+    producerAgentId: 'worker',
+    taskId: 'task-terminal',
+    sourceUrls: ['https://example.org/report'],
+  };
+  expect(() =>
+    missionOracle.promoteTransientMissionOracleEvidence(plan, undefined, {
+      ...observation,
+      taskId: 'foreign',
+    }),
+  ).toThrow();
+  expect(() =>
+    missionOracle.promoteTransientMissionOracleEvidence(plan, undefined, {
+      ...observation,
+      producerAgentId: 'foreign',
+    }),
+  ).toThrow();
+  const state = missionOracle.promoteTransientMissionOracleEvidence(plan, undefined, observation);
+  expect(() =>
+    missionOracle.promoteTransientMissionOracleEvidence(plan, state, {
+      ...observation,
+      sourceUrls: ['https://fake.example'],
+    }),
+  ).toThrow(/replay conflict/);
+  expect(missionOracle.promoteTransientMissionOracleEvidence(plan, state, observation)).toEqual(
+    state,
+  );
+});
+
+it('promotes criterion evidence and sources from separate observations of one native call', () => {
+  const plan = terminalPlan();
+  plan.tasks[0].validation[0].outputContract = 'research-v1';
+  const call = {
+    source: 'native_tool_end' as const,
+    toolName: 'web_search',
+    toolCallId: 'search',
+    taskId: 'task-terminal',
+    producerAgentId: 'worker',
+  };
+  const state = missionOracle.promoteTransientMissionOracleEvidence(plan, undefined, {
+    ...call,
+    criterionId: 'ok',
+    value: true,
+  });
+  const combined = missionOracle.promoteTransientMissionOracleEvidence(plan, state, {
+    ...call,
+    sourceUrls: ['https://example.org/report'],
+  });
+  expect(combined.evidence['task-terminal']).toHaveLength(1);
+  expect(combined.sources?.['task-terminal']).toEqual([
+    { toolCallId: 'search', urls: ['https://example.org/report'] },
+  ]);
 });

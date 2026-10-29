@@ -1,6 +1,7 @@
 import { renderHook, act } from '@testing-library/react';
 import { Constants, EModelEndpoint } from 'librechat-data-provider';
 import type { TConversation, TMessage, TSubmission } from 'librechat-data-provider';
+import type { ExtendedFile } from '~/common';
 import useChatFunctions from '../useChatFunctions';
 import { isPasteSubmitted } from '~/utils';
 
@@ -13,9 +14,10 @@ const mockGetSender = jest.fn(() => 'Assistant');
 const mockGetExpiry = jest.fn(() => 'expiry-key');
 const mockGetQueryData = jest.fn(() => ({}));
 const mockLoggerWarn = jest.fn();
+let mockSearchParams = new URLSearchParams();
 
 jest.mock('react-router-dom', () => ({
-  useSearchParams: () => [new URLSearchParams(), jest.fn()],
+  useSearchParams: () => [mockSearchParams, jest.fn()],
   useNavigate: () => mockNavigate,
 }));
 
@@ -102,12 +104,17 @@ const conversation = (conversationId: string) =>
 function renderAsk(
   messages: TMessage[] | undefined,
   conversationId = 'conversation-1',
-  options: { endpoint?: TConversation['endpoint']; isSubmitting?: boolean } = {},
+  options: {
+    endpoint?: TConversation['endpoint'];
+    isSubmitting?: boolean;
+    files?: Map<string, ExtendedFile>;
+    botMode?: TConversation['botMode'];
+  } = {},
 ) {
   const setMessages = jest.fn();
   const setSubmission = jest.fn();
   const getMessages = jest.fn(() => messages);
-  const immutableConversation = conversation(conversationId);
+  const immutableConversation = { ...conversation(conversationId), botMode: options.botMode };
   if ('endpoint' in options) {
     immutableConversation.endpoint = options.endpoint ?? null;
   }
@@ -119,6 +126,8 @@ function renderAsk(
       getMessages,
       setMessages,
       setSubmission,
+      files: options.files,
+      setFiles: jest.fn(),
     }),
   );
 
@@ -129,7 +138,189 @@ describe('useChatFunctions ask', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetQueryData.mockReturnValue({});
+    mockSearchParams = new URLSearchParams();
   });
+
+  it.each([
+    ['auto', ''],
+    ['manual', ''],
+    ['auto', 'botmode=1'],
+    ['manual', 'botmode=1'],
+  ] as const)(
+    'restores a saved %s mission on a conversation URL with %s',
+    (selectionMode, search) => {
+      mockSearchParams = new URLSearchParams(search);
+      const saved = {
+        version: 1 as const,
+        mode: 'analyze' as const,
+        selectionMode,
+        workerAgentId: 'agent-1',
+        agents: [
+          { id: 'research-agent', name: 'RECHERCHE' },
+          { id: 'analysis-agent', name: 'ANALYSE' },
+          { id: 'writing-agent', name: 'RÉDACTION' },
+        ],
+      };
+      const first = renderAsk([], 'saved-mission', { botMode: saved });
+      act(() => {
+        first.result.current.ask({ text: 'Continue' });
+      });
+      const submitted = first.setSubmission.mock.calls[0][0];
+      expect(submitted.userMessage.orchestratorMission).toBeDefined();
+      expect(submitted.userMessage.botMode).toEqual(saved);
+      expect(submitted.userMessage.botMode.agents.map((agent: { id: string }) => agent.id)).toEqual(
+        ['research-agent', 'analysis-agent', 'writing-agent'],
+      );
+      const firstMissionId = submitted.userMessage.orchestratorMission.mission.missionId;
+      first.unmount();
+      const reopened = renderAsk([], 'saved-mission', { botMode: saved });
+      act(() => {
+        reopened.result.current.ask({ text: 'Next step' });
+      });
+      expect(
+        reopened.setSubmission.mock.calls[0][0].userMessage.orchestratorMission.mission.missionId,
+      ).not.toBe(firstMissionId);
+    },
+  );
+
+  it.each(['auto', 'manual'] as const)(
+    'sends %s intent without a client-owned or reduced plan',
+    (selectionMode) => {
+      const hook = renderAsk([], 'saved-minimal', {
+        botMode: {
+          version: 1,
+          mode: 'analyze',
+          selectionMode,
+          workerAgentId: 'agent-1',
+          agents: [{ id: 'only-research', name: 'RECHERCHE' }],
+        },
+      });
+      act(() => {
+        hook.result.current.ask({ text: 'Compare with sources' });
+      });
+      const message = hook.setSubmission.mock.calls[0][0].userMessage;
+      expect(message.botMode.agents).toEqual([{ id: 'only-research', name: 'RECHERCHE' }]);
+      expect(message.orchestratorMission.mission.objective).toBe('Compare with sources');
+      expect(message.orchestratorMission.mission.objectives).toBeUndefined();
+      expect(message.orchestratorMission.plannerContext).toBeUndefined();
+    },
+  );
+
+  it('keeps saved FAST explicit even for a research prompt', () => {
+    const hook = renderAsk([], 'saved-fast', {
+      botMode: {
+        version: 1,
+        mode: 'fast',
+        selectionMode: 'auto',
+        workerAgentId: 'agent-1',
+        agents: [],
+      },
+    });
+    act(() => {
+      hook.result.current.ask({ text: 'Analyse les risques avec des sources' });
+    });
+    const submitted = hook.setSubmission.mock.calls[0][0];
+    expect(submitted.userMessage.orchestratorMission).toBeUndefined();
+    expect(submitted.userMessage.botMode?.mode).toBe('fast');
+  });
+
+  it('does not turn a legacy Worker conversation into a mission', () => {
+    const hook = renderAsk([], 'legacy-worker');
+    act(() => {
+      hook.result.current.ask({ text: 'Analyse les risques avec des sources' });
+    });
+    expect(hook.setSubmission.mock.calls[0][0].userMessage.orchestratorMission).toBeUndefined();
+    expect(hook.setSubmission.mock.calls[0][0].userMessage.botMode).toBeUndefined();
+  });
+
+  it.each(['auto', 'manual'])(
+    'keeps the %s mission active after the initial navigation',
+    (mode) => {
+      const bindings = JSON.stringify([
+        { id: 'research-agent', name: 'RECHERCHE' },
+        { id: 'analysis-agent', name: 'ANALYSE' },
+        { id: 'writing-agent', name: 'RÉDACTION' },
+      ]);
+      mockSearchParams = new URLSearchParams({
+        botmode: '1',
+        botmode_mode: 'analyze',
+        botmode_agent_mode: mode,
+        botmode_agent_bindings: bindings,
+        agent_id: 'agent-1',
+        prompt: 'one-shot launch prompt',
+        submit: 'true',
+      });
+      const initial = renderAsk([], Constants.NEW_CONVO);
+      act(() => {
+        initial.result.current.ask({ text: 'Investigate the request' });
+      });
+      const destination = new URL(mockNavigate.mock.calls.at(-1)![0], 'http://localhost');
+      expect(destination.searchParams.get('botmode_mode')).toBe('analyze');
+      expect(destination.searchParams.get('botmode_agent_mode')).toBe(mode);
+      expect(destination.searchParams.get('botmode_agent_bindings')).toBe(bindings);
+      expect(destination.searchParams.has('prompt')).toBe(false);
+      expect(destination.searchParams.has('submit')).toBe(false);
+
+      mockSearchParams = destination.searchParams;
+      initial.unmount();
+      const followUp = renderAsk([], 'saved-mission');
+      act(() => {
+        followUp.result.current.ask({ text: 'Continue after the failure' });
+      });
+      const next = followUp.setSubmission.mock.calls[0][0];
+      expect(next.userMessage.orchestratorMission).toBeDefined();
+      expect(next.userMessage.botMode.agents).toHaveLength(3);
+    },
+  );
+
+  it.each([false, true])(
+    'keeps empty file overrides authoritative for BOT MODE (regenerate: %s)',
+    (isRegenerate) => {
+      mockSearchParams = new URLSearchParams({
+        botmode: '1',
+        botmode_mode: 'analyze',
+        botmode_agent_mode: 'auto',
+        botmode_agent_bindings: JSON.stringify([
+          { id: 'research-agent', name: 'RECHERCHE' },
+          { id: 'analysis-agent', name: 'ANALYSE' },
+          { id: 'documents-agent', name: 'DOCUMENTS' },
+          { id: 'writing-agent', name: 'RÉDACTION' },
+        ]),
+      });
+      const parent = {
+        ...userMessage('user-files'),
+        files: [{ file_id: 'old-parent-file' }],
+      } as TMessage;
+      const { result, setSubmission } = renderAsk(
+        [parent, assistantMessage('response-files', parent.messageId)],
+        'conversation-1',
+        {
+          files: new Map([
+            [
+              'next-draft-file',
+              {
+                file_id: 'next-draft-file',
+                filename: 'next.pdf',
+                type: 'application/pdf',
+              } as ExtendedFile,
+            ],
+          ]),
+        },
+      );
+      act(() => {
+        result.current.ask(
+          { text: 'Analyze this request', parentMessageId: parent.messageId },
+          { isRegenerate, overrideFiles: [] },
+        );
+      });
+      expect(setSubmission).toHaveBeenCalledTimes(1);
+      const submission = setSubmission.mock.calls[0][0] as TSubmission & {
+        userMessage: { orchestratorMission: { mission: { objectives: Array<{ key: string }> } } };
+      };
+      expect(submission.userMessage.files ?? []).toEqual([]);
+      expect(submission.userMessage.orchestratorMission.mission.objectives).toBeUndefined();
+    },
+  );
 
   it('refuses to send to an existing conversation before its history loads', () => {
     const { result, getMessages, setMessages, setSubmission } = renderAsk(undefined);

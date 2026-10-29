@@ -1,3 +1,5 @@
+import { normalizeSourceUrls } from '../oracle/sources';
+
 export interface TransientToolEvidenceObservationInput {
   toolCallId: string;
   toolName: string;
@@ -9,6 +11,7 @@ export interface TransientToolEvidenceObservationInput {
   threadId?: string;
   criterionId?: string;
   value?: string | number | boolean | null;
+  sourceUrls?: string[];
 }
 
 export interface TransientToolEvidenceObservation {
@@ -23,6 +26,7 @@ export interface TransientToolEvidenceObservation {
   threadId?: string;
   criterionId?: string;
   value?: string | number | boolean | null;
+  sourceUrls?: string[];
 }
 
 export interface TransientEvidenceBuffer {
@@ -64,13 +68,20 @@ function normalizeCapacity(capacity: number | undefined): number {
 }
 
 function observationKey(observation: TransientToolEvidenceObservation): string {
-  return JSON.stringify([observation.taskId ?? null, observation.toolCallId]);
+  return JSON.stringify([
+    observation.taskId ?? null,
+    observation.toolCallId,
+    observation.sourceUrls == null ? 'criterion' : 'sources',
+  ]);
 }
 
 function cloneObservation(
   observation: TransientToolEvidenceObservation,
 ): TransientToolEvidenceObservation {
-  return { ...observation };
+  return {
+    ...observation,
+    ...(observation.sourceUrls == null ? {} : { sourceUrls: [...observation.sourceUrls] }),
+  };
 }
 
 function createObservation(
@@ -98,6 +109,7 @@ function createObservation(
     ...(threadId == null ? {} : { threadId }),
     ...(criterionId == null ? {} : { criterionId }),
     ...(input.value === undefined ? {} : { value: input.value }),
+    ...(input.sourceUrls == null ? {} : { sourceUrls: normalizeSourceUrls(input.sourceUrls) }),
   };
 }
 
@@ -118,11 +130,14 @@ export function createTransientEvidenceBuffer(capacity?: number): TransientEvide
       const observation = createObservation(input);
       const key = observationKey(observation);
       if (seenToolCalls.has(key)) {
-        return cloneObservation(
-          observations.find(
-            (item) => observationKey(item) === key,
-          ) as TransientToolEvidenceObservation,
-        );
+        const existing = observations.find((item) => observationKey(item) === key)!;
+        if (
+          observation.sourceUrls != null &&
+          JSON.stringify(existing.sourceUrls) !== JSON.stringify(observation.sourceUrls)
+        ) {
+          throw new Error('Native source observation replay conflict');
+        }
+        return cloneObservation(existing);
       }
 
       observations.push(observation);

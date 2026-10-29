@@ -1,12 +1,16 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useRecoilValue } from 'recoil';
 import { useAtomValue, useSetAtom } from 'jotai';
+import { useMediaQuery } from '@librechat/client';
 import { EModelEndpoint, FileSources, LocalStorageKeys } from 'librechat-data-provider';
 import type { ExtendedFile } from '~/common';
 import useResetArtifactsOnConversationChange from '~/hooks/Artifacts/useResetArtifactsOnConversationChange';
 import { ParentSubagentsProvider } from '~/components/Chat/Subagents/ParentSubagentsProvider';
+import BotModeProgressPanel from '~/components/Chat/BotModeProgress/BotModeProgressPanel';
+import { botModeProgressOpenAtom } from '~/components/Chat/BotModeProgress/state';
 import DragDropWrapper from '~/components/Chat/Input/Files/DragDropWrapper';
 import { activeSubagentPanel } from '~/components/Chat/Subagents/state';
+import { useBotModeView } from '~/components/Chat/BotModeViewContext';
 import { EditorProvider, ArtifactsProvider } from '~/Providers';
 import { useDeleteFilesMutation } from '~/data-provider';
 import { SidePanelGroup } from '~/components/SidePanel';
@@ -18,7 +22,13 @@ import store from '~/store';
 const Artifacts = lazy(() => import('~/components/Artifacts/Artifacts'));
 const SubagentThreadPanel = lazy(() => import('~/components/Chat/Subagents/SubagentThreadPanel'));
 
-export default function Presentation({ children }: { children: React.ReactNode }) {
+export default function Presentation({
+  children,
+  projectId,
+}: {
+  children: React.ReactNode;
+  projectId?: string | null;
+}) {
   const artifacts = useRecoilValue(store.artifactsState);
   const artifactsVisibility = useRecoilValue(store.artifactsVisibility);
   // Render-gating the panel on `currentArtifactId != null` (in addition
@@ -30,9 +40,15 @@ export default function Presentation({ children }: { children: React.ReactNode }
   // (gated on `isSubmitting`), restoring the legacy streaming UX.
   const currentArtifactId = useRecoilValue(store.currentArtifactId);
   const conversationId = useRecoilValue(store.conversationIdByIndex(0));
+  const isSubmitting = useRecoilValue(store.isSubmittingFamily(0));
   const conversationEndpoint = useRecoilValue(store.effectiveEndpointByIndex(0));
   const conversationAgentId = useRecoilValue(store.conversationAgentIdByIndex(0));
   const selectedSubagent = useAtomValue(activeSubagentPanel);
+  const isBotModeView = useBotModeView();
+  const progressOpenOverride = useAtomValue(botModeProgressOpenAtom);
+  const isSmallScreen = useMediaQuery('(max-width: 767px)');
+  const isBotModeProgressOpen = progressOpenOverride ?? !isSmallScreen;
+  const activeConversation = useRecoilValue(store.conversationByIndex(0));
   const setSelectedSubagent = useSetAtom(activeSubagentPanel);
   const resetSelectedSubagent = useCallback(() => setSelectedSubagent(null), [setSelectedSubagent]);
   const previousConversationIdRef = useRef<string | null>(null);
@@ -137,7 +153,17 @@ export default function Presentation({ children }: { children: React.ReactNode }
     );
   }, [conversationId, selectedSubagent]);
 
-  const panelElement = artifactsElement ?? subagentElement;
+  const progressElement =
+    isBotModeView && isBotModeProgressOpen ? (
+      <BotModeProgressPanel
+        projectId={activeConversation?.chatProjectId ?? projectId}
+        conversationId={conversationId ?? ''}
+        isSubmitting={isSubmitting}
+      />
+    ) : null;
+
+  // Existing artifact and child-thread panels keep their precedence.
+  const panelElement = artifactsElement ?? subagentElement ?? progressElement;
 
   return (
     <DragDropWrapper className="relative flex w-full grow overflow-hidden bg-presentation">

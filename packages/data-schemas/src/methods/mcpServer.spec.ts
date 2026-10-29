@@ -101,6 +101,7 @@ describe('MCPServer Model Tests', () => {
         type: 'stdio',
         command: 'node',
         args: ['server.js'],
+        env: undefined,
         title: 'Stdio Server',
       };
       const server = await methods.createMCPServer({ config, author: authorId });

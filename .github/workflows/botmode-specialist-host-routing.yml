@@ -1,0 +1,49 @@
+name: BOTMODE Specialist Host Routing Regression
+on:
+  push:
+    branches: [fix/specialist-host-fallback-20261022]
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run build:data-provider
+      - run: npm run build:data-schemas
+      - run: npm run build:api
+      - name: Confirm the same valid regression fails on the unpatched initializer
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin 64248339750f9e0f86e01530eb7067027cec8f6b
+          cp api/server/services/Endpoints/agents/initialize.js /tmp/fixed-initialize.js
+          trap 'cp /tmp/fixed-initialize.js api/server/services/Endpoints/agents/initialize.js' EXIT
+          git show 64248339750f9e0f86e01530eb7067027cec8f6b:api/server/services/Endpoints/agents/initialize.js > api/server/services/Endpoints/agents/initialize.js
+          set +e
+          (cd api && npx jest server/services/Endpoints/agents/initialize.spec.js -t 'installs the specialist own authorized fallback for (mission|handoff|lazy) initialization' --runInBand --coverage=false --forceExit) > /tmp/specialist-baseline.log 2>&1
+          baseline_code=$?
+          set -e
+          test "$baseline_code" -ne 0
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          s=re.sub(r'\x1b\[[0-9;]*m','',Path('/tmp/specialist-baseline.log').read_text())
+          assert s.count('Received: undefined') == 3, 'BASELINE_MUST_FAIL_ONLY_ON_MISSING_FALLBACK'
+          assert re.search(r'Tests:\s+3 failed, 90 skipped, 93 total',s), 'BASELINE_EXACT_THREE_REGRESSIONS_REQUIRED'
+          assert 'Host model routing requires an OpenRouter agent' not in s, 'INVALID_FIXTURE_POLICY'
+          print('CI_SPECIALIST_BASELINE_THREE_MISSING_FALLBACKS=CONFIRMED')
+          PY
+          cp /tmp/fixed-initialize.js api/server/services/Endpoints/agents/initialize.js
+          trap - EXIT
+      - name: Native initialization and routing regression without external inference
+        working-directory: api
+        run: npx jest server/services/Endpoints/agents/initialize.spec.js server/services/Endpoints/agents/hostModelRouting.spec.js server/services/Endpoints/agents/hostModelRouting.compat.spec.js server/services/Endpoints/agents/hostJsonMode.compat.spec.js --runInBand --coverage=false --forceExit

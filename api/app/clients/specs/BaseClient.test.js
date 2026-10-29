@@ -1774,6 +1774,13 @@ describe('BaseClient', () => {
           { role: 'assistant', content: 'Existing response 1' },
         ],
         title: 'Existing Conversation',
+        botMode: {
+          version: 1,
+          mode: 'analyze',
+          selectionMode: 'auto',
+          workerAgentId: 'worker',
+          agents: [{ id: 'research', name: 'RECHERCHE' }],
+        },
         someExistingField: 'existingValue',
         anotherExistingField: 'anotherValue',
         temperature: 0.7,
@@ -1823,6 +1830,7 @@ describe('BaseClient', () => {
       // Only check that someExistingField is in unsetFields
       expect(saveOptions.unsetFields).toHaveProperty('someExistingField', 1);
       expect(saveOptions.unsetFields).not.toHaveProperty('subagentThread');
+      expect(saveOptions.unsetFields).not.toHaveProperty('botMode');
       // Sidebar metadata is never part of endpointOptions, so sweeping it would
       // unpin a chat every time it received a message.
       expect(saveOptions.unsetFields).not.toHaveProperty('pinned');

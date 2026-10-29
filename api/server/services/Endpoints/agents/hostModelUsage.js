@@ -1,3 +1,4 @@
+const { nodeIdentity, researchObservationNodeId } = require('@librechat/api');
 const boundedText = (value) =>
   typeof value === 'string' && value.trim() !== '' && value.length <= 256 ? value : undefined;
 const tokenCount = (value) => (Number.isSafeInteger(value) && value >= 0 ? value : undefined);
@@ -9,7 +10,7 @@ const latencyMs = (value) =>
     : undefined;
 
 /** Persist a small projection of actual primary model-end usage for an opted-in P11 decision. */
-function projectHostModelUsage(decision, usageEvents) {
+function projectHostModelUsage(decision, usageEvents, missionPlan) {
   const traceId = boundedText(decision?.traceId);
   const decisionId = boundedText(decision?.decisionId);
   const selectedModel = boundedText(decision?.selectedModel);
@@ -20,31 +21,71 @@ function projectHostModelUsage(decision, usageEvents) {
         .map((binding) => ({
           provider: boundedText(binding?.provider),
           model: boundedText(binding?.model),
+          ...(boundedText(binding?.runtimeProvider)
+            ? { runtimeProvider: boundedText(binding.runtimeProvider) }
+            : {}),
         }))
         .filter((binding) => binding.provider && binding.model)
     : [{ provider: selectedProvider, model: selectedModel }];
   if (authorizedBindings.length === 0) return undefined;
   if (!traceId || !decisionId || !selectedModel || !agentId || !Array.isArray(usageEvents))
     return undefined;
+  const actorIds = new Set([agentId]);
+  const missionId = boundedText(missionPlan?.mission?.missionId);
+  const tasks = Array.isArray(missionPlan?.tasks) ? missionPlan.tasks : [];
+  if (missionId && tasks.length <= 256) {
+    const owners = new Map();
+    for (const task of tasks) {
+      const key = boundedText(task?.key);
+      const owner = boundedText(task?.agentId);
+      if (!key || !owner || task?.nodeId !== nodeIdentity(missionId, key)) continue;
+      const nodeOwners = owners.get(task.nodeId) ?? new Set();
+      nodeOwners.add(owner);
+      owners.set(task.nodeId, nodeOwners);
+    }
+    for (const [nodeId, nodeOwners] of owners) {
+      if (nodeOwners.size !== 1 || !nodeOwners.has(agentId)) continue;
+      actorIds.add(nodeId);
+      if (
+        missionPlan.mission.researchExecutionVersion === 1 &&
+        tasks.some(
+          (task) =>
+            task?.nodeId === nodeId &&
+            Array.isArray(task.validation) &&
+            task.validation.some((requirement) =>
+              ['research-v1', 'research-v2'].includes(requirement?.outputContract),
+            ),
+        )
+      ) {
+        actorIds.add(researchObservationNodeId(nodeId));
+      }
+    }
+  }
   const modelCalls = [];
   for (const event of usageEvents) {
     if (modelCalls.length >= 16) break;
     if (
       event?.usage_type != null ||
-      event?.agentId !== agentId ||
+      !actorIds.has(event?.agentId) ||
       typeof event?.provider !== 'string'
     )
       continue;
     const usageModel = boundedText(event.model);
     const normalizedProvider = event.provider.toLowerCase();
-    if (
-      !usageModel ||
-      !authorizedBindings.some(
-        (binding) =>
-          binding.provider.toLowerCase() === normalizedProvider && binding.model === usageModel,
-      )
-    )
-      continue;
+    if (!usageModel) continue;
+    // Only the native host admission can bind a configured endpoint to its SDK
+    // provider. Never infer aliases from provider payloads or model names.
+    const matchingBindings = authorizedBindings.filter(
+      (binding) =>
+        binding.model === usageModel &&
+        (binding.provider.toLowerCase() === normalizedProvider ||
+          binding.runtimeProvider?.toLowerCase() === normalizedProvider),
+    );
+    const providers = new Set(matchingBindings.map((binding) => binding.provider.toLowerCase()));
+    // Two custom endpoints may share an SDK provider and model but different
+    // credentials/URLs: an event without a binding ID cannot distinguish them.
+    if (providers.size !== 1) continue;
+    const [resolvedProvider] = providers;
     const inputTokens = tokenCount(event.input_tokens);
     const outputTokens = tokenCount(event.output_tokens);
     const costUsd = usdCost(event.cost);
@@ -61,7 +102,9 @@ function projectHostModelUsage(decision, usageEvents) {
     if (inputTokens == null && outputTokens == null) continue;
     modelCalls.push({
       usageModel,
-      provider: event.provider.toLowerCase(),
+      ...(event.agentId !== agentId ? { actorId: event.agentId } : {}),
+      provider: resolvedProvider,
+      ...(resolvedProvider !== normalizedProvider ? { runtimeProvider: normalizedProvider } : {}),
       ...(inputTokens == null ? {} : { inputTokens }),
       ...(outputTokens == null ? {} : { outputTokens }),
       ...(costUsd == null ? {} : { costUsd }),

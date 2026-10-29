@@ -3,6 +3,7 @@ import type { OracleInput } from '../oracle/types';
 /** Requirements only. Evidence and verdicts belong to Oracle at execution time. */
 export interface OracleRequirement {
   criteria: OracleInput['criteria'];
+  outputContract?: OracleInput['outputContract'];
   review?: OracleInput['review'];
   requireIndependentEvidence?: boolean;
 }
@@ -27,6 +28,8 @@ export interface Mission {
   validation?: OracleRequirement;
   planVersion?: number;
   supersedesPlanId?: string;
+  /** Host-owned compiler policy; older checkpoint topologies are not reinterpreted. */
+  researchExecutionVersion?: 1;
 }
 
 /** Capability declarations are selection hints, never execution permissions. */

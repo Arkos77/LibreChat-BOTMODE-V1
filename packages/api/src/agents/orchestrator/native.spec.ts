@@ -1,6 +1,13 @@
+import { z } from 'zod';
 import { Run, Providers } from '@librechat/agents';
+import { DynamicStructuredTool } from '@librechat/agents/langchain/tools';
 import { AIMessage, HumanMessage } from '@librechat/agents/langchain/messages';
-import type { AgentInputs, BaseGraphState } from '@librechat/agents';
+import type {
+  AgentInputs,
+  BaseGraphState,
+  FallbackConfig,
+  OpenAIClientOptions,
+} from '@librechat/agents';
 import { deterministicPlanner } from './planner';
 import { compileNativePlan } from './native';
 
@@ -35,7 +42,402 @@ const base = {
   constraints: ['offline'],
 };
 
+type FallbackOptions = OpenAIClientOptions & { fallbacks: FallbackConfig[] };
+
+describe('validated native output contract', () => {
+  const validatedPlan = () =>
+    deterministicPlanner.planMission(
+      {
+        ...base,
+        validation: { criteria: [{ id: 'complete', field: 'complete', expected: true }] },
+      },
+      context,
+    );
+
+  it.each(['tools', 'toolDefinitions', 'graphTools'] as const)(
+    'enables an explicit automatic choice for authorized %s without changing the binding',
+    (field) => {
+      const input = new Map(bindings);
+      const options = { modelKwargs: { response_format: { type: 'json_object' } } };
+      const tool = new DynamicStructuredTool({
+        name: 'web_search',
+        description: 'Authorized search',
+        schema: z.object({ query: z.string() }),
+        func: async () => '',
+      });
+      let toolFields: Pick<AgentInputs, 'tools' | 'toolDefinitions' | 'graphTools'>;
+      if (field === 'toolDefinitions') {
+        toolFields = { toolDefinitions: [{ name: 'web_search' }] };
+      } else if (field === 'graphTools') {
+        toolFields = { graphTools: [tool] };
+      } else {
+        toolFields = { tools: [tool] };
+      }
+      input.set('worker', {
+        ...bindings.get('worker')!,
+        clientOptions: options,
+        ...toolFields,
+      });
+      const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
+      expect(agent.clientOptions).toMatchObject({ modelKwargs: { tool_choice: 'auto' } });
+      expect(input.get('worker')!.clientOptions).toBe(options);
+      expect(options.modelKwargs).not.toHaveProperty('tool_choice');
+    },
+  );
+
+  it('allows unforced native OpenRouter subagent calls without implicit json_object', () => {
+    const input = new Map(bindings);
+    const options = { model: 'nvidia/nemotron-3.5-super-vl:free' };
+    input.set('worker', {
+      ...bindings.get('worker')!,
+      provider: Providers.OPENROUTER,
+      toolDefinitions: [{ name: 'subagent' }],
+      clientOptions: options,
+    });
+    const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
+    expect(agent.clientOptions).toMatchObject({
+      model: options.model,
+      modelKwargs: { tool_choice: 'auto' },
+    });
+    expect(agent.clientOptions).not.toHaveProperty('modelKwargs.response_format');
+    expect(input.get('worker')!.clientOptions).toBe(options);
+  });
+
+  it('preserves owner JSON schema even when OpenRouter native tools are authorized', () => {
+    const json_schema = {
+      name: 'owner',
+      strict: true,
+      schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] },
+    };
+    const input = new Map(bindings);
+    input.set('worker', {
+      ...bindings.get('worker')!,
+      provider: Providers.OPENROUTER,
+      toolDefinitions: [{ name: 'subagent' }],
+      clientOptions: { modelKwargs: { response_format: { type: 'json_schema', json_schema } } },
+    });
+    const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
+    expect(agent.clientOptions).toMatchObject({
+      modelKwargs: { response_format: { type: 'json_schema', json_schema }, tool_choice: 'auto' },
+    });
+  });
+
+  it.each(['tools', 'toolDefinitions', 'graphTools'] as const)(
+    'keeps implicit tool choice across nested fallback bindings with %s',
+    (field) => {
+      const tool = new DynamicStructuredTool({
+        name: 'check_background_task',
+        description: 'Authorized host control',
+        schema: z.object({}),
+        func: async () => '',
+      });
+      const options = {
+        model: 'primary',
+        fallbacks: [
+          {
+            provider: Providers.OPENROUTER,
+            clientOptions: {
+              model: 'secondary',
+              fallbacks: [
+                {
+                  provider: Providers.OPENAI,
+                  clientOptions: { model: 'third' },
+                  retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK' as const,
+                },
+              ],
+            },
+            retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK' as const,
+          },
+        ],
+      };
+      const before = JSON.stringify(options);
+      const input = new Map(bindings);
+      input.set('worker', {
+        ...bindings.get('worker')!,
+        provider: Providers.OPENROUTER,
+        [field]: field === 'toolDefinitions' ? [{ name: tool.name }] : [tool],
+        clientOptions: options,
+      });
+      const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
+      const primary = agent.clientOptions as typeof options & { modelKwargs: unknown };
+      expect(primary).toMatchObject({
+        model: 'primary',
+        modelKwargs: { tool_choice: 'auto' },
+        fallbacks: [
+          {
+            provider: Providers.OPENROUTER,
+            retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
+            clientOptions: {
+              model: 'secondary',
+              modelKwargs: { tool_choice: 'auto' },
+              fallbacks: [
+                {
+                  provider: Providers.OPENAI,
+                  clientOptions: {
+                    model: 'third',
+                    modelKwargs: { tool_choice: 'auto' },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+      expect(JSON.stringify(options)).toBe(before);
+    },
+  );
+
+  it.each(['none', 'required', { type: 'function', function: { name: 'authorized_tool' } }])(
+    'preserves an explicitly configured tool choice',
+    (choice) => {
+      const input = new Map(bindings);
+      input.set('worker', {
+        ...bindings.get('worker')!,
+        toolDefinitions: [{ name: 'authorized_tool' }],
+        clientOptions: { modelKwargs: { tool_choice: choice } },
+      });
+      const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
+      expect(agent.clientOptions).toMatchObject({ modelKwargs: { tool_choice: choice } });
+    },
+  );
+
+  it.each(['none', 'required', { type: 'function', function: { name: 'authorized_tool' } }])(
+    'preserves a fallback-specific explicit choice independently from primary',
+    (choice) => {
+      const input = new Map(bindings);
+      input.set('worker', {
+        ...bindings.get('worker')!,
+        toolDefinitions: [{ name: 'authorized_tool' }],
+        clientOptions: {
+          fallbacks: [
+            {
+              provider: Providers.OPENROUTER,
+              clientOptions: { modelKwargs: { tool_choice: choice } },
+              retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
+            },
+          ],
+        } as FallbackOptions,
+      });
+      expect(
+        compileNativePlan(validatedPlan(), input).graphConfig.agents[0].clientOptions,
+      ).toMatchObject({
+        modelKwargs: { tool_choice: 'auto' },
+        fallbacks: [
+          {
+            clientOptions: { modelKwargs: { tool_choice: choice } },
+          },
+        ],
+      });
+    },
+  );
+
+  it.each([
+    { provider: Providers.OPENAI, clientOptions: { useResponsesApi: true } },
+    { provider: Providers.ANTHROPIC, clientOptions: { model: 'other-provider' } },
+  ])(
+    'does not inject Chat Completions options into unsupported fallback transport: %j',
+    (fallback) => {
+      const input = new Map(bindings);
+      input.set('worker', {
+        ...bindings.get('worker')!,
+        toolDefinitions: [{ name: 'authorized_tool' }],
+        clientOptions: {
+          fallbacks: [{ ...fallback, retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK' }],
+        } as FallbackOptions,
+      });
+      const result = compileNativePlan(validatedPlan(), input).graphConfig.agents[0].clientOptions;
+      expect(result).toMatchObject({ fallbacks: [{ clientOptions: fallback.clientOptions }] });
+      expect(
+        (result as { fallbacks: Array<{ clientOptions: unknown }> }).fallbacks[0].clientOptions,
+      ).not.toHaveProperty('modelKwargs');
+    },
+  );
+
+  it.each([
+    { toolDefinitions: [] },
+    { toolDefinitions: [{ name: 'deferred', defer_loading: true }] },
+  ])(
+    'does not enable tools on primary or fallback without an authorized eager tool',
+    ({ toolDefinitions }) => {
+      const input = new Map(bindings);
+      input.set('worker', {
+        ...bindings.get('worker')!,
+        toolDefinitions,
+        clientOptions: {
+          fallbacks: [
+            {
+              provider: Providers.OPENROUTER,
+              clientOptions: { model: 'secondary' },
+              retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
+            },
+          ],
+        } as FallbackOptions,
+      });
+      const result = compileNativePlan(validatedPlan(), input).graphConfig.agents[0].clientOptions;
+      expect(result).not.toHaveProperty('modelKwargs.tool_choice');
+      expect(
+        (result as { fallbacks: Array<{ clientOptions: unknown }> }).fallbacks[0].clientOptions,
+      ).not.toHaveProperty('modelKwargs.tool_choice');
+    },
+  );
+
+  it('does not enable a tool from capability or registry metadata alone', () => {
+    const input = new Map(bindings);
+    input.set('worker', {
+      ...bindings.get('worker')!,
+      tools: [],
+      toolDefinitions: [{ name: 'deferred', defer_loading: true }],
+      toolRegistry: new Map([['web_search', { name: 'web_search' }]]),
+    });
+    expect(
+      compileNativePlan(validatedPlan(), input).graphConfig.agents[0].clientOptions,
+    ).not.toHaveProperty('modelKwargs.tool_choice');
+  });
+
+  it.each([Providers.OPENAI, 'openrouter'])(
+    'gives the producer the validation contract and JSON transport for %s',
+    (provider) => {
+      const input = new Map(bindings);
+      input.set('worker', {
+        ...bindings.get('worker')!,
+        provider: provider as AgentInputs['provider'],
+        clientOptions: { model: 'offline-model', temperature: 0.2 },
+      });
+      const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
+      const machineContext = JSON.parse(
+        String(agent.instructions)
+          .split('\n')
+          .find((line) => line.startsWith('{'))!,
+      );
+      expect(machineContext.validation).toEqual([
+        { criteria: [{ id: 'complete', field: 'complete', expected: true }] },
+      ]);
+      expect(agent.clientOptions).toMatchObject({
+        model: 'offline-model',
+        temperature: 0.2,
+        modelKwargs: { response_format: { type: 'json_object' } },
+      });
+      expect(input.get('worker')!.clientOptions).toEqual({
+        model: 'offline-model',
+        temperature: 0.2,
+      });
+    },
+  );
+
+  it('does not inject Chat Completions kwargs into the Responses API', () => {
+    const input = new Map(bindings);
+    input.set('worker', {
+      ...bindings.get('worker')!,
+      clientOptions: { model: 'offline-response-model', useResponsesApi: true },
+    });
+    const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
+    expect(agent.clientOptions).toEqual({ model: 'offline-response-model', useResponsesApi: true });
+  });
+
+  it('keeps an explicit structured JSON schema and unrelated provider options', () => {
+    const schema = {
+      type: 'json_schema',
+      json_schema: { name: 'task', schema: { type: 'object' } },
+    };
+    const input = new Map(bindings);
+    input.set('worker', {
+      ...bindings.get('worker')!,
+      clientOptions: {
+        modelKwargs: { response_format: schema, provider: { require_parameters: true } },
+      },
+    });
+    const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
+    expect(agent.clientOptions).toEqual(input.get('worker')!.clientOptions);
+  });
+
+  it('replaces explicit text output for a task that Oracle requires to be JSON', () => {
+    const input = new Map(bindings);
+    input.set('worker', {
+      ...bindings.get('worker')!,
+      clientOptions: { modelKwargs: { response_format: { type: 'text' } } },
+    });
+    expect(
+      compileNativePlan(validatedPlan(), input).graphConfig.agents[0].clientOptions,
+    ).toMatchObject({
+      modelKwargs: { response_format: { type: 'json_object' } },
+    });
+  });
+
+  it('does not inject OpenAI transport fields into another provider', () => {
+    const input = new Map(bindings);
+    input.set('worker', {
+      agentId: 'worker',
+      provider: Providers.ANTHROPIC,
+      clientOptions: { model: 'offline-model' },
+    });
+    const agent = compileNativePlan(validatedPlan(), input).graphConfig.agents[0];
+    expect(agent.clientOptions).toEqual({ model: 'offline-model' });
+    const machineContext = JSON.parse(
+      String(agent.instructions)
+        .split('\n')
+        .find((line) => line.startsWith('{'))!,
+    );
+    expect(machineContext.validation).toEqual([
+      { criteria: [{ id: 'complete', field: 'complete', expected: true }] },
+    ]);
+  });
+
+  it('leaves a legacy task without validation transport unchanged', () => {
+    const agent = compileNativePlan(deterministicPlanner.planMission(base, context), bindings)
+      .graphConfig.agents[0];
+    expect(agent.clientOptions).toBeUndefined();
+  });
+});
+
 describe('native plan compilation', () => {
+  it('blocks plain-text delegation arguments instead of treating them as completed work', async () => {
+    const plan = deterministicPlanner.planMission(
+      {
+        ...base,
+        validation: { criteria: [{ id: 'completed', field: 'ok', expected: true }] },
+        objectives: [
+          {
+            key: 'research',
+            objective: 'Research',
+            requiredCapabilities: ['basic'],
+            dependsOn: [],
+          },
+          {
+            key: 'synthesis',
+            objective: 'Synthesize',
+            requiredCapabilities: ['basic'],
+            dependsOn: ['research'],
+          },
+        ],
+      },
+      context,
+    );
+    const outcomes: Array<{ taskId: string; statuses: string[] }> = [];
+    const native = compileNativePlan(plan, bindings, undefined, undefined, async (result) => {
+      outcomes.push({ taskId: result.taskId, statuses: result.verdicts.map((v) => v.status) });
+    });
+    const run = await Run.create({
+      runId: 'delegation-text-only',
+      graphConfig: native.graphConfig,
+    });
+    if (!run.Graph) throw new Error('Graph missing');
+    run.Graph.overrideTestModel([
+      JSON.stringify({
+        intent: 'Delegate research',
+        description: 'Produce a sourced result',
+        subagent_type: 'research-agent',
+        run_in_background: false,
+      }),
+    ]);
+    await expect(
+      run.processStream(
+        { messages: [new HumanMessage('Research and synthesize.')] },
+        { version: 'v2' },
+      ),
+    ).rejects.toThrow('REJECTED');
+    expect(outcomes).toEqual([{ taskId: plan.tasks[0].taskId, statuses: ['REJECTED'] }]);
+  });
+
   it('executes the zero-specialist configuration on the real StandardGraph', async () => {
     const plan = deterministicPlanner.planMission(base, context);
     const native = compileNativePlan(plan, bindings);
@@ -435,4 +837,61 @@ describe('native plan compilation', () => {
     plan.tasks[0].nodeId = 'unrelated-node';
     expect(() => compileNativePlan(plan, bindings)).toThrow('identity');
   });
+});
+
+it('passes same-task observed sources into dependency-transition Oracle validation', async () => {
+  const plan = deterministicPlanner.planMission(
+    {
+      ...base,
+      researchExecutionVersion: 1,
+      objectives: [
+        {
+          key: 'research',
+          objective: 'Research',
+          requiredCapabilities: ['x'],
+          dependsOn: [],
+          validation: {
+            criteria: [{ id: 'ok', field: 'ok', expected: true }],
+            outputContract: 'research-v1',
+          },
+        },
+        {
+          key: 'use',
+          objective: 'Use research',
+          requiredCapabilities: ['basic'],
+          dependsOn: ['research'],
+        },
+      ],
+    },
+    context,
+  );
+  const checked = plan.tasks[0];
+  const native = compileNativePlan(
+    plan,
+    new Map([
+      ...bindings,
+      ['x', { ...bindings.get('x')!, toolDefinitions: [{ name: 'web_search' }] }],
+    ]),
+    undefined,
+    undefined,
+    undefined,
+    async (taskId) =>
+      taskId === checked.taskId
+        ? [{ toolCallId: 'search', urls: ['https://example.org/report'] }]
+        : [],
+  );
+  if (native.graphConfig.type !== 'multi-agent') throw new Error('Expected multi-agent');
+  const output = new AIMessage(
+    JSON.stringify({
+      ok: true,
+      result: 'See https://example.org/report',
+      sources: 'https://example.org/report',
+    }),
+  );
+  await expect(
+    native.graphConfig.edges[0].beforeTransition?.({
+      messages: [output],
+      agentOutputs: { [checked.nodeId]: output },
+    } as BaseGraphState),
+  ).resolves.toBeUndefined();
 });

@@ -42,7 +42,14 @@ const {
   resolveAgentTurnExecutionPlan,
   resolveRequestTenantId,
   deterministicPlanner,
+  prepareBotModePlan,
+  assertResearchToolAvailability,
 } = require('@librechat/api');
+const {
+  authorizeOrchestratorMissionBindings,
+  assertAuthorizedOrchestratorTasks,
+} = require('./orchestratorMissionBindings');
+const { prepareBotModeSettings } = require('./botModeSettings');
 const { disposeClient } = require('~/server/cleanup');
 const { observeMtoEvent } = require('~/server/services/Endpoints/agents/mtoObservation');
 const {
@@ -426,7 +433,11 @@ async function saveErrorTurn(
       : {};
     await saveConvo(
       reqCtx,
-      { conversationId, ...convoFields },
+      {
+        conversationId,
+        ...convoFields,
+        ...(req._botModeSettings != null && { botMode: req._botModeSettings }),
+      },
       seedConvo ? { context } : { context, noUpsert: true },
     );
   } catch (err) {
@@ -1671,6 +1682,13 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       startupTelemetry?.mark('conversation_resolved'),
     );
 
+    const botModeSettings = prepareBotModeSettings({
+      requested: req.body?.botMode,
+      saved: req.resolvedConversation?.botMode,
+      agentId: endpointOption?.agent_id ?? req.body?.agent_id,
+      mission: req.body?.orchestratorMission,
+    });
+
     // Note: We no longer use res.on('close') to abort since we send JSON immediately.
     // The response closes normally after res.json(), which is not an abort condition.
     // Abort handling is done through GenerationJobManager via the SSE stream connection.
@@ -1784,6 +1802,23 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
     });
     startupTelemetry?.mark('client_initialized');
     client = result.client;
+    if (botModeSettings != null) {
+      const primaryAgentId = client?.options?.agent?.id;
+      if (primaryAgentId !== botModeSettings.workerAgentId) {
+        throw new Error('BOT MODE settings must match the authorized primary agent');
+      }
+      const reachableAgents =
+        typeof client.getReachableMissionAgents === 'function'
+          ? client.getReachableMissionAgents()
+          : [client.options.agent, ...(client.agentConfigs?.values?.() ?? [])];
+      authorizeOrchestratorMissionBindings({
+        primaryAgentId,
+        reachableAgents,
+        specialists: botModeSettings.agents.map((agent) => ({ agentId: agent.id })),
+      });
+      client.botModeSettings = botModeSettings;
+      req._botModeSettings = botModeSettings;
+    }
 
     /**
      * P6 native mission planning is an explicit opt-in. The planner consumes
@@ -1798,7 +1833,13 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
     const orchestratorMission = req.body?.orchestratorMission;
     if (orchestratorMission != null) {
       const mission = orchestratorMission?.mission;
-      const plannerContext = orchestratorMission?.plannerContext;
+      const plannerContext =
+        botModeSettings == null
+          ? orchestratorMission?.plannerContext
+          : {
+              worker: { agentId: botModeSettings.workerAgentId },
+              specialists: botModeSettings.agents.map(({ id }) => ({ agentId: id })),
+            };
       if (
         mission == null ||
         plannerContext == null ||
@@ -1817,36 +1858,36 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         throw new Error('Orchestrator worker must match the authorized primary agent');
       }
 
-      const authorizedAgentIds = new Set([
+      // Resolve native subagent delegation through the authenticated, initialized
+      // runtime graph. The legacy agentConfigs map alone omits native children.
+      // Never trust agent IDs supplied by the mission request as grants.
+      const reachableAgents =
+        typeof client.getReachableMissionAgents === 'function'
+          ? client.getReachableMissionAgents()
+          : [client.options.agent, ...(client.agentConfigs?.values?.() ?? [])];
+      const authorizedAgentIds = authorizeOrchestratorMissionBindings({
         primaryAgentId,
-        ...(client?.agentConfigs?.keys?.() ?? []),
-      ]);
-      for (const specialist of plannerContext.specialists) {
-        if (
-          specialist == null ||
-          typeof specialist.agentId !== 'string' ||
-          !authorizedAgentIds.has(specialist.agentId)
-        ) {
-          throw new Error('Orchestrator specialist is not an authorized agent binding');
-        }
-      }
-
-      const orchestratorPlan = deterministicPlanner.planMission(mission, plannerContext);
-      for (const task of orchestratorPlan.tasks) {
-        if (!authorizedAgentIds.has(task.agentId)) {
-          throw new Error('Orchestrator plan selected an unauthorized agent binding');
-        }
-      }
+        reachableAgents,
+        specialists: plannerContext.specialists,
+      });
+      const orchestratorPlan =
+        botModeSettings == null
+          ? deterministicPlanner.planMission(mission, plannerContext)
+          : prepareBotModePlan({
+              mission,
+              settings: botModeSettings,
+              reachableAgents,
+              legacyContext: orchestratorMission.plannerContext,
+              hasAttachments: Array.isArray(req.body.files) && req.body.files.length > 0,
+            });
+      assertAuthorizedOrchestratorTasks(orchestratorPlan.tasks, authorizedAgentIds);
+      assertResearchToolAvailability(orchestratorPlan, reachableAgents);
 
       // Record original effective agent capability provenance in the SAME
       // epoch-scoped Redis write as the immutable plan, before models/tools
       // begin. The digest is not a grant or replay receipt. In particular,
       // delegation, code/file tools and host evidence paths must still acquire
       // real effect receipts before a recovered provider can execute them.
-      const reachableAgents =
-        typeof client.getReachableMissionAgents === 'function'
-          ? client.getReachableMissionAgents()
-          : [client.options.agent, ...(client.agentConfigs?.values?.() ?? [])];
       const nativeMissionCapabilityAttestation = createNativeMissionCapabilityAttestation({
         plan: orchestratorPlan,
         agents: reachableAgents,
@@ -1872,7 +1913,19 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       client.orchestratorPlan = persistedPlanJob.metadata.orchestratorPlan;
       client.publicationBarrier?.activate?.();
 
-      const evidenceDeclarations = orchestratorMission?.evidenceDeclarations;
+      const sourceTasks = orchestratorPlan.tasks
+        .filter((task) =>
+          task.validation.some((requirement) =>
+            ['research-v1', 'research-v2'].includes(requirement.outputContract),
+          ),
+        )
+        .map((task) => ({
+          nodeId: task.nodeId,
+          taskId: task.taskId,
+          producerAgentId: task.agentId,
+        }));
+      const evidenceDeclarations =
+        orchestratorMission?.evidenceDeclarations ?? (sourceTasks.length > 0 ? [] : undefined);
       if (evidenceDeclarations != null) {
         if (!Array.isArray(evidenceDeclarations)) {
           throw new Error('Orchestrator mission evidence declarations must be an array');
@@ -1940,6 +1993,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         result.missionEvidenceContext.configure({
           traceId: mtoTraceId,
           declarations: configuredDeclarations,
+          ...(sourceTasks.length > 0 && { sourceTasks }),
         });
       }
     }

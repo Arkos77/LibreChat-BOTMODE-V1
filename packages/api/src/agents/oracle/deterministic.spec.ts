@@ -149,3 +149,167 @@ describe('deterministic Oracle', () => {
     ).toBe('UNKNOWN');
   });
 });
+
+describe('versioned mission result contract', () => {
+  it.each([undefined, '', '  \n  ', null, 42])(
+    'rejects a completed task without a usable result: %s',
+    async (result) => {
+      const candidate = JSON.stringify({ ok: true, result });
+      const verdict = await deterministicOracle.validate({
+        ...input(),
+        candidate,
+        criteria: [{ id: 'completed', field: 'ok', expected: true }],
+        outputContract: 'result-v1',
+      });
+      expect(verdict.status).toBe('REJECTED');
+    },
+  );
+  it('accepts an explicit impossibility conclusion without inventing feasibility', async () => {
+    const verdict = await deterministicOracle.validate({
+      ...input(),
+      candidate: JSON.stringify({
+        ok: true,
+        result: 'Impossible à établir : délais de paiement inconnus.',
+      }),
+      criteria: [{ id: 'completed', field: 'ok', expected: true }],
+      outputContract: 'result-v1',
+    });
+    expect(verdict.status).toBe('VERIFIED');
+    expect(verdict.input.outputContract).toBe('result-v1');
+  });
+});
+
+describe('research source provenance', () => {
+  const research = {
+    ...input(),
+    outputContract: 'research-v1' as const,
+    criteria: [{ id: 'completed', field: 'ok', expected: true }],
+    candidate: JSON.stringify({
+      ok: true,
+      result: 'See https://example.org/report',
+      sources: 'https://example.org/report',
+    }),
+  };
+  it('rejects model supplied citations without an executed search observation', async () => {
+    expect((await deterministicOracle.validate(research)).status).toBe('REJECTED');
+  });
+  it('accepts a cited URL present in the task native search observation', async () => {
+    const verdict = await deterministicOracle.validate({
+      ...research,
+      observedSources: [{ toolCallId: 'search-call', urls: ['https://example.org/report'] }],
+    });
+    expect(verdict.status).toBe('VERIFIED');
+  });
+  it.each([
+    '\\ue202turn0search0',
+    '\ue202turn0search0',
+    '\\ue202turn0search0\\ue202turn0news1',
+    '\ue202turn0search0\ue202turn0news1',
+    '\\ue200\\ue202turn0search0\\ue201',
+    '\ue200\ue202turn0search0\ue201',
+    '\\ue204\\ue202turn0search0',
+    '\ue204\ue202turn0search0',
+  ])('accepts an observed URL followed by the application citation suffix %s', async (suffix) => {
+    const url = 'https://example.org/report';
+    const verdict = await deterministicOracle.validate({
+      ...research,
+      candidate: JSON.stringify({ ok: true, result: `Observed ${url}.${suffix}`, sources: url }),
+      observedSources: [{ toolCallId: 'search-call', urls: [url] }],
+    });
+    expect(verdict.status).toBe('VERIFIED');
+  });
+
+  it.each([
+    'https://example.org/forged.\\ue202turn0search0',
+    'https://example.org/report/extra.\\ue202turn0search0',
+    'https://example.org/report?extra=yes.\\ue202turn0search0',
+    'https://example.org/report#extra.\\ue202turn0search0',
+    'https://example.org.attacker.invalid/report.\\ue202turn0search0',
+    'https://example.org/report.\\ue202turn0search0/extra',
+    'https://example.org/report.\\ue202turn0search0evil',
+    'https://example.org/report.\\ue202turn0unknown0',
+    'https://example.org/report.%EE%88%82turn0search0',
+  ])('keeps forged or malformed citations rejected: %s', async (citation) => {
+    const verdict = await deterministicOracle.validate({
+      ...research,
+      candidate: JSON.stringify({
+        ok: true,
+        result: `Observed ${citation}`,
+        sources: 'https://example.org/report',
+      }),
+      observedSources: [{ toolCallId: 'search-call', urls: ['https://example.org/report'] }],
+    });
+    expect(verdict.status).toBe('REJECTED');
+  });
+
+  it('does not promote a citation anchor into an independent source observation', async () => {
+    const verdict = await deterministicOracle.validate({
+      ...research,
+      candidate: JSON.stringify({
+        ok: true,
+        result: 'https://example.org/report.\\ue202turn0search0',
+        sources: 'https://example.org/report',
+      }),
+    });
+    expect(verdict.status).toBe('REJECTED');
+  });
+
+  it('rejects a citation absent from observed results', async () => {
+    expect(
+      (
+        await deterministicOracle.validate({
+          ...research,
+          observedSources: [{ toolCallId: 'search-call', urls: ['https://other.example/report'] }],
+        })
+      ).status,
+    ).toBe('REJECTED');
+  });
+  it('rejects a bibliography not cited in the result', async () => {
+    expect(
+      (
+        await deterministicOracle.validate({
+          ...research,
+          candidate: JSON.stringify({
+            ok: true,
+            result: 'Unsupported assertion',
+            sources: 'https://example.org/report',
+          }),
+          observedSources: [{ toolCallId: 'search-call', urls: ['https://example.org/report'] }],
+        })
+      ).status,
+    ).toBe('REJECTED');
+  });
+});
+
+it.each(['https://example.org/report?q=yes!', 'https://example.org/a(b)'])(
+  'accepts an observed URL with legitimate punctuation: %s',
+  async (url) => {
+    expect(
+      (
+        await deterministicOracle.validate({
+          ...input(),
+          outputContract: 'research-v1',
+          candidate: JSON.stringify({ total: 42, result: `See [source](${url}).`, sources: url }),
+          observedSources: [{ toolCallId: 'search', urls: [url] }],
+        })
+      ).status,
+    ).toBe('VERIFIED');
+  },
+);
+
+it('rejects an extra unobserved citation with an uppercase HTTP scheme', async () => {
+  expect(
+    (
+      await deterministicOracle.validate({
+        ...input(),
+        outputContract: 'research-v1',
+        candidate: JSON.stringify({
+          total: 42,
+          result: 'See https://example.org/report and HTTPS://forged.example/claim',
+          sources: 'https://example.org/report',
+        }),
+        observedSources: [{ toolCallId: 'search', urls: ['https://example.org/report'] }],
+      })
+    ).status,
+  ).toBe('REJECTED');
+});

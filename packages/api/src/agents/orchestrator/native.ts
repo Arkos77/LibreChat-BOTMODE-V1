@@ -1,13 +1,22 @@
 import type {
   AgentInputs,
   BaseGraphState,
+  OpenAIClientOptions,
   MultiAgentGraphConfig,
   StandardGraphConfig,
+  FallbackConfig,
 } from '@librechat/agents';
 import type { MissionOracleResultPersister, MissionOracleTaskInput } from './missionOracle';
 import type { MissionPlan, OracleRequirement, PlannedTask } from './types';
+import {
+  isResearchTask,
+  researchObservationNodeId,
+  researchPhaseBinding,
+  requireResearchObservation,
+} from './research';
 import { assertMissionTaskVerified, validateMissionTask } from './missionOracle';
 import { getTaskLevels, nodeIdentity } from './planner';
+import { structuredTaskOptions } from './schema';
 
 export interface NativeMissionPlan {
   planId: string;
@@ -15,6 +24,74 @@ export interface NativeMissionPlan {
   graphConfig: StandardGraphConfig | MultiAgentGraphConfig;
   actors: Array<{ nodeId: string; agentId: string; taskId: string }>;
   validation: Array<{ taskId: string; nodeId: string; requirements: OracleRequirement[] }>;
+}
+
+function validatedClientOptions(binding: AgentInputs, task: PlannedTask) {
+  if (
+    task.validation.length === 0 ||
+    !['openai', 'openrouter'].includes(binding.provider.toLowerCase())
+  ) {
+    return binding.clientOptions;
+  }
+  const options = structuredTaskOptions(
+    binding.provider,
+    binding.clientOptions as OpenAIClientOptions | undefined,
+    task.validation,
+  );
+  const hasTools = Boolean(
+    binding.tools?.length ||
+      binding.graphTools?.length ||
+      binding.toolDefinitions?.some((tool) => tool.defer_loading !== true),
+  );
+  return validatedTransportOptions(binding.provider, options, hasTools);
+}
+
+function validatedTransportOptions(
+  provider: string,
+  options: ReturnType<typeof structuredTaskOptions>,
+  hasTools: boolean,
+): ReturnType<typeof structuredTaskOptions> {
+  if (
+    !['openai', 'openrouter'].includes(provider.toLowerCase()) ||
+    options?.useResponsesApi === true
+  ) {
+    return options;
+  }
+  const format = options?.modelKwargs?.response_format;
+  const hasJsonFormat = format?.type === 'json_schema' || format?.type === 'json_object';
+  // Some OpenAI-compatible providers require tools and tool_choice together.
+  // Keep explicit choices (including "none") and allow the model to finish
+  // after tool results; forcing "required" on every turn would prevent that.
+  const needsToolChoice = hasTools && options?.modelKwargs?.tool_choice == null;
+  // Some free OpenRouter tool-capable models treat an implicit json_object
+  // format as a request to answer immediately instead of calling subagent.
+  // Never override an owner's explicit JSON format. For implicit tool phases,
+  // let the model select its authorized tool; the mission Oracle still verifies
+  // the final JSON before publication.
+  const deferImplicitJsonUntilValidation =
+    provider.toLowerCase() === 'openrouter' && hasTools && !hasJsonFormat;
+  if (hasJsonFormat && !needsToolChoice && options?.fallbacks == null) {
+    return options;
+  }
+  return {
+    ...options,
+    ...(options?.fallbacks != null && {
+      fallbacks: options.fallbacks.map((fallback) => ({
+        ...fallback,
+        clientOptions: validatedTransportOptions(
+          fallback.provider,
+          fallback.clientOptions as ReturnType<typeof structuredTaskOptions>,
+          hasTools,
+        ),
+      })) as FallbackConfig[],
+    }),
+    modelKwargs: {
+      ...options?.modelKwargs,
+      ...(!hasJsonFormat &&
+        !deferImplicitJsonUntilValidation && { response_format: { type: 'json_object' } }),
+      ...(needsToolChoice && { tool_choice: 'auto' }),
+    },
+  };
 }
 
 function messageCandidate(
@@ -31,10 +108,17 @@ export type MissionOracleEvidenceResolver = (
   | Promise<NonNullable<MissionOracleTaskInput['evidence']>>
   | NonNullable<MissionOracleTaskInput['evidence']>;
 
+export type MissionOracleSourcesResolver = (
+  taskId: string,
+) =>
+  | NonNullable<MissionOracleTaskInput['observedSources']>
+  | Promise<NonNullable<MissionOracleTaskInput['observedSources']>>;
+
 function requirePredecessorOutputs(
   sourceTasks: readonly PlannedTask[],
   resolveMissionOracleEvidence?: MissionOracleEvidenceResolver,
   persistMissionOracleResult?: MissionOracleResultPersister,
+  resolveMissionOracleSources?: MissionOracleSourcesResolver,
 ) {
   const sourceNodeIds = sourceTasks.map((task) => task.nodeId);
   return async (state: BaseGraphState): Promise<void> => {
@@ -55,6 +139,8 @@ function requirePredecessorOutputs(
         agentId: task.agentId,
         candidate: messageCandidate(state.agentOutputs?.[task.nodeId]),
         requirements: task.validation,
+        observedSources:
+          resolveMissionOracleSources == null ? [] : await resolveMissionOracleSources(task.taskId),
         evidence:
           resolveMissionOracleEvidence == null
             ? []
@@ -77,10 +163,14 @@ export function compileNativePlan(
   compileOptions?: MultiAgentGraphConfig['compileOptions'],
   resolveMissionOracleEvidence?: MissionOracleEvidenceResolver,
   persistMissionOracleResult?: MissionOracleResultPersister,
+  resolveMissionOracleSources?: MissionOracleSourcesResolver,
 ): NativeMissionPlan {
   getTaskLevels(plan.tasks);
+  if (plan.tasks.some(isResearchTask) && plan.mission.researchExecutionVersion !== 1) {
+    throw new Error('BOTMODE_RESEARCH_PLAN_VERSION_UNSUPPORTED');
+  }
   const tasks = new Map(plan.tasks.map((task) => [task.key, task]));
-  const agents = plan.tasks.map((task): AgentInputs => {
+  const agents = plan.tasks.flatMap((task): AgentInputs[] => {
     const binding = bindings.get(task.agentId);
     if (!binding || binding.agentId !== task.agentId) {
       throw new Error(`Missing or mismatched authorized binding for ${task.agentId}`);
@@ -88,9 +178,15 @@ export function compileNativePlan(
     if (task.nodeId !== nodeIdentity(plan.mission.missionId, task.key)) {
       throw new Error('Invalid native task identity');
     }
-    return {
+    const separateSources =
+      task.validation.some((requirement) => requirement.outputContract === 'research-v2') &&
+      !task.validation.some((requirement) => requirement.outputContract === 'research-v1');
+    const result: AgentInputs = {
       ...binding,
       agentId: task.nodeId,
+      ...(task.validation.length > 0 && {
+        clientOptions: validatedClientOptions(binding, task),
+      }),
       instructions: [
         binding.instructions,
         'Mission planning context (not execution permission):',
@@ -101,11 +197,51 @@ export function compileNativePlan(
           objective: task.objective,
           constraints: task.constraints,
           requiredCapabilities: task.requiredCapabilities,
+          ...(task.validation.length > 0 && { validation: task.validation }),
         }),
+        ...(task.validation.length === 0
+          ? []
+          : [
+              separateSources
+                ? 'Required task output: return exactly one JSON object, without Markdown fences or surrounding prose. Use scalar fields only; put detailed findings in result and the observed source URLs used in sources.'
+                : 'Required task output: return exactly one JSON object, without Markdown fences or surrounding prose. Use scalar fields only; put detailed findings and source citations in a result string.',
+              'The validation criteria above are checks, not values to copy. Report completion honestly; never claim a criterion is met when the requested work or evidence is missing.',
+              separateSources
+                ? 'For research-v2, include a sources string of newline-separated absolute HTTP(S) URLs returned by completed web_search calls. The host verifies and displays these sources separately from result. Invented URLs and search arguments are not source observations.'
+                : 'For research-v1, include a sources string of newline-separated absolute HTTP(S) URLs returned by completed web_search calls. Cite these same direct URLs in result. Invented URLs and search arguments are not source observations.',
+              'Respect the mission deadline and other constraints. Distinguish sourced facts from estimates and unknowns. Do not invent amounts, payment delays or citations; state when a source does not establish a claim.',
+            ]),
       ]
         .filter(Boolean)
         .join('\n'),
     };
+    if (!isResearchTask(task)) return [result];
+    const observationId = researchObservationNodeId(task.nodeId);
+    if (plan.tasks.some((other) => other.nodeId === observationId)) {
+      throw new Error('Ambiguous native research phase identity');
+    }
+    return [
+      researchPhaseBinding(
+        {
+          ...binding,
+          agentId: observationId,
+          instructions: [
+            binding.instructions,
+            'Internal web observation phase: call web_search for the mission below. Produce no final answer; JSON completion belongs to the following phase.',
+            JSON.stringify({
+              mission: plan.mission.objective,
+              objective: task.objective,
+              constraints: task.constraints,
+            }),
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        },
+        'observation',
+        separateSources,
+      ),
+      researchPhaseBinding(result, 'result', separateSources),
+    ];
   });
   const edges: MultiAgentGraphConfig['edges'] = plan.tasks
     .filter((task) => task.dependsOn.length > 0)
@@ -114,19 +250,53 @@ export function compileNativePlan(
       const sourceNodeIds = sourceTasks.map((sourceTask) => sourceTask.nodeId);
       return {
         from: sourceNodeIds,
-        to: task.nodeId,
+        to: isResearchTask(task) ? researchObservationNodeId(task.nodeId) : task.nodeId,
         edgeType: 'direct',
         beforeTransition: requirePredecessorOutputs(
           sourceTasks,
           resolveMissionOracleEvidence,
           persistMissionOracleResult,
+          resolveMissionOracleSources,
         ),
       };
     });
+  for (const task of plan.tasks.filter(isResearchTask)) {
+    edges.push({
+      from: researchObservationNodeId(task.nodeId),
+      to: task.nodeId,
+      edgeType: 'direct',
+      beforeTransition: requireResearchObservation(
+        task,
+        resolveMissionOracleSources == null
+          ? undefined
+          : async (toolCallIds) => {
+              const sources = await resolveMissionOracleSources(task.taskId);
+              if (
+                !sources.some(
+                  (source) => toolCallIds.includes(source.toolCallId) && source.urls.length > 0,
+                )
+              ) {
+                throw new Error('BOTMODE_RESEARCH_SOURCES_REQUIRED');
+              }
+            },
+      ),
+    });
+  }
   return {
     planId: plan.planId,
     missionId: plan.mission.missionId,
-    actors: plan.tasks.map(({ nodeId, agentId, taskId }) => ({ nodeId, agentId, taskId })),
+    actors: plan.tasks.flatMap((task) => [
+      ...(isResearchTask(task)
+        ? [
+            {
+              nodeId: researchObservationNodeId(task.nodeId),
+              agentId: task.agentId,
+              taskId: task.taskId,
+            },
+          ]
+        : []),
+      { nodeId: task.nodeId, agentId: task.agentId, taskId: task.taskId },
+    ]),
     graphConfig:
       agents.length === 1
         ? { type: 'standard', agents, compileOptions }

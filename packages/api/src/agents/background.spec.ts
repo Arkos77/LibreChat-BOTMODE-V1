@@ -2500,6 +2500,63 @@ describe('runCheckBackgroundTask (singleton)', () => {
     expect(second.result).toBeUndefined();
   });
 
+  it('waits for two detached children without repeated model polling', async () => {
+    const store = new InMemorySubagentTaskStore();
+    const subagentTasks: SubagentTaskConfig = { store, scopeId: 'owner:bounded-parent' };
+    const started = ['researcher', 'analyst'].map((role, index) =>
+      store.start({
+        scopeId: subagentTasks.scopeId,
+        idempotencyKey: `parent:worker:call-${index}`,
+        parentRunId: 'parent',
+        parentAgentId: 'worker',
+        parentToolCallId: `call-${index}`,
+        input: 'Independent child result',
+        subagentKind: 'agent',
+        subagentType: role,
+        run: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 40));
+          return { content: role + ' finished' };
+        },
+      }),
+    );
+    expect(started.every((child) => child.accepted)).toBe(true);
+    const acceptedTasks = started.map((child) => {
+      if (!child.accepted) {
+        throw new Error('Expected detached child task to be accepted.');
+      }
+      return child.task;
+    });
+    const results = await Promise.all(
+      acceptedTasks.map(async (task, index) =>
+        JSON.parse(
+          await runCheckBackgroundTask({
+            userId: 'owner',
+            conversationId: 'bounded-parent',
+            args: { background_task_id: task.taskId, wait_for_completion: true },
+            toolCallId: `poll-${index}`,
+            subagentTasks,
+          }),
+        ),
+      ),
+    );
+    expect(results.map((result) => result.status)).toEqual(['completed', 'completed']);
+    expect(results.map((result) => result.result)).toEqual([
+      'researcher finished',
+      'analyst finished',
+    ]);
+  });
+
+  it('refuses bounded waiting without a specific authorized subagent task', async () => {
+    const result = JSON.parse(
+      await runCheckBackgroundTask({
+        userId: 'owner',
+        conversationId: 'bounded-parent',
+        args: { wait_for_completion: true },
+      }),
+    );
+    expect(result.status).toBe('invalid');
+  });
+
   it('tells a wakeup-enabled parent to yield on an unchanged running subagent', async () => {
     const store = new InMemorySubagentTaskStore();
     const subagentTasks: HostSubagentTaskConfig = {

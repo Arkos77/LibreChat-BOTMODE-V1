@@ -86,7 +86,7 @@ describe('convertJsonSchemaToZod', () => {
       const validData = { query: 'test search' };
       const parsedValid = result?.parse(validData);
       expect(parsedValid).toBeDefined();
-      expect(parsedValid.query).toBe('test search');
+      expect(parsedValid).toHaveProperty('query', 'test search');
       // max_results is optional and may not be in the result when not provided
 
       // Test with max_results included
@@ -134,10 +134,12 @@ describe('convertJsonSchemaToZod', () => {
       const minimalData = { numberField: 2.5 };
       const parsedMinimal = result?.parse(minimalData);
       expect(parsedMinimal).toBeDefined();
-      expect(parsedMinimal.numberField).toBe(2.5);
+      expect(parsedMinimal).toHaveProperty('numberField', 2.5);
       // Optional fields may be undefined or null when not provided
-      expect(parsedMinimal.integerField ?? null).toBe(null);
-      expect(parsedMinimal.floatField ?? null).toBe(null);
+      expect(parsedMinimal).not.toEqual(
+        expect.objectContaining({ integerField: expect.anything() }),
+      );
+      expect(parsedMinimal).not.toEqual(expect.objectContaining({ floatField: expect.anything() }));
     });
   });
 
@@ -1318,8 +1320,8 @@ describe('convertJsonSchemaToZod', () => {
 
       const result = zodSchema?.parse(testData);
       expect(result).toEqual(testData);
-      expect(result?.filter).toBeDefined();
-      expect(result?.filter?.title?._icontains).toBe('Pirate');
+      expect(result).toHaveProperty('filter');
+      expect(result).toHaveProperty('filter.title._icontains', 'Pirate');
     });
 
     it('should not treat objects with additionalProperties as empty', () => {
@@ -1453,7 +1455,7 @@ describe('convertJsonSchemaToZod', () => {
 
       const result = zodSchema?.parse(testData);
       expect(result).toEqual(testData);
-      expect(result?.query?.filter?.title?._icontains).toBe('Pirate');
+      expect(result).toHaveProperty('query.filter.title._icontains', 'Pirate');
     });
   });
 
@@ -1532,7 +1534,7 @@ describe('convertJsonSchemaToZod', () => {
 
       // Without resolving refs, the filter field won't work correctly
       const resultUnresolved = zodSchemaUnresolved?.parse(testData);
-      expect(resultUnresolved?.query?.filter).toEqual({});
+      expect(resultUnresolved).toHaveProperty('query.filter', {});
 
       // Now resolve refs first
       const resolvedSchema = resolveJsonSchemaRefs(schemaWithRefs);
@@ -1554,7 +1556,7 @@ describe('convertJsonSchemaToZod', () => {
       // With resolved refs, it should work correctly
       const resultResolved = zodSchemaResolved?.parse(testData);
       expect(resultResolved).toEqual(testData);
-      expect(resultResolved?.query?.filter?.status?._eq).toBe('draft');
+      expect(resultResolved).toHaveProperty('query.filter.status._eq', 'draft');
     });
 
     it('should handle circular $ref references without infinite loops', () => {
@@ -1775,7 +1777,7 @@ describe('convertJsonSchemaToZod', () => {
 
       const result = zodSchema?.parse(testData);
       expect(result).toEqual(testData);
-      expect(result?.properties?.minutes_id).toBeDefined();
+      expect(result).toHaveProperty('properties.minutes_id');
     });
 
     it('should work with proper field type definitions in additionalProperties', () => {
@@ -2001,7 +2003,7 @@ describe('convertJsonSchemaToZod', () => {
 
       // Without ref resolution, the data field should be stripped/empty
       const result = zodSchema?.parse(testData);
-      expect(result?.data).toEqual({});
+      expect(result).toHaveProperty('data', {});
     });
 
     it('should NOT treat object schemas with oneOf/anyOf as bare objects', () => {
@@ -2032,7 +2034,7 @@ describe('convertJsonSchemaToZod', () => {
 
       // The random field should be stripped because this isn't a bare object
       const result = zodSchema?.parse(testData);
-      expect(result?.config).toEqual({});
+      expect(result).toHaveProperty('config', {});
     });
   });
 });

@@ -682,6 +682,26 @@ describe('initializeClient — processAgent ACL gate', () => {
       declarations: [{ toolName: 'verify_a', criterionId: 'ok', expectedValue: true }],
     });
     expect(second.missionEvidenceContext.resolve('node-a')).toBeUndefined();
+    first.missionEvidenceContext.configure({
+      traceId: 'source-trace',
+      declarations: [],
+      sourceTasks: [
+        {
+          nodeId: 'research-node',
+          taskId: 'research-task',
+          producerAgentId: 'research-agent',
+        },
+      ],
+    });
+    expect(first.missionEvidenceContext.resolve('research-node')).toMatchObject({
+      taskId: 'research-task',
+      producerAgentId: 'research-agent',
+      collectSources: true,
+      declarations: [],
+    });
+    expect(first.missionEvidenceContext.resolve('node-a')).toBeUndefined();
+    expect(second.missionEvidenceContext.resolve('research-node')).toBeUndefined();
+
     expect(createToolEndCallback).toHaveBeenCalledWith(
       expect.objectContaining({ missionEvidenceContext: second.missionEvidenceContext }),
     );
@@ -1712,6 +1732,104 @@ describe('initializeClient — subagent loading', () => {
     await grantView(agent);
     return agent;
   };
+
+  it.each(['mission', 'handoff', 'lazy', 'mission-spec'])(
+    'installs the specialist own authorized fallback for %s initialization',
+    async (mode) => {
+      const child = await createAgent({
+        id: SUBAGENT_ID,
+        name: 'Free specialist',
+        provider: 'openAI',
+        model: 'a:free',
+        author: new mongoose.Types.ObjectId(),
+        tools: [],
+      });
+      await grantView(child);
+      mockInitializeAgent.mockImplementation(async ({ agent }) => ({
+        ...(agent.id === PRIMARY_ID
+          ? makePrimaryConfig({
+              ...(mode === 'handoff'
+                ? { agent_ids: [SUBAGENT_ID] }
+                : { subagents: { enabled: true, allowSelf: false, agent_ids: [SUBAGENT_ID] } }),
+            })
+          : makeSubagentConfig(agent.id)),
+        provider: 'openAI',
+        model: agent.model,
+        model_parameters: { model: agent.model, apiKey: 'fixture-specialist-secret' },
+      }));
+      const req = makeSubagentReq();
+      if (mode.startsWith('mission')) req.body.orchestratorMission = {};
+      req.config.endpoints.agents.hostModelRouting = [
+        {
+          agentId: SUBAGENT_ID,
+          bindings: ['a:free', 'b:free'].map((model, index) => ({
+            id: index === 0 ? 'primary' : 'fallback',
+            provider: 'openAI',
+            model,
+            signals: { pricingTier: 'free', estimatedCost: 0 },
+          })),
+          preferredBindingId: 'primary',
+          allowFailover: true,
+          routingConstraints: { spendingPolicy: 'free_only' },
+        },
+      ];
+      const option = makeEndpointOption();
+      if (mode === 'mission-spec') {
+        option.spec = 'primary-only-spec';
+        req.config.modelSpecs = { list: [{ name: option.spec, label: 'Primary choice' }] };
+        req.config.endpoints.agents.hostModelRouting.unshift({
+          agentId: PRIMARY_ID,
+          bindings: [
+            { id: 'primary', provider: 'openAI', model: 'gpt-4' },
+            { id: 'alternate', provider: 'openAI', model: 'b:free' },
+          ],
+          preferredBindingId: 'alternate',
+          allowFailover: true,
+        });
+      }
+      await initializeClient({
+        req,
+        res: {},
+        signal: new AbortController().signal,
+        endpointOption: option,
+        mtoTraceId: 'specialist-fallback-regression',
+      });
+      const specialist =
+        mode === 'lazy'
+          ? await agentClientArgs.agent.lazySubagentConfigs[0].resolve({
+              signal: new AbortController().signal,
+            })
+          : agentClientArgs.agentConfigs.get(SUBAGENT_ID);
+      expect(specialist.model_parameters.fallbacks).toEqual([
+        expect.objectContaining({
+          provider: 'openAI',
+          retryOn: 'MODEL_RATE_LIMIT_ZERO_CHUNK',
+          clientOptions: expect.objectContaining({ model: 'b:free' }),
+        }),
+      ]);
+      expect(specialist.hostModelDecision).toMatchObject({
+        agentId: SUBAGENT_ID,
+        spendingPolicy: 'free_only',
+      });
+      expect(agentClientArgs.agent.hostModelDecision).toBeUndefined();
+      expect(agentClientArgs.agent.model).toBe('gpt-4');
+      const records = await db.listMtoObservations({
+        user: String(testUser._id),
+        traceId: 'specialist-fallback-regression',
+      });
+      expect(records).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            payload: expect.objectContaining({
+              decisionId: specialist.hostModelDecision.decisionId,
+              selectedOption: 'primary',
+            }),
+          }),
+        ]),
+      );
+      expect(JSON.stringify(records)).not.toContain('fixture-specialist-secret');
+    },
+  );
 
   it('creates one trusted durable thread scope for detached subagents', async () => {
     mockInitializeAgent.mockResolvedValue(

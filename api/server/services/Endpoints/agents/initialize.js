@@ -1,5 +1,8 @@
 const {
   createTransientEvidenceBuffer,
+  createMissionEvidenceContext,
+  resolveNativeMissionToolAgentId,
+  assertNativeMissionPhaseTools,
   getDetachedSubagentTaskId,
   getDetachedSubagentProducerAgentId,
 } = require('@librechat/api');
@@ -209,72 +212,7 @@ const initializeClient = async ({
     },
     hold: () => publicationBarrierActive,
   };
-  let missionEvidenceTraceId;
-  const missionEvidenceByNodeId = new Map();
-  const missionEvidenceContext = {
-    configure({ traceId, declarations }) {
-      if (typeof traceId !== 'string' || traceId.trim() === '') {
-        throw new Error('Mission evidence context requires traceId');
-      }
-      if (!Array.isArray(declarations)) {
-        throw new Error('Mission evidence context requires declarations');
-      }
-      const next = new Map();
-      for (const declaration of declarations) {
-        const nodeId =
-          typeof declaration?.nodeId === 'string' && declaration.nodeId.trim() !== ''
-            ? declaration.nodeId.trim()
-            : undefined;
-        const taskId =
-          typeof declaration?.taskId === 'string' && declaration.taskId.trim() !== ''
-            ? declaration.taskId.trim()
-            : undefined;
-        const producerAgentId =
-          typeof declaration?.producerAgentId === 'string' &&
-          declaration.producerAgentId.trim() !== ''
-            ? declaration.producerAgentId.trim()
-            : undefined;
-        if (!nodeId || !taskId || !producerAgentId) {
-          throw new Error('Mission evidence declaration requires exact runtime identity');
-        }
-        const current = next.get(nodeId) ?? {
-          traceId: traceId.trim(),
-          taskId,
-          producerAgentId,
-          declarations: [],
-        };
-        if (current.taskId !== taskId || current.producerAgentId !== producerAgentId) {
-          throw new Error('Mission evidence declaration runtime identity mismatch');
-        }
-        current.declarations.push({
-          toolName: declaration.toolName,
-          criterionId: declaration.criterionId,
-          expectedValue: declaration.expectedValue,
-        });
-        next.set(nodeId, current);
-      }
-      missionEvidenceTraceId = traceId.trim();
-      missionEvidenceByNodeId.clear();
-      for (const [nodeId, value] of next) {
-        missionEvidenceByNodeId.set(nodeId, value);
-      }
-    },
-    resolve(nodeId) {
-      if (typeof nodeId !== 'string' || nodeId.trim() === '') {
-        return undefined;
-      }
-      const resolved = missionEvidenceByNodeId.get(nodeId.trim());
-      if (resolved == null) {
-        return undefined;
-      }
-      return {
-        traceId: missionEvidenceTraceId,
-        taskId: resolved.taskId,
-        producerAgentId: resolved.producerAgentId,
-        declarations: resolved.declarations.map((declaration) => ({ ...declaration })),
-      };
-    },
-  };
+  const missionEvidenceContext = createMissionEvidenceContext();
   if (!endpointOption) {
     throw new Error('Endpoint option not provided');
   }
@@ -437,6 +375,11 @@ const initializeClient = async ({
    * }>}
    */
   const agentToolContexts = new Map();
+  let initializedMissionClient;
+  const resolveToolAgentId = (executionId) =>
+    resolveNativeMissionToolAgentId(initializedMissionClient?.orchestratorPlan, executionId);
+  const getAgentToolContext = (executionId) =>
+    agentToolContexts.get(resolveToolAgentId(executionId));
   const parsePositiveNumber = (value, fallback) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -460,7 +403,7 @@ const initializeClient = async ({
     if (job.status !== 'running') {
       throw new Error('EXECUTION_GRANT_JOB_NOT_RUNNABLE');
     }
-    const context = typeof agentId === 'string' ? agentToolContexts.get(agentId) : undefined;
+    const context = typeof agentId === 'string' ? getAgentToolContext(agentId) : undefined;
     if (!context?.toolRegistry?.has?.(toolName)) {
       throw new Error('EXECUTION_GRANT_TOOL_NOT_REGISTERED');
     }
@@ -510,7 +453,7 @@ const initializeClient = async ({
     if (typeof toolName !== 'string' || typeof agentId !== 'string') {
       return undefined;
     }
-    const context = agentToolContexts.get(agentId);
+    const context = getAgentToolContext(agentId);
     const registered = context?.toolRegistry?.get?.(toolName);
     if (typeof registered?.mcpRawServerName === 'string') {
       return normalizeServerName(registered.mcpRawServerName);
@@ -553,7 +496,7 @@ const initializeClient = async ({
     const soleContext =
       agentToolContexts.size === 1 ? agentToolContexts.values().next().value : null;
     const trustedContext =
-      (typeof executingAgentId === 'string' ? agentToolContexts.get(executingAgentId) : null) ??
+      (typeof executingAgentId === 'string' ? getAgentToolContext(executingAgentId) : null) ??
       soleContext;
     const callbackMetadata = { ...metadata };
     delete callbackMetadata.codeExecutionContext;
@@ -571,7 +514,8 @@ const initializeClient = async ({
     executionGrantResolver,
     executionGrantJobId: streamId,
     loadTools: async (toolNames, agentId, _configurable, callerCapabilityProjection) => {
-      const ctx = agentToolContexts.get(agentId) ?? {};
+      assertNativeMissionPhaseTools(initializedMissionClient?.orchestratorPlan, agentId, toolNames);
+      const ctx = getAgentToolContext(agentId) ?? {};
       logger.debug(`[ON_TOOL_EXECUTE] ctx found: ${!!ctx.userMCPAuthMap}, agent: ${ctx.agent?.id}`);
       logger.debug(`[ON_TOOL_EXECUTE] toolRegistry size: ${ctx.toolRegistry?.size ?? 'undefined'}`);
 
@@ -864,17 +808,96 @@ const initializeClient = async ({
     ephemeralSkillsToggle,
   });
 
-  const hostModelRouting = selectedModelSpec
+  const primaryHostModelRouting = selectedModelSpec
     ? undefined
     : appConfig?.endpoints?.[EModelEndpoint.agents]?.hostModelRouting;
-  const originalPrimaryAgent = hostModelRouting?.some(
+  const originalPrimaryAgent = primaryHostModelRouting?.some(
     (entry) =>
       entry.agentId === primaryAgent.id ||
       (typeof entry.agentName === 'string' && entry.agentName === primaryAgent.name),
   )
     ? structuredClone(primaryAgent)
     : primaryAgent;
-  let primaryConfig = await initializeAgent(
+  const initializeRoutedAgent = async (params, methods) => {
+    const hostModelRouting =
+      params.isInitialAgent === true
+        ? primaryHostModelRouting
+        : appConfig?.endpoints?.[EModelEndpoint.agents]?.hostModelRouting;
+    const originalAgent = hostModelRouting?.some(
+      (entry) =>
+        entry.agentId === params.agent.id ||
+        (typeof entry.agentName === 'string' && entry.agentName === params.agent.name),
+    )
+      ? structuredClone(params.agent)
+      : params.agent;
+    let resolvedConfig = await initializeAgent(params, methods);
+    const initialConfig = resolvedConfig;
+    const modelBudgetConfig = appConfig?.endpoints?.[EModelEndpoint.agents]?.modelBudget;
+    const adaptiveHostRouting = hostModelRouting?.some(
+      (entry) =>
+        entry.routingMode === 'adaptive' &&
+        (entry.agentId === originalAgent.id ||
+          (typeof entry.agentName === 'string' && entry.agentName === originalAgent.name)),
+    );
+    const [modelBudgetState, modelHealthState] = await Promise.all([
+      hostModelRouting && modelBudgetConfig
+        ? readModelBudgetState({
+            userId: req.user.id,
+            config: modelBudgetConfig,
+          })
+        : undefined,
+      adaptiveHostRouting
+        ? readModelHealthState({
+            userId: req.user.id,
+          })
+        : undefined,
+    ]);
+    resolvedConfig = await resolveHostModelRouting({
+      config: hostModelRouting,
+      originalAgent,
+      primaryConfig: resolvedConfig,
+      validate: (agent) => validateAgentModel({ req, res, agent, modelsConfig, logViolation }),
+      resolveRuntimeProvider: (provider) =>
+        getProviderConfig({ provider, appConfig }).overrideProvider,
+      initialize: (agent) =>
+        initializeAgent(
+          {
+            ...params,
+            agent,
+            endpointOption: {
+              ...params.endpointOption,
+              model_parameters:
+                agent.provider?.toLowerCase() === originalAgent.provider?.toLowerCase()
+                  ? { ...(params.endpointOption?.model_parameters ?? {}), model: agent.model }
+                  : { model: agent.model },
+            },
+          },
+          methods,
+        ),
+      decide: require('@librechat/api').decideHostModel,
+      persist: db.recordMtoObservation,
+      sink: mtoEventSink,
+      traceId: mtoTraceId,
+      user: req.user.id,
+      tenantId: resolveRequestTenantId(req),
+      timestamp: new Date().toISOString(),
+      decisionId: randomUUID(),
+      traceEventId: randomUUID(),
+      budgetState: modelBudgetState,
+      modelHealthState,
+    });
+
+    if (resolvedConfig !== initialConfig) {
+      Object.assign(params.agent, {
+        model: resolvedConfig.model,
+        model_parameters: resolvedConfig.model_parameters,
+        provider: resolvedConfig.provider,
+      });
+    }
+    return resolvedConfig;
+  };
+
+  const primaryConfig = await initializeRoutedAgent(
     {
       runtime: agentRuntime,
       loadTools,
@@ -915,103 +938,6 @@ const initializeClient = async ({
       getSkillByName: skillDbMethods.getSkillByName,
     },
   );
-
-  const initialPrimaryConfig = primaryConfig;
-  const modelBudgetConfig = appConfig?.endpoints?.[EModelEndpoint.agents]?.modelBudget;
-  const adaptiveHostRouting = hostModelRouting?.some(
-    (entry) =>
-      entry.routingMode === 'adaptive' &&
-      (entry.agentId === originalPrimaryAgent.id ||
-        (typeof entry.agentName === 'string' && entry.agentName === originalPrimaryAgent.name)),
-  );
-  const [modelBudgetState, modelHealthState] = await Promise.all([
-    hostModelRouting && modelBudgetConfig
-      ? readModelBudgetState({
-          userId: req.user.id,
-          config: modelBudgetConfig,
-        })
-      : undefined,
-    adaptiveHostRouting
-      ? readModelHealthState({
-          userId: req.user.id,
-        })
-      : undefined,
-  ]);
-  primaryConfig = await resolveHostModelRouting({
-    config: hostModelRouting,
-    originalAgent: originalPrimaryAgent,
-    primaryConfig,
-    validate: (agent) => validateAgentModel({ req, res, agent, modelsConfig, logViolation }),
-    resolveRuntimeProvider: (provider) =>
-      getProviderConfig({ provider, appConfig }).overrideProvider,
-    initialize: (agent) =>
-      initializeAgent(
-        {
-          runtime: agentRuntime,
-          loadTools,
-          requestFiles,
-          conversationId,
-          parentMessageId,
-          requestBody: runtimeRequestBody,
-          agent,
-          endpointOption: {
-            ...endpointOption,
-            model_parameters:
-              agent.provider?.toLowerCase() === originalPrimaryAgent.provider?.toLowerCase()
-                ? { ...(endpointOption.model_parameters ?? {}), model: agent.model }
-                : { model: agent.model },
-          },
-          allowedProviders,
-          isInitialAgent: true,
-          accessibleSkillIds: primaryScopedSkillIds,
-          skillAuthoringAvailable: primarySkillAuthoringAvailable,
-          codeEnvAvailable,
-          backgroundToolsAvailable,
-          toolIntentsAvailable,
-          statefulSessionsAvailable,
-          allowedStatefulCodeEnvironments,
-          memoryAvailable,
-          skillStates,
-          defaultActiveOnShare,
-          manualSkills,
-        },
-        {
-          getFiles: db.getFiles,
-          getUserKey: db.getUserKey,
-          getMessages: db.getMessages,
-          getConvoFiles: db.getConvoFiles,
-          getAccessibleMcpServerNames,
-          updateFilesUsage: db.updateFilesUsage,
-          getUserKeyValues: db.getUserKeyValues,
-          getUserCodeFiles: db.getUserCodeFiles,
-          getToolFilesByIds: db.getToolFilesByIds,
-          getCodeGeneratedFiles: db.getCodeGeneratedFiles,
-          filterFilesByAgentAccess,
-          listSkillsByAccess: skillDbMethods.listSkillsByAccess,
-          listAlwaysApplySkills: skillDbMethods.listAlwaysApplySkills,
-          getSkillByName: skillDbMethods.getSkillByName,
-        },
-      ),
-    decide: require('@librechat/api').decideHostModel,
-    persist: db.recordMtoObservation,
-    sink: mtoEventSink,
-    traceId: mtoTraceId,
-    user: req.user.id,
-    tenantId: resolveRequestTenantId(req),
-    timestamp: new Date().toISOString(),
-    decisionId: randomUUID(),
-    traceEventId: randomUUID(),
-    budgetState: modelBudgetState,
-    modelHealthState,
-  });
-
-  if (primaryConfig !== initialPrimaryConfig) {
-    Object.assign(primaryAgent, {
-      model: primaryConfig.model,
-      model_parameters: primaryConfig.model_parameters,
-      provider: primaryConfig.provider,
-    });
-  }
 
   /** Price emitted usage with the primary agent's resolved endpoint config so
    *  custom-endpoint agents reflect configured rates (mirrors the AgentClient
@@ -1106,7 +1032,7 @@ const initializeClient = async ({
       },
       // Pass through the `@librechat/api` exports so that tests which
       // `jest.mock('@librechat/api')` can override the initializer/validator.
-      initializeAgent,
+      initializeAgent: initializeRoutedAgent,
       validateAgentModel,
     },
   );
@@ -1496,7 +1422,7 @@ const initializeClient = async ({
       ephemeralSkillsToggle,
     });
     const config = await waitForAbort(
-      initializeAgent(
+      initializeRoutedAgent(
         {
           runtime: agentRuntime,
           agent,
@@ -2051,7 +1977,7 @@ const initializeClient = async ({
    *  `metadata.usage.cost` matches the per-agent balance transaction. */
   usageCost.resolveEndpointTokenConfig = (usage) =>
     resolveAgentTokenConfig({
-      agentId: usage?.agentId,
+      agentId: resolveToolAgentId(usage?.agentId),
       byAgentId: endpointTokenConfigByAgentId,
       fallback: usageCost.endpointTokenConfig,
     });
@@ -2151,6 +2077,7 @@ const initializeClient = async ({
     executionGrantJobId: streamId,
     dockerExecutionProfile,
   });
+  initializedMissionClient = client;
   client.publicationBarrier = publicationBarrier;
   if (streamId) {
     GenerationJobManager.setCollectedUsage(streamId, collectedUsage, jobCreatedAt);

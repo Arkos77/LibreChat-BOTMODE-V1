@@ -4,6 +4,7 @@ import type { SearchResultData } from './types/web';
 import type { TFile } from './types/files';
 import { userSubmittedMessageFieldPathSchema } from './filters';
 import { TFeedback, feedbackSchema } from './feedback';
+import { botModeSettingsSchema } from './botMode';
 import { Tools } from './types/assistants';
 
 export const isUUID = z.string().uuid();
@@ -886,7 +887,7 @@ export const tMessageSchema = z.object({
   iconURL: z.string().nullable().optional(),
   feedback: feedbackSchema.optional(),
   /** metadata */
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
   /** Output tokens for assistant messages, calibrated prompt-side estimate for user messages */
   tokenCount: z.number().optional(),
   contextMeta: z
@@ -1053,7 +1054,10 @@ const DocumentType: z.ZodType<DocumentTypeValue> = z.lazy(() =>
     z.number(),
     z.string(),
     z.array(z.lazy(() => DocumentType)),
-    z.record(z.lazy(() => DocumentType)),
+    z.record(
+      z.string(),
+      z.lazy(() => DocumentType),
+    ),
   ]),
 );
 
@@ -1145,6 +1149,7 @@ export const tConversationSchema = z.object({
   assistant_id: z.string().optional(),
   /* agents */
   agent_id: z.string().optional(),
+  botMode: botModeSettingsSchema.optional(),
   /** Durable parent/child navigation for a subagent thread. */
   subagentThread: subagentThreadLineageSchema.optional(),
   /* AWS Bedrock */
@@ -1156,7 +1161,7 @@ export const tConversationSchema = z.object({
   additional_instructions: z.string().optional(),
   append_current_datetime: z.boolean().optional(),
   /** Used to overwrite active conversation settings when saving a Preset */
-  presetOverride: z.record(z.unknown()).optional(),
+  presetOverride: z.record(z.string(), z.unknown()).optional(),
   stop: z.array(z.string()).optional(),
   /* frontend components */
   greeting: z.string().optional(),
@@ -1175,6 +1180,7 @@ export const tConversationSchema = z.object({
 
 export const tPresetSchema = tConversationSchema
   .omit({
+    botMode: true,
     conversationId: true,
     chatProjectId: true,
     createdAt: true,

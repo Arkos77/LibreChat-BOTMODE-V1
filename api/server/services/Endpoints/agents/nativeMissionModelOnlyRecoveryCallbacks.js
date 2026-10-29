@@ -1,3 +1,4 @@
+const { renderMissionPublication } = require('@librechat/api');
 const {
   createNativeMissionRecoveredOracleVerifier,
 } = require('./nativeMissionRecoveredOracleVerifier');
@@ -122,7 +123,7 @@ function createNativeMissionModelOnlyRecoveryCallbacks({
       }
       await assertAuthorized();
       return {
-        content: [{ type: 'text', text }],
+        content: [{ type: 'text', text: (await renderMissionPublication(plan, verified)) ?? text }],
         attachments: [],
         oracle: verified,
       };

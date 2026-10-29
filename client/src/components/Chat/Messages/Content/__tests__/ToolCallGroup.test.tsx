@@ -1,8 +1,15 @@
 import React from 'react';
 import { RecoilRoot } from 'recoil';
+import { Provider, createStore } from 'jotai';
 import { Tools, Constants, ContentTypes } from 'librechat-data-provider';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { TAttachment, TMessageContentParts } from 'librechat-data-provider';
+import {
+  BOTMODE_TOOLS_RIGHT_HOST_ID,
+  botModeToolsRightCountAtom,
+  botModeToolsRightHostAtom,
+} from '~/components/Chat/BotModeTools/state';
+import { BotModeViewContext } from '~/components/Chat/BotModeViewContext';
 import { scheduleMessageContentLayoutReconcile } from '~/hooks';
 import ToolCallGroup from '../ToolCallGroup';
 
@@ -618,5 +625,87 @@ describe('ToolCallGroup image hoisting', () => {
 
     expect(screen.getByRole('button', { name: 'Used 2 tools' })).toBeInTheDocument();
     expect(screen.getByTestId('stacked-icons')).toBeInTheDocument();
+  });
+});
+
+describe('BOT MODE tools on the RIGHT inside Progression', () => {
+  const makeProps = (): React.ComponentProps<typeof ToolCallGroup> => ({
+    parts: [
+      { part: makePart('right-1', 'done', 'web_search'), idx: 0 },
+      { part: makePart('right-2', 'done', 'web_search'), idx: 1 },
+    ],
+    isSubmitting: false,
+    isLast: false,
+    lastContentIdx: 1,
+    renderPart: (_part, index) => <div key={index}>{'Tool result ' + index}</div>,
+  });
+
+  it('moves the SAME interactive tools to Progression, and restores them on closure', async () => {
+    const host = document.createElement('div');
+    host.id = BOTMODE_TOOLS_RIGHT_HOST_ID;
+    document.body.appendChild(host);
+    const toolStore = createStore();
+    toolStore.set(botModeToolsRightHostAtom, host);
+    const view = render(
+      <Provider store={toolStore}>
+        <RecoilRoot>
+          <BotModeViewContext.Provider value={true}>
+            <div data-testid="message-body">
+              <ToolCallGroup {...makeProps()} />
+            </div>
+          </BotModeViewContext.Provider>
+        </RecoilRoot>
+      </Provider>,
+    );
+    try {
+      await waitFor(() => {
+        expect(within(host).getByRole('button', { name: 'Used 2 tools' })).toBeInTheDocument();
+      });
+      expect(within(view.getByTestId('message-body')).queryByRole('button')).toBeNull();
+      fireEvent.click(within(host).getByRole('button', { name: 'Used 2 tools' }));
+      expect(within(host).getByText('Tool result 0')).toBeInTheDocument();
+      await waitFor(() => expect(toolStore.get(botModeToolsRightCountAtom)).toBe(1));
+      act(() => toolStore.set(botModeToolsRightHostAtom, null));
+      await waitFor(() => {
+        expect(within(view.getByTestId('message-body')).getByRole('button')).toBeInTheDocument();
+      });
+    } finally {
+      view.unmount();
+      host.remove();
+    }
+    expect(toolStore.get(botModeToolsRightCountAtom)).toBe(0);
+  });
+
+  it('keeps pending human approvals in the conversation, not on the right', () => {
+    const host = document.createElement('div');
+    host.id = BOTMODE_TOOLS_RIGHT_HOST_ID;
+    document.body.appendChild(host);
+    const toolStore = createStore();
+    toolStore.set(botModeToolsRightHostAtom, host);
+    const view = render(
+      <Provider store={toolStore}>
+        <RecoilRoot>
+          <BotModeViewContext.Provider value={true}>
+            <div data-testid="message-body">
+              <ToolCallGroup
+                {...makeProps()}
+                parts={[
+                  { part: makeApprovalPart('approval-1'), idx: 0 },
+                  { part: makePart('right-2', 'done'), idx: 1 },
+                ]}
+              />
+            </div>
+          </BotModeViewContext.Provider>
+        </RecoilRoot>
+      </Provider>,
+    );
+    try {
+      expect(within(view.getByTestId('message-body')).getByRole('button')).toBeInTheDocument();
+      expect(within(host).queryByRole('button')).toBeNull();
+      expect(toolStore.get(botModeToolsRightCountAtom)).toBe(0);
+    } finally {
+      view.unmount();
+      host.remove();
+    }
   });
 });

@@ -9,6 +9,17 @@ const source = fs.readFileSync(
   '/work/packages/api/src/agents/orchestrator/missionOracle.ts',
   'utf8',
 );
+// Load the actual source-normalization contract, not a permissive mock.
+const sourcesModule = { exports: {} };
+const sourceContract = fs.readFileSync('/work/packages/api/src/agents/oracle/sources.ts', 'utf8');
+const sourcesJs = ts.transpileModule(sourceContract, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText;
+vm.runInNewContext(sourcesJs, {
+  module: sourcesModule,
+  exports: sourcesModule.exports,
+  URL,
+});
 const mod = { exports: {} };
 const js = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -18,6 +29,7 @@ vm.runInNewContext(js, {
   exports: mod.exports,
   structuredClone,
   require: (id) => {
+    if (id === '../oracle/sources') return sourcesModule.exports;
     if (id === './toolEvidence')
       return {
         createNativeToolEvidence: () => {

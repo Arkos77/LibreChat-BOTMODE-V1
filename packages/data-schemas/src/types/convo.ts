@@ -1,4 +1,4 @@
-import type { TSubagentThreadLineage } from 'librechat-data-provider';
+import type { TBotModeSettings, TSubagentThreadLineage } from 'librechat-data-provider';
 import type { Document, Types } from 'mongoose';
 import type { ICompactionSemanticIndexProjection } from './compaction';
 
@@ -264,6 +264,7 @@ export interface IConversation extends Document {
   resendFiles?: boolean;
   imageDetail?: string;
   agent_id?: string;
+  botMode?: TBotModeSettings;
   subagentThread?: TSubagentThreadLineage;
   /** Internal execution fence. Excluded from ordinary conversation reads. */
   subagentThreadLease?: ISubagentThreadLease;

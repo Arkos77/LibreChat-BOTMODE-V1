@@ -989,6 +989,35 @@ describe('getOpenAIConfig', () => {
   });
 
   describe('OpenRouter Configuration', () => {
+    it('keeps an explicitly opted-in OpenAI-compatible custom fallback on the OpenAI SDK', () => {
+      const result = getOpenAIConfig(
+        mockApiKey,
+        {
+          reverseProxyUrl: 'https://openrouter.ai/api/v1',
+          customParams: { defaultParamsEndpoint: EModelEndpoint.openAI },
+          modelOptions: { model: 'openrouter/free' },
+        },
+        'OpenRouterFreeCompatCI',
+      );
+
+      expect(result.provider).toBeUndefined();
+      expect(result.llmConfig.model).toBe('openrouter/free');
+      expect(result.configOptions?.baseURL).toBe('https://openrouter.ai/api/v1');
+    });
+
+    it('still automatically selects OpenRouter when no compatible adapter is explicitly chosen', () => {
+      const result = getOpenAIConfig(
+        mockApiKey,
+        {
+          reverseProxyUrl: 'https://openrouter.ai/api/v1',
+          modelOptions: { model: 'openrouter/free' },
+        },
+        'OpenRouterFreeCompatCI',
+      );
+
+      expect(result.provider).toBe('openrouter');
+    });
+
     it('should detect OpenRouter from endpoint parameter', () => {
       const result = getOpenAIConfig(mockApiKey, {}, 'openrouter');
 
@@ -1379,8 +1408,10 @@ describe('getOpenAIConfig', () => {
 
       const result = getOpenAIConfig(mockApiKey, { addParams: testParams });
 
-      // All should be in llmConfig, none in modelKwargs
-      expect(result.llmConfig.modelKwargs).toBeUndefined();
+      // Constructor fields stay in llmConfig; response_format must reach
+      // chat requests through modelKwargs rather than an ignored SDK field.
+      expect(result.llmConfig.modelKwargs).toEqual({ response_format: 'test-response_format' });
+      expect((result.llmConfig as Record<string, unknown>).response_format).toBeUndefined();
 
       // Check a few key parameters are correctly placed
       expect((result.llmConfig as Record<string, unknown>).model).toBe('test-model');

@@ -1559,6 +1559,15 @@ describe('AgentClient - interrupt discovery persistence', () => {
     client.conversationId = streamId;
     client.jobCreatedAt = job.createdAt;
     client.orchestratorPlan = { planId: 'plan-concurrent-results' };
+    const sources = {
+      'task-a': [{ toolCallId: 'native-search', urls: ['https://ci-source.invalid/report'] }],
+    };
+    client.missionOracleState = { evidence: {}, results: {}, sources };
+    await GenerationJobManager.updateMetadata(
+      streamId,
+      { missionOracleState: client.missionOracleState },
+      job.createdAt,
+    );
 
     await Promise.all([
       client.persistMissionOracleResult(
@@ -1576,6 +1585,7 @@ describe('AgentClient - interrupt discovery persistence', () => {
       'task-a',
       'task-b',
     ]);
+    expect(persisted?.metadata.missionOracleState?.sources).toEqual(sources);
     expect(client.missionOracleState).toEqual(persisted?.metadata.missionOracleState);
   });
 
@@ -2519,6 +2529,77 @@ describe('AgentClient - BOT MODE publication filter', () => {
     AgentClient.prototype.applyBotModePublicationFilter.call(ctx);
 
     expect(ctx.contentParts).toEqual([text('Réponse finale consolidée')]);
+  });
+
+  it('uses the verified rendered result once instead of exposing raw research JSON', () => {
+    const ctx = {
+      options: { agent: { name: 'BOT MODE Worker' } },
+      orchestratorPlan: { tasks: [{ validation: [{ outputContract: 'research-v2' }] }] },
+      _botModeRenderedAnswer: 'Final findings\n\nSources\n- <https://ci-source.invalid/report>',
+      contentParts: [text('Draft'), text('{"ok":true,"result":"Final findings"}')],
+    };
+    AgentClient.prototype.applyBotModePublicationFilter.call(ctx);
+    expect(ctx.contentParts).toEqual([text(ctx._botModeRenderedAnswer)]);
+  });
+
+  it('blocks a completed v2 mission when the verified renderer has not supplied an answer', () => {
+    const ctx = {
+      options: { agent: { name: 'BOT MODE Worker' } },
+      orchestratorPlan: { tasks: [{ validation: [{ outputContract: 'research-v2' }] }] },
+      contentParts: [text('Unverified answer')],
+    };
+    expect(() => AgentClient.prototype.applyBotModePublicationFilter.call(ctx)).toThrow(
+      'BOTMODE_VERIFIED_PRESENTATION_REQUIRED',
+    );
+    ctx._botModePresentationPaused = true;
+    expect(() => AgentClient.prototype.applyBotModePublicationFilter.call(ctx)).not.toThrow();
+  });
+
+  it('clears any earlier rendered answer before a paused or halted warm resume', async () => {
+    const ctx = {
+      orchestratorPlan: { tasks: [] },
+      _botModeRenderedAnswer: 'Previous turn sources',
+    };
+    await AgentClient.prototype.assertTerminalMissionOracle.call(ctx, {
+      getInterrupt: () => ({}),
+      getHaltReason: () => null,
+    });
+    expect(ctx._botModeRenderedAnswer).toBeUndefined();
+    expect(ctx._botModePresentationPaused).toBe(true);
+  });
+
+  it.each(['normal', 'warm'])(
+    'renders an admitted v2 %s completion independently of worker name or metadata',
+    (_mode) => {
+      const ctx = {
+        options: { agent: { id: 'authorized-worker', name: 'My Worker' } },
+        orchestratorPlan: { tasks: [{ validation: [{ outputContract: 'research-v2' }] }] },
+        _botModeRenderedAnswer: 'Verified final\n\nSources\n- <https://ci-source.invalid/report>',
+        contentParts: [text('{"ok":true,"result":"Raw final"}')],
+      };
+      AgentClient.prototype.applyBotModePublicationFilter.call(ctx);
+      expect(ctx.contentParts).toEqual([text(ctx._botModeRenderedAnswer)]);
+    },
+  );
+
+  it('withholds partial v2 candidate text and stale sources after a non-HITL halt', async () => {
+    const tool = { type: ContentTypes.TOOL_CALL, tool_call: { id: 'search' } };
+    const ctx = {
+      options: { agent: { name: 'My Worker' } },
+      orchestratorPlan: { tasks: [{ validation: [{ outputContract: 'research-v2' }] }] },
+      _botModeRenderedAnswer: 'Earlier rendered sources',
+      contentParts: [
+        tool,
+        text('{"ok":true,"result":"Research only","sources":"https://ci-source.invalid/report"}'),
+      ],
+    };
+    await AgentClient.prototype.assertTerminalMissionOracle.call(ctx, {
+      getInterrupt: () => null,
+      getHaltReason: () => 'preempt_incomplete',
+    });
+    AgentClient.prototype.applyBotModePublicationFilter.call(ctx);
+    expect(ctx._botModeRenderedAnswer).toBeUndefined();
+    expect(ctx.contentParts).toEqual([tool]);
   });
 
   it('is a no-op for non-BOT MODE agents', () => {
@@ -3512,6 +3593,130 @@ describe('AgentClient - startup telemetry', () => {
         'Native mission Oracle blocked task task-terminal-oracle-rejected (node-terminal-oracle-rejected): REJECTED',
     });
   });
+
+  it.each([
+    [true, false],
+    [false, false],
+    [true, true],
+  ])(
+    'preserves a real SDK failure/abort (persisted result: %s, Stop wins: %s)',
+    async (hasPersistedResult, stopWins) => {
+      jest.clearAllMocks();
+      mockIsHITLEnabled.mockReturnValue(false);
+      const { Run } = jest.requireActual('@librechat/agents');
+      const { HumanMessage } = require('@librechat/agents/langchain/messages');
+      const { deterministicPlanner, compileNativePlan } = jest.requireActual('@librechat/api');
+      const plan = deterministicPlanner.planMission(
+        {
+          missionId: 'offline-research-failure',
+          taskId: 'root',
+          objective: 'Check a time-bounded request',
+          requiredCapabilities: ['basic'],
+          constraints: [],
+          validation: { criteria: [{ id: 'complete', field: 'ok', expected: true }] },
+          objectives: [
+            {
+              key: 'research',
+              objective: 'Find sources',
+              requiredCapabilities: ['basic'],
+              dependsOn: [],
+            },
+            {
+              key: 'analysis',
+              objective: 'Check feasibility',
+              requiredCapabilities: ['basic'],
+              dependsOn: ['research'],
+            },
+            {
+              key: 'documents',
+              objective: 'Check documents',
+              requiredCapabilities: ['basic'],
+              dependsOn: ['research'],
+            },
+          ],
+        },
+        {
+          worker: {
+            id: 'worker',
+            agentId: 'worker',
+            role: 'worker',
+            capabilities: ['basic'],
+            constraints: [],
+          },
+          specialists: [],
+        },
+      );
+      const client = new AgentClient({
+        req: {
+          user: { id: 'user-123' },
+          body: {},
+          config: { endpoints: { [EModelEndpoint.agents]: {} } },
+        },
+        res: {},
+        agent: {
+          id: 'worker',
+          endpoint: EModelEndpoint.openAI,
+          provider: EModelEndpoint.openAI,
+          model_parameters: { model: 'offline' },
+        },
+        endpointTokenConfig: {},
+        eventHandlers: {},
+        collectedUsage: [],
+        artifactPromises: [],
+        contentParts: [{ type: ContentTypes.TEXT, text: 'private unfinished research' }],
+      });
+      client.orchestratorPlan = plan;
+      client.missionOracleState = { evidence: {}, results: {} };
+      client.conversationId = 'offline-research-failure';
+      client.responseMessageId = 'offline-response';
+      client.parentMessageId = 'offline-parent';
+      client.recordCollectedUsage = jest.fn().mockResolvedValue();
+      const native = compileNativePlan(
+        plan,
+        new Map([['worker', { agentId: 'worker', provider: Providers.OPENAI }]]),
+        undefined,
+        undefined,
+        async (result) => {
+          if (hasPersistedResult) client.missionOracleState.results[result.taskId] = result;
+        },
+      );
+      const sdkRun = await Run.create({
+        runId: 'offline-aggregate',
+        graphConfig: native.graphConfig,
+      });
+      sdkRun.Graph.overrideTestModel(['## private unfinished research']);
+      const abortController = new AbortController();
+      mockCreateRun.mockResolvedValue({
+        Graph: null,
+        processStream: async () => {
+          try {
+            await sdkRun.processStream(
+              { messages: [new HumanMessage('Execute offline.')] },
+              { version: 'v2' },
+            );
+          } catch (error) {
+            if (stopWins) abortController.abort();
+            throw error;
+          }
+        },
+        getCalibrationRatio: () => 0,
+      });
+
+      const completion = client.chatCompletion({ payload: [], abortController });
+      if (stopWins) await expect(completion).resolves.toBeUndefined();
+      else
+        await expect(completion).rejects.toMatchObject({
+          code: hasPersistedResult ? 'MISSION_ORACLE_FAILURE' : 'MISSION_EXECUTION_FAILURE',
+          message: expect.stringContaining(
+            hasPersistedResult ? 'INVALID_CANDIDATE' : 'not published',
+          ),
+        });
+      expect(client.contentParts.some((part) => part.type === ContentTypes.ERROR)).toBe(false);
+      expect(Object.keys(client.missionOracleState.results)).toEqual(
+        hasPersistedResult ? [plan.tasks[0].taskId] : [],
+      );
+    },
+  );
 
   it('fails chatCompletion closed when terminal Mission Oracle returns UNKNOWN', async () => {
     jest.clearAllMocks();
@@ -8790,6 +8995,76 @@ describe('AgentClient - resumeCompletion content protection', () => {
     require('~/models').getFiles.mockReset().mockResolvedValue([]);
   });
 
+  it.each([
+    [true, false],
+    [false, false],
+    [true, true],
+  ])(
+    'preserves resumed mission failure/abort ownership (persisted result: %s, Stop wins: %s)',
+    async (hasPersistedResult, stopWins) => {
+      const { deterministicPlanner, validateMissionTask } = jest.requireActual('@librechat/api');
+      const context = makeContext(undefined);
+      const plan = deterministicPlanner.planMission(
+        {
+          missionId: 'resumed-failure',
+          taskId: 'resumed-root',
+          objective: 'Resume checked work',
+          requiredCapabilities: ['basic'],
+          constraints: [],
+          validation: { criteria: [{ id: 'ok', field: 'ok', expected: true }] },
+        },
+        {
+          worker: {
+            id: 'worker',
+            agentId: 'agent-123',
+            role: 'worker',
+            capabilities: ['basic'],
+            constraints: [],
+          },
+          specialists: [],
+        },
+      );
+      const task = plan.tasks[0];
+      const result = await validateMissionTask({
+        taskId: task.taskId,
+        nodeId: task.nodeId,
+        agentId: task.agentId,
+        candidate: 'private resumed draft',
+        requirements: task.validation,
+      });
+      context.orchestratorPlan = plan;
+      context.missionOracleState = {
+        evidence: {},
+        results: hasPersistedResult ? { [task.taskId]: result } : {},
+      };
+      context.contentParts = [{ type: ContentTypes.TEXT, text: 'private resumed draft' }];
+      const abortController = new AbortController();
+      mockCreateRun.mockResolvedValue({
+        resume: async () => {
+          if (stopWins) abortController.abort();
+          throw new Error('Multiple errors occurred during superstep 2.');
+        },
+        getCalibrationRatio: () => 0,
+      });
+
+      const resumed = AgentClient.prototype.resumeCompletion.call(context, {
+        resumeValue: {},
+        abortController,
+      });
+      if (stopWins) {
+        await expect(resumed).resolves.toBeUndefined();
+        expect(abortController.signal.aborted).toBe(true);
+      } else
+        await expect(resumed).rejects.toMatchObject({
+          code: hasPersistedResult ? 'MISSION_ORACLE_FAILURE' : 'MISSION_EXECUTION_FAILURE',
+          message: expect.stringContaining(
+            hasPersistedResult ? 'INVALID_CANDIDATE' : 'not published',
+          ),
+        });
+      expect(context.contentParts.some((part) => part.type === ContentTypes.ERROR)).toBe(false);
+    },
+  );
+
   it('wires binding-specific balance admission to the final model payload on resume', async () => {
     const api = require('@librechat/api');
     const endpointTokenConfig = { prompt: 0.25, completion: 0.5 };
@@ -9566,6 +9841,111 @@ describe('seedContextMeta', () => {
 });
 
 describe('AgentClient - P11 model invocation evidence', () => {
+  it('builds durable receipt metadata for a canonical mission actor without counting other agents', () => {
+    const { nodeIdentity } = jest.requireActual('@librechat/api');
+    const nodeId = nodeIdentity('receipt-mission', 'worker');
+    const otherNodeId = nodeIdentity('receipt-mission', 'specialist');
+    const client = Object.create(AgentClient.prototype);
+    client.orchestratorPlan = {
+      mission: { missionId: 'receipt-mission' },
+      tasks: [
+        { key: 'worker', nodeId, agentId: 'worker' },
+        { key: 'specialist', nodeId: otherNodeId, agentId: 'specialist' },
+      ],
+    };
+    client.options = {
+      agent: {
+        hostModelDecision: {
+          traceId: 'fixture-trace',
+          decisionId: 'fixture-decision',
+          agentId: 'worker',
+          selectedModel: 'primary:free',
+          selectedProvider: 'OpenRouter',
+          authorizedBindings: [
+            { provider: 'OpenRouter', model: 'primary:free' },
+            { provider: 'Compat', runtimeProvider: 'openAI', model: 'openrouter/free' },
+          ],
+        },
+      },
+    };
+    client.usageEmitSink = [
+      {
+        agentId: nodeId,
+        provider: 'openAI',
+        model: 'openrouter/free',
+        input_tokens: 2,
+        output_tokens: 1,
+      },
+      {
+        agentId: otherNodeId,
+        provider: 'openAI',
+        model: 'openrouter/free',
+        input_tokens: 40,
+        output_tokens: 20,
+      },
+    ];
+    const metadata = client.buildResponseMetadata();
+    expect(metadata.hostModelUsage).toMatchObject({
+      fallbackUsed: true,
+      resolvedProvider: 'compat',
+      modelCalls: [{ actorId: nodeId, runtimeProvider: 'openai', inputTokens: 2, outputTokens: 1 }],
+      total: { inputTokens: 2, outputTokens: 1 },
+    });
+    expect(metadata.hostModelUsage.modelCalls).toHaveLength(1);
+    expect(JSON.parse(JSON.stringify(metadata)).hostModelUsage).toEqual(metadata.hostModelUsage);
+    expect(metadata.usage).toMatchObject({ input: 42, output: 21 });
+  });
+
+  it('persists an explicitly admitted compatibility fallback with separate SDK identity', () => {
+    const client = Object.create(AgentClient.prototype);
+    client.options = {
+      agent: {
+        hostModelDecision: {
+          traceId: 'trace-compat',
+          decisionId: 'decision-compat',
+          agentId: 'agent-primary',
+          selectedProvider: 'OpenRouter',
+          selectedModel: 'primary:free',
+          authorizedBindings: [
+            { provider: 'OpenRouter', model: 'primary:free' },
+            {
+              provider: 'OpenRouterFreeCompatCI',
+              runtimeProvider: 'openAI',
+              model: 'openrouter/free',
+            },
+          ],
+        },
+      },
+    };
+    client.usageEmitSink = [
+      {
+        agentId: 'agent-primary',
+        provider: 'openAI',
+        model: 'openrouter/free',
+        input_tokens: 2,
+        output_tokens: 1,
+      },
+    ];
+    client.collectedThoughtSignatures = {};
+    expect(client.buildResponseMetadata()).toMatchObject({
+      hostModelUsage: {
+        resolvedProvider: 'openrouterfreecompatci',
+        resolvedModel: 'openrouter/free',
+        fallbackUsed: true,
+        modelCalls: [
+          {
+            provider: 'openrouterfreecompatci',
+            runtimeProvider: 'openai',
+            inputTokens: 2,
+            outputTokens: 1,
+          },
+        ],
+        total: { inputTokens: 2, outputTokens: 1 },
+      },
+      usage: { input: 2, output: 1 },
+    });
+  });
+
   it('persists decision-linked primary model-end usage while leaving ordinary runs unchanged', () => {
     const client = Object.create(AgentClient.prototype);
     client.options = {
@@ -9607,5 +9987,20 @@ describe('AgentClient - P11 model invocation evidence', () => {
     expect(metadata.usage).toMatchObject({ input: 34, output: 3 });
     client.options.agent = { id: 'ordinary' };
     expect(client.buildResponseMetadata()).not.toHaveProperty('hostModelUsage');
+  });
+});
+
+describe('AgentClient - durable BOT MODE save options', () => {
+  it('passes only the host-admitted settings to normal conversation persistence', () => {
+    const client = Object.create(AgentClient.prototype);
+    client.options = { endpoint: 'agents', agent: { id: 'worker' } };
+    client.botModeSettings = {
+      version: 1,
+      mode: 'analyze',
+      selectionMode: 'auto',
+      workerAgentId: 'worker',
+      agents: [{ id: 'research', name: 'RECHERCHE' }],
+    };
+    expect(client.getSaveOptions()).toHaveProperty('botMode', client.botModeSettings);
   });
 });

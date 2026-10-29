@@ -25,6 +25,7 @@ import {
   SteerPart,
 } from './Parts';
 import { getCachedPreview, getActivityLabelPart, getActivityLabelText } from '~/utils';
+import { useBotModeView } from '~/components/Chat/BotModeViewContext';
 import { getAskUserQuestionPart } from '~/utils/approval';
 import AskUserQuestionCall from './AskUserQuestionCall';
 import { isBashProgrammaticToolCall } from './routing';
@@ -60,6 +61,7 @@ const Part = memo(function Part({
   hideAttachments,
   onToolExpand,
 }: PartProps) {
+  const isBotModeView = useBotModeView();
   if (!part) {
     return null;
   }
@@ -143,6 +145,7 @@ const Part = memo(function Part({
       </Container>
     );
   } else if (part.type === ContentTypes.THINK) {
+    if (isBotModeView) return null;
     const reasoning = typeof part.think === 'string' ? part.think : part.think?.value;
     if (typeof reasoning !== 'string') {
       return null;

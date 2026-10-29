@@ -11,6 +11,8 @@ import {
   getEndpointField,
   isAgentsEndpoint,
   parseCompactConvo,
+  botModeSettingsSchema,
+  resolveBotModeSearchParams,
   replaceSpecialVars,
   isAssistantsEndpoint,
   getDefaultParamsEndpoint,
@@ -40,6 +42,7 @@ import useFocusRegeneratedResponse from '~/hooks/Chat/useFocusRegeneratedRespons
 import useSetFilesToDelete from '~/hooks/Files/useSetFilesToDelete';
 import useGetSender from '~/hooks/Conversations/useGetSender';
 import store, { useGetEphemeralAgent } from '~/store';
+import { getBotModeSearchParams } from './mission';
 import { startupConfigKey } from '~/data-provider';
 import useUserKey from '~/hooks/Input/useUserKey';
 import { useAuthContext } from '~/hooks';
@@ -508,7 +511,9 @@ export default function useChatFunctions({
       parentMessageId = Constants.NO_PARENT;
       currentMessages = [];
       conversationId = null;
-      const projectSearch = chatProjectId ? `?projectId=${encodeURIComponent(chatProjectId)}` : '';
+      const nextParams = getBotModeSearchParams(searchParams);
+      if (chatProjectId) nextParams.set('projectId', chatProjectId);
+      const projectSearch = nextParams.size ? `?${nextParams.toString()}` : '';
       requestChatFocus();
       navigate(`/c/new${projectSearch}`);
     }
@@ -596,158 +601,48 @@ export default function useChatFunctions({
       quotes: quotes.length > 0 ? quotes : undefined,
     };
 
-    const botModeMode = getBotModeExecutionMode(searchParams, text);
-    if (shouldUseBotModeMission(searchParams, text) && isAgentsEndpoint(endpoint)) {
-      const botModeAgentId = conversation?.agent_id;
-      if (typeof botModeAgentId !== 'string' || botModeAgentId.length === 0) {
-        console.error('BOT MODE mission requires a selected agent');
-        return false;
-      }
-      Object.assign(currentMsg, {
-        orchestratorMission: (() => {
-          const specialistDefinitions: Array<[string, string, string, string[]]> = [
-            ['RECHERCHE', 'botmode-recherche', 'research', ['web_search']],
-            ['ANALYSE', 'botmode-analyse', 'analysis', ['analysis']],
-            ['CODE', 'botmode-code', 'engineering', ['execute_code']],
-            ['DOCUMENTS', 'botmode-documents', 'documents', ['file_search']],
-            ['RÉDACTION', 'botmode-r-daction', 'writing', ['writing']],
-          ];
-          const mode = botModeMode;
-          const analyzeObjectives = [
-            {
-              key: 'research',
-              objective:
-                'Rechercher en profondeur les informations, alternatives, sources et concurrents.',
-              requiredCapabilities: ['web_search'],
-              dependsOn: [],
-            },
-            {
-              key: 'analysis',
-              objective: 'Analyser la faisabilité, les risques, les opportunités et les scénarios.',
-              requiredCapabilities: ['analysis'],
-              dependsOn: ['research'],
-            },
-            {
-              key: 'engineering',
-              objective: 'Évaluer l’architecture et tester les éléments techniques pertinents.',
-              requiredCapabilities: ['execute_code'],
-              dependsOn: ['analysis'],
-            },
-            {
-              key: 'documentation',
-              objective: 'Vérifier les documents, données et preuves disponibles.',
-              requiredCapabilities: ['file_search'],
-              dependsOn: ['research'],
-            },
-            {
-              key: 'synthesis',
-              objective:
-                'Produire une synthèse consolidée avec conclusions et pistes de développement.',
-              requiredCapabilities: ['writing'],
-              dependsOn: ['analysis', 'engineering', 'documentation'],
-            },
-          ];
-          const developObjectives = [
-            {
-              key: 'research',
-              objective:
-                'Rechercher les solutions, références et contraintes techniques pertinentes.',
-              requiredCapabilities: ['web_search'],
-              dependsOn: [],
-            },
-            {
-              key: 'analysis',
-              objective: 'Évaluer la faisabilité, les risques, les coûts et les scénarios.',
-              requiredCapabilities: ['analysis'],
-              dependsOn: ['research'],
-            },
-            {
-              key: 'engineering',
-              objective: 'Concevoir et tester le volet technique de la solution.',
-              requiredCapabilities: ['execute_code'],
-              dependsOn: ['analysis'],
-            },
-            {
-              key: 'documentation',
-              objective: 'Rassembler les éléments documentaires et preuves utiles.',
-              requiredCapabilities: ['file_search'],
-              dependsOn: ['research'],
-            },
-            {
-              key: 'synthesis',
-              objective: 'Consolider le plan de développement et les prochaines étapes.',
-              requiredCapabilities: ['writing'],
-              dependsOn: ['engineering', 'documentation'],
-            },
-          ];
-          const watchObjectives = [
-            {
-              key: 'research',
-              objective: 'Effectuer une veille approfondie et recueillir les sources pertinentes.',
-              requiredCapabilities: ['web_search'],
-              dependsOn: [],
-            },
-            {
-              key: 'analysis',
-              objective: 'Analyser les évolutions, signaux, risques et opportunités.',
-              requiredCapabilities: ['analysis'],
-              dependsOn: ['research'],
-            },
-            {
-              key: 'synthesis',
-              objective: 'Synthétiser les résultats de la veille avec des conclusions vérifiables.',
-              requiredCapabilities: ['writing'],
-              dependsOn: ['analysis'],
-            },
-          ];
-          let objectives = analyzeObjectives;
-          if (mode === 'develop') objectives = developObjectives;
-          else if (mode === 'watch') objectives = watchObjectives;
-          const required = new Set(
-            objectives.flatMap((objective) => objective.requiredCapabilities),
-          );
-          const specialists = specialistDefinitions
-            .filter(([, , , capabilities]) =>
-              capabilities.some((capability) => required.has(capability)),
-            )
-            .map(([id, agentId, role, capabilities]) => ({
-              id,
-              agentId,
-              role,
-              capabilities,
-              constraints: [],
-            }));
-          return {
-            mission: {
-              missionId: `botmode-${clientRequestId}`,
-              taskId: clientRequestId,
-              objective: text,
-              constraints: ['mission_idée: privilégier profondeur et preuves plutôt que rapidité'],
-              requiredCapabilities: [
-                ...new Set(objectives.flatMap((objective) => objective.requiredCapabilities)),
-              ],
-              objectives,
-            },
-            plannerContext: {
-              worker: {
-                id: 'worker',
-                agentId: botModeAgentId,
-                role: 'worker',
-                capabilities: ['basic'],
-                constraints: [],
-              },
-              specialists,
-            },
-          };
-        })(),
-      });
-    }
-
     const submissionFiles = overrideFiles ?? targetParentMessage?.files;
     const reuseFiles =
       (isRegenerate || (overrideFiles != null && overrideFiles.length)) &&
       submissionFiles &&
       submissionFiles.length > 0;
+    const botModeParams = resolveBotModeSearchParams(searchParams, conversation);
+    const botModeMode = getBotModeExecutionMode(botModeParams, text);
+    if (botModeParams.get('botmode') === '1' && isAgentsEndpoint(endpoint)) {
+      try {
+        const botMode = botModeSettingsSchema.parse({
+          version: 1,
+          mode: botModeMode,
+          selectionMode: botModeParams.get('botmode_agent_mode') ?? 'auto',
+          workerAgentId: conversation?.agent_id,
+          agents: JSON.parse(botModeParams.get('botmode_agent_bindings') ?? '[]'),
+        });
+        Object.assign(currentMsg, { botMode });
+      } catch (_error) {
+        console.error('Invalid BOT MODE conversation settings');
+        return false;
+      }
+    }
+    if (shouldUseBotModeMission(botModeParams, text) && isAgentsEndpoint(endpoint)) {
+      const botModeAgentId = conversation?.agent_id;
+      if (typeof botModeAgentId !== 'string' || botModeAgentId.length === 0) {
+        console.error('BOT MODE mission requires a selected agent');
+        return false;
+      }
+      // The server resolves complete objectives, dependencies and native actors.
+      // Selection lives in botMode settings; it never filters the work in the browser.
+      Object.assign(currentMsg, {
+        orchestratorMission: {
+          mission: {
+            missionId: `botmode-${clientRequestId}`,
+            taskId: clientRequestId,
+            objective: text,
+            constraints: ['mission_idée: privilégier profondeur et preuves plutôt que rapidité'],
+            requiredCapabilities: [],
+          },
+        },
+      });
+    }
 
     if (setFiles && reuseFiles === true) {
       currentMsg.files = [...submissionFiles];
