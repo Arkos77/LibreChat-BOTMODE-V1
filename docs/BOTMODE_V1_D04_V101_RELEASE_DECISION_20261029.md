@@ -59,3 +59,5 @@ L'exclusion n'autorise **pas** à créer `v1.0.1` : il faut un GO de publication
 **NON CONCLUANT pour D-04 :** contrôle du workflow de promotion GitHub en conditions réelles, absence d'effets secondaires des tags de release, état des avis npm à la date du GO, promesse fournisseur externe réel, plan de rollback testé.
 
 **Décision présente : D-04 NO-GO, publication de la candidate uniquement déjà validée ; `stable/latest` et `v1.0.0` intouchés.**
+
+**Qualification de la PR :** le présent fichier doit être soumis aux contrôles GitHub de la branche protégée avant toute décision de fusion ; les preuves de la candidate publiée ne remplacent pas les checks du workflow D-04 proposé.
