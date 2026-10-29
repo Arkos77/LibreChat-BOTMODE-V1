@@ -1,5 +1,95 @@
 # BOT MODE V1 — INVENTAIRE MAÎTRE DES EXIGENCES ET PREUVES
 
+## État prioritaire — candidate d59 installée et nettoyage ciblé terminé
+
+La candidate publiée d59 est maintenant installée sur l'instance de travail locale (port 3081), épinglée au digest sha256:2eb9e3714beda2603ce7efdff2c9fde581ab236dc0b4495a6156856f0757f685. Provenance index/manifest/configuration et couches locales vérifiée ; quiescence PASS, sauvegardes cohérentes effectuées, configuration locale et volumes conservés. HTTP readyz/health/config/accueil 200, données utilisateur et agents inchangés. Ancienne instance port 3080 et image de retour arrière conservées.
+
+Nettoyage autorisé : seule la copie locale d'une image historique sans conteneur et le cache npm ont été supprimés, après vérification de disponibilité publique de l'image. Environ 5,2 Go récupérés ; environ 4,0 Go libres après installation. Aucun ancien dossier de travail ni volume supprimé.
+
+[Rapport exact et limites](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/9f39536c78f44d990edeff25e35ccc87072bd894/docs/BOTMODE_V1_FINAL_COMPOSITION_RESULT_20261023.md). Aucun nouvel appel modèle, test de mission, build, fusion ou promotion stable/latest. L'installation de cette candidate ne constitue pas un GO stable global. Les mentions d'installation en attente ci-dessous sont désormais historiques pour cette instance.
+
+
+## D03 candidate autorisée et publiée — 23 octobre 2026
+
+Accord utilisateur reçu après présentation de la proposition figée f189ac947311ac3d9b81b2660fbb20c9c493e2bf. Activation exacte sur ops/publish-d59dedf071d2-approved, commit pilote eb20b62342d5848880e145d419f1c5f9de8558d9, départ de la source applicative d59dedf071d26503ec9bec5a31ee474f0ccc9724.
+
+[Publication 39926287063](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39926287063) **SUCCESS** : restauration des archives déjà qualifiées 39923900344, checksum/source/configuration/architecture contrôlés, aucune reconstruction ni inférence.
+
+| Objet publié | Digest immuable |
+|---|---|
+| Index sha-d59dedf071d2 | sha256:2eb9e3714beda2603ce7efdff2c9fde581ab236dc0b4495a6156856f0757f685 |
+| AMD64 sha-d59dedf071d2-amd64 | sha256:c14d9192a01877fd6de06053cc0d0a3d504b3653358d65c4d30662dcfe4611ff |
+| ARM64 sha-d59dedf071d2-arm64 | sha256:d8d282d6d8fea5af02d7482661093f3046de8a92ef13f2703315c49282885f9f |
+
+Référence : ghcr.io/arkos77/librechat-botmode-v1@sha256:2eb9e3714beda2603ce7efdff2c9fde581ab236dc0b4495a6156856f0757f685.
+
+Jobs AMD64 120323371123, ARM64 120323371494, index 120329380382 : SUCCESS. Le job index vérifie les configurations distantes des deux manifests contre les ID qualifiés, assemble leurs digests, supprime l'authentification puis vérifie publiquement les plateformes Linux AMD64 et ARM64 : CANDIDATE_PUBLIC_TWO_ARCH_INDEX=PASS. Nettoyage d'authentification réussi. Preuve index/digest : artefact 12490147943, candidate-d59dedf071d2-publication-proof, conservé jusqu'au 30 octobre 2026 à 08:55:35 UTC.
+
+Le transfert ARM64 a pris plus longtemps ; aucune relance ni seconde compilation. Stable/latest, releases, fusion et installation restent inchangés. D03 est clos uniquement pour cette candidate ; ceci ne transforme pas les limites de qualification en preuves supplémentaires ni en GO stable global.
+
+Installation suivante à préparer séparément : préserver les modifications locales, sauvegarder configurations et données, vérifier espace et quiescence, utiliser le digest immuable, garder un retour arrière. Aucun effacement, arrêt ou basculement du Chromebook autorisé par cet accord D03.
+
+
+[Rapport de composition et publication courant](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/dfb4b357500266d70a4b4df976e4448c2bbf8992/docs/BOTMODE_V1_FINAL_COMPOSITION_RESULT_20261023.md). Qualification native AMD64/ARM64 39923900344 acquise ; sur AMD64, spécialiste planifié, cinq Oracle VERIFIED et publication P6 dans le flux navigateur. Les preuves restent synthétiques/locales dans leur périmètre. PR75 et PR73 intégrées ; source applicative d59, arbre 02f201a344c7de510c88a4daa48bf52032307e24.
+
+Acquis conservés sans replay : soak 180,44 minutes, garde update/quiescence et fence RAG, receipts/enfants b221 et stable historique. Factory persistante supplémentaire hors V1 selon #66. Les états antérieurs de D03 ci-dessous sont historiques et remplacés par cette publication pour d59 uniquement.
+
+## Rectification prioritaire — ne pas rouvrir les acquis ni le post-V1
+
+La liste « six blocs restants » du 23 octobre était trop large et mêlait réalisations acquises, rapprochement de la nouvelle candidate et évolutions post-V1.
+- [Issue #66](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/66) : décision propriétaire du 20 octobre, création de spécialistes persistants supplémentaires **hors V1**. La V1 utilise les enfants éphémères ; ne pas imposer une factory persistante comme nouveau bloqueur.
+- [Run 39274101022](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39274101022), job 118133771109, source 80fdfd3a0946b87be6d04434747b178c25fef3b5 : **SUCCESS, 180,44 minutes réellement observées**, Redis aux jalons 30/90/150 min, Oracle VERIFIED, réauthentification propriétaire et publication MongoDB unique. Acquis dans le périmètre modèle simulé sans outils réels ; ne pas relancer par défaut. Justifier tout besoin de requalification par les changements pertinents de la nouvelle composition.
+- [Run D04 39503107999](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39503107999) SUCCESS : la promotion stable historique existe déjà ; le NO-GO courant vise la nouvelle candidate, pas l'annulation de cette release.
+- Conserver les contrats 0/1/N, orchestration/permissions, Oracle/P6, RAG borné, installations/rollback et composants UX déjà implémentés dans leurs périmètres. Les limites ciblées et l'intégration de changements récents ne constituent pas une réouverture générale.
+
+Les paragraphes antérieurs marquant factory persistante et endurance 3h comme manquantes sont rectifiés par ce rapprochement. Aucun test, build, appel fournisseur, merge, tag ou déploiement n'est lancé pour cette correction documentaire.
+
+## Avancée D01 — contexte enfant self durable, fournisseur local
+
+[Run 39901355206](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39901355206) SUCCESS sur l'image b221 inchangée : contexte enfant self créé à la demande sans spécialiste fourni au planificateur, politique enregistrée conservée, trois appels parent/enfant/parent, Oracle parent VERIFIED et lignée MongoDB canonique avant/après redémarrage. L'essai précédent 39900579819 validait la mission mais son lecteur restait actif à cause des connexions de cache ; cause reproduite puis corrigée uniquement dans le lecteur. [Compte rendu courant](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/fix/host-usage-runtime-alias-20261023/docs/BOTMODE_V1_LOCAL_CHILD_LINEAGE_20261023.md). Enfant enregistré préautorisé également acquis au run 39899705393. Aucun événement enfant SSE observé ; factory de nouveaux spécialistes enregistrés, cas plusieurs enfants, ACL HTTP étrangères, fournisseur externe et autres lots D01 restent ouverts. D02/D03/D04 inchangés, NO-GO stable.
+
+## Avancée D01 — enfant autorisé durable, fournisseur local
+
+[Run 39899705393](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39899705393) SUCCESS sur la même image b221, sans reconstruction : parent → enfant autorisé → parent, Oracle VERIFIED, propriétaire et liens MongoDB avant/après redémarrage acquis. [Compte rendu et limites](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/f2d882ba08c1ff3187da6f1d35a7728bd4c98a0e/docs/BOTMODE_V1_LOCAL_CHILD_LINEAGE_20261023.md). L'essai précédent 39886327976 s'est arrêté au POST HTTP 503, avant admission ; le second attend /readyz. Aucun événement enfant SSE observé. Création dynamique/runtime self, enfant externe et autres lots D01 restent ouverts. D02/D03/D04 et NO-GO stable inchangés.
+
+## État prioritaire — receipts persistées dans l'image b221, fournisseur local déterministe
+
+[Run 39883796226](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39883796226), job 120187128591 : **SUCCESS** sur image exacte de b2213e9717b879a91181c6ac9d7607124c30258b, réutilisée sans compilation. API + vrai SDK + MongoDB/Redis jetables : cinq verdicts VERIFIED, P6, un message canonique, receipt hostModelUsage présente, fallbackUsed=true, free_only, acteur/binding/identité SDK/modèle/jetons vérifiés. Usages agrégés présents; receipt primaire limitée au Worker. **Cette preuve utilise un fournisseur local déterministe, aucune inférence externe ni clé réelle.** Nettoyage réussi.
+
+L'unique mission externe autorisée du [run 39880864060](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39880864060) s'est arrêtée au Worker : objet JSON HTTP intact mais critère ok absent, Oracle REJECTED/CRITERION_FAILED; lecture P6/receipts SKIPPED. Une seule compilation exécutée; pas de replay externe. Image b221 conservée un jour, audit installé zéro critical/high/moderate. Deux échecs du dispositif local (route bootstrap supplémentaire, identifiant de réponse constant) reproduits/corrigés et consignés, sans changement applicatif ni nouvelle compilation.
+
+[Compte rendu complet et limites](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/779944db70591b4226b0fe653fb47abc776c54c8/docs/BOTMODE_V1_RECEIPT_RUNTIME_QUALIFICATION_20261023.md). La persistance des receipts b221 sous fournisseur externe reste non prouvée. Le succès externe cinq tâches/Oracle/P6 a6 reste acquis sur sa source. D01–D04 et **NO-GO stable** restent inchangés; aucune publication GHCR/fusion/installation.
+
+
+## Receipts natives — qualification locale complétée le 23 octobre 2026
+
+La vérification SDK→graphe→ModelEndHandler a reproduit un second écart : le graphe émet l'identifiant canonique de la tâche, alors que la receipt attend l'identifiant de l'agent enregistré. Correction liée au plan validé, sans changement des identités du graphe; nœuds étrangers/forgés/ambigus exclus. Source complète **b2213e9717b879a91181c6ac9d7607124c30258b**, branche fix/host-usage-runtime-alias-20261023. **270 tests locaux réussis dans sept suites**, revue indépendante sans constat.
+
+[Checkpoint et limites](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/d3ae434787b4a9d63e59eb5695962b6c05ffbfcf/docs/BOTMODE_V1_NATIVE_ACTOR_RECEIPTS_20261023.md). Une proposition inactive impose la présence et la validité de la receipt dans MongoDB pour réussir. Nouvelle image nécessaire car trois fichiers applicatifs ont changé depuis a6; une seule compilation et une seule mission gratuite proposées, en attente d'accord précis. Aucun nouveau build ni appel réel engagé. Le succès cinq verdicts/P6 a6 reste acquis; persistance réelle des nouvelles receipts, D01–D04 et NO-GO stable restent ouverts.
+
+
+## Receipts — correctif local qualifié le 23 octobre 2026
+
+Un défaut de correspondance entre fournisseur configuré et fournisseur SDK est reproduit par initialisation native + appels SDK HTTP locaux (429→200) : OpenRouterFreeCompatCI est exécuté sous openAI et la projection rejetait son usage. Correction enregistrée dans la source **0f4691410fe614207001c8ff091a026325db2418**, branche fix/host-usage-runtime-alias-20261023. Le lien runtimeProvider vient uniquement de l'admission hôte; les modèles/fournisseurs inconnus et les alias ambigus restent exclus. Les identités configurée et SDK sont conservées séparément.
+
+**264 tests locaux réussis dans sept suites**, revue indépendante sans constat restant. Aucun build ni mission réelle supplémentaire. [Preuves et limites](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/fd0121331403654898b73ea8dfd7671b6e78a2c3/docs/BOTMODE_V1_HOST_USAGE_RUNTIME_ALIAS_20261023.md).
+
+Ce résultat ne clôt pas la persistance réelle des receipts, ne prouve pas l'unique cause de leur absence dans l'ancien run, et ne transfère pas les preuves a6 à la nouvelle source. Le parcours cinq tâches/Oracle/P6 du run 39877163780 reste acquis sur a6; D01–D04 et NO-GO stable restent inchangés.
+
+
+## État prioritaire vérifié — 23 octobre 2026 : cinq tâches + Oracle + P6 acquis
+
+**Cette mise à jour remplace les anciens blocages du parcours à cinq tâches; les rapports précédents restent historiques.** Publication documentaire autorisée explicitement par l'utilisateur.
+
+Run [39877163780](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39877163780), job 120165439617 : **SUCCESS**, source applicative a6f6fee3c7dcfb5877fe798f759966774a046a58. Image exacte réutilisée sans recompilation. Worker + quatre spécialistes : cinq verdicts VERIFIED. P6 durable de la même mission : un seul message assistant canonique MongoDB, publication engagée et terminal complete. Dix requêtes observées : cinq 429 contrôlés puis cinq réponses réelles de fallback acceptées; JSON objet et require_parameters transmis. Nettoyage réussi. Aucun nouveau build ni image publiée.
+
+**Limites :** les cinq contenus identiques empêchent une attribution HTTP→tâche unique; les traces prouvent les correspondances au niveau du lot. Receipts hostModelUsage/fallbackUsed absentes du message canonique; leur persistance reste à établir, sans nier la bascule HTTP réellement observée. Child externe imbriqué/dynamique non observé. D01 et les autres obligations de l'inventaire restent ouverts; D02 non renouvelé; D03 nouvelle image et D04 fusion/stable/latest/installation non autorisés. **NO-GO stable maintenu.** L'autorisation de mission est consommée; ne pas rejouer ce parcours acquis sans nouvelle raison.
+
+[Compte rendu complet, preuves et limites](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/07b462f07aee835f1c43cc0e77b2d15ac9bd0fc6/docs/BOTMODE_V1_FIVE_TASK_P6_SUCCESS_20261023.md). Cinq tests locaux de projection des receipts réussis; ils ne prouvent pas leur présence dans cette mission réelle. Suite technique : identifier la condition manquante dans les événements d'usage avant tout correctif; poursuivre les obligations restantes de l'inventaire sans rouvrir ce parcours validé.
+
+
+> **Priorité du 22/10 : a6f6fee3c7dc, 109 tests de routage acquis. Mission réelle #39857859228 : worker REJECTED / INVALID_JSON ; spécialistes et P6 non qualifiés. Image AMD64 locale contrôlée, audit zéro, aucune publication. NO-GO stable.**
+
 **Version du registre :** 2026-10-19, édition 2. **Type :** registre vivant de continuité et de clôture, **pas** certificat de release. **Statut décisionnel : NO-GO stable**, sauf décision ultérieure documentée sur tous les gates.
 
 **Instantané de référence avant commit de documentation :** [PR #29](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/29), branche `botmode-v1-final-integration-qualification-20261016`, base `botmode-v1-integrated-candidate-20261014`, SHA **`a20cb0604a24dc5f4da9b41d30d5bcfa0831fc0a`**. Vérification 18/10/2026 via `git` + `gh`, worktree propre, PR OPEN/Draft, **28 workflows : 27 SUCCESS, 1 SKIPPED (accessibilité), 0 FAILURE**. Ce comptage est attaché à CE SHA antérieur à la version documentaire ; nouveau commit = refaire la lecture des statuts et la correspondance des preuves.
@@ -439,7 +529,7 @@ La recherche dans `.github/workflows` sur la branche PR #29 au checkpoint `a682b
 **OR-09 — ancien succès OpenRouter vs source OCI publiée, 19/10/2026 :** Le [run gratuit ancien #39150077172](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39150077172) était SUCCESS au commit `4ee221bf99521e0badca9a749d8f15b134fdd8d6` (28 événements SSE, tâches Worker/spécialiste et Oracle vérifiées, pas de thread enfant imbriqué). Le commit source de l'image actuelle `5fb904d375bffd6c54b5830cb1536088a9e77211` descend du précédent de 9 commits, avec **zéro fichier changé dans `api/` ou `packages/`**, confirmé par `git diff --name-only 4ee221bf..5fb904d -- api packages`. Les changements sont frontend accessibilité, CI et documentation. Le gate Python Oracle réel est inchangé entre ce succès et PR29 ; son preflight n'a actualisé que le digest. Le [nouvel essai gratuit #39176515135](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39176515135) échoue sans Oracle durable après 3 événements SSE et final immédiat. Cette comparaison **ne démontre ni quota 429 dans ce run, ni absence de régression de configuration ou du build**. Tester diagnostic Redis borné via [PR #35](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/35) (6/6 CI SUCCESS) lors d'un prochain essai explicitement autorisé, sans boucle de requêtes gratuites.
 
 
-**OR-10 — lecture seule quota OpenRouter non autorisée (401), 19/10/2026 :** [PR #35](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/35), commit `0cac7534b775dd88172dff0476e90bb7dfa3855b`, ajoute une branche `quota_only=true` strictement `workflow_dispatch` : seul GET `https://openrouter.ai/api/v1/key` est appelé avec secret masqué, mission OCI/inférence **SKIPPED**. [Run #39180594273](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39180594273) **FAIL** : `CI_OPENROUTER_KEY_METADATA_HTTP=401`, quota journalier inaccessible ; **0 appel de génération, 0 dépense**. Documentation officielle [Get current key](https://openrouter.ai/docs/api/api-reference/api-keys/get-current-key) spécifie `Authorization: Bearer` et erreur HTTP 401 Unauthorized. Metadata GitHub du secret `OPENROUTER_API_KEY` : créé et mis à jour en dernier le **11/10/2026 à 22:23:32 UTC**, avant l'ancien succès réel du 18/10 ; cause 401 (révocation ultérieure, permissions, autre problème côté service) non déterminée. Ne pas confondre ce 401 de **GET /key** avec le preflight génération 429 séparé ou le `ORACLE_NOT_DURABLE` sur SSE. Suite : vérifier/renouveler le secret côté propriétaire, sans coller la clé dans le chat, puis uniquement retenter le mode métadonnées avant toute génération. La qualification CI de ce nouveau commit est distincte et sa Playwright finale était en cours lors de cette rédaction.
+**Contrôle de disponibilité sans génération :** un contrôle séparé a été effectué sans mission ni inférence. Les métadonnées du compte et du secret sont exclues de cet inventaire public. Aucun résultat de ce contrôle n'est assimilé à une validation Oracle ou à une autorisation de relance.
 
 
 **OR-LIVE-02 — diagnostic du run gratuit 39182214989, 19/10/2026 :** [run #39182214989](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39182214989) sur SHA PR35 `0cac7534b775dd88172dff0476e90bb7dfa3855b` : essai **unique** du vrai modèle `openrouter/free` après confirmation de la nouvelle clé, sonde OCI synthétique PASS, mission démarrée, SSE HTTP 200 et **9 événements**, 0 final, 0 trame error, puis **`SSE_IDLE_TIMEOUT`**. Redis indique encore `running` et **un état Oracle présent** ; 0 sous-agent durablement enregistré et aucune exception subagent. Code du test CI : `urlopen(timeout=75)` s'arrête au premier silence de 75 s ; le statut Redis actif ne justifie PAS d'affirmer un échec Oracle définitif, ni une réussite, ni un nouveau HTTP 429. **Oracle fournisseur réel demeure NON VALIDÉ.** [Commit de test #a972d8288](https://github.com/Arkos77/LibreChat-BOTMODE-V1/commit/a972d82884960e9edc53b597f2d6c6c4b7d60a4e) (PR35) prépare une reprise bornée du même GET SSE (`resume=true`, deux reconnexions maximum, durée totale 210 s), sans nouveau POST, modèle payant ni changement runtime, et un contrôle statique hors-ligne. Sa qualification CI est en cours ; **aucun deuxième essai réel n'a été exécuté**.
@@ -459,3 +549,92 @@ La recherche dans `.github/workflows` sur la branche PR #29 au checkpoint `a682b
 **UX-03 — écart réel MongoDB projection résultat après Oracle, 19/10/2026 :** Pendant la préparation du parcours *fournisseur réel → message durable → API GET `/api/projects/:projectId/bot-mode` → fiche Idée*, l'inspection a identifié une **régression fonctionnelle avérée dans le code source** de PR29/digest actuel : `api/server/services/Projects/botModeProjectProjection.js` appelle `deps.getMessages(..., "messageId conversationId isCreatedByUser metadata", ...)` via Mongoose `Message.find().select(select)`, **sans demander `content`**, puis tente de lire `message.content` pour construire `conversations[].results`. Les mocks Jest et Playwright précédents restituaient déjà `content` et **ne détectaient pas** l'absence du champ en MongoDB réel. **Aucune validation UI mock ne doit être présentée comme une preuve du parcours réel sur l'OCI publiée.** [PR #39](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/39) **Draft** SHA `6da38ba1b70655c7a6266c6648f6734bdb8c9c85` ajoute uniquement ce champ à la projection, un test Jest qui imite `.select()`, un test Node autonome de lecture du résultat et d'exclusion des éléments privés et d'isolation de propriété, avec [workflow ciblé #39190941351](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39190941351) **SUCCESS**. Une recompilation de la nouvelle source n'est pas une qualification du digest historique : [garde OCI #39190941292](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39190941292) **FAIL intentionnel** car le runtime a changé ; **ne pas l'assouplir**. Les tests complets PR39 sont encore en cours au checkpoint ; seule une **nouvelle image immuable construite depuis ce SHA final** pourra être utilisée pour le parcours de release, avec nouveau test réel HTTP/Oracle/Idées et audit `npm` sur lock exact. **PR29, digest actuel et GO stable inchangés**.
 
 **UX-04 (19/10/2026) — VRAI PARCOURS ORACLE → IDÉE : PASS sur source reconstruite, NON sur GHCR.** [PR #40](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/40) Draft, HEAD 92ee72f0817f9613e9ba1ceb686c32324900f11c, basée sur [PR #39](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/39) (correction de sélection Mongo content). [Workflow #39196686258](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39196686258) SUCCESS, job complet SUCCESS, source parity PASS. Runtime Docker AMD64 construit localement sur runner éphémère (push:false), Redis, MongoDB, API, UI compilée et Chromium réels ; fournisseur synthétique local OpenAI-compatible pour éviter un nouvel appel payant/externe. Preuves : Worker SSE HTTP 200, terminal, 2 messages/1 conversation Mongo ; Oracle durable VERIFIED et publication PASS ; le cas HUMAN_REVIEW refuse la publication. Mission Oracle reliée à une conversation/projet, projection HTTP authentifiée contenant la véritable réponse Oracle, Idée liée persistée, contenu affiché dans /ideas par le navigateur sans aucune interception/mock des réponses API : CI_REAL_ORACLE_PERSISTED_PROJECT_RESULT_API=PASS ; CI_REAL_IDEA_BROWSER_ORACLE_CONTENT_VISIBLE=PASS ; CI_REAL_IDEA_BROWSER_PROJECTION_HTTP_200=PASS. Deux comptes distincts : lecture/liaison étrangère HTTP refusée et texte Oracle non visible par le compte tiers : CI_REAL_ORACLE_PROJECT_FOREIGN_OWNER_BLOCKED=PASS et CI_REAL_IDEA_BROWSER_FOREIGN_ISOLATION=PASS. Nettoyage des volumes CI SUCCESS. **UX-02 validé uniquement pour la source testée** ; preuve fournisseur externe ancien digest indépendante [#39183872416](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39183872416). Le digest GHCR historique ee4af50a... ne contient PAS le correctif PR39 ; le garde provenance échoue légitimement. Nouvelle OCI immuable basée sur la future source finale, provenance, audit du lock exact et gates de distribution à requalifier avant GO ; aucune publication/tag/merge autorisés ici. Longue mission/redis interversion, autres fonctions Full et GO humain non couverts. **Stable NO-GO.**
+
+## État prioritaire de clôture — 22 octobre 2026, après qualification sécurité
+
+Source proposée isolée : **64248339750f9e0f86e01530eb7067027cec8f6b**, branche fix/security-release-20261022. Le HEAD documentaire de cette branche est distinct ; ni celui-ci ni le HEAD documentaire PR77 ne sont la source embarquée testée.
+
+[Dossier sécurité et preuves complètes](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/001a923f9f3a73cbe830cbddc4d8df705defbf23/docs/BOTMODE_V1_SECURITY_CLOSEOUT_20261022.md) ; [proposition réelle inactive à approuver](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/001a923f9f3a73cbe830cbddc4d8df705defbf23/docs/qualification/BOTMODE_V1_FREE_FALLBACK_64248339750f_PROPOSAL.md).
+
+| Domaine | État actuel borné |
+|---|---|
+| Sécurité du verrou historique | Réaudit : 2 constats critical, 1 high, 5 moderate ; les deux critical partagent la chaîne DOMPurify/Monaco. Les anciens PASS ne valent pas audit actuel. |
+| Correctif sécurité | 4 paquets corrigés et 5 transitives requises, 9 entrées changées ; aucune rétrogradation Monaco/Mammoth. |
+| Audit du nouveau source | Lock SHA256 **6e59734742daa69251821e2fed6a765febb4e58f9139743a98c91813dff234cf** ; 0 high/critical, 3 moderate résiduels mammoth/argparse/sprintf-js. Nouveau rattachement D-02 requis, pas de prolongation tacite. |
+| Tests locaux de ce lot | npm ci propre, builds des 4 paquets, **634 tests ciblés PASS**, formatage/diff-check ; contrôle production prunée également PASS avec 0 high/critical. |
+| Images du nouveau source | [Run #39846965864](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39846965864) **SUCCESS** : AMD64 + ARM64 natives, image exacte, 4 contrôles JSON par architecture, versions installées et SUL/notice vérifiées. Images locales supprimées ; aucun manifeste GHCR publié. |
+| Oracle / UI / P6 | Sur AMD64 de ce même source : cinq verdicts VERIFIED, sélections UI et message canonique Mongo du même flux navigateur **PASS synthétique**. ARM64 ne couvre pas ces scénarios DB/navigateur. |
+| Fournisseur réel / PC-04 | **NON PROUVÉ sur 6424833 / BLOQUÉ_APPROBATION**. Les accords précédents d'une mission chacun sont consommés ; contrôle automatique a rejeté la nouvelle préparation avant branche/secret/exécution. Aucun troisième appel effectué. |
+| Suite prête | Une mission native à 5 tâches : 429 local contrôlé sur primaire, fallback OpenRouter/free réel à prix nul vérifié, clé GitHub existante, readback Oracle et P6. YAML conservé hors Actions, inactif ; aucune exécution indirecte. |
+| Publication / intégration | La candidate publique ceb60eca989b et son digest 32b29308… restent inchangés ; ils ne contiennent pas les nouveaux correctifs. D-03 pour nouvelle source non accordée ; D-04 fusion/stable non accordée. |
+| Portée D-01 | Aucune limitation nouvelle acceptée silencieusement. Nested child externe, création dynamique réelle, endurance/HITL, UX FR/TTS/clé/mobile et limites Full/migration restent à prouver ou arbitrer selon les exigences maintenues. |
+
+La qualification sans clé est achevée malgré le refus de la partie externe ; elle ne contourne pas ce refus. Ni image publiée ni mission fournisseur réelle n'est déduite du succès des deux jobs. **NO-GO stable maintenu.** Les références précédentes ci-dessous/conservées sont historiques pour leur source précise.
+
+## Mission réelle explicitement autorisée — résultat du 22 octobre 2026
+
+L'utilisateur a explicitement autorisé une seule mission après lecture de la proposition. Activation inchangée du YAML proposé sur ops/closeout-64248339750f, commit pilote **297f8ae60cac0c72f364bfe63db624173dbf1890**. [Run #39850473486](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39850473486), job **120074940170** : **FAILURE**. Source construite/testée exacte **64248339750f9e0f86e01530eb7067027cec8f6b**, image locale non publiée, config ID sha256:a5c1a1d489f3124c783c9fe0efd24e8654b8a0631d810ea3b027e5cbfaa2ee7f.
+
+- Source/empreintes, quatre tests SDK JSON, audit production et licences : PASS. Les preuves multiarchitecture synthétiques du run 39846965864 restent acquises.
+- Catalogue public : les deux routes autorisées à prix nuls ont été revalidées ; primaire local contrôlé, fallback externe openrouter/free et JSON mode configurés.
+- Une seule mission réelle admise, cinq tâches planifiées. Worker : **un verdict VERIFIED / CRITERION_MET**, candidat JSON_OBJECT de 11 caractères, un champ, okExactlyTrue=true. Aucun contenu brut ni secret conservé dans ce registre.
+- Spécialistes 1 à 4 : **zéro verdict chacun**. Terminal SSE reçu avec une partie error ; classe expurgée **RATE_LIMIT**, résultat harnais **BLOCKED_PROVIDER**. La mission n'est pas qualifiée.
+- Fixture primaire : **14 réponses HTTP 429 contrôlées, 0 requête inattendue**. Ce compteur est une injection locale, pas une mesure de quota OpenRouter. Le worker vérifié avec primaire exclusivement en échec atteste un passage génératif alternatif dans cette configuration ; les traces retenues ne permettent pas d'attribuer définitivement l'erreur terminale au quota externe plutôt qu'au traitement/retry du routage. Aucun reçu fallback final n'a été recueilli.
+- Ancien défaut de registre SDK : 0 log Unsupported LLM provider: openrouter ; 0 exception child-thread enregistrée.
+- Readback final P6/receipts : **SKIPPED** car la mission échoue ; cinq verdicts, publication canonique réussie et preuve complète PC-04 **NON ACQUIS**.
+- Nettoyage stack/volumes/image : SUCCESS. Aucune publication GHCR, fusion, promotion stable/latest ni modification d'installation utilisateur.
+
+Cette autorisation d'une mission est consommée. Aucun replay ni seconde inférence n'est lancé. Le format JSON du worker est désormais validé dans ce scénario, mais le blocage RATE_LIMIT exige une attribution fondée sur des traces ; aucun correctif produit conjectural ni assouplissement Oracle n'est appliqué. D-01 résiduel reste ouvert ; D-02 doit encore rattacher explicitement les trois modérés au nouveau verrou ; D-03 publication nouvelle source et D-04 stable/fusion restent non autorisés.
+
+## Clôture ciblée du routage des spécialistes — 22 octobre 2026
+
+Source courante figée **a6f6fee3c7dcfb5877fe798f759966774a046a58**, branche fix/specialist-host-fallback-20261022, basée sur 6424833. [Checkpoint détaillé](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/4df7e393e58262d55ea6fd636bb0f1ec1227aac0/docs/BOTMODE_V1_SPECIALIST_ROUTING_CHECKPOINT_20261022.md).
+
+**Cause reproduite :** la mission réelle 39850473486 avait un worker VERIFIED puis RATE_LIMIT sur le spécialiste ; seul le primaire recevait la décision hostModelRouting. Les spécialistes de mission/lazy et les agents découverts gardaient leur primaire sans le fallback pourtant déclaré. Les 14 réponses 429 étaient locales. L'ancien classement harnais BLOCKED_PROVIDER n'établit pas un quota OpenRouter.
+
+**Correction :** réutilisation du même initialiseur avec décision de routage propre à chaque agent, validations natives, budget et provenance durable conservés. Le choix d'un model spec pour le primaire exempte uniquement ce primaire ; il ne désactive plus les politiques des spécialistes. Aucun second routeur ni changement Oracle/P6, aucune copie des credentials/fallbacks du worker vers ses spécialistes.
+
+**Preuve finale :** [run 39855394250](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39855394250), job 120092164281, SUCCESS sur source exacte : installation/builds PASS ; trois cas mission/handoff/lazy échouent bien sur l'ancien initialiseur (fallback undefined), puis **quatre suites / 109 tests PASS** sur le correctif, dont mission-spec et provenance Mongo. Revue après correction : aucun autre constat concret. Vérification ciblée, sans clé ni inférence externe ; pas un PASS de toute la suite monorepo.
+
+Le verrou sécurité reste **6e59734742daa69251821e2fed6a765febb4e58f9139743a98c91813dff234cf**. Aucun changement de dépendances dans ce lot. Les preuves d'image multiarchitecture 642 restent attachées à 642 ; **aucune image a6f6fee3c7dc construite/publiée et aucune mission réelle sur a6f6fee3c7dc**. Le digest public ceb reste inchangé.
+
+[Proposition inactive du prochain essai](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/4df7e393e58262d55ea6fd636bb0f1ec1227aac0/docs/qualification/BOTMODE_V1_FREE_FALLBACK_a6f6fee3c7dc_PROPOSAL.yml), hors Actions : une seule mission cinq tâches, primaire en 429 local sans attente artificielle de retry, fallback externe openrouter/free avec ses retries conservés, prix nuls revalidés, JSON strict, cinq VERIFIED et readback P6 de la même mission. Configuration exécutée à blanc sans réseau avec catalogue/clé fictifs ; syntaxe YAML/Bash/Python PASS. Autorisation distincte non encore reçue ; l'accord précédent est consommé.
+
+**NO-GO stable.** D-01 résiduel ouvert, D-02 nouveau verrou à rattacher explicitement, D-03 nouvelle publication et D-04 stable/fusion non autorisés. L'initialisation froide/recovery reste inchangée et n'est pas qualifiée par ce correctif.
+
+## Résultat réel définitif a6f6fee3c7dc — 22 octobre 2026
+
+Source applicative figée **a6f6fee3c7dcfb5877fe798f759966774a046a58**. [Checkpoint complet](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/02c69058b3c84855fdfb52bb5e52f2d683f8c253/docs/BOTMODE_V1_SPECIALIST_ROUTING_CHECKPOINT_20261022.md).
+
+- Premier [run 39856719539](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39856719539) arrêté avant secret/mission : l'audit était vide alors que le harnais attendait exactement trois modérés. Correction du seul contrôle : accepter zéro ou les seuls modérés connus, refuser tout high/critical/alerte inconnue. Cas positifs et négatifs testés localement.
+- [Run 39857859228](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/39857859228), job **120100634900**, pilote **970353308d1dfb69ab56b41b70d01749822764aa** : **FAILURE** après l'unique mission autorisée. L'image AMD64 locale exacte, quatre tests JSON, dépendances et licence SUL passent. Audit installé : **0 critical / 0 high / 0 moderate à 23:38 Paris** ; pas de changement du verrou 6e59734742daa69251821e2fed6a765febb4e58f9139743a98c91813dff234cf.
+- Prix gratuits des deux routes revalidés. **Un 429 local contrôlé, zéro requête inattendue**. Worker : **REJECTED / INVALID_CANDIDATE**, candidat **INVALID_JSON de 59 caractères**, sans clôture Markdown. Spécialistes 1–4 : **zéro verdict**, non atteints. Terminal MISSION_ORACLE ; pas de nouveau RATE_LIMIT établi.
+- Readback final P6/receipts **SKIPPED** ; cinq VERIFIED et publication canonique non qualifiés. Nettoyage SUCCESS. Config ID image locale : sha256:7ecd1ba676038586378a63c7b0870949d84dab86a312790019ea6dc068435854 ; image non publiée/supprimée, pas une qualification ARM64.
+- Diagnostic après run : **8 tests locaux PASS** sur le SDK réel et HTTP loopback ; response_format=json_object reste présent lors du fallback après429, streaming activé ou non. Extension de test seulement au commit b4eb797c669b502e722c0fc8b7304c2b80e5fbc3. Les 109 tests de routage restent acquis, mais les spécialistes ne sont pas confirmés par ce run réel.
+- OpenRouter documente que provider.require_parameters=true rend le support des paramètres obligatoire ; absent du préflight courant, ce contrôle est une piste pour le prochain diagnostic. La cause précise de la sortie invalide n'est **pas prouvée**, et aucune nouvelle modification produit conjecturale n'est appliquée.
+
+**Accord d'une mission consommé, aucun replay. NO-GO stable.** Le digest public ceb reste inchangé ; aucune nouvelle publication GHCR ni fusion/stable/latest. D-01 résiduel et les décisions D-02/D-03/D-04 restent ouverts selon leur périmètre. Le rapport audit zéro n'est pas une nouvelle acceptation de risque ni une preuve de retrait d'avis.
+
+
+## Mise à jour — méthode de clôture enregistrée le 23 octobre 2026
+
+Méthode et bilan revu : https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/9e8a2fdcf36e8f1329134f4e1296920e5852d05a/docs/BOTMODE_V1_CLOTURE_METHODIQUE_20261023.md . Diagnostic local : 25 tests ciblés réussis, sans nouveau build ni appel fournisseur. Workflow observé préparé mais inactif; nouvelle mission soumise à autorisation spécifique, la précédente étant consommée. Source applicative a6 inchangée. Le rejet JSON de la dernière mission réelle reste le blocage; aucun succès spécialistes/P6 supplémentaire, publication ou fusion ne doit être déduit de cette préparation. D01–D04 conservent leurs limites précédentes.
+
+
+## Mission observée du 23 octobre 2026 — quatre verdicts, 429 final
+
+Run 39870514640 / job 120143482290, source applicative a6 inchangée : Worker et spécialistes 1–3 VERIFIED; spécialiste 4 sans verdict après HTTP 429 réel de openrouter/free. Cinq 429 primaires artificiels, quatre 200 fallback puis un 429 fallback observés; JSON et require_parameters présents dans toutes les requêtes fallback. P6 non validé. Deux correspondances HTTP→Oracle exactes; deux captures tronquées par la borne, donc comparaison globale incomplète sans preuve d'altération. Nettoyage réussi; autorisation unique consommée, aucune relance. Audit installé zéro critical/high/moderate. Image réutilisable un jour, pas de publication GHCR. Résultat détaillé et limites : https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/b6cb0a62c0d897790e5f6253385470e581c3fabf/docs/BOTMODE_V1_OBSERVED_MISSION_RESULT_20261023.md . Blocage actuel : limite fournisseur avant le cinquième verdict; ne pas relancer à l'identique sans capacité/route nouvelle autorisée. D01–D04 inchangés, NO-GO stable maintenu.
+
+
+## Correctif diagnostic hors réseau — 23 octobre 2026
+
+L'observateur SSE traite désormais les lignes au fil de l'eau, avec limite par ligne et limite cumulée du contenu visible, plutôt qu'une limite sur la taille totale du flux. Le raisonnement n'est pas conservé entre événements ni publié. Les flux hors limites restent explicitement tronqués, sans empreinte partielle présentée comme complète. Le comptage UTF-8 respecte les paires de surrogates réparties sur deux événements JSON.
+
+Preuves locales : reproduction rouge du long flux (1 échec / 14 réussites), reproduction rouge du cas surrogate (1 / 16), puis quatre suites ciblées : 30 tests réussis en 10,702 s. Couverture du graphe natif/fallback/Oracle, confidentialité, préchargement, gros événement et gros contenu, flux contrôlé octet par octet (UTF-8, CRLF et fin sans saut de ligne). Syntaxe et Prettier réussis. Revue indépendante : aucun constat restant après corrections. Aucun test global supplémentaire ni validation fournisseur n'est revendiqué.
+
+Code et tests figés au commit 4dbf279a9d4fcdd6a7241c244abdd75bfac42c3e, branche fix/specialist-host-fallback-20261022. Helper SHA256 : 09872c3ce6f126eda8712957fb977d495c0d69e33d918a30d00189637d74269f. Aucun changement du code applicatif a6, aucun nouveau build/CI/inférence. Ce correctif n'était pas présent dans le run 39870514640; il ne récupère pas les captures antérieures tronquées et ne change pas les preuves de ce run. Le workflow historique/proposé reste figé sur son ancien helper; toute future activation devra intégrer explicitement le nouveau pin et être revue avant utilisation. Blocage réel inchangé : 429 avant le cinquième verdict, P6 non validé, NO-GO stable et D01–D04 inchangés.
+
+
+## D01 — lots restants séparés, 23 octobre 2026
+
+[Plan des preuves restantes](https://github.com/Arkos77/LibreChat-BOTMODE-V1/blob/105d2e78bf1f54641e56857751d8b3617725f518/docs/BOTMODE_V1_D01_REMAINING_LOTS_20261023.md). Distinction maintenue entre enfants imbriqués/dynamiques, endurance modèle 180 minutes, HITL 30 minutes, compaction/outils/budgets, UX et Full/migration. Le harness de soak existant a un défaut de 3 minutes et une assertion minimale de 90% de la durée configurée; le temps réellement observé doit être rapporté, sans généraliser son périmètre. Aucun test long, build ni appel fournisseur supplémentaire engagé pour ce rapprochement. Aucune limitation V1 acceptée silencieusement; D01 et NO-GO stable restent ouverts.
