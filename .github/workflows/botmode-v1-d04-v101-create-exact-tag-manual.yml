@@ -1,0 +1,111 @@
+# Preparation only: a separate human GO is required before any Git tag creation.
+# GITHUB_TOKEN-generated push/create events do not fan out to other workflows.
+# This avoids v* workflows in the historical source commit of the release tag.
+name: BOTMODE V1 D04 v1.0.1 Exact Source Tag - Manual
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Read-only by default; creating v1.0.1 requires a separate explicit human authorization
+        required: true
+        type: choice
+        default: PREFLIGHT_ONLY
+        options:
+          - PREFLIGHT_ONLY
+          - AUTHORIZE_CREATE_V101_TAG_SOURCE_1478FB34_ONLY
+permissions:
+  contents: read
+concurrency:
+  group: botmode-d04-v101-exact-tag-controlled
+  cancel-in-progress: false
+env:
+  SOURCE_SHA: 1478fb34e15e1bad7c07e4928ee8812e47bea064
+  SOURCE_TREE: 9d33e7e25b60082c1681febb99f950abd0fcf9b7
+  LEGACY_TAG_SOURCE: 59598c2f4e333c256296bbb8c6f45a024832745b
+  RELEASE_TAG: v1.0.1
+
+jobs:
+  preflight:
+    name: Verify source, immutable legacy tag and absent v1.0.1 (read only)
+    if: ${{ github.event_name == 'workflow_dispatch' && github.repository == 'Arkos77/LibreChat-BOTMODE-V1' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate precise source and tag identity without registry write
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODE: ${{ inputs.mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 'Arkos77/LibreChat-BOTMODE-V1'
+          test "$GITHUB_REF" = 'refs/heads/main'
+          case "$MODE" in
+            PREFLIGHT_ONLY|AUTHORIZE_CREATE_V101_TAG_SOURCE_1478FB34_ONLY) ;;
+            *) echo 'D04_TAG_MODE_REFUSED' >&2; exit 1 ;;
+          esac
+          test "$(git cat-file -t "$SOURCE_SHA")" = commit
+          test "$(git rev-parse "$SOURCE_SHA^{tree}")" = "$SOURCE_TREE"
+          git merge-base --is-ancestor "$SOURCE_SHA" HEAD
+          test "$(git rev-parse --verify "refs/tags/v1.0.0^{commit}")" = "$LEGACY_TAG_SOURCE"
+          test "$RELEASE_TAG" = 'v1.0.1'
+          known_refs="$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$RELEASE_TAG" --jq '.[].ref')"
+          if grep -Fxq "refs/tags/$RELEASE_TAG" <<< "$known_refs"; then
+            echo 'D04_GIT_V101_TAG_ALREADY_EXISTS_REFUSED' >&2
+            exit 1
+          fi
+          echo 'D04_TAG_SOURCE_TREE_AND_ABSENCE=PASS'
+          echo 'D04_TAG_PREFLIGHT_READ_ONLY=PASS'
+
+  create-tag:
+    name: Create ONLY v1.0.1 at exact immutable source via GITHUB_TOKEN
+    needs: preflight
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTHORIZE_CREATE_V101_TAG_SOURCE_1478FB34_ONLY' && github.repository == 'Arkos77/LibreChat-BOTMODE-V1' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Enforce separate tag authorization and fail-closed source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODE: ${{ inputs.mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$MODE" = 'AUTHORIZE_CREATE_V101_TAG_SOURCE_1478FB34_ONLY'
+          test "$GITHUB_REPOSITORY" = 'Arkos77/LibreChat-BOTMODE-V1'
+          test "$GITHUB_REF" = 'refs/heads/main'
+          test "$RELEASE_TAG" = v1.0.1
+          test "$(git rev-parse "$SOURCE_SHA^{tree}")" = "$SOURCE_TREE"
+          git merge-base --is-ancestor "$SOURCE_SHA" HEAD
+          test "$(git rev-parse --verify "refs/tags/v1.0.0^{commit}")" = "$LEGACY_TAG_SOURCE"
+          known_refs="$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$RELEASE_TAG" --jq '.[].ref')"
+          if grep -Fxq "refs/tags/$RELEASE_TAG" <<< "$known_refs"; then
+            echo 'D04_GIT_V101_TAG_ALREADY_EXISTS_REFUSED' >&2
+            exit 1
+          fi
+          echo 'D04_CREATE_TAG_SECOND_GUARD=PASS'
+      - name: Create a new lightweight Git tag WITHOUT triggering other Actions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Never use a PAT or GitHub App token: those can emit push events
+          # that launch the historical v* image publisher.
+          test "$GITHUB_REPOSITORY" = 'Arkos77/LibreChat-BOTMODE-V1'
+          gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$RELEASE_TAG" -f sha="$SOURCE_SHA" \
+            --jq .ref | grep -Fx "refs/tags/$RELEASE_TAG"
+          created="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" --jq .object.sha)"
+          test "$created" = "$SOURCE_SHA"
+          echo 'D04_GIT_V101_TAG_CREATED_EXACT_SOURCE=PASS'
