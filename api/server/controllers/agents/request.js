@@ -1461,6 +1461,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
     // read the previous epoch from Redis before createJob replaces its slot.
     const wakeupSource = req.body?.nativeMissionWakeupSource;
     let originalWakeupPlan;
+    let originalWakeupCapabilities;
     if (wakeupSource != null) {
       if (
         !isTriggerContinuation ||
@@ -1491,6 +1492,12 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         throw new Error('MISSION_WAKEUP_ORIGIN_MISMATCH');
       }
       originalWakeupPlan = structuredClone(previousPlan);
+      originalWakeupCapabilities = structuredClone(
+        previousJob.metadata.nativeMissionCapabilityAttestation,
+      );
+      if (originalWakeupCapabilities == null) {
+        throw new Error('MISSION_WAKEUP_CAPABILITY_BASELINE_MISSING');
+      }
     }
 
     const endpointIconURL = getEndpointIconURL(req, endpointOption);
@@ -1939,6 +1946,13 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         subagentTasks: client.options.subagentTasks,
         hostEffectPathsPresent: (orchestratorMission?.evidenceDeclarations?.length ?? 0) > 0,
       });
+      if (
+        originalWakeupCapabilities != null &&
+        JSON.stringify(nativeMissionCapabilityAttestation) !==
+          JSON.stringify(originalWakeupCapabilities)
+      ) {
+        throw new Error('MISSION_WAKEUP_CAPABILITY_DRIFT');
+      }
       await GenerationJobManager.updateMetadata(
         streamId,
         { orchestratorPlan, nativeMissionCapabilityAttestation },
