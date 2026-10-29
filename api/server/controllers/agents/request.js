@@ -1924,7 +1924,9 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
               settings: botModeSettings,
               reachableAgents,
               legacyContext: orchestratorMission.plannerContext,
-              hasAttachments: Array.isArray(req.body.files) && req.body.files.length > 0,
+              hasAttachments:
+                originalWakeupHasAttachments ??
+                (Array.isArray(req.body.files) && req.body.files.length > 0),
             });
       assertAuthorizedOrchestratorTasks(orchestratorPlan.tasks, authorizedAgentIds);
       assertResearchToolAvailability(orchestratorPlan, reachableAgents);
