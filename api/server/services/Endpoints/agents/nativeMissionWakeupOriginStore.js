@@ -121,7 +121,7 @@ async function getNativeMissionWakeupOrigin(scope) {
   if (!record) {
     return null;
   }
-  const { _id, __v, createdAt, updatedAt, fingerprint, ...source } = record;
+  const { _id, __v, createdAt: _createdAt, updatedAt: _updatedAt, fingerprint, ...source } = record;
   const observed = createHash('sha256').update(JSON.stringify(source)).digest('hex');
   if (observed !== fingerprint || record.plan?.planId !== record.planId) {
     throw new Error('MISSION_ORIGIN_INTEGRITY_FAILED');
