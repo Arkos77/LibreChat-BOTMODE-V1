@@ -1444,19 +1444,19 @@ describe('createSubagentCompletionWakeupResolver', () => {
       updatedAt: new Date(NOW),
       subagentTask: { attemptKey: 'attempt-2', parentRunId: 'response-1', status: 'completed' as const },
     };
-    methods.getMessages.mockImplementation(async (filter: TestMessageFilter, ...rest) =>
+    methods.getMessages.mockImplementation(async (filter: TestMessageFilter) =>
       filter.conversationId === 'thread-2'
         ? [
             { messageId: 'task-2:user', conversationId: 'thread-2', isCreatedByUser: true },
             siblingTerminal,
           ]
-        : originalGetMessages(filter, ...rest),
+        : originalGetMessages(filter),
     );
     const firstClaim = methods.claimSubagentTaskResult.getMockImplementation()!;
     methods.claimSubagentTaskResult.mockImplementation(async (input) =>
       input.conversationId === 'thread-2'
         ? { status: 'acquired', message: siblingTerminal }
-        : firstClaim(input),
+        : firstClaim(),
     );
     const getMissionOrigin = jest.fn(async () => original);
     const resolve = createSubagentCompletionWakeupResolver({
