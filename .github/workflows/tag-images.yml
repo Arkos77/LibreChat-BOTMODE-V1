@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - 'v*'
+      # BOT MODE v1.0.1 is promoted by its separately approved, digest-pinned
+      # D-04 workflow; this generic publisher must not push unrelated images.
+      - '!v1.0.1'
 
 permissions:
   contents: read

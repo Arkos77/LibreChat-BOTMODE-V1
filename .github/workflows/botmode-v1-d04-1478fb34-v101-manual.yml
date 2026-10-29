@@ -1,0 +1,168 @@
+name: BOTMODE V1 D04 Corrected Candidate v1.0.1 Manual
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Read-only check by default; stable/latest needs separate authorization
+        required: true
+        type: choice
+        default: PREFLIGHT_ONLY
+        options:
+          - PREFLIGHT_ONLY
+          - AUTHORIZE_D04_V101_STABLE_LATEST_1478FB34
+permissions:
+  contents: read
+concurrency:
+  group: botmode-v1-d04-v101-corrected-promotion
+  cancel-in-progress: false
+env:
+  IMAGE: ghcr.io/arkos77/librechat-botmode-v1
+  SOURCE_SHA: 1478fb34e15e1bad7c07e4928ee8812e47bea064
+  SOURCE_TREE: 9d33e7e25b60082c1681febb99f950abd0fcf9b7
+  TARGET_DIGEST: sha256:97e74b9b780c6a8742a6427c49378583f4b8a4213ec43877181372852b6cf5e2
+  PREVIOUS_DIGEST: sha256:20e921df9fda01dba00bc925fe1ae37ae24fbcc992f52f15aad60bfa5aae4c21
+  CANDIDATE_TAG: candidate-botmode-v1-1478fb34e15e
+  SHA_TAG: sha-1478fb34e15e
+  RELEASE_TAG: v1.0.1
+jobs:
+  preflight:
+    name: Exact source and public OCI alias validation (read-only)
+    if: ${{ github.event_name == 'workflow_dispatch' && github.repository == 'Arkos77/LibreChat-BOTMODE-V1' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.24.x'
+          check-latest: false
+      - name: Install fixed crane version
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install github.com/google/go-containerregistry/cmd/crane@v0.20.6
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+      - name: Verify Git source, mode, release tag only if promoting
+        env:
+          MODE: ${{ inputs.mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/main'
+          test "$GITHUB_REPOSITORY" = 'Arkos77/LibreChat-BOTMODE-V1'
+          test "$(git rev-parse "$SOURCE_SHA^{tree}")" = "$SOURCE_TREE"
+          git merge-base --is-ancestor "$SOURCE_SHA" HEAD
+          case "$MODE" in
+            PREFLIGHT_ONLY)
+              echo D04_READ_ONLY_MODE=PASS
+              ;;
+            AUTHORIZE_D04_V101_STABLE_LATEST_1478FB34)
+              git fetch --tags
+              test "$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")" = "$SOURCE_SHA"
+              echo D04_RELEASE_TAG_SOURCE=PASS
+              ;;
+            *) echo D04_MODE_REFUSED >&2; exit 1 ;;
+          esac
+      - name: Verify public candidate and expected old stable and latest
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(crane digest "$IMAGE:$CANDIDATE_TAG")" = "$TARGET_DIGEST"
+          test "$(crane digest "$IMAGE:$SHA_TAG")" = "$TARGET_DIGEST"
+          for alias in stable latest; do
+            current="$(crane digest "$IMAGE:$alias")"
+            if [[ "$current" != "$PREVIOUS_DIGEST" && "$current" != "$TARGET_DIGEST" ]]; then
+              echo "D04_UNEXPECTED_${alias^^}_DIGEST=DENIED" >&2
+              exit 1
+            fi
+            printf 'D04_%s_DIGEST_BEFORE=%s\n' "${alias^^}" "$current"
+          done
+          crane manifest "$IMAGE@$TARGET_DIGEST" > "$RUNNER_TEMP/candidate-index.json"
+          python3 - <<'PYOCI'
+          import json, os
+          manifest=json.load(open(os.environ['RUNNER_TEMP']+'/candidate-index.json'))
+          platforms={(m.get('platform',{}).get('os'), m.get('platform',{}).get('architecture')) for m in manifest.get('manifests',[])}
+          assert {('linux','amd64'),('linux','arm64')}.issubset(platforms), platforms
+          print('D04_PUBLIC_CANDIDATE_MULTIARCH=PASS')
+          PYOCI
+          echo D04_READ_ONLY_PREFLIGHT=PASS
+  promote:
+    name: Retag exact index as stable/latest only after separate D04 approval
+    needs: preflight
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTHORIZE_D04_V101_STABLE_LATEST_1478FB34' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.24.x'
+          check-latest: false
+      - name: Install fixed crane version
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install github.com/google/go-containerregistry/cmd/crane@v0.20.6
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+      - name: Final immutable Git tag and registry checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/main'
+          test "$GITHUB_REPOSITORY" = 'Arkos77/LibreChat-BOTMODE-V1'
+          test "$(git rev-parse "$SOURCE_SHA^{tree}")" = "$SOURCE_TREE"
+          git merge-base --is-ancestor "$SOURCE_SHA" HEAD
+          git fetch --tags
+          test "$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")" = "$SOURCE_SHA"
+          printf '%s\n' "$GH_TOKEN" | crane auth login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          test "$(crane digest "$IMAGE:$CANDIDATE_TAG")" = "$TARGET_DIGEST"
+          test "$(crane digest "$IMAGE:$SHA_TAG")" = "$TARGET_DIGEST"
+          for alias in stable latest; do
+            current="$(crane digest "$IMAGE:$alias")"
+            [[ "$current" == "$PREVIOUS_DIGEST" || "$current" == "$TARGET_DIGEST" ]] || {
+              echo "D04_${alias^^}_DRIFT_REFUSED" >&2
+              exit 1
+            }
+          done
+          echo D04_FINAL_WRITE_GUARD=PASS
+      - name: Retag existing OCI index (no Docker build or Git tag creation)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for alias in stable latest; do
+            before="$(crane digest "$IMAGE:$alias")"
+            if [[ "$before" != "$TARGET_DIGEST" ]]; then
+              test "$before" = "$PREVIOUS_DIGEST"
+              crane tag "$IMAGE@$TARGET_DIGEST" "$alias"
+            fi
+            test "$(crane digest "$IMAGE:$alias")" = "$TARGET_DIGEST"
+            echo "D04_${alias^^}_EXACT_DIGEST=PASS"
+          done
+      - name: Verify anonymous aliases and platforms
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DOCKER_CONFIG="$(mktemp -d)"
+          export HOME="$(mktemp -d)"
+          test "$(crane digest "$IMAGE:stable")" = "$TARGET_DIGEST"
+          test "$(crane digest "$IMAGE:latest")" = "$TARGET_DIGEST"
+          crane manifest "$IMAGE:stable" > "$RUNNER_TEMP/stable-index.json"
+          python3 - <<'PYOCI'
+          import json, os
+          manifest=json.load(open(os.environ['RUNNER_TEMP']+'/stable-index.json'))
+          platforms={(m.get('platform',{}).get('os'), m.get('platform',{}).get('architecture')) for m in manifest.get('manifests',[])}
+          assert {('linux','amd64'),('linux','arm64')}.issubset(platforms), platforms
+          print('D04_ANONYMOUS_STABLE_LATEST_MULTIARCH=PASS')
+          PYOCI
