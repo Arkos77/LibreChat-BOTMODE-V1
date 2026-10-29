@@ -352,6 +352,7 @@ jobs:
               if second not in (0, 10, 30, 70, 140, 240):
                   return
               prefix = "CI_NATIVE_REAL_SNAPSHOT_" + str(second)
+              oracle = ""
               try:
                   status, plan, oracle, response_id, pending = read_p6(stream_id, helpers)
                   allowed = {"queued", "pending", "running", "completed", "complete",
@@ -360,12 +361,68 @@ jobs:
                   print(prefix + "_REDIS_STATUS=" + safe, flush=True)
                   print(prefix + "_PLAN_PRESENT=" + str(bool(plan)).upper(), flush=True)
                   print(prefix + "_ORACLE_PRESENT=" + str(bool(oracle)).upper(), flush=True)
-                  print(prefix + "_P6_RECEIPT_PRESENT=" + str(bool(response_id)).upper(), flush=True)
+                  # responseMessageId is assigned early and is NOT proof of P6 publication.
+                  print(prefix + "_RESPONSE_ID_ALLOCATED=" + str(bool(response_id)).upper(), flush=True)
                   print(prefix + "_PERSISTENCE_PENDING=" +
                         ("TRUE" if pending.lower() in ("1", "true") else "FALSE_OR_ABSENT"), flush=True)
               except (SystemExit, OSError, ValueError, TypeError, subprocess.SubprocessError):
                   print(prefix + "_REDIS_READ=UNAVAILABLE", flush=True)
-          
+              # Safely inspect existing Oracle verdict classes; never log task IDs or content.
+              try:
+                  parsed = json.loads(oracle) if oracle else {}
+                  results = parsed.get("results", {}) if isinstance(parsed, dict) else {}
+                  if not isinstance(results, dict):
+                      results = {}
+                  statuses = []
+                  for result in results.values():
+                      if not isinstance(result, dict):
+                          continue
+                      for verdict in (result.get("verdicts") or []):
+                          if isinstance(verdict, dict):
+                              statuses.append(verdict.get("status"))
+                  allowed_status = {"VERIFIED", "ACCEPT", "REJECTED", "FAILED",
+                                    "PENDING", "SKIPPED"}
+                  classes = sorted({x if x in allowed_status else "OTHER" for x in statuses})
+                  print(prefix + "_ORACLE_RESULT_TASK_COUNT=" + str(len(results)), flush=True)
+                  print(prefix + "_ORACLE_VERDICT_COUNT=" + str(len(statuses)), flush=True)
+                  print(prefix + "_ORACLE_VERDICT_CLASSES=" +
+                        (",".join(classes) if classes else "NONE"), flush=True)
+              except (ValueError, TypeError, AttributeError):
+                  print(prefix + "_ORACLE_PARSE=UNAVAILABLE", flush=True)
+              # Redis job may expire before the final SSE 404. Classify its terminal
+              # error while it still exists; never print its raw text or fingerprint.
+              try:
+                  key = helpers["REDIS_PHYSICAL_PREFIX"] + "stream:{" + stream_id + "}:job"
+                  p = subprocess.run(helpers["COMPOSE"] + [
+                      "exec", "-T", "redis", "redis-cli", "--raw", "HGET", key, "error"
+                  ], capture_output=True, text=True, timeout=12)
+                  if p.returncode:
+                      raise OSError("redis unavailable")
+                  error_text = p.stdout.strip().lower()
+                  patterns = {
+                      "TERMINAL_TASK_OUTPUT_MISSING": (
+                          "native mission terminal oracle missing exact task output",),
+                      "ORACLE_VERDICT_BLOCKED": ("native mission oracle blocked task",),
+                      "ORACLE_RESULT_PERSISTENCE": (
+                          "mission oracle result persistence verification failed",),
+                      "EVIDENCE_PERSISTENCE": (
+                          "mission oracle evidence persistence verification failed",),
+                      "CANDIDATE_MISSING": ("candidate missing",),
+                      "AUTHORIZED_BINDING_MISSING": (
+                          "missing or mismatched authorized binding",),
+                      "ORCHESTRATOR_PLAN_INVALID": (
+                          "invalid native task identity",),
+                  }
+                  found = sorted(k for k, terms in patterns.items()
+                                 if any(term in error_text for term in terms))
+                  print(prefix + "_DURABLE_ERROR_PRESENT=" +
+                        str(bool(error_text)).upper(), flush=True)
+                  print(prefix + "_DURABLE_ERROR_CLASS=" +
+                        (",".join(found) if found else
+                         ("UNCLASSIFIED" if error_text else "NONE")), flush=True)
+              except (OSError, subprocess.SubprocessError):
+                  print(prefix + "_DURABLE_ERROR_READ=UNAVAILABLE", flush=True)
+
               js = r"""
           const mongoose = require('mongoose');
           (async () => {
@@ -379,6 +436,8 @@ jobs:
               {conversationId: id, isCreatedByUser: false});
             const parentCompleted = await db.collection('messages').countDocuments(
               {conversationId: id, isCreatedByUser: false, unfinished: false, 'content.type': 'text'});
+            const parentErrors = await db.collection('messages').countDocuments(
+              {conversationId: id, isCreatedByUser: false, error: true});
             const children = await db.collection('conversations').find(
               {'subagentThread.parentConversationId': id},
               {projection: {conversationId: 1}}).limit(5).toArray();
@@ -390,6 +449,7 @@ jobs:
             console.log(prefix + '_PARENT_EXISTS=' + Number(Boolean(parent)));
             console.log(prefix + '_PARENT_MESSAGES=' + parentMessages);
             console.log(prefix + '_PARENT_COMPLETED_MESSAGES=' + parentCompleted);
+            console.log(prefix + '_PARENT_ERROR_MESSAGES=' + parentErrors);
             console.log(prefix + '_CHILD_COUNT=' + children.length);
             console.log(prefix + '_CHILD_COMPLETED_COUNT=' + completedChildren);
             await mongoose.disconnect();
@@ -406,7 +466,7 @@ jobs:
                   else:
                       lines = [line for line in p.stdout.splitlines()
                                if line.startswith(prefix + "_")]
-                      if len(lines) != 5:
+                      if len(lines) != 6:
                           print(prefix + "_MONGO_READ=INCOMPLETE", flush=True)
                       else:
                           for line in lines:
