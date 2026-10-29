@@ -1456,6 +1456,43 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       userId,
     });
 
+    // Only a trusted internal trigger may resume an exact, durable mission.
+    // The client-supplied plan reference is NEVER accepted as authorization:
+    // read the previous epoch from Redis before createJob replaces its slot.
+    const wakeupSource = req.body?.nativeMissionWakeupSource;
+    let originalWakeupPlan;
+    if (wakeupSource != null) {
+      if (
+        !isTriggerContinuation ||
+        req._isAgentTrigger !== true ||
+        typeof wakeupSource !== 'object' ||
+        Array.isArray(wakeupSource) ||
+        typeof wakeupSource.originalPlanId !== 'string' ||
+        typeof wakeupSource.originalResponseMessageId !== 'string' ||
+        req.body?.orchestratorMission?.mission == null
+      ) {
+        throw new Error('MISSION_WAKEUP_UNAUTHORIZED');
+      }
+      const previousJob = await GenerationJobManager.getJob(streamId);
+      const previousPlan = previousJob?.metadata?.orchestratorPlan;
+      const previousRequest = previousJob?.metadata?.mcpRequestBody?.orchestratorMission;
+      if (
+        previousJob?.userId !== userId ||
+        (previousJob?.tenantId ?? undefined) !== (tenantId ?? undefined) ||
+        previousJob?.metadata?.responseMessageId !== wakeupSource.originalResponseMessageId ||
+        previousJob?.metadata?.agent_id !== (endpointOption.agent_id ?? req.body?.agent_id) ||
+        previousPlan?.planId !== wakeupSource.originalPlanId ||
+        previousPlan?.mission == null ||
+        previousRequest?.mission == null ||
+        JSON.stringify(previousPlan.mission) !== JSON.stringify(previousRequest.mission) ||
+        JSON.stringify(previousRequest.mission) !==
+          JSON.stringify(req.body.orchestratorMission.mission)
+      ) {
+        throw new Error('MISSION_WAKEUP_ORIGIN_MISMATCH');
+      }
+      originalWakeupPlan = structuredClone(previousPlan);
+    }
+
     const endpointIconURL = getEndpointIconURL(req, endpointOption);
     const responseModel = getAgentResponseModel(req, endpointOption);
     const preliminaryUserMessage = getPreliminaryUserMessage(
@@ -1882,6 +1919,14 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
             });
       assertAuthorizedOrchestratorTasks(orchestratorPlan.tasks, authorizedAgentIds);
       assertResearchToolAvailability(orchestratorPlan, reachableAgents);
+      // Replanning under the CURRENT agent ACL must reproduce the immutable
+      // originating plan exactly, including every task and Oracle requirement.
+      if (
+        originalWakeupPlan != null &&
+        JSON.stringify(orchestratorPlan) !== JSON.stringify(originalWakeupPlan)
+      ) {
+        throw new Error('MISSION_WAKEUP_PLAN_DRIFT');
+      }
 
       // Record original effective agent capability provenance in the SAME
       // epoch-scoped Redis write as the immutable plan, before models/tools
