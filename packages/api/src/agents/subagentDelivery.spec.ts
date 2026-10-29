@@ -1,5 +1,6 @@
 import type { TAgentsEndpoint } from 'librechat-data-provider';
 import type { PostToolUseHookInput } from '@librechat/agents';
+import { deterministicOracle } from './oracle/deterministic';
 import {
   SUBAGENT_WAKEUP_GUIDANCE,
   backgroundCompletionWakeupsEnabled,
@@ -56,6 +57,48 @@ describe('createSubagentWakeupHandleHook', () => {
     });
     expect(updated.message).toContain('background_task_id "task-1"');
     expect(updated.message).toContain(SUBAGENT_WAKEUP_GUIDANCE);
+  });
+
+  it('keeps a running detached handle private until a later terminal Oracle candidate exists', async () => {
+    const result = await createSubagentWakeupHandleHook()(
+      input(
+        'subagent',
+        JSON.stringify({
+          background_task_id: 'task-1',
+          subagent_thread_id: 'thread-1',
+          status: 'running',
+          message: 'Poll for result',
+        }),
+      ),
+      hookSignal,
+    );
+
+    const oracleInput = {
+      taskId: 'mission-task-1',
+      agentId: 'agent_parent',
+      criteria: [{ id: 'done', field: 'ok', expected: true }],
+      evidence: [],
+    };
+    const pendingCandidate = result.updatedOutput as string;
+    expect(JSON.parse(pendingCandidate)).toMatchObject({ status: 'running' });
+    expect((await deterministicOracle.validate({ ...oracleInput, candidate: pendingCandidate })).status)
+      .toBe('REJECTED');
+    expect((await deterministicOracle.validate({ ...oracleInput, candidate: undefined })).status)
+      .toBe('UNKNOWN');
+
+    // This is a separate, later output: the wakeup handle must not be
+    // promoted or rewritten into a passing answer by the host.
+    const completed = await deterministicOracle.validate({
+      ...oracleInput,
+      candidate: '{"ok":true}',
+    });
+    expect(completed.status).toBe('VERIFIED');
+    expect(completed.checks).toContainEqual({
+      criterionId: 'done',
+      expected: true,
+      actual: true,
+      passed: true,
+    });
   });
 
   it('leaves ordinary background tools and terminal subagent results unchanged', async () => {
