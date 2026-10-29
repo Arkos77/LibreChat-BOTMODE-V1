@@ -527,10 +527,10 @@ jobs:
           if patched.count(restart_anchor) != 1:
               raise SystemExit("CI_NATIVE_REAL_FOREGROUND_RESTART_DRIFT")
           restart_script = (
-              '    restarted = subprocess.run(helpers["COMPOSE"] + ["restart", "api"],\\n'
-              '                              capture_output=True, text=True, timeout=120)\\n'
-              '    if restarted.returncode:\\n'
-              '        fail("FOREGROUND_API_RESTART_FAILED")\\n'
+              '    restarted = subprocess.run(helpers["COMPOSE"] + ["restart", "api"],\n'
+              '                              capture_output=True, text=True, timeout=120)\n'
+              '    if restarted.returncode:\n'
+              '        fail("FOREGROUND_API_RESTART_FAILED")\n'
               '    print("CI_NATIVE_REAL_FOREGROUND_API_RESTART=PASS", flush=True)'
           )
           patched = patched.replace(restart_anchor, restart_script, 1)
