@@ -1984,6 +1984,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
           parentResponseMessageId: preallocatedResponseMessageId,
           agentId: primaryAgentId,
           createdAt: jobCreatedAt,
+          hasAttachments: Array.isArray(req.body.files) && req.body.files.length > 0,
           botMode: botModeSettings,
           orchestratorMission,
           plan: persistedPlanJob.metadata.orchestratorPlan,
