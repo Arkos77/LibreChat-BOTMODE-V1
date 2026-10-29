@@ -3,6 +3,18 @@ const assert = require('node:assert/strict');
 const Module = require('node:module');
 const realLoad = Module._load;
 Module._load = function load(request, parent, isMain) {
+  // The negative assembly proof must not render a candidate. This CI job
+  // deliberately has no built @librechat/api workspace dependency.
+  if (
+    request === '@librechat/api' &&
+    parent?.filename?.endsWith('/nativeMissionModelOnlyRecoveryCallbacks.js')
+  ) {
+    return {
+      renderMissionPublication: async () => {
+        throw Error('unexpected publication from denied recovery assembly');
+      },
+    };
+  }
   if (request === 'librechat-data-provider') {
     return { ResourceType: { AGENT: 'agent' }, PermissionBits: { VIEW: 1 } };
   }

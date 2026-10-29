@@ -1,8 +1,37 @@
 'use strict';
 const assert = require('node:assert/strict');
-const {
-  createNativeMissionModelOnlyRecoveryCallbacks,
-} = require('../../api/server/services/Endpoints/agents/nativeMissionModelOnlyRecoveryCallbacks');
+const Module = require('node:module');
+const realLoad = Module._load;
+// This model-only fixture tests Oracle/persistence, never research-v2 rendering.
+// The independently tested presentation module is not built in this cold CI job.
+Module._load = function load(request, parent, isMain) {
+  if (
+    request === '@librechat/api' &&
+    parent?.filename?.endsWith('/nativeMissionModelOnlyRecoveryCallbacks.js')
+  ) {
+    return {
+      renderMissionPublication: async (plan) => {
+        assert.ok(Array.isArray(plan?.tasks) && plan.tasks.length > 0);
+        assert.ok(
+          plan.tasks.every(
+            (task) => task.validation.every((v) => v.outputContract !== 'research-v2'),
+          ),
+          'research-v2 must use the actual publication renderer',
+        );
+        return undefined;
+      },
+    };
+  }
+  return realLoad.call(this, request, parent, isMain);
+};
+let createNativeMissionModelOnlyRecoveryCallbacks;
+try {
+  ({ createNativeMissionModelOnlyRecoveryCallbacks } = require(
+    '../../api/server/services/Endpoints/agents/nativeMissionModelOnlyRecoveryCallbacks'
+  ));
+} finally {
+  Module._load = realLoad;
+}
 const {
   createNativeMissionDurablePublicationStage,
 } = require('../../api/server/services/Endpoints/agents/nativeMissionDurablePublicationStage');
