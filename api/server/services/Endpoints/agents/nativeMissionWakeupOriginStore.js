@@ -52,7 +52,9 @@ function requireScope(scope) {
   const fields = ['userId', 'conversationId', 'parentResponseMessageId', 'agentId'];
   if (
     scope == null ||
-    fields.some((key) => typeof scope[key] !== 'string' || !scope[key] || scope[key].length > 256) ||
+    fields.some(
+      (key) => typeof scope[key] !== 'string' || !scope[key] || scope[key].length > 256,
+    ) ||
     (scope.tenantId != null && (typeof scope.tenantId !== 'string' || scope.tenantId.length > 256))
   ) {
     throw new Error('MISSION_ORIGIN_SCOPE_INVALID');
@@ -99,7 +101,10 @@ async function saveNativeMissionWakeupOrigin(input) {
   const fingerprint = createHash('sha256').update(source).digest('hex');
   await ensureIndex();
   await model.updateOne(key, { $setOnInsert: { ...data, fingerprint } }, { upsert: true });
-  const stored = await model.findOne(key).select('+botMode +orchestratorMission +plan +capabilityAttestation').lean();
+  const stored = await model
+    .findOne(key)
+    .select('+botMode +orchestratorMission +plan +capabilityAttestation')
+    .lean();
   if (stored?.fingerprint !== fingerprint) {
     throw new Error('MISSION_ORIGIN_IMMUTABLE_CONFLICT');
   }
@@ -116,10 +121,7 @@ async function getNativeMissionWakeupOrigin(scope) {
   if (!record) {
     return null;
   }
-  const {
-    _id, __v, createdAt, updatedAt, fingerprint,
-    ...source
-  } = record;
+  const { _id, __v, createdAt, updatedAt, fingerprint, ...source } = record;
   const observed = createHash('sha256').update(JSON.stringify(source)).digest('hex');
   if (observed !== fingerprint || record.plan?.planId !== record.planId) {
     throw new Error('MISSION_ORIGIN_INTEGRITY_FAILED');
@@ -140,8 +142,11 @@ async function deleteNativeMissionWakeupOrigins({ userId, tenantId, conversation
   if (tenantId != null && (typeof tenantId !== 'string' || tenantId.length > 256)) {
     throw new Error('MISSION_ORIGIN_DELETE_SCOPE_INVALID');
   }
-  if (conversationIds != null && (!Array.isArray(conversationIds) ||
-      conversationIds.some((id) => typeof id !== 'string' || !id || id.length > 256))) {
+  if (
+    conversationIds != null &&
+    (!Array.isArray(conversationIds) ||
+      conversationIds.some((id) => typeof id !== 'string' || !id || id.length > 256))
+  ) {
     throw new Error('MISSION_ORIGIN_DELETE_SCOPE_INVALID');
   }
   if (conversationIds != null && conversationIds.length === 0) return;

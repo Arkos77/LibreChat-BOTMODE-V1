@@ -217,8 +217,7 @@ async function missionContextForWakeup(
     plan.mission.missionId !== source.mission.missionId ||
     plan.mission.taskId !== source.mission.taskId ||
     plan.mission.objective !== source.mission.objective ||
-    (record(savedBotMode) &&
-      JSON.stringify(savedBotMode) !== JSON.stringify(original.botMode))
+    (record(savedBotMode) && JSON.stringify(savedBotMode) !== JSON.stringify(original.botMode))
   ) {
     throw executionError('Stored mission does not match the originating parent.', {
       code: 'MISSION_WAKEUP_ORIGIN_MISMATCH',
@@ -816,7 +815,11 @@ export function createSubagentCompletionWakeupResolver({
       { sort: { createdAt: 1, _id: 1 } },
     );
 
-    const missionContext = await missionContextForWakeup(getMissionOrigin, parent.botMode, envelope);
+    const missionContext = await missionContextForWakeup(
+      getMissionOrigin,
+      parent.botMode,
+      envelope,
+    );
 
     const parentMessageId = latestAssistantDescendant(
       parentMessages,

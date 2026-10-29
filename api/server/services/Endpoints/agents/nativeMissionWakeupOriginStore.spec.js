@@ -1,7 +1,12 @@
 jest.mock('mongoose', () => {
   const rows = new Map();
   const keyOf = (scope) =>
-    JSON.stringify([scope.userId, scope.tenantId, scope.conversationId, scope.parentResponseMessageId]);
+    JSON.stringify([
+      scope.userId,
+      scope.tenantId,
+      scope.conversationId,
+      scope.parentResponseMessageId,
+    ]);
   class Schema {
     static Types = { Mixed: class Mixed {} };
     index() {}
@@ -11,7 +16,12 @@ jest.mock('mongoose', () => {
     updateOne: jest.fn(async (scope, operation) => {
       const key = keyOf(scope);
       if (!rows.has(key)) {
-        rows.set(key, { _id: key, ...operation.$setOnInsert, createdAt: new Date(), updatedAt: new Date() });
+        rows.set(key, {
+          _id: key,
+          ...operation.$setOnInsert,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
       }
     }),
     findOne: jest.fn((scope) => ({
@@ -27,8 +37,11 @@ jest.mock('mongoose', () => {
     deleteMany: jest.fn(async (scope) => {
       for (const [key, record] of rows) {
         if (record.userId !== scope.userId || record.tenantId !== scope.tenantId) continue;
-        if (scope.conversationId != null &&
-            !scope.conversationId.$in.includes(record.conversationId)) continue;
+        if (
+          scope.conversationId != null &&
+          !scope.conversationId.$in.includes(record.conversationId)
+        )
+          continue;
         rows.delete(key);
       }
     }),
@@ -84,9 +97,15 @@ describe('immutable BOT MODE mission wakeup origin', () => {
 
   it('refuses foreign owner, tenant and agent scopes', async () => {
     await saveNativeMissionWakeupOrigin(original);
-    await expect(getNativeMissionWakeupOrigin({ ...original, userId: 'other' })).resolves.toBeNull();
-    await expect(getNativeMissionWakeupOrigin({ ...original, tenantId: 'other' })).resolves.toBeNull();
-    await expect(getNativeMissionWakeupOrigin({ ...original, agentId: 'other' })).resolves.toBeNull();
+    await expect(
+      getNativeMissionWakeupOrigin({ ...original, userId: 'other' }),
+    ).resolves.toBeNull();
+    await expect(
+      getNativeMissionWakeupOrigin({ ...original, tenantId: 'other' }),
+    ).resolves.toBeNull();
+    await expect(
+      getNativeMissionWakeupOrigin({ ...original, agentId: 'other' }),
+    ).resolves.toBeNull();
   });
 
   it('detects tampered immutable origin data', async () => {

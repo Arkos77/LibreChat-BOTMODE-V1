@@ -1442,7 +1442,11 @@ describe('createSubagentCompletionWakeupResolver', () => {
       isCreatedByUser: false,
       createdAt: new Date(NOW),
       updatedAt: new Date(NOW),
-      subagentTask: { attemptKey: 'attempt-2', parentRunId: 'response-1', status: 'completed' as const },
+      subagentTask: {
+        attemptKey: 'attempt-2',
+        parentRunId: 'response-1',
+        status: 'completed' as const,
+      },
     };
     methods.getMessages.mockImplementation(async (filter: TestMessageFilter) =>
       filter.conversationId === 'thread-2'
@@ -1453,12 +1457,12 @@ describe('createSubagentCompletionWakeupResolver', () => {
         : originalGetMessages(filter as { conversationId: string }),
     );
     const firstClaim = methods.claimSubagentTaskResult.getMockImplementation()!;
-    methods.claimSubagentTaskResult.mockImplementation(
-      (async (input: { conversationId: string }) =>
-        input.conversationId === 'thread-2'
-          ? { status: 'acquired', message: siblingTerminal }
-          : firstClaim()) as never,
-    );
+    methods.claimSubagentTaskResult.mockImplementation((async (input: {
+      conversationId: string;
+    }) =>
+      input.conversationId === 'thread-2'
+        ? { status: 'acquired', message: siblingTerminal }
+        : firstClaim()) as never);
     const getMissionOrigin = jest.fn(async () => original);
     const resolve = createSubagentCompletionWakeupResolver({
       methods: methods as never,
@@ -1490,9 +1494,10 @@ describe('createSubagentCompletionWakeupResolver', () => {
       [firstEnvelope, 'first-child-wakeup'],
       [siblingEnvelope, 'second-sibling-wakeup'],
     ] as const) {
-      const prepared = await resolve(envelope as AgentContinueTriggerEnvelope, {
-        idempotencyKey,
-      } as never);
+      const prepared = await resolve(
+        envelope as AgentContinueTriggerEnvelope,
+        { idempotencyKey } as never,
+      );
       expect(prepared).toMatchObject({
         status: 'ready',
         missionContext: {
