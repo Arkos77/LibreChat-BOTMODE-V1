@@ -1,0 +1,182 @@
+# PREPARATION ONLY: no push or pull_request trigger. Manual candidate authorization is separate.
+# The source to build is pinned to the validated PR #89 tree; never build github.sha.
+# Do not promote stable/latest, v1.0.0, or the old D-03 image in this workflow.
+name: BOTMODE V1 Corrected 1478fb34 Candidate OCI - Manual
+on:
+  workflow_dispatch:
+    inputs:
+      approval:
+        description: "Explicit, separate permission to publish ONLY the new SHA-pinned candidate (not stable/latest)"
+        required: true
+        type: choice
+        options:
+          - "NO"
+          - "AUTHORIZE_CANDIDATE_1478FB34_ONLY"
+permissions:
+  contents: read
+concurrency:
+  group: botmode-pr90-candidate-1478fb34
+  cancel-in-progress: false
+env:
+  SOURCE_SHA: 1478fb34e15e1bad7c07e4928ee8812e47bea064
+  IMAGE: ghcr.io/arkos77/librechat-botmode-v1
+  CANDIDATE_TAG: candidate-botmode-v1-1478fb34e15e
+  SHA_TAG: sha-1478fb34e15e
+
+jobs:
+  admission:
+    name: Explicit authorization, exact source and free candidate tags
+    if: ${{ github.event_name == 'workflow_dispatch' && github.repository == 'Arkos77/LibreChat-BOTMODE-V1' && github.ref == 'refs/heads/main' && inputs.approval == 'AUTHORIZE_CANDIDATE_1478FB34_ONLY' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - name: Refuse source drift and existing tags (read-only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$CANDIDATE_TAG" = "candidate-botmode-v1-${SOURCE_SHA:0:12}"
+          test "$SHA_TAG" = "sha-${SOURCE_SHA:0:12}"
+          sha256sum package-lock.json
+          env GITHUB_SHA="$SOURCE_SHA" GITHUB_REF_TYPE=branch bash scripts/botmode/guard-candidate-ghcr.sh
+          echo "BOTMODE_PR90_CANDIDATE_AUTHORIZED_PREFLIGHT=PASS"
+
+  build:
+    name: Build by digest - ${{ matrix.arch }}
+    needs: admission
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - name: Assert exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Build exact image without creating tags
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          target: node
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            BUILD_COMMIT=${{ env.SOURCE_SHA }}
+            BUILD_BRANCH=release/botmode-v1-corrected-integration-1478fb34-20261029
+      - name: Record exact digest
+        shell: bash
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          mkdir -p /tmp/botmode-candidate-digests
+          touch "/tmp/botmode-candidate-digests/${DIGEST#sha256:}"
+          printf 'CANDIDATE_${{ matrix.arch }}_DIGEST=%s\n' "$DIGEST"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: botmode-pr90-digest-${{ matrix.arch }}
+          path: /tmp/botmode-candidate-digests/*
+          if-no-files-found: error
+          retention-days: 7
+
+  index:
+    name: Publish candidate tags ONLY after rechecking availability
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: botmode-pr90-digest-*
+          merge-multiple: true
+          path: /tmp/botmode-candidate-digests
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Second source-and-tag guard, before writing tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          env GITHUB_SHA="$SOURCE_SHA" GITHUB_REF_TYPE=branch bash scripts/botmode/guard-candidate-ghcr.sh
+      - name: Create ONLY SHA and candidate multiarch tags
+        working-directory: /tmp/botmode-candidate-digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          digests=(*)
+          test "${#digests[@]}" -eq 2
+          for name in "${digests[@]}"; do
+            [[ "$name" =~ ^[a-f0-9]{64}$ ]]
+          done
+          test "${digests[0]}" != "${digests[1]}"
+          docker buildx imagetools create \
+            -t "$IMAGE:$CANDIDATE_TAG" \
+            -t "$IMAGE:$SHA_TAG" \
+            "${digests[@]/#/$IMAGE@sha256:}"
+          docker buildx imagetools inspect --raw "$IMAGE:$CANDIDATE_TAG" > /tmp/botmode-candidate-index.json
+          docker buildx imagetools inspect --raw "$IMAGE:$SHA_TAG" > /tmp/botmode-sha-index.json
+          cmp /tmp/botmode-candidate-index.json /tmp/botmode-sha-index.json
+          jq -e '([.manifests[] | select(.platform.os == "linux") | .platform.architecture] | sort) == ["amd64", "arm64"]' /tmp/botmode-candidate-index.json
+          docker buildx imagetools inspect "$IMAGE:$CANDIDATE_TAG"
+          echo "BOTMODE_PR90_MULTIARCH_INDEX_SAME_DIGEST=PASS"
+
+  anonymous-pull:
+    name: Verify anonymous native pull - ${{ matrix.arch }}
+    needs: index
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Anonymous pull, architecture and embedded build SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          docker pull "$IMAGE:$CANDIDATE_TAG"
+          test "$(docker image inspect "$IMAGE:$CANDIDATE_TAG" --format '{{.Architecture}}')" = "${{ matrix.arch }}"
+          docker image inspect "$IMAGE:$CANDIDATE_TAG" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+            | grep -Fx "BUILD_COMMIT=$SOURCE_SHA"
+          echo "BOTMODE_PR90_ANONYMOUS_PULL_${{ matrix.arch }}=PASS"
