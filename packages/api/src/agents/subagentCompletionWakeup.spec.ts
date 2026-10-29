@@ -1401,6 +1401,68 @@ describe('createSubagentCompletionWakeupResolver', () => {
     ).resolves.toMatchObject({ status: 'ready' });
   });
 
+  it('restores only the original persisted mission and never trusts child input as a plan', async () => {
+    const { methods } = resolverMethods();
+    const mission = {
+      missionId: 'mission-1',
+      taskId: 'mission-task-1',
+      objective: 'Analyze',
+      requiredCapabilities: [],
+      constraints: [],
+    };
+    const originalRequest = { mission };
+    const getGenerationJob = jest.fn(async () => ({
+      status: 'complete',
+      userId: 'user-1',
+      tenantId: 'tenant-1',
+      metadata: {
+        responseMessageId: 'response-1',
+        agent_id: 'agent_parent_1',
+        orchestratorPlan: { planId: 'plan-1', mission },
+        mcpRequestBody: { orchestratorMission: originalRequest },
+      },
+    }));
+    const resolve = createSubagentCompletionWakeupResolver({
+      methods: methods as never,
+      getGenerationJob,
+    });
+    const prepared = await resolve(wakeupEnvelope(), {
+      idempotencyKey: 'trigger_claim_1',
+    } as never);
+    expect(prepared).toMatchObject({
+      status: 'ready',
+      missionContext: {
+        orchestratorMission: originalRequest,
+        originalPlanId: 'plan-1',
+        originalResponseMessageId: 'response-1',
+      },
+    });
+    expect(methods.claimSubagentTaskResult).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not claim the child result when the stored mission belongs to another parent', async () => {
+    const { methods } = resolverMethods();
+    const mission = { missionId: 'mission-1', taskId: 'mission-task-1' };
+    const resolve = createSubagentCompletionWakeupResolver({
+      methods: methods as never,
+      getGenerationJob: async () => ({
+        status: 'complete',
+        userId: 'user-1',
+        tenantId: 'tenant-1',
+        metadata: {
+          responseMessageId: 'different-parent-response',
+          agent_id: 'agent_parent_1',
+          orchestratorPlan: { planId: 'plan-1', mission },
+          mcpRequestBody: { orchestratorMission: { mission } },
+        },
+      }),
+    });
+    await expect(
+      resolve(wakeupEnvelope(), { idempotencyKey: 'trigger_claim_1' } as never),
+    ).rejects.toMatchObject({ code: 'MISSION_WAKEUP_ORIGIN_MISMATCH' });
+    expect(methods.claimSubagentTaskResult).not.toHaveBeenCalled();
+  });
+
   it('claims the durable result and chains onto the latest assistant descendant', async () => {
     const { methods } = resolverMethods();
     const resolve = createSubagentCompletionWakeupResolver({
