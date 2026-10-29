@@ -340,6 +340,95 @@ jobs:
           CI_NATIVE_REAL_MULTI: '0'
         run: |
           set -euo pipefail
+          # Instrument only this disposable checkout; the published OCI and code remain unchanged.
+          python3 - <<'PY_SNAPSHOT_OVERLAY'
+          from pathlib import Path
+          path = Path("scripts/botmode/ci-real-free-native-oracle-gate.py")
+          original = path.read_text()
+          function_anchor = "def live_gate():\n"
+          call_anchor = "    sse_status, events, outcome, subscriptions = read_native_terminal_stream(helpers, stream_id)"
+          observer = r'''def observe_live_mission_snapshot(second, helpers, stream_id, parent_id):
+              """Read-only, redacted progress snapshot; never changes mission outcome."""
+              if second not in (0, 10, 30, 70, 140, 240):
+                  return
+              prefix = "CI_NATIVE_REAL_SNAPSHOT_" + str(second)
+              try:
+                  status, plan, oracle, response_id, pending = read_p6(stream_id, helpers)
+                  allowed = {"queued", "pending", "running", "completed", "complete",
+                             "failed", "error", "paused", "cancelled"}
+                  safe = status if status in allowed else "OTHER_OR_MISSING"
+                  print(prefix + "_REDIS_STATUS=" + safe, flush=True)
+                  print(prefix + "_PLAN_PRESENT=" + str(bool(plan)).upper(), flush=True)
+                  print(prefix + "_ORACLE_PRESENT=" + str(bool(oracle)).upper(), flush=True)
+                  print(prefix + "_P6_RECEIPT_PRESENT=" + str(bool(response_id)).upper(), flush=True)
+                  print(prefix + "_PERSISTENCE_PENDING=" +
+                        ("TRUE" if pending.lower() in ("1", "true") else "FALSE_OR_ABSENT"), flush=True)
+              except (SystemExit, OSError, ValueError, TypeError, subprocess.SubprocessError):
+                  print(prefix + "_REDIS_READ=UNAVAILABLE", flush=True)
+          
+              js = r"""
+          const mongoose = require('mongoose');
+          (async () => {
+            await mongoose.connect(process.env.MONGO_URI);
+            const db = mongoose.connection.db;
+            const id = process.env.CI_REAL_PARENT_ID;
+            const prefix = 'CI_NATIVE_REAL_SNAPSHOT_' + process.env.CI_REAL_SNAPSHOT_SECOND;
+            const parent = await db.collection('conversations').findOne(
+              {conversationId: id}, {projection: {conversationId: 1}});
+            const parentMessages = await db.collection('messages').countDocuments(
+              {conversationId: id, isCreatedByUser: false});
+            const parentCompleted = await db.collection('messages').countDocuments(
+              {conversationId: id, isCreatedByUser: false, unfinished: false, 'content.type': 'text'});
+            const children = await db.collection('conversations').find(
+              {'subagentThread.parentConversationId': id},
+              {projection: {conversationId: 1}}).limit(5).toArray();
+            const completedChildren = children.length ?
+              await db.collection('messages').countDocuments({
+                conversationId: {$in: children.map(x => x.conversationId)},
+                'subagentTask.status': 'completed'
+              }) : 0;
+            console.log(prefix + '_PARENT_EXISTS=' + Number(Boolean(parent)));
+            console.log(prefix + '_PARENT_MESSAGES=' + parentMessages);
+            console.log(prefix + '_PARENT_COMPLETED_MESSAGES=' + parentCompleted);
+            console.log(prefix + '_CHILD_COUNT=' + children.length);
+            console.log(prefix + '_CHILD_COMPLETED_COUNT=' + completedChildren);
+            await mongoose.disconnect();
+          })().catch(() => { process.exitCode = 2; });
+          """
+              try:
+                  p = subprocess.run(helpers["COMPOSE"] + [
+                      "exec", "-T", "-e", "CI_REAL_PARENT_ID=" + parent_id,
+                      "-e", "CI_REAL_SNAPSHOT_SECOND=" + str(second),
+                      "api", "node", "-e", js
+                  ], capture_output=True, text=True, timeout=20)
+                  if p.returncode:
+                      print(prefix + "_MONGO_READ=UNAVAILABLE", flush=True)
+                  else:
+                      lines = [line for line in p.stdout.splitlines()
+                               if line.startswith(prefix + "_")]
+                      if len(lines) != 5:
+                          print(prefix + "_MONGO_READ=INCOMPLETE", flush=True)
+                      else:
+                          for line in lines:
+                              print(line, flush=True)
+              except (OSError, subprocess.SubprocessError):
+                  print(prefix + "_MONGO_READ=UNAVAILABLE", flush=True)
+          '''
+          if original.count(function_anchor) != 1 or original.count(call_anchor) != 1:
+              raise SystemExit("CI_NATIVE_REAL_SNAPSHOT_SOURCE_DRIFT")
+          patched = original.replace(function_anchor, observer + "\n" + function_anchor, 1)
+          replacement = (
+              "    observe_live_mission_snapshot(0, helpers, stream_id, parent_id)\n"
+              "    sse_status, events, outcome, subscriptions = read_native_terminal_stream(\n"
+              "        helpers, stream_id,\n"
+              "        observation=lambda second: observe_live_mission_snapshot(second, helpers, stream_id, parent_id))"
+          )
+          patched = patched.replace(call_anchor, replacement, 1)
+          compile(patched, str(path), "exec")
+          path.write_text(patched)
+          print("CI_NATIVE_REAL_SNAPSHOT_RUNNER_ONLY_PATCH=PASS", flush=True)
+          PY_SNAPSHOT_OVERLAY
+          python3 -m py_compile scripts/botmode/ci-real-free-native-oracle-gate.py
           test "${#OPENROUTER_API_KEY}" -gt 16 || exit 3
           echo "::add-mask::$OPENROUTER_API_KEY"
           if [ "$CI_NATIVE_REAL_MULTI" = '1' ]; then
