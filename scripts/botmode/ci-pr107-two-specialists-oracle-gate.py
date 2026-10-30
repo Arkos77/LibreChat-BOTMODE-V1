@@ -110,7 +110,11 @@ print("CI_PR107_MULTI_SSE_FINAL_COUNT="+str(len(finals)),flush=True)
 if len(finals)!=1 or errors: fail("P6_SSE_NOT_UNIQUE")
 if not isinstance(finals[0].get("responseMessage"),dict): fail("P6_FINAL_MISSING")
 
-actual=metrics()
+for _ in range(25):
+    actual=metrics()
+    if actual.get("child_responses",0)-baseline.get("child_responses",0)>=2:
+        break
+    time.sleep(2)
 for key,expected in (("parent_tool_requests",2),("child_responses",2),
                      ("parent_final",1),("missing_tool",0)):
     delta=actual.get(key,0)-baseline.get(key,0)
@@ -148,7 +152,7 @@ const mongoose=require('mongoose');
   }).toArray();
   const published=parentRows.filter(m=>{
     const txt=String(m.text||'')+" "+JSON.stringify(m.content||'');
-    return /\\"ok\\"\s*:\s*true/.test(txt);
+    return /"ok"\s*:\s*true/.test(txt.replace(/\\/g, ''));
   });
   console.log(JSON.stringify({children:items,published:published.length,
     finalCreated:published.length===1 ?
