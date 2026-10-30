@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/botmode-pr107-exact-head-delegation.yml'
+      - 'scripts/botmode/ci-openai-subagent-fixture.py'
+      - 'scripts/botmode/ci-pr107-two-specialists-oracle-gate.py'
 
 permissions:
   contents: read
@@ -563,6 +565,9 @@ jobs:
           echo 'BOTMODE_CURRENT_IMAGE_SUBAGENT_ORACLE_PROBE=PASS'
           echo '### Release-fix branch Oracle/QA E2E (local synthetic provider)' >> "$GITHUB_STEP_SUMMARY"
           echo 'Exact PR107 HEAD image built and tested with local synthetic subagent model; no real-provider inference.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify two distinct real detached specialist runs, durable Oracle and one P6 publication
+        shell: bash
+        run: python3 scripts/botmode/ci-pr107-two-specialists-oracle-gate.py
       - name: Classify child execution exception from API logs
         if: failure()
         env:

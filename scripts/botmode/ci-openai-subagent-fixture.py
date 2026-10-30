@@ -19,6 +19,7 @@ lock = threading.Lock()
 calls = {"parent_tool_requests": 0, "child_responses": 0, "parent_final": 0,
          "missing_tool": 0, "completion_calls": 0}
 child_id = os.environ.get("CI_AUTHORIZED_CHILD_ID", "").strip()
+child_ids = []  # Opt-in two-child synthetic test only; ordinary fixture unchanged.
 MODEL = "openrouter/free"
 SOURCE_MODE = os.environ.get("CI_MISSION_SOURCE_MODE") == "1"
 REAL_MODE = os.environ.get('CI_REAL_FREE_PROVIDER') == '1'
@@ -352,7 +353,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send({"object":"list","data":[{"id":MODEL,"object":"model","created":1700000000,"owned_by":"ci"}]})
         return self.send({"error":"not_found"},404)
     def do_POST(self):
-        global child_id
+        global child_id, child_ids
         if self.path.rstrip('/').endswith('/scrape'):
             length=int(self.headers.get('Content-Length','0'))
             if length < 2 or length > 1048576: return self.send({'error':'size'},400)
@@ -365,9 +366,21 @@ class Handler(BaseHTTPRequestHandler):
             if length < 2 or length > 2048: return self.send({"error":"size"},400)
             try: obj=json.loads(self.rfile.read(length))
             except ValueError: return self.send({"error":"json"},400)
+            if "childIds" in obj:
+                proposed_ids = obj["childIds"]
+                if (not isinstance(proposed_ids, list) or len(proposed_ids) != 2 or
+                    len(set(map(str, proposed_ids))) != 2 or
+                    any(not isinstance(item, str) or not item.strip() or len(item) > 256
+                        for item in proposed_ids)):
+                    return self.send({"error": "two_distinct_child_ids_required"}, 400)
+                with lock:
+                    child_ids = list(proposed_ids)
+                return self.send({"ok": True, "multi": True})
             proposed=obj.get("childId")
             if not isinstance(proposed,str) or not proposed.strip(): return self.send({"error":"child"},400)
-            child_id=proposed.strip()
+            with lock:
+                child_id=proposed.strip()
+                child_ids=[]
             return self.send({"ok":True})
         if not self.path.rstrip("/").endswith("/chat/completions"):
             return self.send({"error":"not_found"},404)
@@ -497,15 +510,21 @@ class Handler(BaseHTTPRequestHandler):
             message={"role":"assistant","content":'{"ok":true}'}
             reason="stop"
         elif advertised and child_id and not already_requested:
-            with lock: calls["parent_tool_requests"]+=1
-            message={"role":"assistant","content":None,"tool_calls":[{
-                "id":"call_ci_child_"+str(number),"type":"function",
-                "function":{"name":"subagent","arguments":json.dumps({
-                    "description":"Return the delegated fixture result for parent verification.",
-                    "subagent_type":child_id,
-                    "run_in_background":True
-                })}
-            }]}
+            with lock:
+                selected_children = list(child_ids) if child_ids else [child_id]
+                calls["parent_tool_requests"] += len(selected_children)
+            message={"role":"assistant","content":None,"tool_calls":[
+                {
+                    "id":"call_ci_child_"+str(number)+"_"+str(index),"type":"function",
+                    "function":{"name":"subagent","arguments":json.dumps({
+                        "description":"Complete independent synthetic specialist task "+str(index+1)+
+                                      " and return an evidence receipt.",
+                        "subagent_type":selected,
+                        "run_in_background":True
+                    })}
+                }
+                for index,selected in enumerate(selected_children)
+            ]}
             reason="tool_calls"
         elif not advertised and child_id and not already_requested and not has_tool_result:
             # The authorized child has no nested subagent tool; its first model turn returns the receipt.
