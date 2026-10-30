@@ -37,6 +37,62 @@ describe('native mission detached child Oracle/P6 terminal gate', () => {
     await expect(check(rows)).resolves.toBeUndefined();
   });
 
+  it('rechecks a pending receipt and succeeds only after its matching terminal is durable', async () => {
+    const started = [make('research', 'running')];
+    const completed = [...started, make('research', 'completed')];
+    const getMessages = jest
+      .fn()
+      .mockResolvedValueOnce(started)
+      .mockResolvedValueOnce(completed);
+    const sleep = jest.fn().mockResolvedValue(undefined);
+    await expect(
+      gate({
+        getMessages,
+        userId: 'ci-user',
+        parentResponseMessageId: parent,
+        pendingRetryCount: 2,
+        pendingRetryDelayMs: 10,
+        sleep,
+      }),
+    ).resolves.toBeUndefined();
+    expect(getMessages).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(10);
+  });
+
+  it('remains fail-closed when a child has no terminal after bounded retries', async () => {
+    const getMessages = jest.fn().mockResolvedValue([make('research', 'running')]);
+    const sleep = jest.fn().mockResolvedValue(undefined);
+    await expect(
+      gate({
+        getMessages,
+        userId: 'ci-user',
+        parentResponseMessageId: parent,
+        pendingRetryCount: 2,
+        sleep,
+      }),
+    ).rejects.toMatchObject({ code: 'NATIVE_MISSION_DETACHED_CHILD_PENDING' });
+    expect(getMessages).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+  });
+
+  it('never retries or approves a failed child even when pending retries are allowed', async () => {
+    const getMessages = jest
+      .fn()
+      .mockResolvedValue([make('research', 'running'), make('research', 'error')]);
+    const sleep = jest.fn().mockResolvedValue(undefined);
+    await expect(
+      gate({
+        getMessages,
+        userId: 'ci-user',
+        parentResponseMessageId: parent,
+        pendingRetryCount: 2,
+        sleep,
+      }),
+    ).rejects.toMatchObject({ code: 'NATIVE_MISSION_DETACHED_CHILD_FAILED' });
+    expect(getMessages).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
   it('refuses Oracle approval while the second detached child is running', async () => {
     const rows = [
       make('research', 'running'),
