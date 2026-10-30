@@ -55,11 +55,7 @@ function callKey(identity) {
 
 function originalCoordinates({ identity, parentToolCallId, requestDigest, checkpointId }) {
   const original = canonicalIdentity(identity);
-  if (
-    !bounded(parentToolCallId) ||
-    !bounded(checkpointId) ||
-    !HASH.test(requestDigest)
-  ) {
+  if (!bounded(parentToolCallId) || !bounded(checkpointId) || !HASH.test(requestDigest)) {
     deny('NATIVE_ORIGINAL_MODEL_JOURNAL_PROOF_INVALID');
   }
   const scope = Object.fromEntries(
@@ -203,9 +199,7 @@ function createNativeMissionOriginalChildModelOperationJournal({
     // checkpoint record. Searching cannot invent it from a prompt digest.
     if (
       !query ||
-      SCOPE_FIELDS.some(
-        (field) => !bounded(query[field], field === 'tenantId'),
-      ) ||
+      SCOPE_FIELDS.some((field) => !bounded(query[field], field === 'tenantId')) ||
       !bounded(query.provider) ||
       !bounded(query.model) ||
       !HASH.test(query.requestDigest)
