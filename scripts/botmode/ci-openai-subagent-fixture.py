@@ -392,10 +392,12 @@ class Handler(BaseHTTPRequestHandler):
         messages=req["messages"]
         # Tool message only appears after the runtime executed the native subagent.
         has_tool_result=any(m.get("role")=="tool" for m in messages if isinstance(m,dict))
-        already_requested=any(
-            any(tc.get("function",{}).get("name")=="subagent" for tc in (m.get("tool_calls") or []))
-            for m in messages if isinstance(m,dict) and m.get("role")=="assistant"
-        )
+        prior_subagent_calls=[
+            tc for m in messages if isinstance(m,dict) and m.get("role")=="assistant"
+            for tc in (m.get("tool_calls") or []) if isinstance(tc,dict)
+            and tc.get("function",{}).get("name")=="subagent"
+        ]
+        already_requested=bool(prior_subagent_calls)
         advertised=tool_name(req)
         with lock:
             calls["completion_calls"]+=1
@@ -505,6 +507,26 @@ class Handler(BaseHTTPRequestHandler):
             with lock: calls['source_final']=calls.get('source_final',0)+1
             message={'role':'assistant','content':SOURCE_RESULT}
             reason='stop'
+        elif advertised and len(child_ids) == 2 and len(prior_subagent_calls) < 2 and (
+                not prior_subagent_calls or has_tool_result):
+            # OpenAI-compatible hosts may disable parallel tool calls. Issue one
+            # native delegated call per parent turn and do not publish until both
+            # distinct child result tool messages have been observed.
+            selected = child_ids[len(prior_subagent_calls)]
+            with lock:
+                calls["parent_tool_requests"] += 1
+                calls["last_multi_prior_calls"] = len(prior_subagent_calls)
+                calls["last_parallel_tool_calls_flag"] = str(req.get("parallel_tool_calls"))
+            message={"role":"assistant","content":None,"tool_calls":[{
+                "id":"call_ci_child_"+str(number)+"_"+str(len(prior_subagent_calls)),
+                "type":"function",
+                "function":{"name":"subagent","arguments":json.dumps({
+                    "description":"Independent synthetic delegated task "+str(len(prior_subagent_calls)+1),
+                    "subagent_type":selected,
+                    "run_in_background":True
+                })}
+            }]}
+            reason="tool_calls"
         elif has_tool_result and already_requested:
             with lock: calls["parent_final"]+=1
             message={"role":"assistant","content":'{"ok":true}'}
