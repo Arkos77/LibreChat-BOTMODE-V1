@@ -41,7 +41,7 @@ if (
 const mongo = new URL(mongoUri);
 if (
   mongo.protocol !== 'mongodb:' ||
-  !['127.0.0.1', 'localhost'].includes(mongo.hostname) ||
+  !['127.0.0.1', 'localhost', 'mongodb'].includes(mongo.hostname) ||
   !mongo.port ||
   mongo.password.length === 0
 ) {
@@ -62,7 +62,10 @@ const allowed = ({ identity, requestDigest }) =>
   await client.connect();
   const collection = client.db().collection('native_mission_provider_calls_ci');
   const store = createNativeMissionProviderCallReceiptStore({ collection });
-  const sender = createFixedLocalProviderSender({ url: upstream });
+  const sender = createFixedLocalProviderSender({
+    url: upstream,
+    allowCiDockerHost: true,
+  });
   const broker = createNativeMissionProviderCallBroker({
     store,
     assertAuthorized: async ({ identity, requestDigest, authorizedRequest }) => {

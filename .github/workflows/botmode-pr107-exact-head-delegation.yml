@@ -569,6 +569,55 @@ jobs:
       - name: Verify two distinct real detached specialist runs, durable Oracle and one P6 publication
         shell: bash
         run: python3 scripts/botmode/ci-pr107-two-specialists-oracle-gate.py
+      - name: Verify independent broker process with a real disposable Mongo claim
+        id: broker_smoke
+        shell: bash
+        env:
+          BOTMODE_IMAGE: ${{ env.BOTMODE_HEAD_IMAGE }}
+          BOTMODE_MONGO_PASSWORD: ci-isolated-only
+          POSTGRES_PASSWORD: ci-isolated-only
+        run: |
+          set -euo pipefail
+          export BOTMODE_CI_BROKER_SECRET="$(openssl rand -hex 32)"
+          # New service in the existing disposable Compose project; never an
+          # 'api' one-off, so the subsequent 'compose kill api' cannot kill it.
+          cat > /tmp/botmode-pr107-broker-compose.yml <<'YAML_BROKER'
+          services:
+            ci-provider-broker:
+              image: ${BOTMODE_IMAGE:?}
+              entrypoint: ["node", "/app/scripts/botmode/ci-native-provider-broker-server.cjs"]
+              environment:
+                BOTMODE_CI_BROKER: "1"
+                COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:?}
+                BOTMODE_CI_BROKER_SECRET: ${BOTMODE_CI_BROKER_SECRET:?}
+                BOTMODE_CI_BROKER_MONGO_URI: "mongodb://botmode_admin:ci-isolated-only@mongodb:27017/LibreChat?authSource=admin"
+                BOTMODE_CI_BROKER_FIXTURE_URL: "http://host.docker.internal:8088/v1/chat/completions"
+                BOTMODE_CI_BROKER_USER_ID: "ci-broker-user"
+                BOTMODE_CI_BROKER_TENANT_ID: "ci-broker-tenant"
+                BOTMODE_CI_BROKER_AGENT_ID: "ci-broker-agent"
+              extra_hosts:
+                - "host.docker.internal:host-gateway"
+          YAML_BROKER
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml \
+            -f /tmp/botmode-pr107-broker-compose.yml up -d --no-deps ci-provider-broker
+          ready=0
+          for i in $(seq 1 25); do
+            if docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml \
+              -f /tmp/botmode-pr107-broker-compose.yml exec -T ci-provider-broker \
+              node -e "fetch('http://127.0.0.1:8095/status',{method:'POST'}).then(r=>process.exit(r.status===401?0:1)).catch(()=>process.exit(1))" \
+              >/dev/null 2>&1; then ready=1; break; fi
+            sleep 1
+          done
+          test "$ready" -eq 1 || { echo "CI_PR107_BROKER_BOOT=FAIL"; exit 1; }
+          before=$(curl -fsS http://127.0.0.1:8088/metrics | python3 -c 'import json,sys;print(json.load(sys.stdin)["completion_calls"])')
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml \
+            -f /tmp/botmode-pr107-broker-compose.yml exec -T ci-provider-broker \
+            node /app/scripts/botmode/ci-native-provider-broker-smoke.cjs execute
+          after=$(curl -fsS http://127.0.0.1:8088/metrics | python3 -c 'import json,sys;print(json.load(sys.stdin)["completion_calls"])')
+          test "$((after-before))" -eq 1 || {
+            echo "CI_PR107_BROKER_PROVIDER_DUPLICATE_OR_MISSING=FAIL"; exit 1;
+          }
+          echo "CI_PR107_BROKER_REAL_MONGO_SINGLE_DISPATCH=PASS"
       - name: Cold SIGKILL during second real specialist execution (isolated API)
         shell: bash
         env:
@@ -578,6 +627,21 @@ jobs:
           POSTGRES_PASSWORD: ci-isolated-only
           OPENROUTER_KEY: ci-local-fixture-no-real-key
         run: python3 scripts/botmode/ci-pr107-two-specialists-midflight-sigkill.py
+      - name: Verify independent broker survived API SIGKILL with original durable result
+        if: always() && steps.broker_smoke.outcome == 'success'
+        shell: bash
+        env:
+          BOTMODE_IMAGE: ${{ env.BOTMODE_HEAD_IMAGE }}
+          BOTMODE_MONGO_PASSWORD: ci-isolated-only
+          POSTGRES_PASSWORD: ci-isolated-only
+        run: |
+          set -euo pipefail
+          # No second execute request is made here; only the immutable result is read.
+          broker_id=$(docker ps -q --filter "label=com.docker.compose.service=ci-provider-broker" \
+            --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}")
+          test -n "$broker_id" || { echo "CI_PR107_BROKER_LOST_DURING_API_KILL=FAIL"; exit 1; }
+          docker exec "$broker_id" node /app/scripts/botmode/ci-native-provider-broker-smoke.cjs verify
+          echo "CI_PR107_BROKER_INDEPENDENT_API_SIGKILL_SURVIVAL=PASS"
       - name: Classify child execution exception from API logs
         if: failure()
         env:

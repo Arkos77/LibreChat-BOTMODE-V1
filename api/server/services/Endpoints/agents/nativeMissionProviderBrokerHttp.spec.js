@@ -35,7 +35,9 @@ let broker;
 let authorizeScope;
 
 beforeEach(async () => {
-  store = { read: jest.fn().mockResolvedValue({ status: 'result_committed', response: { ok: true } }) };
+  store = {
+    read: jest.fn().mockResolvedValue({ status: 'result_committed', response: { ok: true } }),
+  };
   broker = {
     execute: jest.fn().mockResolvedValue({ status: 'result_committed', response: { ok: true } }),
   };
@@ -95,9 +97,9 @@ describe('private fixture-only provider broker ingress', () => {
       ...authorizedRequest,
       messages: [{ role: 'user', content: 'different' }],
     };
-    expect(
-      (await signed('/execute', { ...scope, authorizedRequest: changedContent })).status,
-    ).toBe(403);
+    expect((await signed('/execute', { ...scope, authorizedRequest: changedContent })).status).toBe(
+      403,
+    );
     expect(broker.execute).not.toHaveBeenCalled();
   });
 
@@ -117,6 +119,11 @@ describe('private fixture-only provider broker ingress', () => {
     ).toThrow('NATIVE_BROKER_FIXTURE_ENDPOINT_DENIED');
     expect(() =>
       createFixedLocalProviderSender({ url: 'https://openrouter.ai/v1/chat/completions' }),
+    ).toThrow('NATIVE_BROKER_FIXTURE_ENDPOINT_DENIED');
+    expect(() =>
+      createFixedLocalProviderSender({
+        url: 'http://host.docker.internal/v1/chat/completions',
+      }),
     ).toThrow('NATIVE_BROKER_FIXTURE_ENDPOINT_DENIED');
   });
 
@@ -138,7 +145,9 @@ describe('private fixture-only provider broker ingress', () => {
     const controller = new AbortController();
     const raw = JSON.stringify({ ...scope, authorizedRequest });
     const timestamp = String(Date.now());
-    const signature = createHmac('sha256', secret).update(timestamp + '.' + raw).digest('hex');
+    const signature = createHmac('sha256', secret)
+      .update(timestamp + '.' + raw)
+      .digest('hex');
     const request = fetch('http://127.0.0.1:' + port + '/execute', {
       method: 'POST',
       signal: controller.signal,

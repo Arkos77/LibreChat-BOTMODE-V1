@@ -13,9 +13,15 @@ function requestDigest(payload) {
     if (Object.prototype.toString.call(value) !== '[object Object]') {
       throw new Error('NATIVE_BROKER_REQUEST_SHAPE_INVALID');
     }
-    return Object.fromEntries(Object.keys(value).sort().map((k) => [k, canonical(value[k])]));
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((k) => [k, canonical(value[k])]),
+    );
   };
-  return createHash('sha256').update(JSON.stringify(canonical(payload))).digest('hex');
+  return createHash('sha256')
+    .update(JSON.stringify(canonical(payload)))
+    .digest('hex');
 }
 
 function authenticate({ secret, timestamp, signature, body, now }) {
@@ -27,7 +33,9 @@ function authenticate({ secret, timestamp, signature, body, now }) {
     !/^[a-f0-9]{64}$/.test(signature)
   )
     return false;
-  const expected = createHmac('sha256', secret).update(timestamp + '.' + body).digest();
+  const expected = createHmac('sha256', secret)
+    .update(timestamp + '.' + body)
+    .digest();
   return timingSafeEqual(expected, Buffer.from(signature, 'hex'));
 }
 
@@ -118,11 +126,14 @@ function createNativeMissionProviderBrokerHttpServer({
 }
 
 /** Fixture-only upstream: a caller can never select a URL to fetch. */
-function createFixedLocalProviderSender({ url, fetchImpl = fetch }) {
+function createFixedLocalProviderSender({ url, fetchImpl = fetch, allowCiDockerHost = false }) {
   const destination = new URL(url);
   if (
     destination.protocol !== 'http:' ||
-    !['localhost', '127.0.0.1'].includes(destination.hostname) ||
+    !(
+      ['localhost', '127.0.0.1'].includes(destination.hostname) ||
+      (allowCiDockerHost === true && destination.hostname === 'host.docker.internal')
+    ) ||
     destination.pathname !== '/v1/chat/completions' ||
     destination.username ||
     destination.password ||
