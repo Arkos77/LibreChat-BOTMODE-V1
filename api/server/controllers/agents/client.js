@@ -5117,6 +5117,11 @@ class AgentClient extends BaseClient {
           getMessages: db.getMessages,
           userId: String(this.user ?? this.options?.req?.user?.id ?? ''),
           parentResponseMessageId: this.responseMessageId,
+          // A detached child may finish slightly after the model's last token.
+          // Wait only for a matching durable receipt; pending past this bound
+          // and every corrupt/failed receipt continue to fail closed.
+          pendingRetryCount: 25,
+          pendingRetryDelayMs: 200,
         });
       }
       await this.persistTransientMissionOracleEvidence();
