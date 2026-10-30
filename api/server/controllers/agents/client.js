@@ -198,6 +198,9 @@ const { getAccessibleMCPServers } = require('~/server/services/MCP');
 const BaseClient = require('~/app/clients/BaseClient');
 const { getMCPManager } = require('~/config');
 const db = require('~/models');
+const {
+  assertNativeMissionDetachedChildrenTerminal,
+} = require('~/server/services/Endpoints/agents/nativeMissionDetachedChildTerminalGate');
 const { logViolation } = require('~/cache');
 
 const loadAgent = (params) =>
@@ -5106,6 +5109,16 @@ class AgentClient extends BaseClient {
     }
 
     try {
+      // Model outputs alone cannot authorize Oracle/P6 while a detached
+      // specialist remains active. Read exact parent-owned Mongo task receipts;
+      // a pending or uncertain child fails closed, never promotes a false VERIFIED.
+      if (this.options?.subagentTasks != null) {
+        await assertNativeMissionDetachedChildrenTerminal({
+          getMessages: db.getMessages,
+          userId: String(this.user ?? this.options?.req?.user?.id ?? ''),
+          parentResponseMessageId: this.responseMessageId,
+        });
+      }
       await this.persistTransientMissionOracleEvidence();
 
       await assertTerminalMissionTasksVerified(
