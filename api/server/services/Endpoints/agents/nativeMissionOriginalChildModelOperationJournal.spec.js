@@ -4,6 +4,12 @@ const { createHash } = require('node:crypto');
 const {
   createNativeMissionOriginalChildModelOperationJournal,
 } = require('./nativeMissionOriginalChildModelOperationJournal');
+const {
+  createNativeMissionProviderCallReceiptStore,
+} = require('./nativeMissionProviderCallReceiptStore');
+const {
+  createNativeMissionProviderCallBroker,
+} = require('./nativeMissionProviderCallBroker');
 
 const digest = (s) => createHash('sha256').update(s).digest('hex');
 const identity = Object.freeze({
@@ -50,6 +56,20 @@ function mockMongo() {
     rows.set(doc.callKey, structuredClone(doc));
   });
   const findOne = jest.fn(async (query) => structuredClone(rows.get(query.callKey) ?? null));
+  const findOneAndUpdate = jest.fn(async (filter, update) => {
+    const current = rows.get(filter.callKey);
+    if (
+      !current ||
+      Object.entries(filter).some(([key, expected]) =>
+        expected?.$in ? !expected.$in.includes(current[key]) : current[key] !== expected,
+      )
+    ) {
+      return null;
+    }
+    const next = { ...current, ...update.$set };
+    rows.set(filter.callKey, next);
+    return structuredClone(next);
+  });
   const find = jest.fn((query) => ({
     limit: (max) => ({
       toArray: async () =>
@@ -65,7 +85,7 @@ function mockMongo() {
           .map((row) => structuredClone(row)),
     }),
   }));
-  return { rows, createIndex, insertOne, findOne, find };
+  return { rows, createIndex, insertOne, findOne, findOneAndUpdate };
 }
 function setup(changes = {}) {
   const collection = mockMongo();
@@ -237,6 +257,47 @@ describe('private Mongo journal for original child model operation', () => {
     expect(collection.find).toHaveBeenCalledWith(
       expect.objectContaining({ attemptKey: scope.attemptKey, requestDigest: start.requestDigest }),
     );
+  });
+
+  it('uses the exact same prepared Mongo operation with the independent broker', async () => {
+    const { journal, collection } = setup();
+    const prepared = await journal.prepareOriginal(start);
+    const ownerStore = createNativeMissionProviderCallReceiptStore({ collection });
+    const sendProvider = jest.fn(async () => ({
+      choices: [{ message: { role: 'assistant', content: 'original-call-only' } }],
+    }));
+    const broker = createNativeMissionProviderCallBroker({
+      store: ownerStore,
+      sendProvider,
+      assertAuthorized: async () => undefined,
+    });
+    const payload = {
+      identity,
+      requestDigest: start.requestDigest,
+      authorizedRequest: { model: 'free-ci', messages: [] },
+    };
+    const [a, b] = await Promise.all([broker.execute(payload), broker.execute(payload)]);
+    expect(sendProvider).toHaveBeenCalledTimes(1);
+    expect(a.callKey).toBe(prepared.callKey);
+    expect(b.callKey).toBe(prepared.callKey);
+    expect(collection.rows.size).toBe(1);
+    expect([...collection.rows.values()][0]).toMatchObject({
+      checkpointId: start.checkpointId,
+      originFingerprint,
+      status: 'result_committed',
+    });
+    expect((await ownerStore.read(payload)).response).toMatchObject({
+      choices: [{ message: { content: 'original-call-only' } }],
+    });
+    await expect(journal.findOriginalOperations(query)).resolves.toEqual([
+      expect.objectContaining({
+        operationKey: identity.operationKey,
+        status: 'result_committed',
+      }),
+    ]);
+    const later = await broker.execute(payload);
+    expect(later.status).toBe('result_committed');
+    expect(sendProvider).toHaveBeenCalledTimes(1);
   });
 
   it('does not accept foreign tenant or a missing Mongo query adapter', async () => {
