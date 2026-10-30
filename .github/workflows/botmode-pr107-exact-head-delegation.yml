@@ -628,6 +628,80 @@ jobs:
                       print('CI_CHILD_EXCEPTION_CLASS='+candidate)
               print('CI_CHILD_EXCEPTION_HAS_STACK='+str('stack:' in block))
           PY
+          # Read only allowlisted Redis error codes from this disposable CI stack.
+          # Never print stored error strings, model outputs, IDs, or credentials.
+          python3 - <<'PY_REDIS_CLASS'
+          import subprocess
+          compose=['docker','compose','-f','docker-compose.botmode.yml',
+                   '-f','docker-compose.botmode-lite.yml','exec','-T','redis',
+                   'redis-cli','--raw']
+          try:
+              keys=subprocess.run(compose+['--scan','--pattern','::stream:*:job'],
+                                  capture_output=True,text=True,timeout=20,check=True)
+              jobs=keys.stdout.splitlines()[:12]
+              codes=('NATIVE_MISSION_DETACHED_CHILD_PENDING',
+                     'NATIVE_MISSION_DETACHED_CHILD_FAILED',
+                     'NATIVE_MISSION_DETACHED_CHILD_LINEAGE_UNCERTAIN',
+                     'NATIVE_MISSION_DETACHED_CHILD_PROOF_INCOMPLETE',
+                     'NATIVE_MISSION_DETACHED_CHILD_PROOF_UNAVAILABLE',
+                     'MISSION_ORACLE_FAILURE')
+              for key in jobs:
+                  status=subprocess.run(compose+['HGET',key,'status'],
+                                        capture_output=True,text=True,timeout=20,check=True).stdout.strip()
+                  if status!='error':
+                      continue
+                  raw=subprocess.run(compose+['HGET',key,'error'],
+                                     capture_output=True,text=True,timeout=20,check=True).stdout
+                  found=next((c for c in codes if c in raw.upper()),'UNCLASSIFIED')
+                  print('CI_PR107_ORACLE_ERROR_ALLOWLIST='+found,flush=True)
+          except (OSError,subprocess.SubprocessError):
+              print('CI_PR107_ORACLE_ERROR_ALLOWLIST=UNAVAILABLE',flush=True)
+          PY_REDIS_CLASS
+          # Observe bounded Mongo task receipt invariants in the *isolated* CI DB.
+          # No transcript, parent identity, child ID, attemptKey, or text is emitted.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE_TASK_DIAG' || true
+          const mongoose=require('mongoose');
+          (async()=>{
+            await mongoose.connect(process.env.MONGO_URI);
+            const db=mongoose.connection.db;
+            const threads=await db.collection('conversations').find(
+              {'subagentThread.parentConversationId':{$exists:true}},
+              {projection:{conversationId:1,'subagentThread.parentMessageId':1}}
+            ).limit(12).toArray();
+            let pending=0,settled=0,unlinked=0,invalid=0,failed=0,rowsCount=0;
+            for(const thread of threads){
+              const rows=await db.collection('messages').find(
+                {conversationId:thread.conversationId},
+                {projection:{messageId:1,conversationId:1,subagentTask:1}}
+              ).limit(48).toArray();
+              rowsCount+=rows.length;
+              const running=new Set(),terminal=new Set();
+              for(const row of rows){
+                const t=row.subagentTask;
+                if(!t)continue;
+                if(t.parentRunId!==thread.subagentThread?.parentMessageId)unlinked++;
+                if(!t.attemptKey||!row.messageId){invalid++;continue;}
+                const start=t.status==='running';
+                const suffix=start?':user':':assistant';
+                if(!row.messageId.endsWith(suffix)){invalid++;continue;}
+                const id=JSON.stringify([thread.conversationId,row.messageId.slice(0,-suffix.length),t.attemptKey]);
+                if(start)running.add(id);
+                else if(t.status==='completed')terminal.add(id);
+                else if(t.status==='error'||t.status==='cancelled')failed++;
+              }
+              pending += [...running].filter(id=>!terminal.has(id)).length;
+              settled += [...terminal].filter(id=>running.has(id)).length;
+            }
+            console.log('CI_PR107_TASK_DIAG_THREADS='+threads.length);
+            console.log('CI_PR107_TASK_DIAG_ROWS='+rowsCount);
+            console.log('CI_PR107_TASK_DIAG_PENDING='+pending);
+            console.log('CI_PR107_TASK_DIAG_MATCHED_TERMINALS='+settled);
+            console.log('CI_PR107_TASK_DIAG_PARENT_MISMATCH='+unlinked);
+            console.log('CI_PR107_TASK_DIAG_INVALID='+invalid);
+            console.log('CI_PR107_TASK_DIAG_FAILED='+failed);
+            await mongoose.disconnect();
+          })().catch(e=>{console.log('CI_PR107_TASK_DIAG_UNAVAILABLE='+e.name);process.exitCode=1});
+          NODE_TASK_DIAG
       - name: Always destroy disposable stack
         if: always()
         env:
