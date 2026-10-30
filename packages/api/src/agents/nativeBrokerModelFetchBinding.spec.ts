@@ -26,8 +26,8 @@ describe('native child model transport binding (opt-in; no live dispatch)', () =
     const options: { configuration: Record<string, unknown> } = {
       configuration: { defaultHeaders: { 'X-CI': 'test' } },
     };
-    const transport: typeof fetch = jest.fn();
-    const factory = jest.fn(() => transport);
+    const transport: typeof fetch = fetch;
+    const factory = jest.fn((_binding: NativeDetachedModelFetchBinding) => transport);
     attachNativeDetachedBrokerModelFetch({
       clientOptions: options,
       binding,
@@ -41,7 +41,7 @@ describe('native child model transport binding (opt-in; no live dispatch)', () =
   });
 
   it('refuses invalid model binding and non-mission callbacks before factory invocation', () => {
-    const factory = jest.fn(() => jest.fn() as typeof fetch);
+    const factory = jest.fn((_binding: NativeDetachedModelFetchBinding) => fetch);
     for (const item of [
       { binding: { ...binding, model: '' }, originalMissionHasDelegation: true },
       { binding: { ...binding, provider: 'anthropic' }, originalMissionHasDelegation: true },
@@ -59,7 +59,7 @@ describe('native child model transport binding (opt-in; no live dispatch)', () =
   });
 
   it('refuses fallback and existing transport overrides', () => {
-    const factory = jest.fn(() => jest.fn() as typeof fetch);
+    const factory = jest.fn((_binding: NativeDetachedModelFetchBinding) => fetch);
     for (const clientOptions of [
       { fallbacks: [{ provider: 'other-provider' }] },
       { configuration: { fetch: jest.fn() } },

@@ -85,6 +85,10 @@ import {
   isSteerTerminalContinuationSupported,
 } from '~/agents/steering/runtime';
 import {
+  attachNativeDetachedBrokerModelFetch,
+  type NativeDetachedModelFetchFactory,
+} from './nativeBrokerModelFetchBinding';
+import {
   resolveToolApprovalPolicy,
   healToolApprovalPolicy,
   exemptAskUserQuestionFromApproval,
@@ -118,10 +122,6 @@ import { applyTestRunHook } from '~/agents/testHook';
 import { attachRunOracle } from '~/agents/oracle';
 import { isUserProvided } from '~/utils/common';
 import { createSafeUser } from '~/utils/env';
-import {
-  attachNativeDetachedBrokerModelFetch,
-  type NativeDetachedModelFetchFactory,
-} from './nativeBrokerModelFetchBinding';
 
 /** Expected shape of JSON tool search results */
 interface ToolSearchJsonResult {
