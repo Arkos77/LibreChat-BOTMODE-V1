@@ -260,7 +260,11 @@ jest.mock('~/server/services/Endpoints/agents/nativeMissionWakeupOriginStore', (
       typeof field === 'object' &&
       !Array.isArray(field) &&
       Object.prototype.toString.call(field) === '[object Object]'
-        ? Object.fromEntries(Object.keys(field).sort().map((key) => [key, field[key]]))
+        ? Object.fromEntries(
+            Object.keys(field)
+              .sort()
+              .map((key) => [key, field[key]]),
+          )
         : field,
     ),
   saveNativeMissionWakeupOrigin: jest.fn().mockResolvedValue({ planId: 'test-plan' }),
