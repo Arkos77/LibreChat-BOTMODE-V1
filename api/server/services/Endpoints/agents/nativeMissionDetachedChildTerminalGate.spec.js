@@ -40,10 +40,7 @@ describe('native mission detached child Oracle/P6 terminal gate', () => {
   it('rechecks a pending receipt and succeeds only after its matching terminal is durable', async () => {
     const started = [make('research', 'running')];
     const completed = [...started, make('research', 'completed')];
-    const getMessages = jest
-      .fn()
-      .mockResolvedValueOnce(started)
-      .mockResolvedValueOnce(completed);
+    const getMessages = jest.fn().mockResolvedValueOnce(started).mockResolvedValueOnce(completed);
     const sleep = jest.fn().mockResolvedValue(undefined);
     await expect(
       gate({
@@ -130,10 +127,10 @@ describe('native mission detached child Oracle/P6 terminal gate', () => {
     });
   });
 
-  it('refuses an unrelated attempt instead of assuming completion', async () => {
+  it('refuses an unrelated attempt as uncertain lineage, never as completed', async () => {
     const rows = [make('research', 'running', 'first'), make('research', 'completed', 'second')];
     await expect(check(rows)).rejects.toMatchObject({
-      code: 'NATIVE_MISSION_DETACHED_CHILD_PENDING',
+      code: 'NATIVE_MISSION_DETACHED_CHILD_LINEAGE_UNCERTAIN',
     });
   });
 
