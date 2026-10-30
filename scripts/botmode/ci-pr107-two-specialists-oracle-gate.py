@@ -90,6 +90,20 @@ payload = {
         },
     },
 }
+# The preceding single-child Oracle gate explicitly restarts the API.
+# A Mongo CLI read can succeed before the HTTP server is ready.
+for readiness_attempt in range(45):
+    try:
+        with urlopen("http://127.0.0.1:3090/api/config", timeout=4) as response:
+            if response.status == 200:
+                print("CI_PR107_MULTI_API_READY_AFTER_RESTART=PASS",flush=True)
+                break
+    except (OSError,TimeoutError):
+        pass
+    time.sleep(2)
+else:
+    fail("API_NOT_READY_AFTER_PREVIOUS_GATE")
+
 status,body = request("POST","/api/agents/chat/agents",payload)
 if status != 200:
     print("CI_PR107_MULTI_START_HTTP="+str(status),flush=True)
