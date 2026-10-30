@@ -104,7 +104,19 @@ for readiness_attempt in range(45):
 else:
     fail("API_NOT_READY_AFTER_PREVIOUS_GATE")
 
-status,body = request("POST","/api/agents/chat/agents",payload)
+for admission_attempt in range(12):
+    status,body = request("POST","/api/agents/chat/agents",payload)
+    if status != 503:
+        break
+    try:
+        response_code = json.loads(body).get("code")
+    except (ValueError, TypeError, AttributeError):
+        response_code = None
+    if response_code != "SERVER_NOT_READY":
+        print("CI_PR107_MULTI_503_CLASS=UNEXPECTED",flush=True)
+        break
+    print("CI_PR107_MULTI_SERVER_NOT_READY_RETRY="+str(admission_attempt+1),flush=True)
+    time.sleep(6)
 if status != 200:
     print("CI_PR107_MULTI_START_HTTP="+str(status),flush=True)
     fail("MISSION_ADMISSION")
