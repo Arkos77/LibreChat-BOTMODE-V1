@@ -137,9 +137,7 @@ describe('read-only native detached child cold inventory', () => {
   it('refuses a child whose executable agent is outside the original plan', async () => {
     const rows = [start('analysis', 'thread-2')];
     const foreign = jest.fn(async (_user, id) =>
-      id === 'thread-2'
-        ? { ...convo(id), agent_id: 'foreign-agent' }
-        : convo(id),
+      id === 'thread-2' ? { ...convo(id), agent_id: 'foreign-agent' } : convo(id),
     );
     await expect(run(rows, { getConvo: foreign }).result).rejects.toMatchObject({
       code: 'NATIVE_CHILD_COLD_INVENTORY_THREAD_UNVERIFIED',
