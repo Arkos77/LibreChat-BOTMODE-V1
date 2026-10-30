@@ -17,7 +17,13 @@ const origin = {
   parentResponseMessageId: scope.parentResponseMessageId,
   agentId: scope.parentAgentId,
   planId: 'ci-plan',
-  plan: { planId: 'ci-plan', tasks: [{ nodeId: 'worker' }] },
+  plan: {
+    planId: 'ci-plan',
+    tasks: [
+      { nodeId: 'worker', agentId: scope.parentAgentId },
+      { nodeId: 'specialist', agentId: 'ci-specialist-agent' },
+    ],
+  },
   capabilityAttestation: { mode: 'receipts_required' },
 };
 const start = (taskId, threadId, attemptKey = 'attempt-1') => ({
@@ -40,7 +46,11 @@ const convo = (id) =>
     : {
         conversationId: id,
         tenantId: scope.tenantId,
+        endpoint: 'agents',
+        agent_id: 'ci-specialist-agent',
         subagentThread: {
+          subagentKind: 'agent',
+          subagentType: 'ci-specialist-agent',
           parentConversationId: scope.parentConversationId,
           rootConversationId: scope.parentConversationId,
           parentMessageId: scope.parentResponseMessageId,
@@ -121,6 +131,34 @@ describe('read-only native detached child cold inventory', () => {
     );
     await expect(run(rows, { getConvo: wrongParent }).result).rejects.toMatchObject({
       code: 'NATIVE_CHILD_COLD_INVENTORY_THREAD_UNVERIFIED',
+    });
+  });
+
+  it('refuses a child whose executable agent is outside the original plan', async () => {
+    const rows = [start('analysis', 'thread-2')];
+    const foreign = jest.fn(async (_user, id) =>
+      id === 'thread-2'
+        ? { ...convo(id), agent_id: 'foreign-agent' }
+        : convo(id),
+    );
+    await expect(run(rows, { getConvo: foreign }).result).rejects.toMatchObject({
+      code: 'NATIVE_CHILD_COLD_INVENTORY_THREAD_UNVERIFIED',
+    });
+  });
+
+  it('refuses original plans lacking a binding for the parent', async () => {
+    const altered = {
+      ...origin,
+      plan: {
+        planId: origin.planId,
+        tasks: [{ nodeId: 'specialist', agentId: 'ci-specialist-agent' }],
+      },
+    };
+    const getMissionOrigin = jest.fn().mockResolvedValue(altered);
+    await expect(
+      run([start('research', 'thread-1')], { getMissionOrigin }).result,
+    ).rejects.toMatchObject({
+      code: 'NATIVE_CHILD_COLD_INVENTORY_AGENT_PLAN_UNVERIFIED',
     });
   });
 

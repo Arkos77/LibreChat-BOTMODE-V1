@@ -62,6 +62,17 @@ async function inspectNativeMissionDetachedChildColdInventory({
     deny('NATIVE_CHILD_COLD_INVENTORY_ORIGIN_UNVERIFIED');
   }
 
+  // Original planned agent IDs are immutable provenance, not live grants.
+  // Current ACL, owner fencing and effect receipts must be checked separately.
+  const plannedAgentIds = new Set(origin.plan.tasks.map((task) => task?.agentId));
+  if (
+    plannedAgentIds.has(undefined) ||
+    plannedAgentIds.size > 32 ||
+    !plannedAgentIds.has(parentAgentId)
+  ) {
+    deny('NATIVE_CHILD_COLD_INVENTORY_AGENT_PLAN_UNVERIFIED');
+  }
+
   const parent = await getConvo(userId, parentConversationId);
   if (
     parent?.conversationId !== parentConversationId ||
@@ -137,6 +148,12 @@ async function inspectNativeMissionDetachedChildColdInventory({
     if (
       child?.conversationId !== threadId ||
       !sameTenant(child?.tenantId, tenantId) ||
+      child?.endpoint !== 'agents' ||
+      !boundedId(child?.agent_id) ||
+      !plannedAgentIds.has(child.agent_id) ||
+      lineage?.subagentKind !== 'agent' ||
+      (lineage?.subagentType !== child.agent_id &&
+        !(lineage?.subagentType === 'self' && child.agent_id === parentAgentId)) ||
       lineage?.parentConversationId !== parentConversationId ||
       lineage?.rootConversationId !== parentConversationId ||
       lineage?.parentMessageId !== parentResponseMessageId ||
