@@ -149,8 +149,30 @@ for attempt in range(110):
     time.sleep(0.5)
 else:
     fail("SECOND_CHILD_NOT_HELD_AFTER_FIRST_PERSISTED")
-if pre["published"]!=0 or pre["errors"]!=0:
-    fail("PUBLISHED_OR_FAILED_BEFORE_CRASH")
+# Identify a real P6 early publication separately from an errored child.
+# Never log prompts, child IDs, JWTs, or raw private database messages.
+for label in ("count","linked","completed","errors","distinctTypes","published"):
+    print("CI_PR107_COLD_MULTI_PRECRASH_"+label.upper()+"="+str(pre[label]),flush=True)
+current_metrics=metrics()
+print("CI_PR107_COLD_MULTI_PRECRASH_PARENT_FINAL_CALLS="+str(
+    current_metrics.get("parent_final",0)-before.get("parent_final",0)),flush=True)
+print("CI_PR107_COLD_MULTI_PRECRASH_SECOND_HELD="+str(
+    current_metrics.get("held_second_child_requests",0)),flush=True)
+print("CI_PR107_COLD_MULTI_PRECRASH_STREAM_FINALS="+str(sum(
+    len([e for e in item.get("events",[]) if e.get("final") is True])
+    for item in stream_replies)),flush=True)
+job_status,_,job_oracle=redis_job(stream_id)
+print("CI_PR107_COLD_MULTI_PRECRASH_REDIS_STATUS="+str(job_status),flush=True)
+try:
+    st=json.loads(job_oracle) if job_oracle else {}
+    verdicts=st.get("results",{}).get(mission_id+"/main",{}).get("verdicts",[])
+    print("CI_PR107_COLD_MULTI_PRECRASH_ORACLE_VERDICT_COUNT="+str(len(verdicts)),flush=True)
+except (ValueError,TypeError,AttributeError):
+    print("CI_PR107_COLD_MULTI_PRECRASH_ORACLE_STATE=UNREADABLE",flush=True)
+if pre["errors"]!=0:
+    fail("CHILD_TERMINAL_ERROR_BEFORE_CRASH")
+if pre["published"]!=0:
+    fail("PARENT_OUTPUT_BEFORE_SECOND_CHILD_RESULT")
 print("CI_PR107_COLD_MULTI_PRECRASH_TWO_THREADS_ONE_COMPLETED=PASS",flush=True)
 
 # Only this disposable GitHub Actions compose service is ever killed.
