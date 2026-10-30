@@ -1,7 +1,9 @@
 'use strict';
 
 const { createHash } = require('node:crypto');
-const { createNativeMissionProviderCallReceiptStore } = require('./nativeMissionProviderCallReceiptStore');
+const {
+  createNativeMissionProviderCallReceiptStore,
+} = require('./nativeMissionProviderCallReceiptStore');
 const { createNativeMissionProviderCallBroker } = require('./nativeMissionProviderCallBroker');
 
 const digest = (value) => createHash('sha256').update(value).digest('hex');
@@ -138,7 +140,9 @@ describe('durable model request owner - no automatic replay', () => {
   it('cannot execute when authorization is denied, including a second pre-dispatch check', async () => {
     const { broker, assertAuthorized, sendProvider, store } = create();
     assertAuthorized.mockRejectedValueOnce(new Error('ACL revoked'));
-    await expect(broker.execute({ ...scope, authorizedRequest: {} })).rejects.toThrow('ACL revoked');
+    await expect(broker.execute({ ...scope, authorizedRequest: {} })).rejects.toThrow(
+      'ACL revoked',
+    );
     expect(sendProvider).not.toHaveBeenCalled();
     await expect(store.read(scope)).rejects.toThrow('NATIVE_PROVIDER_CALL_IMMUTABLE_CONFLICT');
 
