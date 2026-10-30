@@ -11,6 +11,9 @@ const make = (id, status, attempt = 'attempt-1') => ({
 });
 const check = (rows, getMessages = jest.fn().mockResolvedValue(rows)) =>
   gate({ getMessages, userId: 'ci-user', parentResponseMessageId: parent });
+const rejectsWith = async (rows, code) => {
+  await expect(check(rows)).rejects.toMatchObject({ code });
+};
 
 describe('native mission detached child Oracle/P6 terminal gate', () => {
   it('permits a mission with no detached child tasks', async () => {
@@ -26,43 +29,47 @@ describe('native mission detached child Oracle/P6 terminal gate', () => {
       expect.objectContaining({ limit: 257 }),
     );
   });
-  it('permits two durable completed children even though their start rows remain running', async () => {
-    await expect(check([
+
+  it('permits completed children while their start rows remain running', async () => {
+    const rows = [
       make('research', 'running'),
       make('analysis', 'running'),
       make('research', 'completed'),
       make('analysis', 'completed'),
-    ])).resolves.toBeUndefined();
+    ];
+    await expect(check(rows)).resolves.toBeUndefined();
   });
-  it('refuses Oracle approval while the second detached child is still running', async () => {
-    await expect(check([
-      make('research', 'running'), make('research', 'completed'),
+
+  it('refuses Oracle approval while the second detached child is running', async () => {
+    const rows = [
+      make('research', 'running'),
+      make('research', 'completed'),
       make('analysis', 'running'),
-    ])).rejects.toMatchObject({ code: 'NATIVE_MISSION_DETACHED_CHILD_PENDING' });
+    ];
+    await rejectsWith(rows, 'NATIVE_MISSION_DETACHED_CHILD_PENDING');
   });
-  it.each(['error', 'cancelled'])('refuses %s child without final VERIFIED', async (status) => {
-    await expect(check([make('research', 'running'), make('research', status)]))
-      .rejects.toMatchObject({ code: 'NATIVE_MISSION_DETACHED_CHILD_FAILED' });
+
+  it.each(['error', 'cancelled'])('refuses a child with status %s', async (status) => {
+    const rows = [make('research', 'running'), make('research', status)];
+    await rejectsWith(rows, 'NATIVE_MISSION_DETACHED_CHILD_FAILED');
   });
-  it('rejects unmatched or cross-attempt terminal instead of inferring settlement', async () => {
-    await expect(check([
-      make('research', 'running', 'first'),
-      make('research', 'completed', 'second'),
-    ])).rejects.toMatchObject({ code: 'NATIVE_MISSION_DETACHED_CHILD_PENDING' });
+
+  it('refuses an unrelated attempt instead of assuming completion', async () => {
+    const rows = [make('research', 'running', 'first'), make('research', 'completed', 'second')];
+    await rejectsWith(rows, 'NATIVE_MISSION_DETACHED_CHILD_PENDING');
   });
-  it('fails closed on uncertain or bounded Mongo reads', async () => {
-    await expect(check(null)).rejects.toMatchObject({
-      code: 'NATIVE_MISSION_DETACHED_CHILD_PROOF_INCOMPLETE',
-    });
-    await expect(check(Array.from({ length: 257 }, () => make('research', 'running'))))
-      .rejects.toMatchObject({ code: 'NATIVE_MISSION_DETACHED_CHILD_PROOF_INCOMPLETE' });
-    await expect(check([{
-      ...make('research', 'completed'),
-      subagentTask: { status: 'completed', attemptKey: 'first', parentRunId: 'other-parent' },
-    }])).rejects.toMatchObject({ code: 'NATIVE_MISSION_DETACHED_CHILD_LINEAGE_UNCERTAIN' });
+
+  it('fails closed on missing, saturated or inconsistent Mongo receipts', async () => {
+    await rejectsWith(null, 'NATIVE_MISSION_DETACHED_CHILD_PROOF_INCOMPLETE');
+    const saturated = Array.from({ length: 257 }, () => make('research', 'running'));
+    await rejectsWith(saturated, 'NATIVE_MISSION_DETACHED_CHILD_PROOF_INCOMPLETE');
+    const row = make('research', 'completed');
+    row.subagentTask.parentRunId = 'other-parent';
+    await rejectsWith([row], 'NATIVE_MISSION_DETACHED_CHILD_LINEAGE_UNCERTAIN');
   });
+
   it('does not turn Mongo outages into permission to publish', async () => {
-    await expect(check([], jest.fn().mockRejectedValue(new Error('Mongo unavailable'))))
-      .rejects.toThrow('Mongo unavailable');
+    const getMessages = jest.fn().mockRejectedValue(new Error('Mongo unavailable'));
+    await expect(check([], getMessages)).rejects.toThrow('Mongo unavailable');
   });
 });
