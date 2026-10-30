@@ -55,8 +55,9 @@ function canonicalMissionJson(value) {
     if (field == null || typeof field !== 'object' || Array.isArray(field)) {
       return field;
     }
-    const prototype = Object.getPrototypeOf(field);
-    if (prototype !== Object.prototype && prototype !== null) {
+    // Object prototypes differ across Jest VM contexts and serialized Mongo
+    // documents. The intrinsic tag still identifies plain records across realms.
+    if (Object.prototype.toString.call(field) !== '[object Object]') {
       return field;
     }
     return Object.fromEntries(
