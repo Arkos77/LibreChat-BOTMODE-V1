@@ -7,9 +7,7 @@ const {
 const {
   createNativeMissionProviderCallReceiptStore,
 } = require('./nativeMissionProviderCallReceiptStore');
-const {
-  createNativeMissionProviderCallBroker,
-} = require('./nativeMissionProviderCallBroker');
+const { createNativeMissionProviderCallBroker } = require('./nativeMissionProviderCallBroker');
 
 const digest = (s) => createHash('sha256').update(s).digest('hex');
 const identity = Object.freeze({
@@ -76,16 +74,14 @@ function mockMongo() {
         [...rows.values()]
           .filter((row) =>
             Object.entries(query).every(([field, wanted]) =>
-              wanted?.$type === 'string'
-                ? typeof row[field] === 'string'
-                : row[field] === wanted,
+              wanted?.$type === 'string' ? typeof row[field] === 'string' : row[field] === wanted,
             ),
           )
           .slice(0, max)
           .map((row) => structuredClone(row)),
     }),
   }));
-  return { rows, createIndex, insertOne, findOne, findOneAndUpdate };
+  return { rows, createIndex, insertOne, findOne, findOneAndUpdate, find };
 }
 function setup(changes = {}) {
   const collection = mockMongo();
@@ -302,9 +298,9 @@ describe('private Mongo journal for original child model operation', () => {
 
   it('does not accept foreign tenant or a missing Mongo query adapter', async () => {
     const { journal } = setup();
-    await expect(
-      journal.findOriginalOperations({ ...query, tenantId: undefined }),
-    ).rejects.toThrow('NATIVE_ORIGINAL_MODEL_JOURNAL_QUERY_INVALID');
+    await expect(journal.findOriginalOperations({ ...query, tenantId: undefined })).rejects.toThrow(
+      'NATIVE_ORIGINAL_MODEL_JOURNAL_QUERY_INVALID',
+    );
     expect(() =>
       createNativeMissionOriginalChildModelOperationJournal({
         collection: { findOne: () => null },
