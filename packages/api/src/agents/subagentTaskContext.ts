@@ -1,25 +1,71 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { UsageMetadata } from '~/stream/interfaces/IJobStore';
 
-/**
- * Detached subagents outlive the parent turn that launched them. This
- * request-local collector lets the shared SDK usage sink recognize those
- * calls without retaining a request object or changing the SDK task-store
- * contract. AsyncLocalStorage follows the detached executor's promise chain
- * and naturally isolates concurrent child tasks.
- */
+/** Host-observed identity for a *running* native detached child. Never a
+ * provider-dispatch or replay grant; the actual model operation needs its own
+ * immutable key and effect receipt before any network request. */
+export type DetachedSubagentExecutionScope = Readonly<{
+  userId: string;
+  tenantId?: string;
+  parentConversationId: string;
+  parentRunId: string;
+  parentToolCallId: string;
+  childThreadId: string;
+  taskId: string;
+  attemptKey: string;
+  agentId: string;
+}>;
+
+type DetachedSubagentScopeSeed = Omit<DetachedSubagentExecutionScope, 'taskId'>;
+
+/** Detached executors outlive parent turns. AsyncLocalStorage keeps native
+ * task and usage metadata isolated without retaining request objects. */
 const detachedUsageStorage = new AsyncLocalStorage<{
   usage: UsageMetadata[];
   taskId?: string;
   producerAgentId?: string;
+  executionScope?: DetachedSubagentExecutionScope;
 }>();
 
 export function runWithDetachedSubagentUsage<T>(
   usage: UsageMetadata[],
   run: () => Promise<T>,
   taskId?: string,
+  executionScope?: DetachedSubagentScopeSeed,
 ): Promise<T> {
-  return detachedUsageStorage.run({ usage, ...(taskId ? { taskId } : {}) }, run);
+  let originalScope: DetachedSubagentExecutionScope | undefined;
+  if (executionScope != null) {
+    const fields: (keyof DetachedSubagentExecutionScope)[] = [
+      'userId',
+      'parentConversationId',
+      'parentRunId',
+      'parentToolCallId',
+      'childThreadId',
+      'taskId',
+      'attemptKey',
+      'agentId',
+    ];
+    const candidate = { ...executionScope, taskId };
+    if (
+      fields.some((key) => {
+        const value = candidate[key];
+        return typeof value !== 'string' || value.length === 0 || value.length > 256;
+      }) ||
+      (candidate.tenantId != null &&
+        (typeof candidate.tenantId !== 'string' || candidate.tenantId.length > 256))
+    ) {
+      throw new Error('NATIVE_DETACHED_PROVIDER_SCOPE_INVALID');
+    }
+    originalScope = Object.freeze(candidate as DetachedSubagentExecutionScope);
+  }
+  return detachedUsageStorage.run(
+    {
+      usage,
+      ...(taskId ? { taskId } : {}),
+      ...(originalScope == null ? {} : { executionScope: originalScope }),
+    },
+    run,
+  );
 }
 
 /** Records one detached usage item and reports whether a task context owned it. */
@@ -47,4 +93,10 @@ export function setDetachedSubagentProducerAgentId(agentId: string): void {
 
 export function getDetachedSubagentProducerAgentId(): string | undefined {
   return detachedUsageStorage.getStore()?.producerAgentId;
+}
+
+/** Returns the exact owner context only along its original async task chain.
+ * Not an authorization or idempotency key for external provider calls. */
+export function getDetachedSubagentExecutionScope(): DetachedSubagentExecutionScope | undefined {
+  return detachedUsageStorage.getStore()?.executionScope;
 }

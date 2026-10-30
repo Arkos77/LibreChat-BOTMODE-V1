@@ -1470,6 +1470,18 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
                 detachedUsage,
                 () => request.run(activityRuntime, preparedThread.initialMessages),
                 runtime.taskId,
+                request.subagentKind === 'agent' && childAgentId(request) != null
+                  ? {
+                      userId: scope.userId,
+                      ...(scope.tenantId == null ? {} : { tenantId: scope.tenantId }),
+                      parentConversationId: scope.parentConversationId,
+                      parentRunId: request.parentRunId,
+                      parentToolCallId: request.parentToolCallId,
+                      childThreadId: preparedThread.conversation.conversationId,
+                      attemptKey: preparedThread.attemptKey,
+                      agentId: childAgentId(request)!,
+                    }
+                  : undefined,
               );
               if (runtime.signal.aborted) {
                 throw runtime.signal.reason ?? new Error('Subagent task was cancelled.');
