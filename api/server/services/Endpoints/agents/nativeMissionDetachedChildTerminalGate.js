@@ -54,47 +54,47 @@ async function assertNativeMissionDetachedChildrenTerminal({
       { sort: false, limit: MAX_TASK_ROWS },
     );
     if (!Array.isArray(rows) || rows.length >= MAX_TASK_ROWS) {
-    throw refusal('NATIVE_MISSION_DETACHED_CHILD_PROOF_INCOMPLETE');
-  }
-  const started = new Set();
-  const settled = new Set();
-  for (const row of rows) {
-    const task = row?.subagentTask;
-    const messageId = row?.messageId;
-    const threadId = row?.conversationId;
-    const attempt = task?.attemptKey;
-    const status = task?.status;
-    if (
-      typeof messageId !== 'string' ||
-      messageId.length > 270 ||
-      typeof threadId !== 'string' ||
-      threadId.length === 0 ||
-      typeof attempt !== 'string' ||
-      attempt.length === 0 ||
-      task.parentRunId !== parentResponseMessageId ||
-      !statuses.includes(status)
-    ) {
-      throw refusal('NATIVE_MISSION_DETACHED_CHILD_LINEAGE_UNCERTAIN');
+      throw refusal('NATIVE_MISSION_DETACHED_CHILD_PROOF_INCOMPLETE');
     }
-    const running = status === 'running';
-    const suffix = running ? ':user' : ':assistant';
-    if (!messageId.endsWith(suffix)) {
-      throw refusal('NATIVE_MISSION_DETACHED_CHILD_LINEAGE_UNCERTAIN');
-    }
-    const taskId = messageId.slice(0, -suffix.length);
-    if (!taskId || taskId.length > 256) {
-      throw refusal('NATIVE_MISSION_DETACHED_CHILD_LINEAGE_UNCERTAIN');
-    }
-    const key = JSON.stringify([threadId, taskId, attempt]);
-    if (running) {
-      started.add(key);
-    } else {
-      if (status !== 'completed') {
-        throw refusal('NATIVE_MISSION_DETACHED_CHILD_FAILED');
+    const started = new Set();
+    const settled = new Set();
+    for (const row of rows) {
+      const task = row?.subagentTask;
+      const messageId = row?.messageId;
+      const threadId = row?.conversationId;
+      const attempt = task?.attemptKey;
+      const status = task?.status;
+      if (
+        typeof messageId !== 'string' ||
+        messageId.length > 270 ||
+        typeof threadId !== 'string' ||
+        threadId.length === 0 ||
+        typeof attempt !== 'string' ||
+        attempt.length === 0 ||
+        task.parentRunId !== parentResponseMessageId ||
+        !statuses.includes(status)
+      ) {
+        throw refusal('NATIVE_MISSION_DETACHED_CHILD_LINEAGE_UNCERTAIN');
       }
-      settled.add(key);
+      const running = status === 'running';
+      const suffix = running ? ':user' : ':assistant';
+      if (!messageId.endsWith(suffix)) {
+        throw refusal('NATIVE_MISSION_DETACHED_CHILD_LINEAGE_UNCERTAIN');
+      }
+      const taskId = messageId.slice(0, -suffix.length);
+      if (!taskId || taskId.length > 256) {
+        throw refusal('NATIVE_MISSION_DETACHED_CHILD_LINEAGE_UNCERTAIN');
+      }
+      const key = JSON.stringify([threadId, taskId, attempt]);
+      if (running) {
+        started.add(key);
+      } else {
+        if (status !== 'completed') {
+          throw refusal('NATIVE_MISSION_DETACHED_CHILD_FAILED');
+        }
+        settled.add(key);
+      }
     }
-  }
     // A completed receipt without a matching start is never sufficient proof.
     if ([...settled].some((key) => !started.has(key))) {
       throw refusal('NATIVE_MISSION_DETACHED_CHILD_LINEAGE_UNCERTAIN');
