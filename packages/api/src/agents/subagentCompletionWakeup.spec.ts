@@ -1511,6 +1511,44 @@ describe('createSubagentCompletionWakeupResolver', () => {
     expect(methods.claimSubagentTaskResult).toHaveBeenCalledTimes(2);
   });
 
+  it('accepts Mongo-reordered BOT MODE settings but rejects changed mission settings', async () => {
+    const { methods } = resolverMethods();
+    const getConvo = methods.getConvo.getMockImplementation()!;
+    const botMode = { version: 1, mode: 'analyze', workerAgentId: 'agent_parent_1' };
+    methods.getConvo.mockImplementation(async (userId, conversationId) => {
+      const conversation = await getConvo(userId, conversationId);
+      return conversationId === 'conversation-1' ? { ...conversation, botMode } : conversation;
+    });
+    const mission = { missionId: 'mission-1', taskId: 'mission-task-1' };
+    const original = {
+      userId: 'user-1',
+      tenantId: 'tenant-1',
+      conversationId: 'conversation-1',
+      parentResponseMessageId: 'response-1',
+      agentId: 'agent_parent_1',
+      planId: 'plan-1',
+      plan: { planId: 'plan-1', mission },
+      orchestratorMission: { mission },
+      botMode: { workerAgentId: 'agent_parent_1', mode: 'analyze', version: 1 },
+    };
+    const getMissionOrigin = jest
+      .fn()
+      .mockResolvedValueOnce(original)
+      .mockResolvedValueOnce({ ...original, botMode: { ...original.botMode, mode: 'fast' } });
+    const resolve = createSubagentCompletionWakeupResolver({
+      methods: methods as never,
+      getGenerationJob: async () => null,
+      getMissionOrigin,
+    });
+    await expect(
+      resolve(wakeupEnvelope(), { idempotencyKey: 'accepted' } as never),
+    ).resolves.toMatchObject({ status: 'ready', missionContext: { originalPlanId: 'plan-1' } });
+    await expect(
+      resolve(wakeupEnvelope(), { idempotencyKey: 'rejected' } as never),
+    ).rejects.toMatchObject({ code: 'MISSION_WAKEUP_ORIGIN_MISMATCH' });
+    expect(methods.claimSubagentTaskResult).toHaveBeenCalledTimes(1);
+  });
+
   it('does not claim a child result when the immutable mission belongs to another parent', async () => {
     const { methods } = resolverMethods();
     const mission = { missionId: 'mission-1', taskId: 'mission-task-1' };

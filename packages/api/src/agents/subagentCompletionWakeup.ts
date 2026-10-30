@@ -163,6 +163,23 @@ function sameTenant(actual: string | undefined, expected: string | undefined): b
   return actual === expected;
 }
 
+/** The original mission and saved conversation may have different BSON key
+ * ordering. Compare complete content canonically; keep arrays in their order. */
+function canonicalMissionJson(value: unknown): string | undefined {
+  return JSON.stringify(value, (_key, field: unknown) => {
+    if (
+      field == null ||
+      typeof field !== 'object' ||
+      Array.isArray(field) ||
+      Object.prototype.toString.call(field) !== '[object Object]'
+    ) {
+      return field;
+    }
+    const entries = Object.entries(field as Record<string, unknown>);
+    return Object.fromEntries(entries.sort(([a], [b]) => a.localeCompare(b)));
+  });
+}
+
 /** Only an immutable mission record verified in Mongo may authorize a
  * mission wakeup. The volatile Redis conversation slot can be replaced by the
  * first sibling completion and is never used as mission provenance. */
@@ -217,7 +234,7 @@ async function missionContextForWakeup(
     plan.mission.missionId !== source.mission.missionId ||
     plan.mission.taskId !== source.mission.taskId ||
     plan.mission.objective !== source.mission.objective ||
-    (record(savedBotMode) && JSON.stringify(savedBotMode) !== JSON.stringify(original.botMode))
+    (record(savedBotMode) && canonicalMissionJson(savedBotMode) !== canonicalMissionJson(original.botMode))
   ) {
     throw executionError('Stored mission does not match the originating parent.', {
       code: 'MISSION_WAKEUP_ORIGIN_MISMATCH',
