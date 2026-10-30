@@ -157,12 +157,14 @@ async function inspectNativeMissionDetachedChildColdInventory({
     if (task.terminal === 'completed') {
       completed++;
     } else {
-      pending.push(Object.freeze({
-        threadId: task.threadId,
-        taskId: task.taskId,
-        attemptKey: task.attemptKey,
-        parentRunId: parentResponseMessageId,
-      }));
+      pending.push(
+        Object.freeze({
+          threadId: task.threadId,
+          taskId: task.taskId,
+          attemptKey: task.attemptKey,
+          parentRunId: parentResponseMessageId,
+        }),
+      );
     }
   }
 
