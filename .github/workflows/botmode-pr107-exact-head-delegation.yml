@@ -5,6 +5,7 @@ on:
       - '.github/workflows/botmode-pr107-exact-head-delegation.yml'
       - 'scripts/botmode/ci-openai-subagent-fixture.py'
       - 'scripts/botmode/ci-pr107-two-specialists-oracle-gate.py'
+      - 'scripts/botmode/ci-pr107-two-specialists-midflight-sigkill.py'
 
 permissions:
   contents: read
@@ -568,6 +569,15 @@ jobs:
       - name: Verify two distinct real detached specialist runs, durable Oracle and one P6 publication
         shell: bash
         run: python3 scripts/botmode/ci-pr107-two-specialists-oracle-gate.py
+      - name: Cold SIGKILL during second real specialist execution (isolated API)
+        shell: bash
+        env:
+          BOTMODE_IMAGE: ${{ env.BOTMODE_HEAD_IMAGE }}
+          BOTMODE_HOST_PORT: '3090'
+          BOTMODE_MONGO_PASSWORD: ci-isolated-only
+          POSTGRES_PASSWORD: ci-isolated-only
+          OPENROUTER_KEY: ci-local-fixture-no-real-key
+        run: python3 scripts/botmode/ci-pr107-two-specialists-midflight-sigkill.py
       - name: Classify child execution exception from API logs
         if: failure()
         env:

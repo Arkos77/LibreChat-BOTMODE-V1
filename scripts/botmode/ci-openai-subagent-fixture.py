@@ -20,6 +20,9 @@ calls = {"parent_tool_requests": 0, "child_responses": 0, "parent_final": 0,
          "missing_tool": 0, "completion_calls": 0}
 child_id = os.environ.get("CI_AUTHORIZED_CHILD_ID", "").strip()
 child_ids = []  # Opt-in two-child synthetic test only; ordinary fixture unchanged.
+hold_second_child = False
+held_baseline = 0
+second_child_release = threading.Event()
 MODEL = "openrouter/free"
 SOURCE_MODE = os.environ.get("CI_MISSION_SOURCE_MODE") == "1"
 REAL_MODE = os.environ.get('CI_REAL_FREE_PROVIDER') == '1'
@@ -353,7 +356,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send({"object":"list","data":[{"id":MODEL,"object":"model","created":1700000000,"owned_by":"ci"}]})
         return self.send({"error":"not_found"},404)
     def do_POST(self):
-        global child_id, child_ids
+        global child_id, child_ids, hold_second_child, held_baseline
+        if self.path == "/release-second-child":
+            second_child_release.set()
+            return self.send({"ok": True})
         if self.path.rstrip('/').endswith('/scrape'):
             length=int(self.headers.get('Content-Length','0'))
             if length < 2 or length > 1048576: return self.send({'error':'size'},400)
@@ -375,12 +381,18 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send({"error": "two_distinct_child_ids_required"}, 400)
                 with lock:
                     child_ids = list(proposed_ids)
+                    hold_second_child = obj.get("holdSecondChild") is True
+                    held_baseline = calls.get("child_responses", 0)
+                    calls["held_second_child_requests"] = 0
+                    second_child_release.clear()
                 return self.send({"ok": True, "multi": True})
             proposed=obj.get("childId")
             if not isinstance(proposed,str) or not proposed.strip(): return self.send({"error":"child"},400)
             with lock:
                 child_id=proposed.strip()
                 child_ids=[]
+                hold_second_child=False
+                second_child_release.set()
             return self.send({"ok":True})
         if not self.path.rstrip("/").endswith("/chat/completions"):
             return self.send({"error":"not_found"},404)
@@ -550,6 +562,13 @@ class Handler(BaseHTTPRequestHandler):
             reason="tool_calls"
         elif not advertised and child_id and not already_requested and not has_tool_result:
             # The authorized child has no nested subagent tool; its first model turn returns the receipt.
+            with lock:
+                block = (hold_second_child and len(child_ids) == 2 and
+                         calls["child_responses"] - held_baseline == 1)
+                if block:
+                    calls["held_second_child_requests"] += 1
+            if block and not second_child_release.wait(timeout=120):
+                return self.send({"error":"CI_SECOND_CHILD_BOUNDED_HOLD_EXPIRED"},503)
             with lock: calls["child_responses"]+=1
             message={"role":"assistant","content":"CI_DELEGATED_CHILD_RECEIPT"}
             reason="stop"
