@@ -43,6 +43,9 @@ async function assertNativeMissionDetachedChildrenTerminal({
     Number.isSafeInteger(pendingRetryCount) && pendingRetryCount >= 0 && pendingRetryCount <= 30
       ? pendingRetryCount
       : 0;
+  // Once a child start has been seen, losing its Mongo receipt on a later
+  // read is incomplete proof, not a signal that the child disappeared safely.
+  const observedStarts = new Set();
   for (let retry = 0; retry <= retries; retry++) {
     const rows = await getMessages(
       {
@@ -94,6 +97,12 @@ async function assertNativeMissionDetachedChildrenTerminal({
         }
         settled.add(key);
       }
+    }
+    if ([...observedStarts].some((key) => !started.has(key))) {
+      throw refusal('NATIVE_MISSION_DETACHED_CHILD_PROOF_INCOMPLETE');
+    }
+    for (const key of started) {
+      observedStarts.add(key);
     }
     // A completed receipt without a matching start is never sufficient proof.
     if ([...settled].some((key) => !started.has(key))) {
