@@ -234,7 +234,8 @@ async function missionContextForWakeup(
     plan.mission.missionId !== source.mission.missionId ||
     plan.mission.taskId !== source.mission.taskId ||
     plan.mission.objective !== source.mission.objective ||
-    (record(savedBotMode) && canonicalMissionJson(savedBotMode) !== canonicalMissionJson(original.botMode))
+    (record(savedBotMode) &&
+      canonicalMissionJson(savedBotMode) !== canonicalMissionJson(original.botMode))
   ) {
     throw executionError('Stored mission does not match the originating parent.', {
       code: 'MISSION_WAKEUP_ORIGIN_MISMATCH',
