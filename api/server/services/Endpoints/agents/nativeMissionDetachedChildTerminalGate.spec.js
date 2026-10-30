@@ -57,7 +57,9 @@ describe('native mission detached child Oracle/P6 terminal gate', () => {
 
   it('refuses an unrelated attempt instead of assuming completion', async () => {
     const rows = [make('research', 'running', 'first'), make('research', 'completed', 'second')];
-    await rejectsWith(rows, 'NATIVE_MISSION_DETACHED_CHILD_PENDING');
+    await expect(check(rows)).rejects.toMatchObject({
+      code: 'NATIVE_MISSION_DETACHED_CHILD_PENDING',
+    });
   });
 
   it('fails closed on missing, saturated or inconsistent Mongo receipts', async () => {
