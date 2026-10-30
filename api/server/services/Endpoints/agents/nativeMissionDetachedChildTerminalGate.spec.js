@@ -75,6 +75,25 @@ describe('native mission detached child Oracle/P6 terminal gate', () => {
     expect(sleep).toHaveBeenCalledTimes(2);
   });
 
+  it('never treats disappearing Mongo child receipts as permission to publish', async () => {
+    const getMessages = jest
+      .fn()
+      .mockResolvedValueOnce([make('research', 'running')])
+      .mockResolvedValueOnce([]);
+    const sleep = jest.fn().mockResolvedValue(undefined);
+    await expect(
+      gate({
+        getMessages,
+        userId: 'ci-user',
+        parentResponseMessageId: parent,
+        pendingRetryCount: 2,
+        sleep,
+      }),
+    ).rejects.toMatchObject({ code: 'NATIVE_MISSION_DETACHED_CHILD_PROOF_INCOMPLETE' });
+    expect(getMessages).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledTimes(1);
+  });
+
   it('never retries or approves a failed child even when pending retries are allowed', async () => {
     const getMessages = jest
       .fn()
