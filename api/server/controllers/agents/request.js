@@ -51,6 +51,7 @@ const {
 } = require('./orchestratorMissionBindings');
 const { prepareBotModeSettings } = require('./botModeSettings');
 const {
+  canonicalMissionJson,
   getNativeMissionWakeupOrigin,
   saveNativeMissionWakeupOrigin,
 } = require('~/server/services/Endpoints/agents/nativeMissionWakeupOriginStore');
@@ -1489,11 +1490,11 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       if (
         original == null ||
         original.planId !== wakeupSource.originalPlanId ||
-        JSON.stringify(original.orchestratorMission) !==
-          JSON.stringify(req.body.orchestratorMission) ||
+        canonicalMissionJson(original.orchestratorMission) !==
+          canonicalMissionJson(req.body.orchestratorMission) ||
         (original.botMode == null
           ? req.body?.botMode != null
-          : JSON.stringify(original.botMode) !== JSON.stringify(req.body?.botMode))
+          : canonicalMissionJson(original.botMode) !== canonicalMissionJson(req.body?.botMode))
       ) {
         throw new Error('MISSION_WAKEUP_ORIGIN_MISMATCH');
       }
@@ -1934,7 +1935,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       // originating plan exactly, including every task and Oracle requirement.
       if (
         originalWakeupPlan != null &&
-        JSON.stringify(orchestratorPlan) !== JSON.stringify(originalWakeupPlan)
+        canonicalMissionJson(orchestratorPlan) !== canonicalMissionJson(originalWakeupPlan)
       ) {
         throw new Error('MISSION_WAKEUP_PLAN_DRIFT');
       }
@@ -1952,8 +1953,8 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       });
       if (
         originalWakeupCapabilities != null &&
-        JSON.stringify(nativeMissionCapabilityAttestation) !==
-          JSON.stringify(originalWakeupCapabilities)
+        canonicalMissionJson(nativeMissionCapabilityAttestation) !==
+          canonicalMissionJson(originalWakeupCapabilities)
       ) {
         throw new Error('MISSION_WAKEUP_CAPABILITY_DRIFT');
       }

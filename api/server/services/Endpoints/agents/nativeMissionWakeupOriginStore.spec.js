@@ -51,6 +51,7 @@ jest.mock('mongoose', () => {
 
 const mongoose = require('mongoose');
 const {
+  canonicalMissionJson,
   saveNativeMissionWakeupOrigin,
   getNativeMissionWakeupOrigin,
   deleteNativeMissionWakeupOrigins,
@@ -72,6 +73,14 @@ const original = {
 beforeEach(() => mongoose.__rows.clear());
 
 describe('immutable BOT MODE mission wakeup origin', () => {
+  it('canonicalizes nested object order without hiding real plan changes', () => {
+    const source = { mission: { taskId: 'task-1', objective: 'Analyze' }, planId: 'plan-1' };
+    const reordered = { planId: 'plan-1', mission: { objective: 'Analyze', taskId: 'task-1' } };
+    const drift = { planId: 'plan-1', mission: { objective: 'Changed', taskId: 'task-1' } };
+    expect(canonicalMissionJson(source)).toBe(canonicalMissionJson(reordered));
+    expect(canonicalMissionJson(source)).not.toBe(canonicalMissionJson(drift));
+  });
+
   it('serves identical mission for successive sibling notifications after slot replacement', async () => {
     await saveNativeMissionWakeupOrigin(original);
     const scope = { ...original };

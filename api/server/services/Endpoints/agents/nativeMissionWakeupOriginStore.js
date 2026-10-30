@@ -178,6 +178,7 @@ async function deleteNativeMissionWakeupOrigins({ userId, tenantId, conversation
 }
 
 module.exports = {
+  canonicalMissionJson,
   saveNativeMissionWakeupOrigin,
   getNativeMissionWakeupOrigin,
   deleteNativeMissionWakeupOrigins,
