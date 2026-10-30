@@ -13,23 +13,27 @@ if (
   throw new Error('CI_BROKER_SMOKE_ISOLATION_REQUIRED');
 }
 
+const mode = process.argv[2];
+const inflight = mode === 'begin-inflight' || mode === 'verify-inflight';
 const identity = {
   userId: process.env.BOTMODE_CI_BROKER_USER_ID,
   tenantId: process.env.BOTMODE_CI_BROKER_TENANT_ID,
   parentConversationId: 'ci-broker-parent',
   parentRunId: 'ci-broker-original-run',
   childThreadId: 'ci-broker-child',
-  taskId: 'ci-broker-task',
-  attemptKey: 'ci-broker-original-attempt',
+  taskId: inflight ? 'ci-broker-held-task' : 'ci-broker-task',
+  attemptKey: inflight ? 'ci-broker-held-attempt' : 'ci-broker-original-attempt',
   agentId: process.env.BOTMODE_CI_BROKER_AGENT_ID,
   provider: 'ci-local-fixture',
   model: 'ci-free',
-  operationKey: createHash('sha256').update('ci-pr107-broker-original-operation').digest('hex'),
+  operationKey: createHash('sha256')
+    .update(inflight ? 'ci-pr107-broker-inflight-operation' : 'ci-pr107-broker-original-operation')
+    .digest('hex'),
 };
 const authorizedRequest = {
   model: 'ci-free',
   stream: false,
-  messages: [{ role: 'user', content: 'ci-broker-mongo-smoke' }],
+  messages: [{ role: 'user', content: inflight ? 'CI_BROKER_INFLIGHT' : 'ci-broker-mongo-smoke' }],
 };
 const scope = { identity, requestDigest: requestDigest(authorizedRequest) };
 const secret = process.env.BOTMODE_CI_BROKER_SECRET;
@@ -43,7 +47,10 @@ async function signed(path, payload) {
   const signature = createHmac('sha256', secret)
     .update(timestamp + '.' + body)
     .digest('hex');
-  const response = await fetch('http://127.0.0.1:8095' + path, {
+  const base = process.env.CI_BROKER_CLIENT_FROM_API === '1'
+    ? 'http://ci-provider-broker:8095'
+    : 'http://127.0.0.1:8095';
+  const response = await fetch(base + path, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -51,7 +58,7 @@ async function signed(path, payload) {
       'x-botmode-broker-hmac': signature,
     },
     body,
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(inflight ? 90_000 : 10_000),
   });
   if (!response.ok) throw new Error('CI_BROKER_SMOKE_HTTP_' + response.status);
   return response.json();
@@ -62,11 +69,17 @@ async function verify() {
   if (data.status !== 'result_committed' || !data.response) {
     throw new Error('CI_BROKER_RESULT_NOT_DURABLE');
   }
-  console.log('CI_PR107_BROKER_MONGO_RESULT=PASS');
+  if (inflight && data.response.choices?.[0]?.message?.content !== 'CI_BROKER_HELD_RECEIPT') {
+    throw new Error('CI_BROKER_HELD_REPLY_INTEGRITY');
+  }
+  console.log(inflight ? 'CI_PR107_BROKER_INFLIGHT_RESULT=PASS' : 'CI_PR107_BROKER_MONGO_RESULT=PASS');
 }
 async function main() {
-  const mode = process.argv[2];
-  if (mode === 'verify') return verify();
+  if (mode === 'verify' || mode === 'verify-inflight') return verify();
+  if (mode === 'begin-inflight') {
+    await signed('/execute', { ...scope, authorizedRequest });
+    return;
+  }
   if (mode !== 'execute') throw new Error('CI_BROKER_MODE_INVALID');
   const [first, second] = await Promise.all([
     signed('/execute', { ...scope, authorizedRequest }),

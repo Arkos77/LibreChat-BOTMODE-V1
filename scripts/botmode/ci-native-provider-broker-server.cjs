@@ -96,7 +96,9 @@ const allowed = ({ identity, requestDigest }) =>
   process.once('SIGTERM', shutdown);
   process.once('SIGINT', shutdown);
   // Never expose a listening port outside the ephemeral runner's loopback.
-  server.listen(8095, '127.0.0.1', () => {
+  // Private Compose network only; no ports: published to the runner host.
+  // This opt-in CI instance must accept a client in the disposable API container.
+  server.listen(8095, '0.0.0.0', () => {
     process.stdout.write('CI_NATIVE_BROKER_READY=PASS\n');
   });
 })().catch(() => {

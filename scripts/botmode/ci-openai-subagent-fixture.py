@@ -23,6 +23,8 @@ child_ids = []  # Opt-in two-child synthetic test only; ordinary fixture unchang
 hold_second_child = False
 held_baseline = 0
 second_child_release = threading.Event()
+broker_request_release = threading.Event()
+broker_request_release.set()
 MODEL = "openrouter/free"
 SOURCE_MODE = os.environ.get("CI_MISSION_SOURCE_MODE") == "1"
 REAL_MODE = os.environ.get('CI_REAL_FREE_PROVIDER') == '1'
@@ -360,6 +362,15 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/release-second-child":
             second_child_release.set()
             return self.send({"ok": True})
+        if self.path == "/hold-ci-broker":
+            broker_request_release.clear()
+            with lock:
+                calls["broker_held_requests"] = 0
+                calls["broker_finished_requests"] = 0
+            return self.send({"ok": True})
+        if self.path == "/release-ci-broker":
+            broker_request_release.set()
+            return self.send({"ok": True})
         if self.path.rstrip('/').endswith('/scrape'):
             length=int(self.headers.get('Content-Length','0'))
             if length < 2 or length > 1048576: return self.send({'error':'size'},400)
@@ -402,6 +413,29 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError: return self.send({"error":"json"},400)
         if not isinstance(req.get("messages"),list): return self.send({"error":"messages"},400)
         messages=req["messages"]
+        # CI-only broker durability probe: exactly one synthetic provider reply
+        # is held while the separate API container is killed. No live secrets.
+        if (len(messages) == 1 and isinstance(messages[0], dict) and
+            messages[0].get("content") == "CI_BROKER_INFLIGHT" and
+            req.get("model") == "ci-free" and req.get("stream") is False):
+            with lock:
+                calls["completion_calls"] += 1
+                calls["broker_held_requests"] = calls.get("broker_held_requests", 0) + 1
+                number = calls["completion_calls"]
+            if not broker_request_release.wait(timeout=90):
+                return self.send({"error": "CI_BROKER_BOUNDED_HOLD_EXPIRED"}, 503)
+            with lock:
+                calls["broker_finished_requests"] = calls.get("broker_finished_requests", 0) + 1
+            return self.send({
+                "id": "chatcmpl-broker-ci-" + str(number),
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": "ci-free",
+                "choices": [{"index": 0, "message": {
+                    "role": "assistant", "content": "CI_BROKER_HELD_RECEIPT"
+                }, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 4, "completion_tokens": 4, "total_tokens": 8}
+            })
         # Tool message only appears after the runtime executed the native subagent.
         has_tool_result=any(m.get("role")=="tool" for m in messages if isinstance(m,dict))
         prior_subagent_calls=[

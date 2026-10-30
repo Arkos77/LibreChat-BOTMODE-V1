@@ -618,6 +618,31 @@ jobs:
             echo "CI_PR107_BROKER_PROVIDER_DUPLICATE_OR_MISSING=FAIL"; exit 1;
           }
           echo "CI_PR107_BROKER_REAL_MONGO_SINGLE_DISPATCH=PASS"
+          # Prove the original broker-owned HTTP call remains pending while the
+          # real disposable API container is killed. Separate fixture control.
+          curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' \
+            http://127.0.0.1:8088/hold-ci-broker >/dev/null
+          api_id="$(docker compose -f docker-compose.botmode.yml \
+            -f docker-compose.botmode-lite.yml ps -q api)"
+          test -n "$api_id"
+          docker exec -d \
+            -e BOTMODE_CI_BROKER=1 \
+            -e COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" \
+            -e BOTMODE_CI_BROKER_SECRET="$BOTMODE_CI_BROKER_SECRET" \
+            -e BOTMODE_CI_BROKER_USER_ID=ci-broker-user \
+            -e BOTMODE_CI_BROKER_TENANT_ID=ci-broker-tenant \
+            -e BOTMODE_CI_BROKER_AGENT_ID=ci-broker-agent \
+            -e CI_BROKER_CLIENT_FROM_API=1 \
+            "$api_id" node /app/scripts/botmode/ci-native-provider-broker-smoke.cjs begin-inflight
+          in_flight=0
+          for i in $(seq 1 45); do
+            held=$(curl -fsS http://127.0.0.1:8088/metrics | \
+              python3 -c 'import json,sys;print(json.load(sys.stdin).get("broker_held_requests",0))')
+            if [ "$held" -eq 1 ]; then in_flight=1; break; fi
+            sleep 1
+          done
+          test "$in_flight" -eq 1 || { echo "CI_PR107_BROKER_INFLIGHT_NOT_OBSERVED=FAIL"; exit 1; }
+          echo "CI_PR107_BROKER_INFLIGHT_BEFORE_API_SIGKILL=PASS"
       - name: Cold SIGKILL during second real specialist execution (isolated API)
         shell: bash
         env:
@@ -641,6 +666,13 @@ jobs:
             --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}")
           test -n "$broker_id" || { echo "CI_PR107_BROKER_LOST_DURING_API_KILL=FAIL"; exit 1; }
           docker exec "$broker_id" node /app/scripts/botmode/ci-native-provider-broker-smoke.cjs verify
+          # The fixture was released only after the API was SIGKILLed; check
+          # the original call's committed reply without another /execute.
+          finished=$(curl -fsS http://127.0.0.1:8088/metrics | \
+            python3 -c 'import json,sys;print(json.load(sys.stdin).get("broker_finished_requests",0))')
+          test "$finished" -eq 1 || { echo "CI_PR107_BROKER_INFLIGHT_NOT_FINISHED=FAIL"; exit 1; }
+          docker exec "$broker_id" node /app/scripts/botmode/ci-native-provider-broker-smoke.cjs verify-inflight
+          echo "CI_PR107_BROKER_INFLIGHT_API_SIGKILL_DURABLE=PASS"
           echo "CI_PR107_BROKER_INDEPENDENT_API_SIGKILL_SURVIVAL=PASS"
       - name: Classify child execution exception from API logs
         if: failure()

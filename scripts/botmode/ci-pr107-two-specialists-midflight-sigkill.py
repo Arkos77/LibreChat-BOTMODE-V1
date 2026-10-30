@@ -180,6 +180,9 @@ dead=subprocess.run(COMPOSE+["kill","-s","SIGKILL","api"],
                     capture_output=True,text=True,timeout=20)
 if dead.returncode: fail("SIGKILL_DISPOSABLE_API")
 print("CI_PR107_COLD_MULTI_API_SIGKILL=PASS",flush=True)
+# Complete the independent broker's ORIGINAL in-flight mock call only after
+# the API is dead. No new provider call is submitted or reconstructed.
+post_fixture("/release-ci-broker", {})
 post_fixture("/release-second-child",{})
 up=subprocess.run(COMPOSE+["up","-d","--no-deps","api"],
                   capture_output=True,text=True,timeout=120)
