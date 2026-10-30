@@ -187,7 +187,9 @@ const mongoose=require('mongoose');
   });
   console.log(JSON.stringify({children:items,published:published.length,
     finalCreated:published.length===1 ?
-      new Date(published[0].createdAt||published[0].updatedAt||0).getTime():0}));
+      new Date(published[0].createdAt||0).getTime():0,
+    finalUpdated:published.length===1 ?
+      new Date(published[0].updatedAt||0).getTime():0}));
   await mongoose.disconnect();
 })().catch(e=>{console.error(e.name);process.exitCode=1});
 """
@@ -227,8 +229,12 @@ print("CI_PR107_MULTI_TWO_DISTINCT_DURABLE_CHILDREN=PASS",flush=True)
 if findings["published"]!=1:
     print("CI_PR107_MULTI_PUBLISHED_COUNT="+str(findings["published"]),flush=True)
     fail("P6_DURABLE_PUBLICATION_NOT_SINGLE")
-if not findings["finalCreated"] or findings["finalCreated"] < max(
-        c["latestTerminal"] for c in findings["children"]):
+last_terminal=max(c["latestTerminal"] for c in findings["children"])
+print("CI_PR107_MULTI_PARENT_CREATED_BEFORE_CHILDREN="+str(
+    findings["finalCreated"] < last_terminal),flush=True)
+print("CI_PR107_MULTI_FINAL_WRITE_AFTER_LAST_CHILD="+str(
+    findings["finalUpdated"] >= last_terminal),flush=True)
+if not findings["finalUpdated"] or findings["finalUpdated"] < last_terminal:
     fail("P6_PREMATURE_BEFORE_BOTH_CHILDREN")
 print("CI_PR107_MULTI_P6_AFTER_BOTH_CHILDREN=PASS",flush=True)
 
