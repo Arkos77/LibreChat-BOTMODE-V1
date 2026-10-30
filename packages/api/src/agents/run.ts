@@ -118,6 +118,10 @@ import { applyTestRunHook } from '~/agents/testHook';
 import { attachRunOracle } from '~/agents/oracle';
 import { isUserProvided } from '~/utils/common';
 import { createSafeUser } from '~/utils/env';
+import {
+  attachNativeDetachedBrokerModelFetch,
+  type NativeDetachedModelFetchFactory,
+} from './nativeBrokerModelFetchBinding';
 
 /** Expected shape of JSON tool search results */
 interface ToolSearchJsonResult {
@@ -1467,6 +1471,7 @@ export async function createRun({
   initialSummary,
   modelCallbacks,
   modelCallbackFactory,
+  nativeDetachedModelFetchFactory,
   calibrationRatio,
   fadingTier,
   fadingTiers,
@@ -1528,6 +1533,10 @@ export async function createRun({
   modelCallbacks?: readonly ModelBoundChatModelCallback[];
   /** Binding-specific callbacks keyed by exact host-known model identity. */
   modelCallbackFactory?: ModelBindingCallbackFactory;
+  /** Optional host-fenced fetch transport for ORIGINAL detached child requests.
+   * Never supplied by default; requires a separately authorized operation
+   * resolver before any provider dispatch and is ignored by root models. */
+  nativeDetachedModelFetchFactory?: NativeDetachedModelFetchFactory;
   /** Calibration ratio from previous run's contextMeta, seeds the pruner EMA */
   calibrationRatio?: number;
   /**
@@ -1779,6 +1788,15 @@ export async function createRun({
       tenantId,
       body: requestBody,
     });
+
+    if (isSubagent && nativeDetachedModelFetchFactory != null) {
+      attachNativeDetachedBrokerModelFetch({
+        clientOptions: llmConfig,
+        binding: { agentId: agent.id, provider: String(provider), model: selfModel ?? '' },
+        modelFetchFactory: nativeDetachedModelFetchFactory,
+        originalMissionHasDelegation: orchestratorPlan != null && subagentTasks != null,
+      });
+    }
 
     /** Resolves issues with new OpenAI usage field */
     if (

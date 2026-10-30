@@ -27,11 +27,9 @@ function validScope(scope) {
   return (
     scope != null &&
     IDS.every(
-      (key) =>
-        typeof scope[key] === 'string' && scope[key].length > 0 && scope[key].length <= 256,
+      (key) => typeof scope[key] === 'string' && scope[key].length > 0 && scope[key].length <= 256,
     ) &&
-    (scope.tenantId == null ||
-      (typeof scope.tenantId === 'string' && scope.tenantId.length <= 256))
+    (scope.tenantId == null || (typeof scope.tenantId === 'string' && scope.tenantId.length <= 256))
   );
 }
 

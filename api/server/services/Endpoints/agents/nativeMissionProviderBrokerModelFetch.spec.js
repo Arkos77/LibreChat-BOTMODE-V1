@@ -1,9 +1,7 @@
 'use strict';
 
 const { createHash } = require('node:crypto');
-const {
-  createNativeMissionBrokerModelFetch,
-} = require('./nativeMissionProviderBrokerModelFetch');
+const { createNativeMissionBrokerModelFetch } = require('./nativeMissionProviderBrokerModelFetch');
 
 const secret = 'ci-limited-transport-secret-with-32-plus-chars';
 const endpoint = 'http://127.0.0.1:8088/v1/chat/completions';
@@ -92,18 +90,14 @@ describe('native model transport via durable provider broker (not installed auto
 
   it('waits for a committed receipt using status reads only (never resends execute)', async () => {
     const { fetchModel, fetchImpl, calls } = setup();
-    fetchImpl
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ status: 'dispatched', resultAvailable: false }), {
-          status: 200,
-        }),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ status: 'result_committed', resultAvailable: true, response: final }),
-          { status: 200 },
-        ),
-      );
+    const replies = [
+      { status: 'dispatched', resultAvailable: false },
+      { status: 'result_committed', resultAvailable: true, response: final },
+    ];
+    fetchImpl.mockImplementation(async (url, options) => {
+      calls.push({ url: String(url), options });
+      return new Response(JSON.stringify(replies.shift()), { status: 200 });
+    });
     await expect(fetchModel(endpoint, { method: 'POST', body })).resolves.toBeInstanceOf(Response);
     expect(calls.map((x) => x.url)).toEqual([
       'http://127.0.0.1:8095/execute',
@@ -174,7 +168,9 @@ describe('native model transport via durable provider broker (not installed auto
       { status: 'result_committed', resultAvailable: true, response: { wrong: true } },
     ]) {
       const { fetchModel, fetchImpl } = setup();
-      fetchImpl.mockResolvedValue(new Response(JSON.stringify(result), { status: 200 }));
+      fetchImpl.mockImplementation(
+        async () => new Response(JSON.stringify(result), { status: 200 }),
+      );
       await expect(fetchModel(endpoint, { method: 'POST', body })).rejects.toThrow(
         'NATIVE_BROKER_FETCH_RESULT_NOT_PROVEN',
       );
@@ -186,25 +182,20 @@ describe('native model transport via durable provider broker (not installed auto
     expect(() => setup({ brokerUrl: 'https://external.example/' })).toThrow(
       'NATIVE_BROKER_FETCH_ENDPOINT_DENIED',
     );
-    expect(() => setup({ secret: 'bad' })).toThrow(
-      'NATIVE_BROKER_FETCH_DEPENDENCIES_INVALID',
-    );
+    expect(() => setup({ secret: 'bad' })).toThrow('NATIVE_BROKER_FETCH_DEPENDENCIES_INVALID');
   });
 
   it('does not invent a new operation or retransmit after bounded pending status', async () => {
     const { fetchModel, calls, fetchImpl } = setup({ maxPolls: 2 });
-    fetchImpl.mockResolvedValue(
-      new Response(JSON.stringify({ status: 'dispatched', resultAvailable: false }), {
+    fetchImpl.mockImplementation(async (url, options) => {
+      calls.push({ url: String(url), options });
+      return new Response(JSON.stringify({ status: 'dispatched', resultAvailable: false }), {
         status: 200,
-      }),
-    );
+      });
+    });
     await expect(fetchModel(endpoint, { method: 'POST', body })).rejects.toThrow(
       'NATIVE_BROKER_FETCH_RESULT_NOT_PROVEN',
     );
-    expect(calls.map((c) => new URL(c.url).pathname)).toEqual([
-      '/execute',
-      '/status',
-      '/status',
-    ]);
+    expect(calls.map((c) => new URL(c.url).pathname)).toEqual(['/execute', '/status', '/status']);
   });
 });
