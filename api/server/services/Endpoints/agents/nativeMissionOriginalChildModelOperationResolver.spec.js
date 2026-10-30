@@ -145,7 +145,10 @@ describe('original native child model operation grant: immutable and fail closed
 
   it('rejects a child whose saved conversation no longer belongs to the parent', async () => {
     const { deps, resolve } = setup();
-    const previous = deps.getConvo;
+    // Capture the original implementation, not the mutable Jest mock.
+    // Referencing deps.getConvo after mockImplementation calls the new
+    // implementation recursively and overflows the stack.
+    const previous = deps.getConvo.getMockImplementation();
     deps.getConvo.mockImplementation(async (user, id) =>
       id === 'child'
         ? { ...(await previous(user, id)), subagentThread: { parentConversationId: 'foreign' } }
@@ -170,23 +173,19 @@ describe('original native child model operation grant: immutable and fail closed
   });
 
   it('rejects revoked owner, agent ACL or exclusive execution lease', async () => {
-    for (const disabled of [
-      'authorizeCurrentOwner',
-      'canViewAgent',
-      'inspectOriginalChildOwner',
-    ]) {
+    for (const disabled of ['authorizeCurrentOwner', 'canViewAgent', 'inspectOriginalChildOwner']) {
       const { deps, resolve } = setup();
       deps[disabled].mockResolvedValue(false);
-      await expect(resolve(args)).rejects.toThrow('NATIVE_MODEL_OPERATION_CURRENT_AUTHORITY_DENIED');
+      await expect(resolve(args)).rejects.toThrow(
+        'NATIVE_MODEL_OPERATION_CURRENT_AUTHORITY_DENIED',
+      );
       expect(deps.findOriginalOperations).not.toHaveBeenCalled();
     }
   });
 
   it('rejects revocation occurring after Mongo and checkpoint reads', async () => {
     const { deps, resolve } = setup();
-    deps.inspectOriginalChildOwner
-      .mockResolvedValueOnce(true)
-      .mockResolvedValueOnce(false);
+    deps.inspectOriginalChildOwner.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     await expect(resolve(args)).rejects.toThrow('NATIVE_MODEL_OPERATION_AUTHORITY_CHANGED');
   });
 
@@ -195,7 +194,11 @@ describe('original native child model operation grant: immutable and fail closed
       getStartReceipt: async () => ({
         messageId: 'task:user',
         conversationId: 'child',
-        subagentTask: { status: 'completed', parentRunId: 'parent-response', attemptKey: 'attempt' },
+        subagentTask: {
+          status: 'completed',
+          parentRunId: 'parent-response',
+          attemptKey: 'attempt',
+        },
       }),
     });
     await expect(resolve(args)).rejects.toThrow('NATIVE_MODEL_OPERATION_TASK_ATTEMPT_DENIED');

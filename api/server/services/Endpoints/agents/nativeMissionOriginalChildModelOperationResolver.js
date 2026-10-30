@@ -1,7 +1,13 @@
 'use strict';
 
 const HASH = /^[a-f0-9]{64}$/;
-const STATUS = new Set(['prepared', 'claimed', 'dispatched', 'outcome_unknown', 'result_committed']);
+const STATUS = new Set([
+  'prepared',
+  'claimed',
+  'dispatched',
+  'outcome_unknown',
+  'result_committed',
+]);
 const ids = [
   'userId',
   'parentConversationId',
