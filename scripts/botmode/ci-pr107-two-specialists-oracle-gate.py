@@ -141,11 +141,13 @@ for _ in range(25):
     if actual.get("child_responses",0)-baseline.get("child_responses",0)>=2:
         break
     time.sleep(2)
+model_delta_failures=[]
 for key,expected in (("parent_tool_requests",2),("child_responses",2),
                      ("parent_final",1),("missing_tool",0)):
     delta=actual.get(key,0)-baseline.get(key,0)
     print("CI_PR107_MULTI_"+key.upper()+"_DELTA="+str(delta),flush=True)
-    if delta!=expected: fail("MODEL_DELTA_"+key.upper())
+    if delta!=expected:
+        model_delta_failures.append(key.upper())
 
 snapshot_script=r"""
 const mongoose=require('mongoose');
@@ -165,6 +167,9 @@ const mongoose=require('mongoose');
     const taskParents=new Set(rows.map(m=>m.subagentTask?.parentRunId).filter(Boolean));
     items.push({
       type:link.subagentType,
+      running:statuses.includes('running'),
+      error:statuses.includes('error'),
+      cancelled:statuses.includes('cancelled'),
       linked:link.parentConversationId===parent &&
         link.rootConversationId===parent &&
         Boolean(link.parentToolCallId) && Boolean(link.parentMessageId) &&
@@ -189,6 +194,23 @@ const mongoose=require('mongoose');
 
 def snapshot():
     return json.loads(ci_node(snapshot_script,[("CI_PARENT_CONVO",conversation_id)]))
+
+# A failed count must not discard the database evidence needed to distinguish:
+# absent task, running child, terminal failure, or premature P6 publication.
+preflight=snapshot()
+children_found=preflight["children"]
+print("CI_PR107_MULTI_DURABLE_CHILD_COUNT="+str(len(children_found)),flush=True)
+for label, field in (("LINKED","linked"),("COMPLETED","completed"),
+                     ("RUNNING","running"),("ERROR","error"),("CANCELLED","cancelled")):
+    print("CI_PR107_MULTI_DURABLE_"+label+"_COUNT="+str(
+        sum(bool(child.get(field)) for child in children_found)),flush=True)
+print("CI_PR107_MULTI_DURABLE_UNIQUE_TYPES="+str(
+    len({child.get("type") for child in children_found})),flush=True)
+print("CI_PR107_MULTI_DURABLE_PUBLISHED_COUNT="+str(preflight["published"]),flush=True)
+if model_delta_failures:
+    if preflight["published"] and not all(c.get("completed") for c in children_found):
+        print("CI_PR107_MULTI_P6_PREMATURE_SUSPICION=TRUE",flush=True)
+    fail("MODEL_DELTA_"+",".join(model_delta_failures))
 
 findings=None
 for attempt in range(25):
