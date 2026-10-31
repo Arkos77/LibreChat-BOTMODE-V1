@@ -205,6 +205,34 @@ function createNativeMissionProviderCallReceiptStore({
     });
   };
 
+  /** Read ONLY the exact original graph-step receipt, never reserve/replay.
+   * A recovered API no longer knows the opaque operation key. It must obtain
+   * the same signed task + checkpoint identity from the authenticated host,
+   * then the broker resolves the key exclusively from durable MongoDB.
+   */
+  const readOriginalNativeGraph = async ({ identity, requestDigest }) => {
+    if (!identity || identity.mode !== 'native_graph' ||
+        Object.prototype.hasOwnProperty.call(identity, 'operationKey')) {
+      refuse('NATIVE_GRAPH_ORIGINAL_READ_IDENTITY_INVALID');
+    }
+    // The placeholder is for computing a canonical unique slot only. It is
+    // never used to address, create or execute a provider operation.
+    const expected = match({ ...identity, operationKey: '0'.repeat(64) }, requestDigest);
+    const saved = await collection.findOne({ nativeGraphSlotKey: expected.nativeGraphSlotKey });
+    if (!saved || typeof saved !== 'object' ||
+        !HEX_DIGEST.test(saved.identity?.operationKey) ||
+        saved.nativeGraphSlotKey !== expected.nativeGraphSlotKey ||
+        saved.requestDigest !== requestDigest ||
+        saved.identity.agentId !== identity.agentId ||
+        saved.identity.provider !== identity.provider ||
+        saved.identity.model !== identity.model) {
+      refuse('NATIVE_GRAPH_ORIGINAL_READ_PROOF_MISSING');
+    }
+    const resolved = match(saved.identity, requestDigest);
+    assertSame(saved, resolved);
+    return read({ identity: resolved.identity, requestDigest });
+  };
+
   const prepare = async ({ identity, requestDigest }) => {
     const original = match(identity, requestDigest);
     await ensureIndex();
@@ -337,7 +365,9 @@ function createNativeMissionProviderCallReceiptStore({
     return { ...publicStatus(doc), response };
   };
 
-  return Object.freeze({ reserveNativeGraph, prepare, claim, dispatch, markUnknown, commit, read });
+  return Object.freeze({
+    reserveNativeGraph, readOriginalNativeGraph, prepare, claim, dispatch, markUnknown, commit, read,
+  });
 }
 
 module.exports = { createNativeMissionProviderCallReceiptStore };
