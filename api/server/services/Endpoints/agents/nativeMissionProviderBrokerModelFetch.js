@@ -56,6 +56,7 @@ function createNativeMissionBrokerModelFetch({
   getScope,
   resolveOriginalOperation,
   prepareOriginalOperation,
+  getOriginalCheckpointReference,
   originalProvider,
   originalModel,
   originalModelEndpoint,
@@ -70,6 +71,7 @@ function createNativeMissionBrokerModelFetch({
     typeof getScope !== 'function' ||
     typeof resolveOriginalOperation !== 'function' ||
     (prepareOriginalOperation != null && typeof prepareOriginalOperation !== 'function') ||
+    (prepareOriginalOperation != null && typeof getOriginalCheckpointReference !== 'function') ||
     typeof originalProvider !== 'string' ||
     originalProvider.length === 0 ||
     typeof originalModel !== 'string' ||
@@ -172,6 +174,27 @@ function createNativeMissionBrokerModelFetch({
         )
       : body;
     const digest = requestDigest(authorizedRequest);
+    // For the initial dispatch only, read the actual executing LangGraph
+    // checkpoint. The host must verify its persistent row and original task
+    // lineage before preparing the immutable Mongo model operation.
+    const checkpoint =
+      scope.recoveryOnly === true || prepareOriginalOperation == null
+        ? null
+        : getOriginalCheckpointReference();
+    if (
+      prepareOriginalOperation != null &&
+      scope.recoveryOnly !== true &&
+      (checkpoint == null ||
+        typeof checkpoint.threadId !== 'string' ||
+        !checkpoint.threadId.startsWith('subagent:') ||
+        typeof checkpoint.checkpointId !== 'string' ||
+        !checkpoint.checkpointId ||
+        typeof checkpoint.checkpointNs !== 'string' ||
+        typeof checkpoint.generationNamespace !== 'string' ||
+        !checkpoint.generationNamespace)
+    ) {
+      denied('NATIVE_BROKER_ORIGINAL_GRAPH_CHECKPOINT_MISSING');
+    }
     // The authentic SDK child triggers this BEFORE any provider-side effect.
     // The host must prove the original graph checkpoint and write an immutable
     // Mongo operation receipt. No model request content is passed to this gate.
@@ -180,6 +203,7 @@ function createNativeMissionBrokerModelFetch({
       scope.recoveryOnly !== true && prepareOriginalOperation != null
         ? await prepareOriginalOperation({
             scope: Object.freeze({ ...scope }),
+            checkpoint: Object.freeze({ ...checkpoint }),
             provider: originalProvider,
             model: originalModel,
             requestDigest: digest,
@@ -208,7 +232,8 @@ function createNativeMissionBrokerModelFetch({
           prepared.checkpointId.length === 0 ||
           prepared.operationKey !== permit.operationKey ||
           prepared.requestDigest !== digest ||
-          prepared.checkpointId !== permit.checkpointId))
+          prepared.checkpointId !== permit.checkpointId ||
+          prepared.checkpointId !== checkpoint.checkpointId))
     ) {
       denied('NATIVE_BROKER_FETCH_OPERATION_UNVERIFIED');
     }
@@ -314,6 +339,7 @@ function createNativeMissionDetachedBrokerModelFetchFactory({
   resolveModelBinding,
   resolveOriginalOperation,
   prepareOriginalOperation,
+  getOriginalCheckpointReference,
   brokerUrl,
   secret,
   fetchImpl,
@@ -325,7 +351,8 @@ function createNativeMissionDetachedBrokerModelFetchFactory({
     typeof getExecutionScope !== 'function' ||
     typeof resolveModelBinding !== 'function' ||
     typeof resolveOriginalOperation !== 'function' ||
-    typeof prepareOriginalOperation !== 'function'
+    typeof prepareOriginalOperation !== 'function' ||
+    typeof getOriginalCheckpointReference !== 'function'
   ) {
     denied('NATIVE_BROKER_HOST_BINDING_DEPENDENCIES');
   }
@@ -361,6 +388,7 @@ function createNativeMissionDetachedBrokerModelFetchFactory({
       },
       resolveOriginalOperation,
       prepareOriginalOperation,
+      getOriginalCheckpointReference,
       originalProvider: binding.provider,
       originalModel: binding.model,
       originalModelEndpoint: known.endpoint,

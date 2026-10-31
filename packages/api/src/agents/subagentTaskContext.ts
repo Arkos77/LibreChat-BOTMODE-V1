@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { getConfig } from '@langchain/langgraph';
 import type { UsageMetadata } from '~/stream/interfaces/IJobStore';
 
 /** Host-observed identity for a *running* native detached child. Never a
@@ -102,4 +103,55 @@ export function getDetachedSubagentProducerAgentId(): string | undefined {
  * Not an authorization or idempotency key for external provider calls. */
 export function getDetachedSubagentExecutionScope(): DetachedSubagentExecutionScope | undefined {
   return detachedUsageStorage.getStore()?.executionScope;
+}
+
+/**
+ * Read-only ORIGINAL model-step checkpoint coordinates as seen inside the
+ * actual LangGraph async execution. A child task's Mongo conversation ID is
+ * NOT a LangGraph child graph thread id. Never guess the step checkpoint from
+ * the task id, prompt digest or a newer parent checkpoint.
+ *
+ * This is provenance, NOT provider-dispatch authorization: the authenticated
+ * host must still prove this exact persisted checkpoint, original operation
+ * admission, owner lease and ACL before authorizing its journal insert.
+ */
+export function getDetachedSubagentModelCheckpointReference():
+  | Readonly<{
+      threadId: string;
+      checkpointId: string;
+      checkpointNs: string;
+      generationNamespace: string;
+    }>
+  | undefined {
+  if (getDetachedSubagentExecutionScope() == null) {
+    return undefined;
+  }
+  let config: ReturnType<typeof getConfig>;
+  try {
+    config = getConfig();
+  } catch {
+    return undefined;
+  }
+  const c = config?.configurable;
+  const threadId = c?.thread_id;
+  const checkpointId = c?.checkpoint_id;
+  const checkpointNs = c?.checkpoint_ns;
+  const generationNamespace = c?.__librechat_checkpoint_ns;
+  if (
+    c?.__librechat_mission_sync !== true ||
+    typeof threadId !== 'string' ||
+    !threadId.startsWith('subagent:') ||
+    threadId.length > 256 ||
+    typeof checkpointId !== 'string' ||
+    !checkpointId ||
+    checkpointId.length > 256 ||
+    typeof checkpointNs !== 'string' ||
+    checkpointNs.length > 256 ||
+    typeof generationNamespace !== 'string' ||
+    !generationNamespace ||
+    generationNamespace.length > 256
+  ) {
+    return undefined;
+  }
+  return Object.freeze({ threadId, checkpointId, checkpointNs, generationNamespace });
 }

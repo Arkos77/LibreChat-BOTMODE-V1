@@ -300,6 +300,12 @@ describe('native model transport via durable provider broker (not installed auto
 
 describe('original detached-child host binding via real execution context', () => {
   const checkpointId = 'durable-original-sdk-checkpoint';
+  const reference = Object.freeze({
+    threadId: 'subagent:saved-original-child-graph',
+    checkpointId,
+    checkpointNs: '',
+    generationNamespace: 'saved-generation',
+  });
   const binding = Object.freeze({
     agentId: scope.agentId,
     provider: 'ci-local-fixture',
@@ -335,6 +341,7 @@ describe('original detached-child host binding via real execution context', () =
       resolveModelBinding: () => ({ ...binding, endpoint }),
       resolveOriginalOperation,
       prepareOriginalOperation,
+      getOriginalCheckpointReference: () => reference,
       brokerUrl: 'http://127.0.0.1:8095/',
       secret,
       fetchImpl,
@@ -391,6 +398,18 @@ describe('original detached-child host binding via real execution context', () =
     expect(result.status).toBe(200);
     expect(calls.map((call) => new URL(call.url).pathname)).toEqual(['/status']);
     expect(prepareOriginalOperation).not.toHaveBeenCalled();
+  });
+
+  it('denies a provider call before the journal when no real graph checkpoint is visible', async () => {
+    const { factory, fetchImpl, prepareOriginalOperation, resolveOriginalOperation } = host({
+      getOriginalCheckpointReference: () => undefined,
+    });
+    await expect(factory(binding)(endpoint, { method: 'POST', body })).rejects.toThrow(
+      'NATIVE_BROKER_ORIGINAL_GRAPH_CHECKPOINT_MISSING',
+    );
+    expect(prepareOriginalOperation).not.toHaveBeenCalled();
+    expect(resolveOriginalOperation).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('refuses a failed pre-dispatch Mongo write without provider/network IO', async () => {

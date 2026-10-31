@@ -1,4 +1,10 @@
+import { getConfig } from '@langchain/langgraph';
+jest.mock('@langchain/langgraph', () => ({
+  ...jest.requireActual('@langchain/langgraph'),
+  getConfig: jest.fn(),
+}));
 import {
+  getDetachedSubagentModelCheckpointReference,
   getDetachedSubagentTaskId,
   getDetachedSubagentExecutionScope,
   getDetachedSubagentProducerAgentId,
@@ -142,6 +148,93 @@ describe('durable native child model provenance, without dispatch permission', (
       [],
       async () => expect(getDetachedSubagentExecutionScope()).toBeUndefined(),
       'ordinary-task',
+    );
+  });
+});
+
+describe('actual LangGraph model-step checkpoint provenance', () => {
+  const graphConfig = getConfig as jest.MockedFunction<typeof getConfig>;
+  const seed = {
+    userId: 'owner',
+    tenantId: 'tenant',
+    parentConversationId: 'parent',
+    parentRunId: 'response',
+    parentToolCallId: 'original-tool',
+    childThreadId: 'child-conversation',
+    attemptKey: 'original-attempt',
+    agentId: 'analysis',
+  };
+  afterEach(() => graphConfig.mockReset());
+
+  it('reads the real SDK child graph checkpoint coordinates without inventing a key', async () => {
+    const checkpoint = {
+      configurable: {
+        thread_id: 'subagent:original-checkpoint-thread',
+        checkpoint_id: 'saved-checkpoint-id',
+        checkpoint_ns: '',
+        __librechat_checkpoint_ns: 'generation',
+        __librechat_mission_sync: true,
+      },
+    };
+    graphConfig.mockReturnValue(checkpoint);
+    expect(getDetachedSubagentModelCheckpointReference()).toBeUndefined();
+    await runWithDetachedSubagentUsage(
+      [],
+      async () => {
+        expect(getDetachedSubagentModelCheckpointReference()).toEqual({
+          threadId: checkpoint.configurable.thread_id,
+          checkpointId: checkpoint.configurable.checkpoint_id,
+          checkpointNs: '',
+          generationNamespace: 'generation',
+        });
+      },
+      'task',
+      seed,
+    );
+  });
+
+  it('denies a missing, unscoped or nonchild LangGraph checkpoint', async () => {
+    await runWithDetachedSubagentUsage(
+      [],
+      async () => {
+        for (const invalid of [
+          {
+            thread_id: 'parent',
+            checkpoint_id: 'saved',
+            checkpoint_ns: '',
+            __librechat_checkpoint_ns: 'generation',
+            __librechat_mission_sync: true,
+          },
+          {
+            thread_id: 'subagent:original',
+            checkpoint_ns: '',
+            __librechat_checkpoint_ns: 'generation',
+            __librechat_mission_sync: true,
+          },
+          {
+            thread_id: 'subagent:original',
+            checkpoint_id: 'saved',
+            checkpoint_ns: '',
+            __librechat_mission_sync: true,
+          },
+          {
+            thread_id: 'subagent:original',
+            checkpoint_id: 'saved',
+            checkpoint_ns: '',
+            __librechat_checkpoint_ns: 'generation',
+            __librechat_mission_sync: false,
+          },
+        ]) {
+          graphConfig.mockReturnValue({ configurable: invalid });
+          expect(getDetachedSubagentModelCheckpointReference()).toBeUndefined();
+        }
+        graphConfig.mockImplementation(() => {
+          throw new Error('no-graph-context');
+        });
+        expect(getDetachedSubagentModelCheckpointReference()).toBeUndefined();
+      },
+      'task',
+      seed,
     );
   });
 });

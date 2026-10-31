@@ -375,6 +375,12 @@ describe('private Mongo journal for original child model operation', () => {
       }),
       prepareOriginalOperation,
       resolveOriginalOperation,
+      getOriginalCheckpointReference: () => ({
+        threadId: 'subagent:original-graph',
+        checkpointId: start.checkpointId,
+        checkpointNs: '',
+        generationNamespace: 'generation',
+      }),
       brokerUrl: 'http://127.0.0.1:8095/',
       secret: 'isolated-mongo-proof-secret-at-least-32-chars',
       fetchImpl: async (url, init) => {
