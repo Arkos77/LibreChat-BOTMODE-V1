@@ -68,7 +68,8 @@ function createNativeMissionOriginalChildCheckpointReader({
       (tenantId != null && (typeof tenantId !== 'string' || tenantId.length > 256)) ||
       typeof checkpointNs !== 'string' ||
       checkpointNs.length > 256 ||
-      !graphThreadId.startsWith('subagent:')
+      !graphThreadId.startsWith('subagent:') ||
+      graphThreadId.length > 3072
     ) {
       deny('NATIVE_ORIGINAL_CHECKPOINT_SCOPE_INVALID');
     }

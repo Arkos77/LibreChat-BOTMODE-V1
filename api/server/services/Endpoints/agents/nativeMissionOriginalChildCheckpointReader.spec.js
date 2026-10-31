@@ -99,6 +99,31 @@ describe('durable original SDK child checkpoint proof', () => {
       }),
     });
   });
+  it('accepts the six-coordinate original SDK graph key even above 256 characters', async () => {
+    const graphThreadId =
+      'subagent:' +
+      Buffer.from(
+        JSON.stringify([
+          scope.parentConversationId,
+          'long-original-fork'.repeat(10),
+          'worker',
+          scope.parentToolCallId,
+          'tool-batch'.repeat(10),
+          'durable-resume-attempt',
+        ]),
+      ).toString('base64url');
+    expect(graphThreadId.length).toBeGreaterThan(256);
+    const { read, getTuple } = setup();
+    await expect(read({ ...scope, graphThreadId })).resolves.toMatchObject({
+      graphThreadId,
+      checkpointId: scope.checkpointId,
+    });
+    expect(getTuple).toHaveBeenCalledTimes(1);
+    await expect(
+      read({ ...scope, graphThreadId: graphThreadId + 'x'.repeat(3072) }),
+    ).rejects.toThrow('NATIVE_ORIGINAL_CHECKPOINT_SCOPE_INVALID');
+  });
+
   it('blocks a graph belonging to another original tool call before Mongo checkpoint IO', async () => {
     const { read, getTuple } = setup();
     await expect(read({ ...scope, parentToolCallId: 'foreign-tool' })).rejects.toThrow(

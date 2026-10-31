@@ -169,7 +169,18 @@ describe('actual LangGraph model-step checkpoint provenance', () => {
   it('reads the real SDK child graph checkpoint coordinates without inventing a key', async () => {
     const checkpoint = {
       configurable: {
-        thread_id: 'subagent:original-checkpoint-thread',
+        thread_id:
+          'subagent:' +
+          Buffer.from(
+            JSON.stringify([
+              seed.parentConversationId,
+              'persisted-parent-fork'.repeat(9),
+              'worker',
+              seed.parentToolCallId,
+              'persisted-tool-batch'.repeat(8),
+              'durable-resume-attempt',
+            ]),
+          ).toString('base64url'),
         checkpoint_id: 'saved-checkpoint-id',
         checkpoint_ns: '',
         __librechat_checkpoint_ns: 'generation',
@@ -177,6 +188,7 @@ describe('actual LangGraph model-step checkpoint provenance', () => {
       },
     };
     graphConfig.mockReturnValue(checkpoint);
+    expect(checkpoint.configurable.thread_id.length).toBeGreaterThan(256);
     expect(getDetachedSubagentModelCheckpointReference()).toBeUndefined();
     await runWithDetachedSubagentUsage(
       [],
@@ -198,6 +210,40 @@ describe('actual LangGraph model-step checkpoint provenance', () => {
       [],
       async () => {
         for (const invalid of [
+          {
+            thread_id:
+              'subagent:' +
+              Buffer.from(
+                JSON.stringify([
+                  'foreign-parent',
+                  'fork',
+                  'worker',
+                  seed.parentToolCallId,
+                  'batch',
+                ]),
+              ).toString('base64url'),
+            checkpoint_id: 'saved',
+            checkpoint_ns: '',
+            __librechat_checkpoint_ns: 'generation',
+            __librechat_mission_sync: true,
+          },
+          {
+            thread_id:
+              'subagent:' +
+              Buffer.from(
+                JSON.stringify([
+                  seed.parentConversationId,
+                  'fork',
+                  'worker',
+                  'foreign-tool',
+                  'batch',
+                ]),
+              ).toString('base64url'),
+            checkpoint_id: 'saved',
+            checkpoint_ns: '',
+            __librechat_checkpoint_ns: 'generation',
+            __librechat_mission_sync: true,
+          },
           {
             thread_id: 'parent',
             checkpoint_id: 'saved',

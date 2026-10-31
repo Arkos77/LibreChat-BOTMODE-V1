@@ -123,7 +123,8 @@ export function getDetachedSubagentModelCheckpointReference():
       generationNamespace: string;
     }>
   | undefined {
-  if (getDetachedSubagentExecutionScope() == null) {
+  const scope = getDetachedSubagentExecutionScope();
+  if (scope == null) {
     return undefined;
   }
   let config: ReturnType<typeof getConfig>;
@@ -141,7 +142,7 @@ export function getDetachedSubagentModelCheckpointReference():
     c?.__librechat_mission_sync !== true ||
     typeof threadId !== 'string' ||
     !threadId.startsWith('subagent:') ||
-    threadId.length > 256 ||
+    threadId.length > 3072 ||
     typeof checkpointId !== 'string' ||
     !checkpointId ||
     checkpointId.length > 256 ||
@@ -150,6 +151,27 @@ export function getDetachedSubagentModelCheckpointReference():
     typeof generationNamespace !== 'string' ||
     !generationNamespace ||
     generationNamespace.length > 256
+  ) {
+    return undefined;
+  }
+  // SDK native child identifiers encode 5 or 6 independent coordinates.
+  // They routinely exceed 256 characters even when EACH coordinate is safe.
+  // Validate the entire address and the authentic parent/tool, not a truncated
+  // prefix nor a newly synthesized short checkpoint key.
+  let address: unknown;
+  try {
+    address = JSON.parse(Buffer.from(threadId.slice('subagent:'.length), 'base64url').toString());
+  } catch {
+    return undefined;
+  }
+  if (
+    !Array.isArray(address) ||
+    ![5, 6].includes(address.length) ||
+    !address.every(
+      (value: unknown) => typeof value === 'string' && value.length > 0 && value.length <= 256,
+    ) ||
+    address[0] !== scope.parentConversationId ||
+    address[3] !== scope.parentToolCallId
   ) {
     return undefined;
   }
