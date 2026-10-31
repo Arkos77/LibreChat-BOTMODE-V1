@@ -181,6 +181,35 @@ const mongoose=require('mongoose');(async()=>{
                   record["status"].upper()+"="+str(record["count"]),flush=True)
     except Exception as e:
         print("CI_PR107_COLD_MULTI_WAIT_DIAG_UNAVAILABLE="+type(e).__name__,flush=True)
+    # The accepted HTTP admission is not proof that the background job
+    # reached graph initialization. Report only status + allowlisted error
+    # categories, not raw Redis JSON, prompts, keys, tokens or SSE content.
+    try:
+        status, plan_text, oracle_text = redis_job(stream_id)
+        safe_status = status if status in (
+            "queued", "pending", "running", "completed", "failed",
+            "cancelled", "interrupted", "paused", "error"
+        ) else "OTHER_OR_MISSING"
+        print("CI_PR107_COLD_MULTI_WAIT_REDIS_STATUS="+safe_status,flush=True)
+        print("CI_PR107_COLD_MULTI_WAIT_REDIS_PLAN_PERSISTED="+
+              str(bool(plan_text)),flush=True)
+        print("CI_PR107_COLD_MULTI_WAIT_REDIS_ORACLE_STATE_PERSISTED="+
+              str(bool(oracle_text)),flush=True)
+        gate["classify_durable_failure"](stream_id)
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as e:
+        print("CI_PR107_COLD_MULTI_WAIT_REDIS_DIAG_UNAVAILABLE="+
+              type(e).__name__,flush=True)
+    try:
+        observed=[e for reply in stream_replies for e in reply.get("events",[])
+                  if isinstance(e,dict)]
+        categories,fingerprint,length=gate["diagnostic_error_class"](observed)
+        print("CI_PR107_COLD_MULTI_WAIT_SSE_REPLY_COUNT="+str(len(stream_replies)),flush=True)
+        print("CI_PR107_COLD_MULTI_WAIT_SSE_EVENTS="+str(len(observed)),flush=True)
+        print("CI_PR107_COLD_MULTI_WAIT_SSE_ERROR_CLASSES="+categories,flush=True)
+        print("CI_PR107_COLD_MULTI_WAIT_SSE_ERROR_FINGERPRINT="+fingerprint,flush=True)
+        print("CI_PR107_COLD_MULTI_WAIT_SSE_ERROR_TEXT_LENGTH="+str(length),flush=True)
+    except (ValueError,TypeError,KeyError) as e:
+        print("CI_PR107_COLD_MULTI_WAIT_SSE_DIAG_UNAVAILABLE="+type(e).__name__,flush=True)
     fail("SECOND_CHILD_NOT_HELD_AFTER_FIRST_PERSISTED")
 # Identify a real P6 early publication separately from an errored child.
 # Never log prompts, child IDs, JWTs, or raw private database messages.
