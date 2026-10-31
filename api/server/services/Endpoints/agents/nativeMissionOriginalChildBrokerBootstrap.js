@@ -6,6 +6,23 @@ const {
 const { getNativeMissionWakeupOrigin } = require('./nativeMissionWakeupOriginStore');
 
 const MAX_BINDINGS = 32;
+
+/**
+ * The persisted LibreChat agent's model is in model_parameters.model, not in
+ * a top-level 'model' field. Do not authorize a stale top-level model when
+ * real agent model parameters exist. Only the exact OpenRouter alias is
+ * canonicalized; unknown providers and model substitutions remain forbidden.
+ */
+function matchesPersistedNativeBrokerAgentBinding({ agent, provider, model }) {
+  const storedProvider = agent?.provider === 'OpenRouter' ? 'openrouter' : agent?.provider;
+  const storedModel = agent?.model_parameters?.model ?? agent?.model;
+  return (
+    typeof provider === 'string' &&
+    typeof model === 'string' &&
+    storedProvider === provider &&
+    storedModel === model
+  );
+}
 const safeId = (v) => typeof v === 'string' && v.length > 0 && v.length <= 256;
 const denied = (code) => {
   const error = new Error(code);
@@ -175,9 +192,7 @@ function createNativeMissionOriginalChildBrokerBootstrap({
     // Operator bindings are only a transport allowlist. The model/provider
     // must STILL match the agent currently stored by the authenticated host.
     const currentAgent = await getAgent({ id: scope.agentId });
-    const savedProvider =
-      currentAgent?.provider === 'OpenRouter' ? 'openrouter' : currentAgent?.provider;
-    if (savedProvider !== provider || currentAgent?.model !== model) {
+    if (!matchesPersistedNativeBrokerAgentBinding({ agent: currentAgent, provider, model })) {
       return { approved: false };
     }
     const parent = await getConvo(scope.userId, scope.parentConversationId);
@@ -222,4 +237,7 @@ function createNativeMissionOriginalChildBrokerBootstrap({
     secret,
   });
 }
-module.exports = { createNativeMissionOriginalChildBrokerBootstrap };
+module.exports = {
+  createNativeMissionOriginalChildBrokerBootstrap,
+  matchesPersistedNativeBrokerAgentBinding,
+};
