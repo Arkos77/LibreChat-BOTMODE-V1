@@ -177,14 +177,40 @@ await m.disconnect()})().catch(e=>{console.error(e.name);process.exitCode=1});
 def snapshot():
     return json.loads(run_node(mongo_probe,[("CI_PARENT",conversation)]))
 
+# In a signed native Oracle plan, execution follows graph edges rather than
+# spawning Mongo child conversations through the SDK subagent tool. A durable
+# node write is required before killing the API; fixture calls alone are NOT proof.
+native_proof_script=r"""
+const mongoose=require('mongoose');(async()=>{
+ await mongoose.connect(process.env.MONGO_URI);
+ const nodes=JSON.parse(process.env.CI_NATIVE_NODES);
+ const docs=await mongoose.connection.db.collection('agent_checkpoints')
+  .find({thread_id:process.env.CI_PARENT})
+  .project({metadata_search:1}).toArray();
+ const writes=nodes.map(node=>docs.filter(d=>
+   d.metadata_search?.writes &&
+   Object.prototype.hasOwnProperty.call(d.metadata_search.writes,node)).length);
+ const steps=docs.map(d=>d.metadata_search?.step).filter(Number.isInteger);
+ console.log(JSON.stringify({researchWrites:writes[0],analysisWrites:writes[1],
+    checkpoints:docs.length,maxStep:steps.length?Math.max(...steps):null}));
+ await mongoose.disconnect();
+})().catch(e=>{console.log(JSON.stringify({unavailable:e.name}));process.exitCode=1});
+"""
+def native_state():
+    return json.loads(run_node(native_proof_script,[
+        ("CI_PARENT",conversation),
+        ("CI_NATIVE_NODES",json.dumps([task["nodeId"] for task in tasks])),
+    ]))
+
 # Wait for first native child to finish and the second provider request to
 # be in-flight. No arbitrary sleeps or synthetic fake child database records.
 pre=None
 for attempt in range(110):
     counts=metrics()
     if counts.get("held_second_child_requests",0)>0:
-        pre=snapshot()
-        if pre["completed"]==1 and pre["count"]==2 and pre["linked"]==2:
+        native_pre=native_state()
+        if native_pre.get("researchWrites",0)>0 and native_pre.get("analysisWrites",0)==0:
+            pre=snapshot()
             break
     time.sleep(0.5)
 else:
@@ -444,112 +470,14 @@ try:
     print("CI_PR107_COLD_MULTI_PRECRASH_ORACLE_VERDICT_COUNT="+str(len(verdicts)),flush=True)
 except (ValueError,TypeError,AttributeError):
     print("CI_PR107_COLD_MULTI_PRECRASH_ORACLE_STATE=UNREADABLE",flush=True)
-if pre["errors"]!=0:
-    fail("CHILD_TERMINAL_ERROR_BEFORE_CRASH")
 if pre["published"]!=0:
-    fail("PARENT_OUTPUT_BEFORE_SECOND_CHILD_RESULT")
-print("CI_PR107_COLD_MULTI_PRECRASH_TWO_THREADS_ONE_COMPLETED=PASS",flush=True)
-
-# Prove the actual second child's operation (not the separately successful
-# synthetic broker smoke) belongs to the exact original provider journal.
-# On a disconnected integration, fail in seconds instead of timing out after
-# a SIGKILL and wrongly treating an unrelated broker receipt as recovery proof.
-actual_child_proof = r"""
-const m=require('mongoose');
-(async()=>{
-  await m.connect(process.env.MONGO_URI);
-  const db=m.connection.db, parent=process.env.CI_PARENT;
-  const children=await db.collection('conversations')
-    .find({'subagentThread.parentConversationId':parent}).toArray();
-  const pending=[];
-  for(const child of children) {
-    const rows=await db.collection('messages')
-      .find({conversationId:child.conversationId}).toArray();
-    if(rows.some(row=>row.subagentTask?.status==='completed')) continue;
-    const starts=rows.filter(row=>row.subagentTask?.status==='running');
-    if(starts.length!==1) throw Error('NATIVE_SECOND_CHILD_START_AMBIGUOUS');
-    const lineage=child.subagentThread;
-    const taskId=starts[0].messageId.replace(/:user$/, '');
-    if(taskId===starts[0].messageId ||
-       starts[0].subagentTask?.parentRunId!==lineage?.parentMessageId ||
-       !lineage?.parentToolCallId) throw Error('NATIVE_SECOND_CHILD_LINEAGE_INVALID');
-    // The real original child host writes the production-named Mongo journal
-    // in this disposable CI DB. The "_ci" collection belongs exclusively to
-    // the independent synthetic broker smoke and MUST NOT satisfy this proof.
-    const calls=await db.collection('native_mission_provider_calls').countDocuments({
-      'identity.childThreadId':child.conversationId,
-      'identity.parentRunId':lineage.parentMessageId,
-      // The broker's immutable identity deliberately excludes the tool call;
-      // the task+attempt bind that original parent tool call in Mongo.
-      'identity.taskId':taskId,
-      'identity.attemptKey':starts[0].subagentTask.attemptKey,
-    });
-    // An SDK child checkpoint uses an encoded subagent: graph identity,
-    // not the Task Engine's Mongo conversation UUID. Check its original
-    // parent/agent/tool identity without revealing checkpoint content or keys.
-    const checkpointRows=await db.collection('agent_checkpoints')
-      .find({thread_id:/^subagent:/}).project({thread_id:1}).toArray();
-    let checkpoints=0, fromSameParent=0, matchedAgent=0, matchedTool=0;
-    for(const row of checkpointRows){
-      let coordinates;
-      try {
-        coordinates=JSON.parse(Buffer.from(row.thread_id.slice('subagent:'.length),
-           'base64url').toString('utf8'));
-      } catch {continue;}
-      // SDK SubagentExecutionRegistry.createAddress encodes the conversation
-      // thread_id, parent checkpoint fork, parent agent, original tool call
-      // and batch (optionally a sixth resume-attempt entry). It does NOT encode
-      // the parent's response message id as its first coordinate.
-      if(Array.isArray(coordinates) && (coordinates.length===5 || coordinates.length===6) &&
-         coordinates.every(v=>typeof v==='string' && v.length>0) &&
-         coordinates[0]===parent) {
-        fromSameParent++;
-        if(coordinates[2]===lineage.parentAgentId) matchedAgent++;
-        if(coordinates[3]===lineage.parentToolCallId) matchedTool++;
-        if(coordinates[2]===lineage.parentAgentId &&
-           coordinates[3]===lineage.parentToolCallId) {
-          // The optional sixth field is a durable SDK resume attempt ID,
-          // not necessarily the Mongo parent response message ID.
-          // This is only an inventory: the original lease/attempt and exact
-          // checkpoint grant are checked separately before dispatch.
-          checkpoints++;
-        }
-      }
-    }
-    pending.push({calls,checkpoints,fromSameParent,matchedAgent,matchedTool,raw:checkpointRows.length});
-  }
-  console.log(JSON.stringify({pending:pending.length,
-    originalBrokerReceipts:pending.reduce((n,c)=>n+c.calls,0),
-    childCheckpointRows:pending.reduce((n,c)=>n+c.checkpoints,0),
-    parentCheckpointRows:pending.reduce((n,c)=>n+c.fromSameParent,0),
-    parentAgentMatches:pending.reduce((n,c)=>n+c.matchedAgent,0),
-    parentToolMatches:pending.reduce((n,c)=>n+c.matchedTool,0),
-    rawSubagentCheckpointRows:pending.reduce((n,c)=>n+c.raw,0)}));
-  await m.disconnect();
-})().catch(e=>{console.error(e.name);process.exitCode=1});
-"""
-proof=json.loads(run_node(actual_child_proof,[("CI_PARENT",conversation)]))
-# Keep the standalone synthetic /ci broker smoke independent from genuine
-# mission child effects; a fixture call cannot satisfy the real Mongo proof.
-print("CI_PR107_COLD_MULTI_ORIGINAL_BROKER_RECEIPTS="+str(
-    proof["originalBrokerReceipts"]),flush=True)
-print("CI_PR107_COLD_MULTI_CHILD_CHECKPOINT_ROWS="+str(
-    proof["childCheckpointRows"]),flush=True)
-print("CI_PR107_COLD_MULTI_PARENT_CHECKPOINT_ROWS="+str(
-    proof["parentCheckpointRows"]),flush=True)
-print("CI_PR107_COLD_MULTI_RAW_SDK_CHECKPOINT_ROWS="+str(
-    proof["rawSubagentCheckpointRows"]),flush=True)
-print("CI_PR107_COLD_MULTI_PARENT_AGENT_MATCHES="+str(
-    proof["parentAgentMatches"]),flush=True)
-print("CI_PR107_COLD_MULTI_PARENT_TOOL_MATCHES="+str(
-    proof["parentToolMatches"]),flush=True)
-if proof["pending"]!=1:
-    fail("SECOND_CHILD_ORIGINAL_IDENTITY_AMBIGUOUS")
-if proof["originalBrokerReceipts"]!=1:
-    fail("SECOND_CHILD_PROVIDER_NOT_BOUND_TO_ORIGINAL_BROKER")
-if proof["childCheckpointRows"]<1:
-    fail("SECOND_CHILD_DURABLE_SDK_CHECKPOINT_MISSING")
-
+    fail("P6_PREMATURE_BEFORE_NATIVE_ANALYSIS")
+if native_pre["researchWrites"]<1 or native_pre["analysisWrites"]!=0:
+    fail("NATIVE_PRECRASH_CHECKPOINT_NOT_READY")
+if current_metrics.get("held_second_child_requests",0)!=1:
+    fail("NATIVE_SECOND_PROVIDER_NOT_HELD")
+print("CI_PR107_COLD_MULTI_NATIVE_RESEARCH_DURABLE_BEFORE_CRASH=PASS",flush=True)
+print("CI_PR107_COLD_MULTI_NATIVE_ANALYSIS_HELD_BEFORE_CRASH=PASS",flush=True)
 
 # Only this disposable GitHub Actions compose service is ever killed.
 dead=subprocess.run(COMPOSE+["kill","-s","SIGKILL","api"],
@@ -579,23 +507,27 @@ outcome=None
 for attempt in range(90):
     try:
         value=snapshot()
-    except BaseException:
+        state=redis_job(stream_id)
+        native_post=native_state()
+    except (OSError,ValueError,KeyError,TypeError):
         time.sleep(2)
         continue
-    state=redis_job(stream_id)
-    if value["count"]>=2 and value["completed"]>=2 and value["published"]==1:
-        outcome=(value,state)
+    if native_post.get("researchWrites",0)>0 and native_post.get("analysisWrites",0)>0 and value["published"]==1:
+        outcome=(value,state,native_post)
         break
     if attempt%15==0:
-        print("CI_PR107_COLD_MULTI_RECOVERY_COUNTS="+json.dumps(value,sort_keys=True),flush=True)
+        print("CI_PR107_COLD_MULTI_NATIVE_RECOVERY="+json.dumps({
+            "researchWrites":native_post.get("researchWrites",0),
+            "analysisWrites":native_post.get("analysisWrites",0),
+            "published":value["published"]
+        },sort_keys=True),flush=True)
     time.sleep(2)
 if outcome is None:
-    print("CI_PR107_COLD_MULTI_RECOVERY_TIMEOUT=TRUE",flush=True)
-    fail("TWO_CHILD_OR_PUBLICATION_RECOVERY_UNPROVEN")
-value,state=outcome
-if (value["count"]!=2 or value["completed"]!=2 or value["linked"]!=2 or
-    value["errors"]!=0 or value["distinctTypes"]!=2 or value["published"]!=1):
-    fail("DUPLICATE_OR_INVALID_DURABLE_LINEAGE")
+    fail("NATIVE_GRAPH_OR_PUBLICATION_RECOVERY_UNPROVEN")
+value,state,native_post=outcome
+if (native_post["researchWrites"]!=native_pre["researchWrites"] or
+    native_post["analysisWrites"]!=1 or value["published"]!=1):
+    fail("NATIVE_GRAPH_DUPLICATE_OR_INVALID_RECOVERY")
 _,plan_raw,oracle_raw=state
 try:
     plan,oracle=json.loads(plan_raw),json.loads(oracle_raw)
@@ -605,10 +537,8 @@ except (ValueError,TypeError,KeyError):
 if (plan.get("mission",{}).get("missionId")!=mission_id or
     len(verdicts)!=1 or verdicts[0].get("status")!="VERIFIED"):
     fail("ORACLE_NOT_SINGLE_VERIFIED")
-if metrics().get("child_responses",0)-before.get("child_responses",0)!=2:
-    fail("CHILD_MODEL_EFFECT_REEXECUTED_OR_NOT_COMPLETED")
-if metrics().get("parent_final",0)-before.get("parent_final",0)!=1:
-    fail("PARENT_MODEL_FINAL_DUPLICATE_OR_MISSING")
-print("CI_PR107_COLD_MULTI_TWO_CHILD_REPLAY_SAFE=PASS",flush=True)
+if metrics().get("native_graph_turns",0)-before.get("native_graph_turns",0)!=2:
+    fail("NATIVE_GRAPH_MODEL_EFFECT_REEXECUTED_OR_MISSING")
+print("CI_PR107_COLD_MULTI_NATIVE_GRAPH_REPLAY_SAFE=PASS",flush=True)
 print("CI_PR107_COLD_MULTI_SINGLE_ORACLE_VERIFIED=PASS",flush=True)
 print("CI_PR107_COLD_MULTI_SINGLE_P6_AFTER_SIGKILL=PASS",flush=True)
