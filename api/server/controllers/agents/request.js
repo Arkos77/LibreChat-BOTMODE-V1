@@ -55,6 +55,9 @@ const {
   getNativeMissionWakeupOrigin,
   saveNativeMissionWakeupOrigin,
 } = require('~/server/services/Endpoints/agents/nativeMissionWakeupOriginStore');
+const {
+  bindNativeMissionOriginalChildBrokerForAcceptedMission,
+} = require('~/server/services/Endpoints/agents/nativeMissionOriginalChildBrokerHost');
 const { disposeClient } = require('~/server/cleanup');
 const { observeMtoEvent } = require('~/server/services/Endpoints/agents/mtoObservation');
 const {
@@ -1993,6 +1996,15 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         });
       }
       client.orchestratorPlan = persistedPlanJob.metadata.orchestratorPlan;
+      // Only the trusted Express host may opt in, and only after immutable
+      // mission origin + signed capability classification are saved. Never
+      // accept a provider transport address or operation grant from req.body.
+      bindNativeMissionOriginalChildBrokerForAcceptedMission({
+        client,
+        brokerHost: req.app?.locals?.nativeMissionOriginalChildBrokerHost,
+        originalPlan: client.orchestratorPlan,
+        capabilityAttestation: persistedPlanJob.metadata.nativeMissionCapabilityAttestation,
+      });
       client.publicationBarrier?.activate?.();
 
       const sourceTasks = orchestratorPlan.tasks

@@ -143,4 +143,35 @@ function createNativeMissionOriginalChildBrokerHost({
     // journal writer; only a live SDK child model call triggers preparation.
   });
 }
-module.exports = { createNativeMissionOriginalChildBrokerHost };
+/**
+ * Attach only after request.js has persisted/re-read the exact signed mission
+ * admission. The host lives in Express app.locals (trusted server code), not
+ * in a user-submitted request body. No host means the original provider path
+ * is unchanged; a malformed/partial host is a hard failure, never fallback.
+ */
+function bindNativeMissionOriginalChildBrokerForAcceptedMission({
+  client,
+  brokerHost,
+  originalPlan,
+  capabilityAttestation,
+}) {
+  if (brokerHost == null || capabilityAttestation?.mode === 'model_only') return false;
+  if (
+    typeof brokerHost.modelFetchFactory !== 'function' ||
+    client?.options == null ||
+    client.options.subagentTasks == null ||
+    client.options.nativeDetachedModelFetchFactory != null ||
+    !Array.isArray(originalPlan?.tasks) ||
+    originalPlan.tasks.length < 2 ||
+    capabilityAttestation?.mode !== 'receipts_required'
+  ) {
+    deny('NATIVE_ORIGINAL_CHILD_HOST_ADMISSION_DENIED');
+  }
+  client.options.nativeDetachedModelFetchFactory = brokerHost.modelFetchFactory;
+  return true;
+}
+
+module.exports = {
+  createNativeMissionOriginalChildBrokerHost,
+  bindNativeMissionOriginalChildBrokerForAcceptedMission,
+};
