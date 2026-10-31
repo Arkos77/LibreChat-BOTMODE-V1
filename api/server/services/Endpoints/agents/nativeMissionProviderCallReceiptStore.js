@@ -19,6 +19,14 @@ const ID_FIELDS = [
   'model',
   'operationKey',
 ];
+// The original detached child and a native graph node are DIFFERENT durable
+// execution identities. A direct graph operation must carry its original
+// generation and graph checkpoint. It must never masquerade as a child thread.
+const DIRECT_GRAPH_ID_FIELDS = [
+  'mode', 'userId', 'tenantId', 'streamId', 'responseMessageId',
+  'generationCreatedAt', 'checkpointNamespace', 'graphCheckpointId',
+  'nodeId', 'taskId', 'agentId', 'provider', 'model', 'operationKey',
+];
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const HEX_DIGEST = /^[a-f0-9]{64}$/;
 
@@ -33,19 +41,31 @@ function fingerprint(value) {
 }
 
 function identify(input) {
+  const direct = input?.mode === 'native_graph';
+  const fields = direct ? DIRECT_GRAPH_ID_FIELDS : ID_FIELDS;
   if (
     !input ||
-    ID_FIELDS.some(
+    (input.mode != null && !direct) ||
+    (direct && (
+      !Number.isSafeInteger(input.generationCreatedAt) ||
+      input.generationCreatedAt <= 0 ||
+      ID_FIELDS.some((key) => key === 'userId' || key === 'tenantId' ||
+        key === 'agentId' || key === 'provider' || key === 'model' ||
+        key === 'operationKey' ? false : input[key] != null)
+    )) ||
+    fields.some(
       (key) =>
-        typeof input[key] !== 'string' ||
-        (key !== 'tenantId' && input[key].length === 0) ||
-        input[key].length > 256,
+        key !== 'generationCreatedAt' && (
+          typeof input[key] !== 'string' ||
+          (key !== 'tenantId' && input[key].length === 0) ||
+          input[key].length > 256
+        ),
     ) ||
     !HEX_DIGEST.test(input.operationKey)
   ) {
     refuse('NATIVE_PROVIDER_CALL_IDENTITY_INVALID');
   }
-  const identity = Object.fromEntries(ID_FIELDS.map((key) => [key, input[key]]));
+  const identity = Object.fromEntries(fields.map((key) => [key, input[key]]));
   return { identity, callKey: fingerprint(JSON.stringify(identity)) };
 }
 
