@@ -35,7 +35,12 @@ function createCollection() {
     }
     rows.set(record.callKey, structuredClone(record));
   });
-  const findOne = jest.fn(async ({ callKey }) => structuredClone(rows.get(callKey) ?? null));
+  const findOne = jest.fn(async ({ callKey, nativeGraphSlotKey }) => {
+    const found = nativeGraphSlotKey
+      ? [...rows.values()].find((row) => row.nativeGraphSlotKey === nativeGraphSlotKey)
+      : rows.get(callKey);
+    return structuredClone(found ?? null);
+  });
   const matches = (doc, query) =>
     Object.entries(query).every(([key, expected]) =>
       expected?.$in ? expected.$in.includes(doc[key]) : doc[key] === expected,
@@ -288,6 +293,57 @@ describe('direct native graph model-operation identities', () => {
       ...directScope,
       identity: { ...direct, agentId: 'replacement-agent' },
     })).rejects.toThrow('NATIVE_PROVIDER_CALL_IMMUTABLE_CONFLICT');
+    expect(collection.rows.size).toBe(1);
+  });
+
+  it('recovers the exact original opaque operation key across restart and races', async () => {
+    const { store, collection, broker, sendProvider } = create();
+    const { operationKey: _ignored, ...originalGraph } = direct;
+    const originalScope = { identity: originalGraph, requestDigest: directScope.requestDigest };
+    const [first, concurrent] = await Promise.all([
+      store.reserveNativeGraph(originalScope),
+      store.reserveNativeGraph(originalScope),
+    ]);
+    expect(first.identity.operationKey).toBe(concurrent.identity.operationKey);
+    expect(first.callKey).toBe(concurrent.callKey);
+    expect(first.status).toBe('prepared');
+    expect(collection.rows.size).toBe(1);
+    const originalResult = await broker.execute({ ...first, authorizedRequest: {} });
+    expect(originalResult.status).toBe('result_committed');
+    expect(sendProvider).toHaveBeenCalledTimes(1);
+
+    // Simulate a process restart: new store instance, SAME persistent Mongo
+    // collection. Recovering must never create a second provider operation.
+    const recoveredStore = createNativeMissionProviderCallReceiptStore({ collection });
+    const recovered = await recoveredStore.reserveNativeGraph(originalScope);
+    expect(recovered.identity.operationKey).toBe(first.identity.operationKey);
+    expect(recovered.status).toBe('result_committed');
+    expect((await recoveredStore.read(recovered)).response).toEqual({
+      id: 'ci-response', text: 'ok',
+    });
+    expect((await broker.execute({ ...recovered, authorizedRequest: {} })).status)
+      .toBe('result_committed');
+    expect(sendProvider).toHaveBeenCalledTimes(1);
+    expect(collection.rows.size).toBe(1);
+  });
+
+  it('rejects altered native binding, request digest and caller-supplied operation key', async () => {
+    const { store, collection } = create();
+    const { operationKey: _ignored, ...originalGraph } = direct;
+    const originalScope = { identity: originalGraph, requestDigest: directScope.requestDigest };
+    await store.reserveNativeGraph(originalScope);
+    for (const [identity, requestDigest] of [
+      [{ ...originalGraph, model: 'different-model' }, directScope.requestDigest],
+      [{ ...originalGraph, agentId: 'different-specialist' }, directScope.requestDigest],
+      [originalGraph, digest('changed-prompt')],
+    ]) {
+      await expect(store.reserveNativeGraph({ identity, requestDigest })).rejects.toThrow(
+        'NATIVE_PROVIDER_CALL_IMMUTABLE_CONFLICT',
+      );
+    }
+    await expect(store.reserveNativeGraph(directScope)).rejects.toThrow(
+      'NATIVE_GRAPH_RESERVATION_IDENTITY_INVALID',
+    );
     expect(collection.rows.size).toBe(1);
   });
 
