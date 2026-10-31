@@ -182,7 +182,7 @@ def snapshot():
 # node write is required before killing the API; fixture calls alone are NOT proof.
 native_proof_script=r"""
 const mongoose=require('mongoose');
-const {getAgentCheckpointer}=require('@librechat/api');
+const {MongoDBSaver}=require('@langchain/langgraph-checkpoint-mongodb');
 (async()=>{
   await mongoose.connect(process.env.MONGO_URI);
   const nodeIds=JSON.parse(process.env.CI_NATIVE_NODES);
@@ -194,9 +194,14 @@ const {getAgentCheckpointer}=require('@librechat/api');
   // contain a "|" separator. Do not accept ambiguous generations.
   const roots=namespaces.filter(ns=>typeof ns==='string'&&!ns.includes('|'));
   if(roots.length!==1) throw Error('NATIVE_GENERATION_AMBIGUOUS');
-  const saver=await getAgentCheckpointer();
-  if(!saver||typeof saver.getTuple!=='function')
-    throw Error('NATIVE_SAVER_UNAVAILABLE');
+  // Read with the original LangGraph Mongo saver, without importing the
+  // entire LibreChat API or running index setup in a throwaway probe process.
+  const saver=new MongoDBSaver({
+    client:mongoose.connection.getClient(),
+    dbName:mongoose.connection.db.databaseName,
+    checkpointCollectionName:'agent_checkpoints',
+    checkpointWritesCollectionName:'agent_checkpoint_writes'
+  });
   const tuple=await saver.getTuple({configurable:{
     thread_id:process.env.CI_PARENT,
     checkpoint_ns:'',
@@ -217,9 +222,10 @@ const {getAgentCheckpointer}=require('@librechat/api');
     checkpointStep:tuple?.metadata?.step??null
   }));
   await mongoose.disconnect();
+  process.exit(0);
 })().catch(e=>{
-  console.log(JSON.stringify({unavailable:e.message?.slice(0,80)||e.name}));
-  process.exitCode=1;
+  console.log(JSON.stringify({unavailable:e.name||'NativeCheckpointReadError'}));
+  process.exit(1);
 });
 """
 def native_state():
