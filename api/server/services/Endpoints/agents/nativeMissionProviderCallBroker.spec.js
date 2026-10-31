@@ -187,3 +187,88 @@ describe('durable model request owner - no automatic replay', () => {
     );
   });
 });
+
+
+describe('direct native graph model-operation identities', () => {
+  const direct = {
+    mode: 'native_graph',
+    userId: 'user-1',
+    tenantId: 'tenant-1',
+    streamId: 'original-conversation',
+    responseMessageId: 'original-response',
+    generationCreatedAt: 1700000000000,
+    checkpointNamespace: '1700000000000',
+    graphCheckpointId: 'original-graph-checkpoint',
+    nodeId: 'mission/analysis',
+    taskId: 'mission/analysis-task',
+    agentId: 'specialist-analysis',
+    provider: 'local-fixture',
+    model: 'ci-free',
+    operationKey: digest('original-native-node-operation'),
+  };
+  const directScope = {
+    identity: direct,
+    requestDigest: digest('original-native-node-request'),
+  };
+
+  it('commits once when the original native node has concurrent broker requests', async () => {
+    const { broker, store, sendProvider, collection } = create();
+    let release;
+    const pending = new Promise((resolve) => { release = resolve; });
+    sendProvider.mockImplementation(async () => {
+      await pending;
+      return { choices: [{ message: { content: 'original result' } }] };
+    });
+    const first = broker.execute({ ...directScope, authorizedRequest: {} });
+    const second = broker.execute({ ...directScope, authorizedRequest: {} });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(sendProvider).toHaveBeenCalledTimes(1);
+    expect(collection.rows.size).toBe(1);
+    release();
+    await Promise.all([first, second]);
+    expect((await store.read(directScope)).response.choices[0].message.content)
+      .toBe('original result');
+    await broker.execute({ ...directScope, authorizedRequest: {} });
+    expect(sendProvider).toHaveBeenCalledTimes(1);
+  });
+
+  it('fences every native model operation to the original generation and checkpoint', async () => {
+    const { store } = create();
+    await store.prepare(directScope);
+    for (const patch of [
+      { generationCreatedAt: direct.generationCreatedAt + 1 },
+      { checkpointNamespace: 'later-generation' },
+      { graphCheckpointId: 'different-head' },
+      { nodeId: 'mission/research' },
+      { taskId: 'mission/research-task' },
+      { agentId: 'other-agent' },
+      { streamId: 'other-conversation' },
+    ]) {
+      await expect(store.read({
+        ...directScope,
+        identity: { ...direct, ...patch },
+      })).rejects.toThrow('NATIVE_PROVIDER_CALL_IMMUTABLE_CONFLICT');
+    }
+    await expect(store.prepare({
+      ...directScope,
+      identity: { ...direct, generationCreatedAt: '1700000000000' },
+    })).rejects.toThrow('NATIVE_PROVIDER_CALL_IDENTITY_INVALID');
+    await expect(store.prepare({
+      ...directScope,
+      identity: { ...direct, childThreadId: 'forged-detached-child' },
+    })).rejects.toThrow('NATIVE_PROVIDER_CALL_IDENTITY_INVALID');
+    await expect(store.prepare({
+      ...directScope,
+      identity: { ...identity, mode: 'native_graph' },
+    })).rejects.toThrow('NATIVE_PROVIDER_CALL_IDENTITY_INVALID');
+  });
+
+  it('preserves detached child identity and never aliases it with a graph node', async () => {
+    const { store, collection } = create();
+    await store.prepare(scope);
+    await store.prepare(directScope);
+    expect(collection.rows.size).toBe(2);
+    expect((await store.read(scope)).callKey)
+      .not.toBe((await store.read(directScope)).callKey);
+  });
+});
