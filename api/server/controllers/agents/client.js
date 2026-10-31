@@ -4630,6 +4630,9 @@ class AgentClient extends BaseClient {
           ...(this.options.nativeDetachedModelFetchFactory == null
             ? {}
             : { nativeDetachedModelFetchFactory: this.options.nativeDetachedModelFetchFactory }),
+          ...(this.options.nativeGraphModelFetchFactory == null
+            ? {}
+            : { nativeGraphModelFetchFactory: this.options.nativeGraphModelFetchFactory }),
           // This controller implements the full HITL pause/resume lifecycle (handleRunInterrupt
           // persists the pending action; the /resume route rebuilds + continues the run), so it
           // opts into the tool-approval wiring. Non-resumable callers (OpenAI-compat, Responses)
@@ -5311,6 +5314,9 @@ class AgentClient extends BaseClient {
       tokenCounter,
       modelCallbacks: [modelBoundCallback],
       modelCallbackFactory: createModelBoundBudgetAdmissionFactory(this, balanceConfig),
+      ...(this.options.nativeGraphModelFetchFactory == null
+        ? {}
+        : { nativeGraphModelFetchFactory: this.options.nativeGraphModelFetchFactory }),
       toolInputValidationErrors: this.toolInputValidationErrors,
       toolExecution: {
         executionGrantResolver: this.options.executionGrantResolver,
@@ -5558,6 +5564,9 @@ class AgentClient extends BaseClient {
         ...(this.options.nativeDetachedModelFetchFactory == null
           ? {}
           : { nativeDetachedModelFetchFactory: this.options.nativeDetachedModelFetchFactory }),
+        ...(this.options.nativeGraphModelFetchFactory == null
+          ? {}
+          : { nativeGraphModelFetchFactory: this.options.nativeGraphModelFetchFactory }),
         // State (messages, tool calls) is rehydrated from the checkpoint by
         // run.resume; createRun only needs the agents to rebuild the graph.
         messages: [],
