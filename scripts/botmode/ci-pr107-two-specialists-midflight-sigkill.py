@@ -46,6 +46,15 @@ def run_node(script, env):
         cmd.extend(["-e", name+"="+value])
     completed = subprocess.run(cmd+["api","node","-e",script],capture_output=True,text=True,timeout=45)
     if completed.returncode:
+        try:
+            category=json.loads(completed.stdout.strip()).get("unavailable","UNKNOWN")
+        except (ValueError,TypeError,AttributeError):
+            category="NO_STRUCTURED_ERROR"
+        allowed={"MODULE_NOT_FOUND","NATIVE_GENERATION_AMBIGUOUS","NATIVE_SAVER_UNAVAILABLE",
+                 "MongoServerError","TypeError","ReferenceError","SyntaxError",
+                 "RangeError","Error","NO_STRUCTURED_ERROR"}
+        print("CI_PR107_COLD_MULTI_MONGO_READ_CLASS="+
+              (category if category in allowed else "OTHER"),flush=True)
         print("CI_PR107_COLD_MULTI_MONGO_READ=FAIL",flush=True)
         fail("MONGO_READ")
     return completed.stdout.strip()
@@ -182,7 +191,10 @@ def snapshot():
 # node write is required before killing the API; fixture calls alone are NOT proof.
 native_proof_script=r"""
 const mongoose=require('mongoose');
-const {MongoDBSaver}=require('@langchain/langgraph-checkpoint-mongodb');
+const {createRequire}=require('node:module');
+// The root app does not promise to hoist the API package's direct dependencies.
+const apiRequire=createRequire(require.resolve('@librechat/api'));
+const {MongoDBSaver}=apiRequire('@langchain/langgraph-checkpoint-mongodb');
 (async()=>{
   await mongoose.connect(process.env.MONGO_URI);
   const nodeIds=JSON.parse(process.env.CI_NATIVE_NODES);
@@ -224,7 +236,9 @@ const {MongoDBSaver}=require('@langchain/langgraph-checkpoint-mongodb');
   await mongoose.disconnect();
   process.exit(0);
 })().catch(e=>{
-  console.log(JSON.stringify({unavailable:e.name||'NativeCheckpointReadError'}));
+  const known=['NATIVE_GENERATION_AMBIGUOUS','NATIVE_SAVER_UNAVAILABLE'];
+  const category=known.includes(e.message)?e.message:(e.code==='MODULE_NOT_FOUND'?'MODULE_NOT_FOUND':e.name);
+  console.log(JSON.stringify({unavailable:category}));
   process.exit(1);
 });
 """
