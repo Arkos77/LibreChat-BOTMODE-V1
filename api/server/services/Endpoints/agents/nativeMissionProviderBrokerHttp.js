@@ -99,7 +99,11 @@ function createNativeMissionProviderBrokerHttpServer({
       if (identity?.provider !== provider || typeof digest !== 'string') {
         return respond(403, { error: 'forbidden' });
       }
-      if ((await authorizeScope({ identity, requestDigest: digest })) !== true) {
+      // Reading a committed receipt after SIGKILL is not permission to
+      // create another provider effect. The independent authority decides
+      // whether an active lease is required for this specific operation.
+      const operation = req.url === '/status' ? 'read' : 'execute';
+      if ((await authorizeScope({ identity, requestDigest: digest, operation })) !== true) {
         return respond(403, { error: 'forbidden' });
       }
       if (req.url === '/status') {
