@@ -205,11 +205,15 @@ def native_state():
 # Wait for first native child to finish and the second provider request to
 # be in-flight. No arbitrary sleeps or synthetic fake child database records.
 pre=None
+armed=False
 for attempt in range(110):
-    counts=metrics()
-    if counts.get("held_second_child_requests",0)>0:
-        native_pre=native_state()
-        if native_pre.get("researchWrites",0)>0 and native_pre.get("analysisWrites",0)==0:
+    native_pre=native_state()
+    if native_pre.get("researchWrites",0)>0 and native_pre.get("analysisWrites",0)==0:
+        if not armed:
+            post_fixture("/arm-native-hold",{})
+            armed=True
+        counts=metrics()
+        if counts.get("held_second_child_requests",0)>0:
             pre=snapshot()
             break
     time.sleep(0.5)
