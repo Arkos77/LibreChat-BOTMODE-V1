@@ -122,7 +122,12 @@ function createNativeMissionProviderBrokerHttpServer({
         : (req.url === '/status'
           ? 'read'
           : (directGraphRoute ? 'reserve_native_graph' : 'execute'));
-      if ((await authorizeScope({ identity, requestDigest: digest, operation })) !== true) {
+      if ((await authorizeScope({
+        identity,
+        requestDigest: digest,
+        operation,
+        ...(directGraphRoute && { authorizedRequest: payload.authorizedRequest }),
+      })) !== true) {
         return respond(403, { error: 'forbidden' });
       }
       if (req.url === '/status') {
