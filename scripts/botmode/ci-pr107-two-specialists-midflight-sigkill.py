@@ -250,6 +250,59 @@ const mongoose=require('mongoose');(async()=>{
         print("CI_PR107_COLD_MULTI_WAIT_SSE_ERROR_TEXT_LENGTH="+str(length),flush=True)
     except (ValueError,TypeError,KeyError) as e:
         print("CI_PR107_COLD_MULTI_WAIT_SSE_DIAG_UNAVAILABLE="+type(e).__name__,flush=True)
+    # The SSE deliberately returns only a generic publication error.
+    # Inspect the *server-side* root cause without disclosing logs, IDs,
+    # prompts, provider messages, auth headers, request bodies or secrets.
+    # All emitted categories and codes below have a fixed allowlist.
+    try:
+        import re
+        api_logs=subprocess.run(
+            COMPOSE+["logs","--no-color","--tail","2500","api"],
+            capture_output=True,text=True,timeout=25,check=True,
+        ).stdout
+        markers=(
+            "Mission execution failed before publication",
+            "NATIVE_BROKER",
+            "NATIVE_ORIGINAL",
+            "NATIVE_MISSION",
+            "Failed to create run",
+        )
+        relevant=[line for line in api_logs.splitlines()
+                  if any(marker in line for marker in markers)]
+        allowed_prefixes=(
+            "NATIVE_", "MISSION_", "ORCHESTRATOR_", "BOTMODE_",
+            "SUBAGENT_", "AGENT_", "MODEL_", "PROVIDER_",
+        )
+        codes=set()
+        for line in relevant:
+            for code in re.findall(r"\b[A-Z][A-Z0-9_]{6,100}\b",line):
+                if code.startswith(allowed_prefixes):
+                    codes.add(code)
+        classes=sorted({name for name in (
+            "TypeError","ReferenceError","SyntaxError","RangeError",
+            "ValidationError","MongoServerError","Error",
+        ) if any(re.search(r"\b"+name+r"\b",line) for line in relevant)})
+        print("CI_PR107_COLD_MULTI_API_ROOT_LOG_COUNT="+str(len(relevant)),flush=True)
+        print("CI_PR107_COLD_MULTI_API_ROOT_CODES="+
+              (",".join(sorted(codes)) or "NONE"),flush=True)
+        print("CI_PR107_COLD_MULTI_API_ROOT_CLASSES="+
+              (",".join(classes) or "NONE"),flush=True)
+        phrase_map={
+            "HOST_MODEL_UNAUTHORIZED":"NATIVE_BROKER_HOST_MODEL_UNAUTHORIZED",
+            "TRANSPORT_CONFLICT":"NATIVE_BROKER_MODEL_TRANSPORT_CONFLICT",
+            "GRAPH_BUILD":"Failed to create run",
+            "MODEL_BINDING":"NATIVE_BROKER_MODEL_BINDING_UNAUTHORIZED",
+            "ORIGINAL_CHECKPOINT":"NATIVE_ORIGINAL_CHECKPOINT",
+            "NO_DEPENDENCY":"Cannot read properties",
+            "UNSUPPORTED_PROVIDER":"Unsupported LLM provider",
+            "MISSING_PROVIDER":"provider/model binding",
+        }
+        for name, phrase in phrase_map.items():
+            print("CI_PR107_COLD_MULTI_API_ROOT_"+name+"="+
+                  str(any(phrase in line for line in relevant)),flush=True)
+    except (OSError,subprocess.SubprocessError,ValueError) as e:
+        print("CI_PR107_COLD_MULTI_API_ROOT_DIAG_UNAVAILABLE="+
+              type(e).__name__,flush=True)
     fail("SECOND_CHILD_NOT_HELD_AFTER_FIRST_PERSISTED")
 # Identify a real P6 early publication separately from an errored child.
 # Never log prompts, child IDs, JWTs, or raw private database messages.
