@@ -244,6 +244,8 @@ describe('direct native graph model-operation identities', () => {
       { nodeId: 'mission/research' },
       { taskId: 'mission/research-task' },
       { agentId: 'other-agent' },
+      { provider: 'other-provider' },
+      { model: 'other-model' },
       { streamId: 'other-conversation' },
     ]) {
       await expect(store.read({
@@ -277,6 +279,14 @@ describe('direct native graph model-operation identities', () => {
     );
     await expect(store.prepare({
       ...directScope, requestDigest: digest('changed-model-request-after-crash'),
+    })).rejects.toThrow('NATIVE_PROVIDER_CALL_IMMUTABLE_CONFLICT');
+    await expect(store.prepare({
+      ...directScope,
+      identity: { ...direct, model: 'different-model' },
+    })).rejects.toThrow('NATIVE_PROVIDER_CALL_IMMUTABLE_CONFLICT');
+    await expect(store.prepare({
+      ...directScope,
+      identity: { ...direct, agentId: 'replacement-agent' },
     })).rejects.toThrow('NATIVE_PROVIDER_CALL_IMMUTABLE_CONFLICT');
     expect(collection.rows.size).toBe(1);
   });
