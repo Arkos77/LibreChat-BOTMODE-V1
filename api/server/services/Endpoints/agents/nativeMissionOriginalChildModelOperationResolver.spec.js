@@ -85,6 +85,8 @@ function setup(overrides = {}) {
       childThreadId: original.childThreadId,
       provider: args.provider,
       model: args.model,
+      operationKey: OP,
+      requestDigest: DIGEST,
     })),
     ...overrides,
   };
@@ -111,6 +113,31 @@ describe('original native child model operation grant: immutable and fail closed
     expect(deps.getOriginalCheckpoint).toHaveBeenCalledWith(
       expect.objectContaining({ checkpointId: receipt.checkpointId }),
     );
+  });
+
+  it('refuses forged journal operation keys or request digests absent from the original checkpoint', async () => {
+    for (const mismatch of [
+      { operationKey: 'd'.repeat(64) },
+      { requestDigest: 'e'.repeat(64) },
+      { operationKey: undefined },
+      { requestDigest: undefined },
+    ]) {
+      const { deps, resolve } = setup({
+        getOriginalCheckpoint: async () => ({
+          checkpointId: receipt.checkpointId,
+          taskId: original.taskId,
+          attemptKey: original.attemptKey,
+          childThreadId: original.childThreadId,
+          provider: args.provider,
+          model: args.model,
+          operationKey: OP,
+          requestDigest: DIGEST,
+          ...mismatch,
+        }),
+      });
+      await expect(resolve(args)).rejects.toThrow('NATIVE_MODEL_OPERATION_CHECKPOINT_PROOF_DENIED');
+      expect(deps.findOriginalOperations).toHaveBeenCalledTimes(1);
+    }
   });
 
   it('rejects an uncheckpointed call even if a matching child start exists', async () => {

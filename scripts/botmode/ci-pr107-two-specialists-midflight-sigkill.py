@@ -206,9 +206,9 @@ const m=require('mongoose');
       'identity.taskId':taskId,
       'identity.attemptKey':starts[0].subagentTask.attemptKey,
     });
-    // An SDK child checkpoint uses a separate, encoded subagent: thread id,
-    // not the Task Engine's Mongo conversation UUID. Check its exact original
-    // parent tool identity without disclosing checkpoint content or keys.
+    // An SDK child checkpoint uses an encoded subagent: graph identity,
+    // not the Task Engine's Mongo conversation UUID. Check its original
+    // parent/agent/tool identity without revealing checkpoint content or keys.
     const checkpointRows=await db.collection('agent_checkpoints')
       .find({thread_id:/^subagent:/}).project({thread_id:1}).toArray();
     let checkpoints=0;
@@ -218,9 +218,18 @@ const m=require('mongoose');
         coordinates=JSON.parse(Buffer.from(row.thread_id.slice('subagent:'.length),
            'base64url').toString('utf8'));
       } catch {continue;}
-      if(Array.isArray(coordinates) && coordinates.length===5 &&
-         coordinates[0]===lineage.parentMessageId &&
-         coordinates[3]===lineage.parentToolCallId) checkpoints++;
+      // SDK SubagentExecutionRegistry.createAddress encodes the conversation
+      // thread_id, parent checkpoint fork, parent agent, original tool call
+      // and batch (optionally a sixth resume-attempt entry). It does NOT encode
+      // the parent's response message id as its first coordinate.
+      if(Array.isArray(coordinates) && (coordinates.length===5 || coordinates.length===6) &&
+         coordinates.every(v=>typeof v==='string' && v.length>0) &&
+         coordinates[0]===parent &&
+         coordinates[2]===lineage.parentAgentId &&
+         coordinates[3]===lineage.parentToolCallId &&
+         (coordinates.length===5 || coordinates[5]===lineage.parentMessageId)) {
+        checkpoints++;
+      }
     }
     pending.push({calls,checkpoints});
   }

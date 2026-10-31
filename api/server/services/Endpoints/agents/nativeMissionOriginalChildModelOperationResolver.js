@@ -209,7 +209,9 @@ function createNativeMissionOriginalChildModelOperationResolver({
       checkpoint?.attemptKey !== original.attemptKey ||
       checkpoint?.childThreadId !== original.childThreadId ||
       checkpoint?.provider !== provider ||
-      checkpoint?.model !== model
+      checkpoint?.model !== model ||
+      checkpoint?.operationKey !== receipt.operationKey ||
+      checkpoint?.requestDigest !== requestDigest
     ) {
       refuse('NATIVE_MODEL_OPERATION_CHECKPOINT_PROOF_DENIED');
     }
