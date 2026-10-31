@@ -35,6 +35,10 @@ function createNativeMissionIndependentOriginalBrokerServer({
   canViewAgent,
   inspectOriginalChildOwner,
   getCurrentModelBinding,
+  // Optional independent authority. The original-child path remains unchanged
+  // and direct graph dispatch is disabled until the operator supplies a
+  // checkpoint- and original-request-verifying authority.
+  authorizeOriginalNativeGraph,
 }) {
   const authorizeScope = createNativeMissionIndependentOriginalBrokerAuthority({
     findOriginalOperation,
@@ -48,6 +52,12 @@ function createNativeMissionIndependentOriginalBrokerServer({
     getCurrentModelBinding,
   });
   const store = createNativeMissionProviderCallReceiptStore({ collection });
+  const authorizeBrokerScope = ({ identity, ...rest }) =>
+    identity?.mode === 'native_graph'
+      ? (typeof authorizeOriginalNativeGraph === 'function'
+        ? authorizeOriginalNativeGraph({ identity, ...rest })
+        : false)
+      : authorizeScope({ identity, ...rest });
   const assertAuthorized = async ({ identity, requestDigest: digest, authorizedRequest }) => {
     if (
       authorizedRequest == null ||
@@ -57,7 +67,10 @@ function createNativeMissionIndependentOriginalBrokerServer({
       authorizedRequest.tools != null ||
       authorizedRequest.tool_choice != null ||
       requestDigest(authorizedRequest) !== digest ||
-      (await authorizeScope({ identity, requestDigest: digest, operation: 'execute' })) !== true
+      (await authorizeBrokerScope({
+        identity, requestDigest: digest, authorizedRequest,
+        operation: identity?.mode === 'native_graph' ? 'reserve_native_graph' : 'execute',
+      })) !== true
     ) {
       throw new Error('NATIVE_BROKER_ORIGINAL_DISPATCH_DENIED');
     }
@@ -72,7 +85,8 @@ function createNativeMissionIndependentOriginalBrokerServer({
     broker,
     secret,
     provider,
-    authorizeScope,
+    authorizeScope: authorizeBrokerScope,
+    ...(typeof authorizeOriginalNativeGraph === 'function' && { authorizeOriginalNativeGraph }),
   });
 }
 
