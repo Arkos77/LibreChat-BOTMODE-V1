@@ -220,12 +220,13 @@ export function compileNativePlan(
         .filter(Boolean)
         .join('\n'),
     };
-    if (nativeGraphModelFetchFactory != null) {
-      // The current receipt adapter supports model-only direct graph steps.
-      // A research observation, tool, or nested delegation could have extra
-      // effects and must get an independently verified receipt adapter first.
+    // Research can have web_search effects. In 4C its original completed
+    // result is already durable before the crash; it must NOT be re-executed
+    // by the receipts-only cold recovery path. Install the broker transport
+    // solely on the pending, tool-free Analyse node. The cold pending-node
+    // admission is responsible for rejecting any unfinished research phase.
+    if (nativeGraphModelFetchFactory != null && !isResearchTask(task)) {
       if (
-        isResearchTask(task) ||
         binding.tools?.length ||
         binding.graphTools?.length ||
         binding.toolDefinitions?.length ||
