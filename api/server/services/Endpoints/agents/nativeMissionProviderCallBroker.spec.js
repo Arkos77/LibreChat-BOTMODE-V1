@@ -26,7 +26,9 @@ function createCollection() {
   const rows = new Map();
   const createIndex = jest.fn(async () => 'native_provider_call_unique');
   const insertOne = jest.fn(async (record) => {
-    if (rows.has(record.callKey)) {
+    if (rows.has(record.callKey) ||
+        (record.nativeGraphSlotKey && [...rows.values()].some(
+          (row) => row.nativeGraphSlotKey === record.nativeGraphSlotKey))) {
       const err = new Error('duplicate');
       err.code = 11000;
       throw err;
@@ -261,6 +263,22 @@ describe('direct native graph model-operation identities', () => {
       ...directScope,
       identity: { ...identity, mode: 'native_graph' },
     })).rejects.toThrow('NATIVE_PROVIDER_CALL_IDENTITY_INVALID');
+  });
+
+  it('refuses a second provider reservation for the same original graph step', async () => {
+    const { store, collection } = create();
+    await store.prepare(directScope);
+    const otherOperation = {
+      ...directScope,
+      identity: { ...direct, operationKey: digest('new-operation-after-crash') },
+    };
+    await expect(store.prepare(otherOperation)).rejects.toThrow(
+      'NATIVE_PROVIDER_CALL_IMMUTABLE_CONFLICT',
+    );
+    await expect(store.prepare({
+      ...directScope, requestDigest: digest('changed-model-request-after-crash'),
+    })).rejects.toThrow('NATIVE_PROVIDER_CALL_IMMUTABLE_CONFLICT');
+    expect(collection.rows.size).toBe(1);
   });
 
   it('preserves detached child identity and never aliases it with a graph node', async () => {
