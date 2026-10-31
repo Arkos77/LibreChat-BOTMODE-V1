@@ -50,14 +50,24 @@ function mockMongo() {
   const rows = new Map();
   const createIndex = jest.fn(async () => 'native_provider_call_unique');
   const insertOne = jest.fn(async (doc) => {
-    if (rows.has(doc.callKey)) {
+    if (
+      rows.has(doc.callKey) ||
+      (doc.originalSlotKey != null &&
+        [...rows.values()].some((r) => r.originalSlotKey === doc.originalSlotKey))
+    ) {
       const e = new Error('duplicate');
       e.code = 11000;
       throw e;
     }
     rows.set(doc.callKey, structuredClone(doc));
   });
-  const findOne = jest.fn(async (query) => structuredClone(rows.get(query.callKey) ?? null));
+  const findOne = jest.fn(async (query) =>
+    structuredClone(
+      (query.callKey
+        ? rows.get(query.callKey)
+        : [...rows.values()].find((row) => row.originalSlotKey === query.originalSlotKey)) ?? null,
+    ),
+  );
   const findOneAndUpdate = jest.fn(async (filter, update) => {
     const current = rows.get(filter.callKey);
     if (
@@ -259,6 +269,81 @@ describe('private Mongo journal for original child model operation', () => {
     expect(collection.find).toHaveBeenCalledWith(
       expect.objectContaining({ attemptKey: scope.attemptKey, requestDigest: start.requestDigest }),
     );
+  });
+
+  it('reserves the original graph step exactly once before any model effect', async () => {
+    const graph = {
+      graphThreadId: 'subagent:original-graph',
+      checkpointNs: '',
+      generationNamespace: 'original-generation',
+    };
+    const fresh = {
+      identity: Object.fromEntries(
+        Object.entries(identity).filter(([field]) => field !== 'operationKey'),
+      ),
+      parentToolCallId: start.parentToolCallId,
+      checkpointId: start.checkpointId,
+      requestDigest: start.requestDigest,
+      ...graph,
+    };
+    const { journal, collection } = setup({
+      readOriginalCheckpoint: async () => ({
+        checkpointId: start.checkpointId,
+        taskId: identity.taskId,
+        attemptKey: identity.attemptKey,
+        childThreadId: identity.childThreadId,
+        provider: identity.provider,
+        model: identity.model,
+        ...graph,
+      }),
+    });
+    const [first, simultaneous] = await Promise.all([
+      journal.reserveOriginal(fresh),
+      journal.reserveOriginal(fresh),
+    ]);
+    expect(first.status).toBe('prepared');
+    expect(first.operationKey).toMatch(/^[a-f0-9]{64}$/);
+    expect(first.operationKey).toBe(simultaneous.operationKey);
+    expect(first.callKey).toBe(simultaneous.callKey);
+    expect(collection.rows.size).toBe(1);
+    await expect(journal.reserveOriginal(fresh)).resolves.toEqual(first);
+    expect(collection.rows.size).toBe(1);
+    await expect(
+      journal.reserveOriginal({ ...fresh, requestDigest: digest('different-request') }),
+    ).rejects.toThrow('NATIVE_ORIGINAL_MODEL_RESERVATION_CONFLICT');
+    expect(collection.rows.size).toBe(1);
+  });
+
+  it('never reserves a provider call for an unproven original graph checkpoint', async () => {
+    const graph = {
+      graphThreadId: 'subagent:original-graph',
+      checkpointNs: '',
+      generationNamespace: 'original-generation',
+    };
+    const { journal, collection } = setup({
+      readOriginalCheckpoint: async () => ({
+        checkpointId: start.checkpointId,
+        taskId: identity.taskId,
+        attemptKey: identity.attemptKey,
+        childThreadId: identity.childThreadId,
+        provider: identity.provider,
+        model: identity.model,
+        ...graph,
+        graphThreadId: 'subagent:foreign-graph',
+      }),
+    });
+    await expect(
+      journal.reserveOriginal({
+        identity: Object.fromEntries(
+          Object.entries(identity).filter(([field]) => field !== 'operationKey'),
+        ),
+        parentToolCallId: start.parentToolCallId,
+        checkpointId: start.checkpointId,
+        requestDigest: start.requestDigest,
+        ...graph,
+      }),
+    ).rejects.toThrow('NATIVE_ORIGINAL_MODEL_JOURNAL_CHECKPOINT_DENIED');
+    expect(collection.insertOne).not.toHaveBeenCalled();
   });
 
   it('uses the exact same prepared Mongo operation with the independent broker', async () => {

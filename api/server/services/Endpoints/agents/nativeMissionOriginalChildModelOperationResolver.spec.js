@@ -141,6 +141,45 @@ describe('original native child model operation grant: immutable and fail closed
     }
   });
 
+  it('accepts one checkpoint-bound Mongo reservation without pretending LangGraph stores the generated operation key', async () => {
+    const graph = {
+      originalSlotKey: 'f'.repeat(64),
+      graphThreadId: 'subagent:original-graph',
+      checkpointNs: '',
+      generationNamespace: 'original-generation',
+    };
+    const saved = {
+      checkpointId: receipt.checkpointId,
+      taskId: original.taskId,
+      attemptKey: original.attemptKey,
+      childThreadId: original.childThreadId,
+      provider: args.provider,
+      model: args.model,
+      graphThreadId: graph.graphThreadId,
+      checkpointNs: graph.checkpointNs,
+      generationNamespace: graph.generationNamespace,
+    };
+    const { resolve } = setup({
+      findOriginalOperations: async () => [{ ...receipt, ...graph }],
+      getOriginalCheckpoint: async () => saved,
+    });
+    await expect(resolve(args)).resolves.toMatchObject({
+      approved: true,
+      operationKey: OP,
+      checkpointId: receipt.checkpointId,
+    });
+    const altered = setup({
+      findOriginalOperations: async () => [{ ...receipt, ...graph }],
+      getOriginalCheckpoint: async () => ({
+        ...saved,
+        graphThreadId: 'subagent:foreign-graph',
+      }),
+    });
+    await expect(altered.resolve(args)).rejects.toThrow(
+      'NATIVE_MODEL_OPERATION_CHECKPOINT_PROOF_DENIED',
+    );
+  });
+
   it('rejects an uncheckpointed call even if a matching child start exists', async () => {
     const { resolve } = setup({ findOriginalOperations: async () => [] });
     await expect(resolve(args)).rejects.toThrow(

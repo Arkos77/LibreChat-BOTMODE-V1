@@ -210,8 +210,17 @@ function createNativeMissionOriginalChildModelOperationResolver({
       checkpoint?.childThreadId !== original.childThreadId ||
       checkpoint?.provider !== provider ||
       checkpoint?.model !== model ||
-      checkpoint?.operationKey !== receipt.operationKey ||
-      checkpoint?.requestDigest !== requestDigest
+      (typeof receipt.originalSlotKey === 'string'
+        ? !HASH.test(receipt.originalSlotKey) ||
+          !bounded(receipt.graphThreadId) ||
+          !receipt.graphThreadId.startsWith('subagent:') ||
+          !bounded(receipt.generationNamespace) ||
+          typeof receipt.checkpointNs !== 'string' ||
+          checkpoint.graphThreadId !== receipt.graphThreadId ||
+          checkpoint.generationNamespace !== receipt.generationNamespace ||
+          checkpoint.checkpointNs !== receipt.checkpointNs
+        : checkpoint?.operationKey !== receipt.operationKey ||
+          checkpoint?.requestDigest !== requestDigest)
     ) {
       refuse('NATIVE_MODEL_OPERATION_CHECKPOINT_PROOF_DENIED');
     }

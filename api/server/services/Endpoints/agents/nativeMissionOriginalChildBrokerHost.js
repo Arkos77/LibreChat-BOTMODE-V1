@@ -10,7 +10,6 @@ const {
   createNativeMissionDetachedBrokerModelFetchFactory,
 } = require('./nativeMissionProviderBrokerModelFetch');
 
-const HASH = /^[a-f0-9]{64}$/;
 function deny(code) {
   const error = new Error(code);
   error.code = code;
@@ -72,9 +71,10 @@ function createNativeMissionOriginalChildBrokerHost({
     model,
     requestDigest,
   }) => {
-    // The operation key MUST originate in the ORIGINAL checkpoint and be
-    // checked against its exact graph coordinates. Never hash the prompt into
-    // a grant or create a fresh key after a process restart.
+    // LangGraph's original checkpoint proves the durable graph step; its
+    // provider operation key does not yet exist until the FIRST reservation.
+    // Mongo allocates the opaque key once per original graph step, before
+    // any broker/provider effect. A recovered child only reads it.
     if (
       typeof checkpoint?.threadId !== 'string' ||
       !checkpoint.threadId.startsWith('subagent:') ||
@@ -102,13 +102,11 @@ function createNativeMissionOriginalChildBrokerHost({
       saved?.attemptKey !== scope.attemptKey ||
       saved?.childThreadId !== scope.childThreadId ||
       saved?.provider !== provider ||
-      saved?.model !== model ||
-      saved?.requestDigest !== requestDigest ||
-      !HASH.test(saved?.operationKey)
+      saved?.model !== model
     ) {
       deny('NATIVE_ORIGINAL_CHILD_HOST_GRAPH_PROOF_DENIED');
     }
-    return journal.prepareOriginal({
+    return journal.reserveOriginal({
       identity: {
         userId: scope.userId,
         tenantId: scope.tenantId ?? '',
@@ -120,11 +118,13 @@ function createNativeMissionOriginalChildBrokerHost({
         agentId: scope.agentId,
         provider,
         model,
-        operationKey: saved.operationKey,
       },
       parentToolCallId: scope.parentToolCallId,
-      requestDigest,
+      graphThreadId: checkpoint.threadId,
       checkpointId: checkpoint.checkpointId,
+      checkpointNs: checkpoint.checkpointNs,
+      generationNamespace: checkpoint.generationNamespace,
+      requestDigest,
     });
   };
   const modelFetchFactory = createNativeMissionDetachedBrokerModelFetchFactory({
