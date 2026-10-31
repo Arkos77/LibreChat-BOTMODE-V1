@@ -199,6 +199,23 @@ else:
         for label in ("completion_calls","child_responses","held_second_child_requests",
                       "parent_final"):
             print("CI_PR107_COLD_MULTI_WAIT_METRIC_"+label.upper()+"="+str(mm.get(label,0)),flush=True)
+            # Global fixture counters include earlier CI scenarios; isolate
+            # this mission's activity from the configure-time baseline.
+            if isinstance(mm.get(label),int) and isinstance(before.get(label,0),int):
+                print("CI_PR107_COLD_MULTI_MISSION_DELTA_"+label.upper()+"="+
+                      str(mm[label]-before.get(label,0)),flush=True)
+        # Bounded schema/phase metadata only. No request bodies, tool args,
+        # model outputs or identities are emitted to CI logs.
+        for label in ("advertised_subagent_requests","requests_without_subagent_tool",
+                      "parent_tool_requests","missing_tool","unclassified_no_tool_turns"):
+            if isinstance(mm.get(label),int) and isinstance(before.get(label,0),int):
+                print("CI_PR107_COLD_MULTI_MISSION_DELTA_"+label.upper()+"="+
+                      str(mm[label]-before.get(label,0)),flush=True)
+        for label in ("last_tool_count","last_has_tool_result",
+                      "last_prior_subagent_call","last_advertised_subagent"):
+            value=mm.get(label)
+            if type(value) is int and 0<=value<=1000:
+                print("CI_PR107_COLD_MULTI_LAST_"+label.upper()+"="+str(value),flush=True)
         diag_script=r"""
 const mongoose=require('mongoose');(async()=>{
  await mongoose.connect(process.env.MONGO_URI);
