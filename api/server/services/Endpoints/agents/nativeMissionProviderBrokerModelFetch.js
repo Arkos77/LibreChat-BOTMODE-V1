@@ -91,8 +91,15 @@ function createNativeMissionBrokerModelFetch({
   }
   const modelEndpoint = new URL(originalModelEndpoint);
   const broker = new URL(brokerUrl);
+  // An OpenRouter OpenAI-compatible binding uses /api/v1, not OpenAI's /v1.
+  // Accept only the exact provider-specific path from the HOST-owned binding;
+  // the request body can never select an upstream URL.
+  const expectedModelPath =
+    originalProvider.toLowerCase() === 'openrouter'
+      ? '/api/v1/chat/completions'
+      : '/v1/chat/completions';
   if (
-    modelEndpoint.pathname !== '/v1/chat/completions' ||
+    modelEndpoint.pathname !== expectedModelPath ||
     modelEndpoint.search ||
     modelEndpoint.hash ||
     !['http:', 'https:'].includes(modelEndpoint.protocol) ||

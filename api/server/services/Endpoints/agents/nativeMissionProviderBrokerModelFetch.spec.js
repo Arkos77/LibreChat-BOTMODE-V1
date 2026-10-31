@@ -91,6 +91,36 @@ describe('native model transport via durable provider broker (not installed auto
     );
   });
 
+  it('uses the official OpenRouter endpoint without accepting a caller-selected alternative URL', async () => {
+    const openrouterEndpoint = 'https://openrouter.ai/api/v1/chat/completions';
+    const { fetchModel, calls } = setup({
+      originalProvider: 'openrouter',
+      originalModelEndpoint: openrouterEndpoint,
+      resolveOriginalOperation: async (args) => ({
+        approved: true,
+        scope,
+        provider: 'openrouter',
+        model: 'ci-free',
+        requestDigest: args.requestDigest,
+        operationKey,
+      }),
+    });
+    await expect(fetchModel(openrouterEndpoint, { method: 'POST', body })).resolves.toBeInstanceOf(
+      Response,
+    );
+    expect(calls.map((item) => new URL(item.url).pathname)).toEqual(['/execute']);
+    await expect(
+      fetchModel('https://openrouter.ai/v1/chat/completions', { method: 'POST', body }),
+    ).rejects.toThrow('NATIVE_BROKER_FETCH_MODEL_ENDPOINT_MISMATCH');
+    expect(calls).toHaveLength(1);
+    expect(() =>
+      setup({
+        originalProvider: 'openrouter',
+        originalModelEndpoint: 'https://openrouter.ai/v1/chat/completions',
+      }),
+    ).toThrow('NATIVE_BROKER_FETCH_ENDPOINT_DENIED');
+  });
+
   it('recovered native child never invokes /execute, even with a valid original grant', async () => {
     const { fetchModel, calls, fetchImpl } = setup({
       getScope: () => ({ ...scope, recoveryOnly: true }),
