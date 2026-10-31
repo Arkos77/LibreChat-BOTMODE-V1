@@ -327,6 +327,41 @@ describe('direct native graph model-operation identities', () => {
     expect(collection.rows.size).toBe(1);
   });
 
+  it('original broker entry point owns a single original direct node effect', async () => {
+    const { operationKey: _ignored, ...nativeIdentity } = direct;
+    const originalRequest = {
+      identity: nativeIdentity,
+      requestDigest: directScope.requestDigest,
+      authorizedRequest: { model: 'ci-free', stream: false, messages: [] },
+    };
+    const { broker, sendProvider, collection, assertAuthorized } = create();
+    const first = await broker.executeOriginalNativeGraph(originalRequest);
+    expect(first.status).toBe('result_committed');
+    const recovered = await broker.executeOriginalNativeGraph(originalRequest);
+    expect(recovered.status).toBe('result_committed');
+    expect(sendProvider).toHaveBeenCalledTimes(1);
+    expect(collection.rows.size).toBe(1);
+    expect(assertAuthorized).toHaveBeenCalledWith({
+      ...originalRequest,
+      operation: 'reserve_native_graph',
+    });
+    await expect(broker.executeOriginalNativeGraph({
+      ...originalRequest, identity: direct,
+    })).rejects.toThrow('NATIVE_GRAPH_ORIGINAL_BROKER_RESERVATION_DENIED');
+  });
+
+  it('never reserves or dispatches native graph effects without current authority', async () => {
+    const { operationKey: _ignored, ...nativeIdentity } = direct;
+    const { broker, sendProvider, collection, assertAuthorized } = create();
+    assertAuthorized.mockRejectedValueOnce(new Error('owner revoked'));
+    await expect(broker.executeOriginalNativeGraph({
+      identity: nativeIdentity, requestDigest: directScope.requestDigest,
+      authorizedRequest: {},
+    })).rejects.toThrow('owner revoked');
+    expect(collection.rows.size).toBe(0);
+    expect(sendProvider).not.toHaveBeenCalled();
+  });
+
   it('rejects altered native binding, request digest and caller-supplied operation key', async () => {
     const { store, collection } = create();
     const { operationKey: _ignored, ...originalGraph } = direct;
