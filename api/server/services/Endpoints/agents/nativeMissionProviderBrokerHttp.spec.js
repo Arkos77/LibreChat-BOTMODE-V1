@@ -79,9 +79,18 @@ describe('private fixture-only provider broker ingress', () => {
     const executed = await signed('/execute', { ...scope, authorizedRequest });
     expect(executed.status).toBe(200);
     expect(broker.execute).toHaveBeenCalledWith({ ...scope, authorizedRequest });
+    expect(authorizeScope).toHaveBeenCalledWith({ ...scope, operation: 'execute' });
     const read = await signed('/status', scope);
     expect(read.status).toBe(200);
     expect(store.read).toHaveBeenCalledWith(scope);
+    expect(authorizeScope).toHaveBeenCalledWith({ ...scope, operation: 'read' });
+  });
+
+  it('does not turn an expired dispatch lease into renewed provider authorization on status', async () => {
+    authorizeScope.mockImplementation(async ({ operation }) => operation === 'read');
+    expect((await signed('/status', scope)).status).toBe(200);
+    expect((await signed('/execute', { ...scope, authorizedRequest })).status).toBe(403);
+    expect(broker.execute).not.toHaveBeenCalled();
   });
 
   it('rejects invalid signatures before any provider call', async () => {
