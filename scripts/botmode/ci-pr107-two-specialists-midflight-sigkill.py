@@ -211,7 +211,7 @@ const m=require('mongoose');
     // parent/agent/tool identity without revealing checkpoint content or keys.
     const checkpointRows=await db.collection('agent_checkpoints')
       .find({thread_id:/^subagent:/}).project({thread_id:1}).toArray();
-    let checkpoints=0;
+    let checkpoints=0, fromSameParent=0;
     for(const row of checkpointRows){
       let coordinates;
       try {
@@ -224,18 +224,25 @@ const m=require('mongoose');
       // the parent's response message id as its first coordinate.
       if(Array.isArray(coordinates) && (coordinates.length===5 || coordinates.length===6) &&
          coordinates.every(v=>typeof v==='string' && v.length>0) &&
-         coordinates[0]===parent &&
-         coordinates[2]===lineage.parentAgentId &&
-         coordinates[3]===lineage.parentToolCallId &&
-         (coordinates.length===5 || coordinates[5]===lineage.parentMessageId)) {
-        checkpoints++;
+         coordinates[0]===parent) {
+        fromSameParent++;
+        if(coordinates[2]===lineage.parentAgentId &&
+           coordinates[3]===lineage.parentToolCallId) {
+          // The optional sixth field is a durable SDK resume attempt ID,
+          // not necessarily the Mongo parent response message ID.
+          // This is only an inventory: the original lease/attempt and exact
+          // checkpoint grant are checked separately before dispatch.
+          checkpoints++;
+        }
       }
     }
-    pending.push({calls,checkpoints});
+    pending.push({calls,checkpoints,fromSameParent,raw:checkpointRows.length});
   }
   console.log(JSON.stringify({pending:pending.length,
     originalBrokerReceipts:pending.reduce((n,c)=>n+c.calls,0),
-    childCheckpointRows:pending.reduce((n,c)=>n+c.checkpoints,0)}));
+    childCheckpointRows:pending.reduce((n,c)=>n+c.checkpoints,0),
+    parentCheckpointRows:pending.reduce((n,c)=>n+c.fromSameParent,0),
+    rawSubagentCheckpointRows:pending.reduce((n,c)=>n+c.raw,0)}));
   await m.disconnect();
 })().catch(e=>{console.error(e.name);process.exitCode=1});
 """
@@ -244,6 +251,10 @@ print("CI_PR107_COLD_MULTI_ORIGINAL_BROKER_RECEIPTS="+str(
     proof["originalBrokerReceipts"]),flush=True)
 print("CI_PR107_COLD_MULTI_CHILD_CHECKPOINT_ROWS="+str(
     proof["childCheckpointRows"]),flush=True)
+print("CI_PR107_COLD_MULTI_PARENT_CHECKPOINT_ROWS="+str(
+    proof["parentCheckpointRows"]),flush=True)
+print("CI_PR107_COLD_MULTI_RAW_SDK_CHECKPOINT_ROWS="+str(
+    proof["rawSubagentCheckpointRows"]),flush=True)
 if proof["pending"]!=1:
     fail("SECOND_CHILD_ORIGINAL_IDENTITY_AMBIGUOUS")
 if proof["originalBrokerReceipts"]!=1:
