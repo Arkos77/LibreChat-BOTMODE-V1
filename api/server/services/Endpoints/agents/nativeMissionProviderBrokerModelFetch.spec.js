@@ -299,6 +299,7 @@ describe('native model transport via durable provider broker (not installed auto
 });
 
 describe('original detached-child host binding via real execution context', () => {
+  const checkpointId = 'durable-original-sdk-checkpoint';
   const binding = Object.freeze({
     agentId: scope.agentId,
     provider: 'ci-local-fixture',
@@ -314,6 +315,12 @@ describe('original detached-child host binding via real execution context', () =
         { status: 200 },
       );
     });
+    const prepareOriginalOperation = jest.fn(async (args) => ({
+      status: 'prepared',
+      checkpointId,
+      operationKey,
+      requestDigest: args.requestDigest,
+    }));
     const resolveOriginalOperation = jest.fn(async (args) => ({
       approved: true,
       scope,
@@ -321,27 +328,35 @@ describe('original detached-child host binding via real execution context', () =
       model: binding.model,
       requestDigest: args.requestDigest,
       operationKey,
+      checkpointId,
     }));
     const factory = createNativeMissionDetachedBrokerModelFetchFactory({
       getExecutionScope: () => scope,
       resolveModelBinding: () => ({ ...binding, endpoint }),
       resolveOriginalOperation,
+      prepareOriginalOperation,
       brokerUrl: 'http://127.0.0.1:8095/',
       secret,
       fetchImpl,
       ...overrides,
     });
-    return { factory, fetchImpl, resolveOriginalOperation, calls };
+    return { factory, fetchImpl, resolveOriginalOperation, prepareOriginalOperation, calls };
   }
 
   it('binds the model only when the trusted host and original child identity agree', async () => {
-    const { factory, calls, resolveOriginalOperation } = host();
+    const { factory, calls, resolveOriginalOperation, prepareOriginalOperation } = host();
     const fetchModel = factory(binding);
     const response = await fetchModel(endpoint, { method: 'POST', body });
     expect(await response.json()).toEqual(final);
     expect(calls.map((call) => call.url)).toEqual(['http://127.0.0.1:8095/execute']);
     expect(resolveOriginalOperation).toHaveBeenCalledWith(
       expect.objectContaining({ scope, provider: binding.provider, model: binding.model }),
+    );
+    expect(prepareOriginalOperation).toHaveBeenCalledWith(
+      expect.objectContaining({ scope, provider: binding.provider, model: binding.model }),
+    );
+    expect(prepareOriginalOperation.mock.invocationCallOrder[0]).toBeLessThan(
+      resolveOriginalOperation.mock.invocationCallOrder[0],
     );
   });
 
@@ -369,12 +384,67 @@ describe('original detached-child host binding via real execution context', () =
   });
 
   it('keeps recovered child requests read-only at the broker', async () => {
-    const { factory, calls } = host({
+    const { factory, calls, prepareOriginalOperation } = host({
       getExecutionScope: () => ({ ...scope, recoveryOnly: true }),
     });
     const result = await factory(binding)(endpoint, { method: 'POST', body });
     expect(result.status).toBe(200);
     expect(calls.map((call) => new URL(call.url).pathname)).toEqual(['/status']);
+    expect(prepareOriginalOperation).not.toHaveBeenCalled();
+  });
+
+  it('refuses a failed pre-dispatch Mongo write without provider/network IO', async () => {
+    const { factory, fetchImpl, resolveOriginalOperation } = host({
+      prepareOriginalOperation: async () => {
+        throw new Error('NATIVE_ORIGINAL_MODEL_JOURNAL_CHECKPOINT_DENIED');
+      },
+    });
+    await expect(factory(binding)(endpoint, { method: 'POST', body })).rejects.toThrow(
+      'NATIVE_ORIGINAL_MODEL_JOURNAL_CHECKPOINT_DENIED',
+    );
+    expect(resolveOriginalOperation).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('refuses a mismatched durable checkpoint or operation key before dispatch', async () => {
+    for (const mismatch of [
+      { operationKey: createHash('sha256').update('foreign').digest('hex') },
+      { checkpointId: 'foreign-checkpoint' },
+      { requestDigest: 'f'.repeat(64) },
+      { status: 'not-persisted' },
+    ]) {
+      const { factory, fetchImpl } = host({
+        prepareOriginalOperation: async (args) => ({
+          status: 'prepared',
+          checkpointId,
+          operationKey,
+          requestDigest: args.requestDigest,
+          ...mismatch,
+        }),
+      });
+      await expect(factory(binding)(endpoint, { method: 'POST', body })).rejects.toThrow(
+        'NATIVE_BROKER_FETCH_OPERATION_UNVERIFIED',
+      );
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
+  });
+
+  it('accepts a reused identical committed original operation without a second dispatch', async () => {
+    const { factory, calls } = host({
+      prepareOriginalOperation: async (args) => ({
+        status: 'result_committed',
+        checkpointId,
+        operationKey,
+        requestDigest: args.requestDigest,
+      }),
+    });
+    await expect(factory(binding)(endpoint, { method: 'POST', body })).resolves.toBeInstanceOf(
+      Response,
+    );
+    expect(calls).toHaveLength(1);
+    expect(new URL(calls[0].url).pathname).toBe('/execute');
+    // The broker's CAS must serve this committed receipt, never send a second
+    // provider request. This unit proves only the model-transport side.
   });
 
   it('does not install a transport without a trusted operation resolver', () => {

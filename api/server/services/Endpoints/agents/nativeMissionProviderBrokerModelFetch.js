@@ -55,6 +55,7 @@ function exactScope(original, scope) {
 function createNativeMissionBrokerModelFetch({
   getScope,
   resolveOriginalOperation,
+  prepareOriginalOperation,
   originalProvider,
   originalModel,
   originalModelEndpoint,
@@ -68,6 +69,7 @@ function createNativeMissionBrokerModelFetch({
   if (
     typeof getScope !== 'function' ||
     typeof resolveOriginalOperation !== 'function' ||
+    (prepareOriginalOperation != null && typeof prepareOriginalOperation !== 'function') ||
     typeof originalProvider !== 'string' ||
     originalProvider.length === 0 ||
     typeof originalModel !== 'string' ||
@@ -170,6 +172,19 @@ function createNativeMissionBrokerModelFetch({
         )
       : body;
     const digest = requestDigest(authorizedRequest);
+    // The authentic SDK child triggers this BEFORE any provider-side effect.
+    // The host must prove the original graph checkpoint and write an immutable
+    // Mongo operation receipt. No model request content is passed to this gate.
+    // On a recovered attempt the gate must NEVER create a new operation.
+    const prepared =
+      scope.recoveryOnly !== true && prepareOriginalOperation != null
+        ? await prepareOriginalOperation({
+            scope: Object.freeze({ ...scope }),
+            provider: originalProvider,
+            model: originalModel,
+            requestDigest: digest,
+          })
+        : null;
     const permit = await resolveOriginalOperation({
       scope: Object.freeze({ ...scope }),
       provider: originalProvider,
@@ -183,7 +198,17 @@ function createNativeMissionBrokerModelFetch({
       permit.model !== originalModel ||
       permit.requestDigest !== digest ||
       typeof permit.operationKey !== 'string' ||
-      !HEX.test(permit.operationKey)
+      !HEX.test(permit.operationKey) ||
+      (prepareOriginalOperation != null &&
+        scope.recoveryOnly !== true &&
+        (!['prepared', 'claimed', 'dispatched', 'outcome_unknown', 'result_committed'].includes(
+          prepared?.status,
+        ) ||
+          typeof prepared.checkpointId !== 'string' ||
+          prepared.checkpointId.length === 0 ||
+          prepared.operationKey !== permit.operationKey ||
+          prepared.requestDigest !== digest ||
+          prepared.checkpointId !== permit.checkpointId))
     ) {
       denied('NATIVE_BROKER_FETCH_OPERATION_UNVERIFIED');
     }
@@ -276,16 +301,19 @@ function createNativeMissionBrokerModelFetch({
  * Authorize the SDK's ORIGINAL detached-child model binding before attaching
  * a broker fetch. The per-fetch scope comes from the owning Task Engine's
  * AsyncLocalStorage, never from a request body, model tool argument, or caller
- * selected child id. This factory does not create original operation receipts.
+ * selected child id. The trusted host pre-dispatch adapter must persist the
+ * original model operation against an existing graph checkpoint BEFORE the
+ * broker can execute it. Recovered children never create another receipt.
  *
- * The host must supply an immutable binding catalog plus a resolver backed by
- * the previously checkpointed ORIGINAL operation; missing evidence refuses
- * the model call rather than falling back to direct provider HTTP.
+ * The host must supply an immutable binding catalog, an original operation
+ * journal preparer and a resolver backed by the same checkpoint. Missing or
+ * conflicting evidence refuses the call rather than falling back to HTTP.
  */
 function createNativeMissionDetachedBrokerModelFetchFactory({
   getExecutionScope,
   resolveModelBinding,
   resolveOriginalOperation,
+  prepareOriginalOperation,
   brokerUrl,
   secret,
   fetchImpl,
@@ -296,7 +324,8 @@ function createNativeMissionDetachedBrokerModelFetchFactory({
   if (
     typeof getExecutionScope !== 'function' ||
     typeof resolveModelBinding !== 'function' ||
-    typeof resolveOriginalOperation !== 'function'
+    typeof resolveOriginalOperation !== 'function' ||
+    typeof prepareOriginalOperation !== 'function'
   ) {
     denied('NATIVE_BROKER_HOST_BINDING_DEPENDENCIES');
   }
@@ -331,6 +360,7 @@ function createNativeMissionDetachedBrokerModelFetchFactory({
         return original;
       },
       resolveOriginalOperation,
+      prepareOriginalOperation,
       originalProvider: binding.provider,
       originalModel: binding.model,
       originalModelEndpoint: known.endpoint,

@@ -190,6 +190,8 @@ function createNativeMissionOriginalChildModelOperationJournal({
       callKey: coords.callKey,
       status: record.status,
       checkpointId: coords.checkpointId,
+      operationKey: coords.original.operationKey,
+      requestDigest: coords.requestDigest,
       // No provider response, owner token, prompt or secret leaks from this API.
     });
   }

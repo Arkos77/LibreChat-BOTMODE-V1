@@ -8,6 +8,10 @@ const {
   createNativeMissionProviderCallReceiptStore,
 } = require('./nativeMissionProviderCallReceiptStore');
 const { createNativeMissionProviderCallBroker } = require('./nativeMissionProviderCallBroker');
+const { requestDigest } = require('./nativeMissionProviderBrokerHttp');
+const {
+  createNativeMissionDetachedBrokerModelFetchFactory,
+} = require('./nativeMissionProviderBrokerModelFetch');
 
 const digest = (s) => createHash('sha256').update(s).digest('hex');
 const identity = Object.freeze({
@@ -123,6 +127,8 @@ describe('private Mongo journal for original child model operation', () => {
     const { journal, collection, authorizeOriginal } = setup();
     const record = await journal.prepareOriginal(start);
     expect(record.status).toBe('prepared');
+    expect(record.operationKey).toBe(identity.operationKey);
+    expect(record.requestDigest).toBe(start.requestDigest);
     expect(Object.isFrozen(record)).toBe(true);
     expect(collection.rows.size).toBe(1);
     const [stored] = collection.rows.values();
@@ -294,6 +300,116 @@ describe('private Mongo journal for original child model operation', () => {
     const later = await broker.execute(payload);
     expect(later.status).toBe('result_committed');
     expect(sendProvider).toHaveBeenCalledTimes(1);
+  });
+
+  it('prepares an original child before provider IO and reuses the committed receipt after restart', async () => {
+    const request = {
+      model: identity.model,
+      stream: false,
+      messages: [{ role: 'user', content: 'bounded-original-task' }],
+    };
+    const originalDigest = requestDigest(request);
+    const fixture = setup({
+      readOriginalCheckpoint: async () => ({
+        checkpointId: start.checkpointId,
+        taskId: scope.taskId,
+        attemptKey: scope.attemptKey,
+        childThreadId: scope.childThreadId,
+        provider: identity.provider,
+        model: identity.model,
+        operationKey: identity.operationKey,
+        requestDigest: originalDigest,
+      }),
+    });
+    const store = createNativeMissionProviderCallReceiptStore({ collection: fixture.collection });
+    const sendProvider = jest.fn(async () => ({
+      choices: [
+        {
+          index: 0,
+          finish_reason: 'stop',
+          message: { role: 'assistant', content: 'original-completion' },
+        },
+      ],
+    }));
+    const broker = createNativeMissionProviderCallBroker({
+      store,
+      sendProvider,
+      assertAuthorized: async () => undefined,
+    });
+    const calls = [];
+    const prepareOriginalOperation = jest.fn(async (args) =>
+      fixture.journal.prepareOriginal({
+        identity,
+        parentToolCallId: args.scope.parentToolCallId,
+        checkpointId: start.checkpointId,
+        requestDigest: args.requestDigest,
+      }),
+    );
+    const resolveOriginalOperation = jest.fn(async (args) => {
+      const found = await fixture.journal.findOriginalOperations({
+        ...args.scope,
+        provider: args.provider,
+        model: args.model,
+        requestDigest: args.requestDigest,
+      });
+      if (found.length !== 1) throw new Error('ORIGINAL_OPERATION_MISSING');
+      return {
+        approved: true,
+        scope: args.scope,
+        provider: args.provider,
+        model: args.model,
+        requestDigest: args.requestDigest,
+        operationKey: found[0].operationKey,
+        checkpointId: found[0].checkpointId,
+      };
+    });
+    let recoveryOnly = false;
+    const endpoint = 'http://127.0.0.1:8088/v1/chat/completions';
+    const factory = createNativeMissionDetachedBrokerModelFetchFactory({
+      getExecutionScope: () => ({ ...scope, ...(recoveryOnly ? { recoveryOnly: true } : {}) }),
+      resolveModelBinding: () => ({
+        agentId: identity.agentId,
+        provider: identity.provider,
+        model: identity.model,
+        endpoint,
+      }),
+      prepareOriginalOperation,
+      resolveOriginalOperation,
+      brokerUrl: 'http://127.0.0.1:8095/',
+      secret: 'isolated-mongo-proof-secret-at-least-32-chars',
+      fetchImpl: async (url, init) => {
+        const path = new URL(String(url)).pathname;
+        calls.push(path);
+        const payload = JSON.parse(init.body);
+        const result =
+          path === '/execute' ? await broker.execute(payload) : await store.read(payload);
+        return new Response(JSON.stringify(result), { status: 200 });
+      },
+    });
+    const modelFetch = factory({
+      agentId: identity.agentId,
+      provider: identity.provider,
+      model: identity.model,
+    });
+    const reply = await modelFetch(endpoint, { method: 'POST', body: JSON.stringify(request) });
+    expect((await reply.json()).choices[0].message.content).toBe('original-completion');
+    expect(calls).toEqual(['/execute']);
+    expect(sendProvider).toHaveBeenCalledTimes(1);
+    expect(prepareOriginalOperation).toHaveBeenCalledTimes(1);
+    expect(resolveOriginalOperation).toHaveBeenCalledTimes(1);
+    expect(fixture.collection.rows.size).toBe(1);
+
+    // Recreate the fetch with the original persisted task scope, not a new
+    // tool call or provider request. The broker result lives in the same Mongo
+    // row; a recovery-only fetch must not create or dispatch another call.
+    recoveryOnly = true;
+    calls.length = 0;
+    const recovered = await modelFetch(endpoint, { method: 'POST', body: JSON.stringify(request) });
+    expect((await recovered.json()).choices[0].message.content).toBe('original-completion');
+    expect(calls).toEqual(['/status']);
+    expect(sendProvider).toHaveBeenCalledTimes(1);
+    expect(prepareOriginalOperation).toHaveBeenCalledTimes(1);
+    expect(resolveOriginalOperation).toHaveBeenCalledTimes(2);
   });
 
   it('does not accept foreign tenant or a missing Mongo query adapter', async () => {
