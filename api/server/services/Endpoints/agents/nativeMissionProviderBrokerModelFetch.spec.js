@@ -138,13 +138,79 @@ describe('native model transport via durable provider broker (not installed auto
     }
   });
 
-  it('rejects streaming, tool effects, different models, or alternative endpoints', async () => {
+  it('returns the single committed text completion as OpenAI SSE without a second provider call', async () => {
+    const { fetchModel, fetchImpl, calls, resolveOriginalOperation } = setup();
+    const committed = {
+      ...final,
+      created: 100,
+      choices: [
+        { index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'ci-receipt' } },
+      ],
+      usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 },
+    };
+    fetchImpl.mockImplementation(async (url, options) => {
+      calls.push({ url: String(url), options });
+      return new Response(
+        JSON.stringify({ status: 'result_committed', resultAvailable: true, response: committed }),
+        { status: 200 },
+      );
+    });
+    const streamingBody = JSON.stringify({
+      ...JSON.parse(body),
+      stream: true,
+      stream_options: { include_usage: true },
+    });
+    const response = await fetchModel(endpoint, { method: 'POST', body: streamingBody });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('text/event-stream');
+    const data = await response.text();
+    expect(data).toContain('"delta":{"role":"assistant","content":"ci-receipt"}');
+    expect(data).toContain('"finish_reason":"stop"');
+    expect(data).toContain('"total_tokens":6');
+    expect(data).toContain('data: [DONE]');
+    expect(calls.map((x) => x.url)).toEqual(['http://127.0.0.1:8095/execute']);
+    const submitted = JSON.parse(calls[0].options.body);
+    expect(submitted.authorizedRequest.stream).toBe(false);
+    expect(submitted.authorizedRequest.stream_options).toBeUndefined();
+    expect(resolveOriginalOperation).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses converting a committed tool call or nonterminal reply into synthetic SSE', async () => {
+    for (const finish_reason of ['tool_calls', 'length']) {
+      const { fetchModel, fetchImpl, calls } = setup();
+      fetchImpl.mockImplementation(async (url, options) => {
+        calls.push({ url: String(url), options });
+        return new Response(
+          JSON.stringify({
+            status: 'result_committed',
+            resultAvailable: true,
+            response: {
+              ...final,
+              choices: [
+                {
+                  index: 0,
+                  finish_reason,
+                  message: { role: 'assistant', content: 'ci-receipt' },
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        );
+      });
+      await expect(
+        fetchModel(endpoint, {
+          method: 'POST',
+          body: JSON.stringify({ ...JSON.parse(body), stream: true }),
+        }),
+      ).rejects.toThrow('NATIVE_BROKER_FETCH_STREAM_RESULT_UNSUPPORTED');
+      expect(calls).toHaveLength(1);
+    }
+  });
+
+  it('rejects tool effects, multiple choices, different models, or alternative endpoints', async () => {
     const { fetchModel, fetchImpl } = setup();
-    for (const change of [
-      { stream: true },
-      { tools: [{ type: 'function' }] },
-      { model: 'other-model' },
-    ]) {
+    for (const change of [{ n: 2 }, { tools: [{ type: 'function' }] }, { model: 'other-model' }]) {
       await expect(
         fetchModel(endpoint, {
           method: 'POST',

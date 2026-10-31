@@ -149,14 +149,25 @@ function createNativeMissionBrokerModelFetch({
       typeof body !== 'object' ||
       Array.isArray(body) ||
       body.model !== originalModel ||
-      body.stream !== false ||
+      (body.stream !== false && body.stream !== true) ||
       !Array.isArray(body.messages) ||
       body.tools != null ||
-      body.tool_choice != null
+      body.tool_choice != null ||
+      (body.n != null && body.n !== 1)
     ) {
       denied('NATIVE_BROKER_FETCH_UNSUPPORTED_MODEL_EFFECT');
     }
-    const digest = requestDigest(body);
+    // OpenAI-compatible SDK model calls may request SSE. The independent
+    // broker owns a SINGLE non-streamed provider effect, then delivers its
+    // committed receipt as SSE. This is deliberately text-only: no tools or
+    // incremental provider side effects can be reconstructed from a receipt.
+    const requestedStream = body.stream === true;
+    const authorizedRequest = requestedStream
+      ? Object.fromEntries(
+          Object.entries({ ...body, stream: false }).filter(([key]) => key !== 'stream_options'),
+        )
+      : body;
+    const digest = requestDigest(authorizedRequest);
     const permit = await resolveOriginalOperation({
       scope: Object.freeze({ ...scope }),
       provider: originalProvider,
@@ -190,11 +201,7 @@ function createNativeMissionBrokerModelFetch({
     const payload = { identity, requestDigest: digest };
     // No authorization headers, API keys or client-provided URLs are passed
     // to the broker. Only a canonical approved model request is transmitted.
-    let receipt = await brokerPost(
-      '/execute',
-      { ...payload, authorizedRequest: body },
-      init.signal,
-    );
+    let receipt = await brokerPost('/execute', { ...payload, authorizedRequest }, init.signal);
     for (let i = 0; i < maxPolls && ACTIVE.has(receipt.status); i++) {
       await pause(200);
       receipt = await brokerPost('/status', payload, init.signal);
@@ -207,6 +214,47 @@ function createNativeMissionBrokerModelFetch({
       !Array.isArray(receipt.response.choices)
     ) {
       denied('NATIVE_BROKER_FETCH_RESULT_NOT_PROVEN');
+    }
+    if (requestedStream) {
+      const completion = receipt.response;
+      const choice = completion.choices[0];
+      // An automatically replayed tool call would be an ambiguous side
+      // effect. Only one ordinary text completion can become an SSE receipt.
+      if (
+        completion.choices.length !== 1 ||
+        choice?.index !== 0 ||
+        choice?.finish_reason !== 'stop' ||
+        choice?.message?.role !== 'assistant' ||
+        typeof choice.message.content !== 'string' ||
+        choice.message.tool_calls != null ||
+        choice.message.function_call != null
+      ) {
+        denied('NATIVE_BROKER_FETCH_STREAM_RESULT_UNSUPPORTED');
+      }
+      const meta = {
+        id: typeof completion.id === 'string' ? completion.id : 'committed-model-receipt',
+        object: 'chat.completion.chunk',
+        created: Number.isSafeInteger(completion.created) ? completion.created : 0,
+        model: originalModel,
+      };
+      const event = (choices, extra = {}) =>
+        'data: ' + JSON.stringify({ ...meta, choices, ...extra }) + '\n\n';
+      const first = event([
+        {
+          index: 0,
+          delta: { role: 'assistant', content: choice.message.content },
+          finish_reason: null,
+        },
+      ]);
+      const last = event([{ index: 0, delta: {}, finish_reason: 'stop' }]);
+      const usage =
+        body.stream_options?.include_usage === true && completion.usage != null
+          ? event([], { usage: completion.usage })
+          : '';
+      return new Response(first + last + usage + 'data: [DONE]\n\n', {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-store' },
+      });
     }
     return new Response(JSON.stringify(receipt.response), {
       status: 200,
