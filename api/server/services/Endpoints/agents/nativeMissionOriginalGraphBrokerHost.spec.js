@@ -38,7 +38,7 @@ const reader = jest.fn(async (scope) => ({
   pendingNodes: ['analysis-node'],
 }));
 function setup(changes = {}) {
-  const readOriginalGraphCheckpoint = jest.fn(async (...args) => reader(...args));
+  const readOriginalGraphCheckpoint = jest.fn(async ({ scope }) => reader(scope));
   const resolveModelBinding = jest.fn(() => ({
     agentId: 'analyst',
     provider: 'openrouter',
@@ -68,6 +68,7 @@ function setup(changes = {}) {
 const newClient = () => ({
   user: 'owner',
   conversationId: 'conversation',
+  responseMessageId: 'response',
   jobCreatedAt: 1700000000000,
   checkpointNamespace: 'generation',
   orchestratorPlan: plan,
@@ -91,10 +92,14 @@ describe('original native graph host binding (opt-in only)', () => {
     expect(result.status).toBe(200);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(readOriginalGraphCheckpoint).toHaveBeenCalledWith({
+      scope: {
       userId: 'owner', tenantId: 'tenant', streamId: 'conversation',
       responseMessageId: 'response', generationCreatedAt: 1700000000000,
       checkpointNamespace: 'generation', nodeId: 'analysis-node',
       taskId: 'analysis-task', agentId: 'analyst',
+      },
+      plan,
+      client,
     });
     const payload = JSON.parse(fetchImpl.mock.calls[0][1].body);
     expect(payload.identity).toMatchObject({
@@ -108,7 +113,7 @@ describe('original native graph host binding (opt-in only)', () => {
 
   it('denies foreign tasks, revised model and a replacement mission', () => {
     const { host } = setup();
-    const factory = host.makeMissionFetchFactory({ original, plan, capabilityAttestation });
+    const factory = host.makeMissionFetchFactory({ original, plan, capabilityAttestation, client: newClient() });
     expect(() => factory({ ...binding, nodeId: 'foreign-node' }))
       .toThrow('NATIVE_GRAPH_BROKER_ORIGINAL_ACTOR_NOT_SELECTED');
     expect(() => factory({ ...binding, agentId: 'worker' }))
@@ -121,7 +126,7 @@ describe('original native graph host binding (opt-in only)', () => {
       { ...original, plan: { ...plan, tasks: [tasks[0]] } },
     ]) {
       expect(() => host.makeMissionFetchFactory({
-        original: modified, plan, capabilityAttestation,
+        original: modified, plan, capabilityAttestation, client: newClient(),
       })).toThrow('NATIVE_GRAPH_BROKER_ORIGINAL_MISSION_UNVERIFIED');
     }
     for (const modified of [
