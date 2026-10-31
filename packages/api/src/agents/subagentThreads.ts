@@ -1485,6 +1485,9 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
                       childThreadId: preparedThread.conversation.conversationId,
                       attemptKey: preparedThread.attemptKey,
                       agentId: childAgentId(request)!,
+                      ...(preparedThread.recoveryOnly === true
+                        ? { recoveryOnly: true as const }
+                        : {}),
                     }
                   : undefined,
               );

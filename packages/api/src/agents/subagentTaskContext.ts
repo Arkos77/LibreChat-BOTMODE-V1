@@ -14,6 +14,8 @@ export type DetachedSubagentExecutionScope = Readonly<{
   taskId: string;
   attemptKey: string;
   agentId: string;
+  /** Internal recovery-only continuation: never dispatch a new provider effect. */
+  recoveryOnly?: true;
 }>;
 
 type DetachedSubagentScopeSeed = Omit<DetachedSubagentExecutionScope, 'taskId'>;
@@ -52,7 +54,8 @@ export function runWithDetachedSubagentUsage<T>(
         return typeof value !== 'string' || value.length === 0 || value.length > 256;
       }) ||
       (candidate.tenantId != null &&
-        (typeof candidate.tenantId !== 'string' || candidate.tenantId.length > 256))
+        (typeof candidate.tenantId !== 'string' || candidate.tenantId.length > 256)) ||
+      (candidate.recoveryOnly != null && candidate.recoveryOnly !== true)
     ) {
       throw new Error('NATIVE_DETACHED_PROVIDER_SCOPE_INVALID');
     }

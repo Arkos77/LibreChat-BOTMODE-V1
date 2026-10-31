@@ -88,6 +88,35 @@ describe('native model transport via durable provider broker (not installed auto
     );
   });
 
+  it('recovered native child never invokes /execute, even with a valid original grant', async () => {
+    const { fetchModel, calls, fetchImpl } = setup({
+      getScope: () => ({ ...scope, recoveryOnly: true }),
+    });
+    const response = await fetchModel(endpoint, { method: 'POST', body });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(final);
+    expect(calls.map((request) => new URL(request.url).pathname)).toEqual(['/status']);
+    expect(JSON.parse(calls[0].options.body).authorizedRequest).toBeUndefined();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('recovered child cannot dispatch when the original status is not terminal', async () => {
+    const { fetchModel, fetchImpl, calls } = setup({
+      getScope: () => ({ ...scope, recoveryOnly: true }),
+      maxPolls: 1,
+    });
+    fetchImpl.mockImplementation(async (url, options) => {
+      calls.push({ url: String(url), options });
+      return new Response(JSON.stringify({ status: 'prepared', resultAvailable: false }), {
+        status: 200,
+      });
+    });
+    await expect(fetchModel(endpoint, { method: 'POST', body })).rejects.toThrow(
+      'NATIVE_BROKER_FETCH_RESULT_NOT_PROVEN',
+    );
+    expect(calls.map((request) => new URL(request.url).pathname)).toEqual(['/status', '/status']);
+  });
+
   it('waits for a committed receipt using status reads only (never resends execute)', async () => {
     const { fetchModel, fetchImpl, calls } = setup();
     const replies = [

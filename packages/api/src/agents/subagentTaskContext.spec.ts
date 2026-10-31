@@ -84,6 +84,30 @@ describe('durable native child model provenance, without dispatch permission', (
     expect(getDetachedSubagentExecutionScope()).toBeUndefined();
   });
 
+  it('exposes recovery-only identity only inside an authenticated original task', async () => {
+    expect(getDetachedSubagentExecutionScope()).toBeUndefined();
+    await runWithDetachedSubagentUsage(
+      [],
+      async () => {
+        const scope = getDetachedSubagentExecutionScope();
+        expect(scope).toEqual({ ...seed, taskId: 'original-task', recoveryOnly: true });
+        expect(Object.isFrozen(scope)).toBe(true);
+      },
+      'original-task',
+      { ...seed, recoveryOnly: true },
+    );
+    expect(getDetachedSubagentExecutionScope()).toBeUndefined();
+  });
+
+  it('rejects a false recovery marker, rather than implicitly granting dispatch', () => {
+    expect(() =>
+      runWithDetachedSubagentUsage([], async () => undefined, 'original-task', {
+        ...seed,
+        recoveryOnly: false as true,
+      }),
+    ).toThrow('NATIVE_DETACHED_PROVIDER_SCOPE_INVALID');
+  });
+
   it('isolates two concurrent native child identities without overwriting either', async () => {
     const result = await Promise.all(
       ['first', 'second'].map((name) =>

@@ -29,7 +29,9 @@ function validScope(scope) {
     IDS.every(
       (key) => typeof scope[key] === 'string' && scope[key].length > 0 && scope[key].length <= 256,
     ) &&
-    (scope.tenantId == null || (typeof scope.tenantId === 'string' && scope.tenantId.length <= 256))
+    (scope.tenantId == null ||
+      (typeof scope.tenantId === 'string' && scope.tenantId.length <= 256)) &&
+    (scope.recoveryOnly == null || scope.recoveryOnly === true)
   );
 }
 
@@ -201,7 +203,14 @@ function createNativeMissionBrokerModelFetch({
     const payload = { identity, requestDigest: digest };
     // No authorization headers, API keys or client-provided URLs are passed
     // to the broker. Only a canonical approved model request is transmitted.
-    let receipt = await brokerPost('/execute', { ...payload, authorizedRequest }, init.signal);
+    // Once the Task Engine has authenticated a recovery-only continuation,
+    // even an eligible prepared operation cannot be dispatched for the first
+    // time. Read the original broker receipt only. An unresolved outcome
+    // stays blocked rather than calling the provider again.
+    let receipt =
+      scope.recoveryOnly === true
+        ? await brokerPost('/status', payload, init.signal)
+        : await brokerPost('/execute', { ...payload, authorizedRequest }, init.signal);
     for (let i = 0; i < maxPolls && ACTIVE.has(receipt.status); i++) {
       await pause(200);
       receipt = await brokerPost('/status', payload, init.signal);

@@ -4624,6 +4624,12 @@ class AgentClient extends BaseClient {
               }
             : undefined,
           modelCallbackFactory: createModelBoundBudgetAdmissionFactory(this, balanceConfig),
+          // Only the trusted AgentClient host can supply a scoped, pre-authorized
+          // model operation resolver. The SDK rejects unsupported bindings and
+          // does not install the transport when this is absent.
+          ...(this.options.nativeDetachedModelFetchFactory == null
+            ? {}
+            : { nativeDetachedModelFetchFactory: this.options.nativeDetachedModelFetchFactory }),
           // This controller implements the full HITL pause/resume lifecycle (handleRunInterrupt
           // persists the pending action; the /resume route rebuilds + continues the run), so it
           // opts into the tool-approval wiring. Non-resumable callers (OpenAI-compat, Responses)
@@ -5508,6 +5514,11 @@ class AgentClient extends BaseClient {
         conversationId: this.conversationId,
         modelCallbacks: [modelBoundCallback],
         modelCallbackFactory: createModelBoundBudgetAdmissionFactory(this, balanceConfig),
+        // The same original model transport is required for a rebuilt native
+        // specialist; never fall back to direct provider IO on resume.
+        ...(this.options.nativeDetachedModelFetchFactory == null
+          ? {}
+          : { nativeDetachedModelFetchFactory: this.options.nativeDetachedModelFetchFactory }),
         // State (messages, tool calls) is rehydrated from the checkpoint by
         // run.resume; createRun only needs the agents to rebuild the graph.
         messages: [],
