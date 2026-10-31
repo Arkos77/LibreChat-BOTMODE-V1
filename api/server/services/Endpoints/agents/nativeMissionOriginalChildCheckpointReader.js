@@ -61,10 +61,11 @@ function createNativeMissionOriginalChildCheckpointReader({
         agentId,
         provider,
         model,
-        graphThreadId,
         checkpointId,
         generationNamespace,
       ].some((value) => !bounded(value)) ||
+      typeof graphThreadId !== 'string' ||
+      graphThreadId.length === 0 ||
       (tenantId != null && (typeof tenantId !== 'string' || tenantId.length > 256)) ||
       typeof checkpointNs !== 'string' ||
       checkpointNs.length > 256 ||

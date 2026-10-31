@@ -180,6 +180,53 @@ describe('original native child model operation grant: immutable and fail closed
     );
   });
 
+  it('resolves a full-length six-coordinate original SDK child graph address', async () => {
+    const graphThreadId =
+      'subagent:' +
+      Buffer.from(
+        JSON.stringify([
+          original.parentConversationId,
+          'checkpoint-fork'.repeat(10),
+          origin.agentId,
+          original.parentToolCallId,
+          'original-batch'.repeat(10),
+          'original-resume-attempt',
+        ]),
+      ).toString('base64url');
+    expect(graphThreadId.length).toBeGreaterThan(256);
+    const graph = {
+      originalSlotKey: 'f'.repeat(64),
+      graphThreadId,
+      checkpointNs: '',
+      generationNamespace: 'generation',
+    };
+    const saved = {
+      checkpointId: receipt.checkpointId,
+      taskId: original.taskId,
+      attemptKey: original.attemptKey,
+      childThreadId: original.childThreadId,
+      provider: args.provider,
+      model: args.model,
+      graphThreadId,
+      checkpointNs: '',
+      generationNamespace: 'generation',
+    };
+    const { resolve } = setup({
+      findOriginalOperations: async () => [{ ...receipt, ...graph }],
+      getOriginalCheckpoint: async () => saved,
+    });
+    await expect(resolve(args)).resolves.toMatchObject({ operationKey: OP });
+    const tooLong = setup({
+      findOriginalOperations: async () => [
+        { ...receipt, ...graph, graphThreadId: graphThreadId + 'x'.repeat(3072) },
+      ],
+      getOriginalCheckpoint: async () => saved,
+    });
+    await expect(tooLong.resolve(args)).rejects.toThrow(
+      'NATIVE_MODEL_OPERATION_CHECKPOINT_PROOF_DENIED',
+    );
+  });
+
   it('rejects an uncheckpointed call even if a matching child start exists', async () => {
     const { resolve } = setup({ findOriginalOperations: async () => [] });
     await expect(resolve(args)).rejects.toThrow(

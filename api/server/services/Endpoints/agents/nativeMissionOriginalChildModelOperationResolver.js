@@ -221,7 +221,9 @@ function createNativeMissionOriginalChildModelOperationResolver({
       checkpoint?.model !== model ||
       (typeof receipt.originalSlotKey === 'string'
         ? !HASH.test(receipt.originalSlotKey) ||
-          !bounded(receipt.graphThreadId) ||
+          typeof receipt.graphThreadId !== 'string' ||
+          receipt.graphThreadId.length === 0 ||
+          receipt.graphThreadId.length > 3072 ||
           !receipt.graphThreadId.startsWith('subagent:') ||
           !bounded(receipt.generationNamespace) ||
           typeof receipt.checkpointNs !== 'string' ||
