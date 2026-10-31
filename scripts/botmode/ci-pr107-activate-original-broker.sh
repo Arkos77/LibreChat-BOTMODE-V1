@@ -95,3 +95,11 @@ for i in $(seq 1 75); do
 done
 test "$ready" = 1 || { echo 'CI_ORIGINAL_BROKER_API_STARTUP=FAIL'; exit 1; }
 echo 'CI_ORIGINAL_BROKER_ENABLED_API_READY=PASS'
+# HTTP readiness alone does not prove the SDK broker was installed. Inspect
+# only the fixed startup marker; never print application logs or credentials.
+if ! "${COMPOSE[@]}" logs --no-color api 2>/dev/null |
+  grep -Fq 'Original-child broker host enabled after independent broker check'; then
+  echo 'CI_ORIGINAL_BROKER_HOST_NOT_ACTIVATED=FAIL'
+  exit 1
+fi
+echo 'CI_ORIGINAL_BROKER_HOST_INSTALLED=PASS'
