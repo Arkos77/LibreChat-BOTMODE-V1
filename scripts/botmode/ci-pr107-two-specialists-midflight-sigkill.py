@@ -148,6 +148,39 @@ for attempt in range(110):
             break
     time.sleep(0.5)
 else:
+    # Diagnose this precise gate without disclosing identities, prompts or
+    # model outputs. A missing hold can mean no child execution, a rejected
+    # provider operation, or an unrelated checkpoint refusal.
+    try:
+        p=snapshot()
+        for label in ("count","linked","completed","errors","distinctTypes","published"):
+            print("CI_PR107_COLD_MULTI_WAIT_"+label.upper()+"="+str(p[label]),flush=True)
+        mm=metrics()
+        for label in ("completion_calls","child_responses","held_second_child_requests",
+                      "parent_final"):
+            print("CI_PR107_COLD_MULTI_WAIT_METRIC_"+label.upper()+"="+str(mm.get(label,0)),flush=True)
+        diag_script=r"""
+const mongoose=require('mongoose');(async()=>{
+ await mongoose.connect(process.env.MONGO_URI);
+ const c=mongoose.connection.db.collection('native_mission_provider_calls');
+ const [total,statuses]=await Promise.all([
+    c.countDocuments({}),
+    c.aggregate([{$group:{_id:'$status',count:{$sum:1}}}]).toArray(),
+ ]);
+ console.log(JSON.stringify({total,statuses:statuses.map(v=>({
+   status:typeof v._id==='string' && /^[a-z_]{1,30}$/.test(v._id)?v._id:'unknown',
+   count:v.count,
+ }))}));
+ await mongoose.disconnect();
+})().catch(e=>{console.log(JSON.stringify({unavailable:e.name}));process.exitCode=1});
+"""
+        j=json.loads(run_node(diag_script,[]))
+        print("CI_PR107_COLD_MULTI_WAIT_ORIGINAL_JOURNAL_TOTAL="+str(j.get("total","unavailable")),flush=True)
+        for record in j.get("statuses",[]):
+            print("CI_PR107_COLD_MULTI_WAIT_ORIGINAL_JOURNAL_STATUS_"+
+                  record["status"].upper()+"="+str(record["count"]),flush=True)
+    except Exception as e:
+        print("CI_PR107_COLD_MULTI_WAIT_DIAG_UNAVAILABLE="+type(e).__name__,flush=True)
     fail("SECOND_CHILD_NOT_HELD_AFTER_FIRST_PERSISTED")
 # Identify a real P6 early publication separately from an errored child.
 # Never log prompts, child IDs, JWTs, or raw private database messages.
