@@ -273,10 +273,22 @@ describe('private Mongo journal for original child model operation', () => {
 
   it('reserves the original graph step exactly once before any model effect', async () => {
     const graph = {
-      graphThreadId: 'subagent:original-graph',
+      graphThreadId:
+        'subagent:' +
+        Buffer.from(
+          JSON.stringify([
+            identity.parentConversationId,
+            'parent-fork'.repeat(12),
+            'worker',
+            start.parentToolCallId,
+            'batch'.repeat(15),
+            'resume-attempt',
+          ]),
+        ).toString('base64url'),
       checkpointNs: '',
       generationNamespace: 'original-generation',
     };
+    expect(graph.graphThreadId.length).toBeGreaterThan(256);
     const fresh = {
       identity: Object.fromEntries(
         Object.entries(identity).filter(([field]) => field !== 'operationKey'),
@@ -307,6 +319,9 @@ describe('private Mongo journal for original child model operation', () => {
     expect(first.callKey).toBe(simultaneous.callKey);
     expect(collection.rows.size).toBe(1);
     await expect(journal.reserveOriginal(fresh)).resolves.toEqual(first);
+    await expect(
+      journal.reserveOriginal({ ...fresh, graphThreadId: graph.graphThreadId + 'x'.repeat(3072) }),
+    ).rejects.toThrow('NATIVE_ORIGINAL_MODEL_RESERVATION_INVALID');
     expect(collection.rows.size).toBe(1);
     await expect(
       journal.reserveOriginal({ ...fresh, requestDigest: digest('different-request') }),
