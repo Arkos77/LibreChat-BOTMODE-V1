@@ -248,11 +248,18 @@ const mongoose=require('mongoose');(async()=>{
  const db=mongoose.connection.db;
  const docs=await db.collection('agent_checkpoints')
   .find({thread_id:process.env.CI_PARENT})
-  .project({checkpoint_ns:1}).toArray();
+  .project({checkpoint_ns:1,metadata:1}).toArray();
+ const steps=docs.map(x=>x.metadata?.step).filter(x=>Number.isInteger(x));
+ const sources=docs.map(x=>x.metadata?.source)
+   .filter(x=>typeof x==='string');
+ const allowed=['input','loop','update','fork'];
  console.log(JSON.stringify({
   root:docs.filter(x=>x.checkpoint_ns==='').length,
   scoped:docs.filter(x=>typeof x.checkpoint_ns==='string'&&x.checkpoint_ns!=='').length,
   total:docs.length,
+  stepCount:steps.length,
+  maxStep:steps.length?Math.max(...steps):null,
+  sources:Object.fromEntries(allowed.map(k=>[k,sources.filter(v=>v===k).length])),
  }));
  await mongoose.disconnect();
 })().catch(e=>{console.log(JSON.stringify({unavailable:e.name}));process.exitCode=1});
@@ -261,6 +268,14 @@ const mongoose=require('mongoose');(async()=>{
         for label in ("root","scoped","total"):
             print("CI_PR107_COLD_MULTI_NATIVE_CHECKPOINT_"+label.upper()+"="+
                   str(checkpoint_diag.get(label,"UNAVAILABLE")),flush=True)
+        for label in ("stepCount","maxStep"):
+            value=checkpoint_diag.get(label)
+            if type(value) is int and -1<=value<=100000:
+                print("CI_PR107_COLD_MULTI_NATIVE_"+label.upper()+"="+str(value),flush=True)
+        for label in ("input","loop","update","fork"):
+            value=checkpoint_diag.get("sources",{}).get(label)
+            if type(value) is int and 0<=value<=100000:
+                print("CI_PR107_COLD_MULTI_NATIVE_SOURCE_"+label.upper()+"="+str(value),flush=True)
     except (OSError,ValueError,KeyError,subprocess.SubprocessError) as e:
         print("CI_PR107_COLD_MULTI_NATIVE_CHECKPOINT_DIAG_UNAVAILABLE="+
               type(e).__name__,flush=True)
