@@ -238,6 +238,32 @@ const mongoose=require('mongoose');(async()=>{
                   record["status"].upper()+"="+str(record["count"]),flush=True)
     except Exception as e:
         print("CI_PR107_COLD_MULTI_WAIT_DIAG_UNAVAILABLE="+type(e).__name__,flush=True)
+    # Native Oracle plans compile direct graph nodes, not necessarily SDK
+    # subagent tool calls. Probe only checkpoint counts for this conversation;
+    # never print checkpoint data, namespace, identities or agent messages.
+    try:
+        native_probe=r"""
+const mongoose=require('mongoose');(async()=>{
+ await mongoose.connect(process.env.MONGO_URI);
+ const db=mongoose.connection.db;
+ const docs=await db.collection('agent_checkpoints')
+  .find({thread_id:process.env.CI_PARENT})
+  .project({checkpoint_ns:1}).toArray();
+ console.log(JSON.stringify({
+  root:docs.filter(x=>x.checkpoint_ns==='').length,
+  scoped:docs.filter(x=>typeof x.checkpoint_ns==='string'&&x.checkpoint_ns!=='').length,
+  total:docs.length,
+ }));
+ await mongoose.disconnect();
+})().catch(e=>{console.log(JSON.stringify({unavailable:e.name}));process.exitCode=1});
+"""
+        checkpoint_diag=json.loads(run_node(native_probe,[("CI_PARENT",conversation)]))
+        for label in ("root","scoped","total"):
+            print("CI_PR107_COLD_MULTI_NATIVE_CHECKPOINT_"+label.upper()+"="+
+                  str(checkpoint_diag.get(label,"UNAVAILABLE")),flush=True)
+    except (OSError,ValueError,KeyError,subprocess.SubprocessError) as e:
+        print("CI_PR107_COLD_MULTI_NATIVE_CHECKPOINT_DIAG_UNAVAILABLE="+
+              type(e).__name__,flush=True)
     # The accepted HTTP admission is not proof that the background job
     # reached graph initialization. Report only status + allowlisted error
     # categories, not raw Redis JSON, prompts, keys, tokens or SSE content.
