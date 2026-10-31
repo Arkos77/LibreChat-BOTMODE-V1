@@ -74,12 +74,17 @@ function createNativeMissionProviderBrokerHttpServer({
       res.end(JSON.stringify(value));
     };
     const directGraphRoute = req.url === '/execute-native-graph';
+    const originalGraphReadRoute = req.url === '/status-native-graph';
     if (
       req.method !== 'POST' ||
-      (req.url !== '/execute' && req.url !== '/status' && !directGraphRoute) ||
+      (req.url !== '/execute' && req.url !== '/status' &&
+        !directGraphRoute && !originalGraphReadRoute) ||
       (directGraphRoute && (
         typeof authorizeOriginalNativeGraph !== 'function' ||
-        typeof broker.executeOriginalNativeGraph !== 'function'))
+        typeof broker.executeOriginalNativeGraph !== 'function')) ||
+      (originalGraphReadRoute && (
+        typeof authorizeOriginalNativeGraph !== 'function' ||
+        typeof store.readOriginalNativeGraph !== 'function'))
     ) {
       return respond(404, { error: 'not_found' });
     }
@@ -112,15 +117,31 @@ function createNativeMissionProviderBrokerHttpServer({
       // Reading a committed receipt after SIGKILL is not permission to
       // create another provider effect. The independent authority decides
       // whether an active lease is required for this specific operation.
-      const operation = req.url === '/status'
-        ? 'read'
-        : (directGraphRoute ? 'reserve_native_graph' : 'execute');
+      const operation = originalGraphReadRoute
+        ? 'read_native_graph'
+        : (req.url === '/status'
+          ? 'read'
+          : (directGraphRoute ? 'reserve_native_graph' : 'execute'));
       if ((await authorizeScope({ identity, requestDigest: digest, operation })) !== true) {
         return respond(403, { error: 'forbidden' });
       }
       if (req.url === '/status') {
         const result = await store.read({ identity, requestDigest: digest });
         return respond(200, result);
+      }
+      if (originalGraphReadRoute) {
+        // A recovered API may only read the original committed receipt.
+        // A status probe cannot allocate an operation or dispatch a provider.
+        if (identity.mode !== 'native_graph' ||
+            Object.prototype.hasOwnProperty.call(identity, 'operationKey') ||
+            (await authorizeOriginalNativeGraph({
+              identity, requestDigest: digest, operation: 'read_native_graph',
+            })) !== true) {
+          return respond(403, { error: 'forbidden' });
+        }
+        return respond(200, await store.readOriginalNativeGraph({
+          identity, requestDigest: digest,
+        }));
       }
       const authorizedRequest = payload.authorizedRequest;
       if (
