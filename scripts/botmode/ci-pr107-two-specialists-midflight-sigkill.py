@@ -248,9 +248,11 @@ const mongoose=require('mongoose');(async()=>{
  const db=mongoose.connection.db;
  const docs=await db.collection('agent_checkpoints')
   .find({thread_id:process.env.CI_PARENT})
-  .project({checkpoint_ns:1,metadata:1}).toArray();
- const steps=docs.map(x=>x.metadata?.step).filter(x=>Number.isInteger(x));
- const sources=docs.map(x=>x.metadata?.source)
+  .project({checkpoint_ns:1,metadata_search:1}).toArray();
+ // MongoDBSaver stores serialized metadata separately. metadata_search is the
+ // queryable BSON copy of LangGraph metadata, not the serialized payload.
+ const steps=docs.map(x=>x.metadata_search?.step).filter(x=>Number.isInteger(x));
+ const sources=docs.map(x=>x.metadata_search?.source)
    .filter(x=>typeof x==='string');
  const allowed=['input','loop','update','fork'];
  console.log(JSON.stringify({
