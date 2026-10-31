@@ -205,6 +205,13 @@ const {MongoDBSaver}=apiRequire('@langchain/langgraph-checkpoint-mongodb');
   // Root checkpoint namespace is the host-owned generation; nested namespaces
   // contain a "|" separator. Do not accept ambiguous generations.
   const roots=namespaces.filter(ns=>typeof ns==='string'&&!ns.includes('|'));
+  if(roots.length===0){
+    // Before the first graph checkpoint, an empty read is expected.
+    console.log(JSON.stringify({researchDurable:false,analysisDurable:false,
+      rootCheckpointPresent:false,checkpointStep:null}));
+    await mongoose.disconnect();
+    process.exit(0);
+  }
   if(roots.length!==1) throw Error('NATIVE_GENERATION_AMBIGUOUS');
   // Read with the original LangGraph Mongo saver, without importing the
   // entire LibreChat API or running index setup in a throwaway probe process.
