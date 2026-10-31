@@ -362,6 +362,51 @@ describe('direct native graph model-operation identities', () => {
     expect(sendProvider).not.toHaveBeenCalled();
   });
 
+  it('reads original native graph completion after SIGKILL without reallocating an operation', async () => {
+    const { operationKey: _unknown, ...originalIdentity } = direct;
+    const originalScope = {
+      identity: originalIdentity, requestDigest: directScope.requestDigest,
+    };
+    const { store, broker, collection, sendProvider } = create();
+    await broker.executeOriginalNativeGraph({ ...originalScope, authorizedRequest: {} });
+    const afterCrash = createNativeMissionProviderCallReceiptStore({ collection });
+    const original = await afterCrash.readOriginalNativeGraph(originalScope);
+    expect(original.status).toBe('result_committed');
+    expect(original.response).toEqual({ id: 'ci-response', text: 'ok' });
+    expect(sendProvider).toHaveBeenCalledTimes(1);
+    expect(collection.rows.size).toBe(1);
+    for (const changed of [
+      { identity: { ...originalIdentity, nodeId: 'other-node' } },
+      { identity: { ...originalIdentity, agentId: 'other-specialist' } },
+      { identity: { ...originalIdentity, checkpointNamespace: 'other-generation' } },
+      { requestDigest: digest('changed-original-prompt') },
+    ]) {
+      await expect(afterCrash.readOriginalNativeGraph({
+        ...originalScope, ...changed,
+      })).rejects.toThrow('NATIVE_GRAPH_ORIGINAL_READ_PROOF_MISSING');
+    }
+    await expect(afterCrash.readOriginalNativeGraph(directScope)).rejects.toThrow(
+      'NATIVE_GRAPH_ORIGINAL_READ_IDENTITY_INVALID',
+    );
+  });
+
+  it('never interprets an uncertain original native model effect as a completed result', async () => {
+    const { operationKey: _unknown, ...originalIdentity } = direct;
+    const originalScope = {
+      identity: originalIdentity, requestDigest: directScope.requestDigest,
+    };
+    const { store, collection, sendProvider } = create();
+    const reserved = await store.reserveNativeGraph(originalScope);
+    const owner = await store.claim(reserved);
+    await store.dispatch({ ...reserved, ownerToken: owner.ownerToken });
+    const afterCrash = createNativeMissionProviderCallReceiptStore({ collection });
+    const observed = await afterCrash.readOriginalNativeGraph(originalScope);
+    expect(observed.status).toBe('dispatched');
+    expect(observed.response).toBeNull();
+    expect(sendProvider).not.toHaveBeenCalled();
+    expect(collection.rows.size).toBe(1);
+  });
+
   it('rejects altered native binding, request digest and caller-supplied operation key', async () => {
     const { store, collection } = create();
     const { operationKey: _ignored, ...originalGraph } = direct;
