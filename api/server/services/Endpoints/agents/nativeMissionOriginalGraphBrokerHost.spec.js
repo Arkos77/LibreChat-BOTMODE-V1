@@ -117,26 +117,21 @@ describe('original native graph host binding (opt-in only)', () => {
       .toThrow('NATIVE_GRAPH_FETCH_FACTORY_MODEL_UNAUTHORIZED');
     for (const modified of [
       { ...original, fingerprint: 'forged' },
-      { ...original, checkpointNamespace: 'another-generation' },
-      { ...original, originalCreatedAt: 1700000000001 },
       { ...original, planId: 'another-plan' },
       { ...original, plan: { ...plan, tasks: [tasks[0]] } },
     ]) {
-      if (modified.checkpointNamespace !== original.checkpointNamespace &&
-          modified.fingerprint === original.fingerprint &&
-          modified.planId === original.planId &&
-          modified.plan === plan &&
-          modified.originalCreatedAt === original.originalCreatedAt) {
-        // Epoch is compared by the CLIENT binder (not a mutable input).
-        const client = newClient();
-        expect(() => bindNativeMissionOriginalGraphBrokerForAcceptedMission({
-          client, brokerHost: host, original: modified, plan, capabilityAttestation,
-        })).toThrow('NATIVE_GRAPH_BROKER_CLIENT_ORIGINAL_MISSION_MISMATCH');
-      } else {
-        expect(() => host.makeMissionFetchFactory({
-          original: modified, plan, capabilityAttestation,
-        })).toThrow('NATIVE_GRAPH_BROKER_ORIGINAL_MISSION_UNVERIFIED');
-      }
+      expect(() => host.makeMissionFetchFactory({
+        original: modified, plan, capabilityAttestation,
+      })).toThrow('NATIVE_GRAPH_BROKER_ORIGINAL_MISSION_UNVERIFIED');
+    }
+    for (const modified of [
+      { ...original, checkpointNamespace: 'another-generation' },
+      { ...original, originalCreatedAt: 1700000000001 },
+    ]) {
+      const client = newClient();
+      expect(() => bindNativeMissionOriginalGraphBrokerForAcceptedMission({
+        client, brokerHost: host, original: modified, plan, capabilityAttestation,
+      })).toThrow('NATIVE_GRAPH_BROKER_CLIENT_ORIGINAL_MISSION_MISMATCH');
     }
   });
 
