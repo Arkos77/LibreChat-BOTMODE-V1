@@ -260,6 +260,15 @@ const mongoose=require('mongoose');(async()=>{
             COMPOSE+["logs","--no-color","--tail","2500","api"],
             capture_output=True,text=True,timeout=25,check=True,
         ).stdout
+        # The isolated API emits this directly BEFORE wrapping the original
+        # exception for SSE. Only bounded, nonsecret fields are surfaced.
+        for field in ("CODE","CLASS","MESSAGE_HASH","MESSAGE_LENGTH"):
+            items=re.findall(
+                r"CI_ORIGINAL_MISSION_ROOT_"+field+r"=([A-Za-z0-9_]{1,100})",
+                api_logs
+            )
+            print("CI_PR107_COLD_MULTI_API_UNWRAPPED_"+field+"="+
+                  (items[-1] if items else "NOT_OBSERVED"),flush=True)
         markers=(
             "Mission execution failed before publication",
             "NATIVE_BROKER",

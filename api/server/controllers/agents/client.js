@@ -1,5 +1,5 @@
 require('events').EventEmitter.defaultMaxListeners = 100;
-const { randomUUID } = require('crypto');
+const { createHash, randomUUID } = require('crypto');
 const { projectHostModelUsage } = require('~/server/services/Endpoints/agents/hostModelUsage');
 const {
   logger,
@@ -4861,6 +4861,45 @@ class AgentClient extends BaseClient {
           '[api/server/controllers/agents/client.js #sendCompletion] Mission execution failed before publication',
           getSafeErrorMetadata(err),
         );
+        // GitHub PR107 disposable CI only. The ordinary application never
+        // emits this diagnostic, and no exception message or provider data
+        // leaves the container; only a code/class and an opaque digest.
+        if (process.env.BOTMODE_CI_ORIGINAL_MISSION_DIAGNOSTICS === '1') {
+          const errorCode =
+            typeof err?.code === 'string' && /^[A-Z][A-Z0-9_]{3,90}$/.test(err.code)
+              ? err.code
+              : 'NONE';
+          const errorName = [
+            'Error',
+            'TypeError',
+            'ReferenceError',
+            'RangeError',
+            'SyntaxError',
+            'ValidationError',
+            'MongoServerError',
+          ].includes(err?.name)
+            ? err.name
+            : 'OTHER';
+          const message = typeof err?.message === 'string' ? err.message : '';
+          const digest = createHash('sha256')
+            .update(message.toLowerCase())
+            .digest('hex')
+            .slice(0, 12);
+          process.stderr.write(
+            'CI_ORIGINAL_MISSION_ROOT_CODE=' +
+              errorCode +
+              '\n' +
+              'CI_ORIGINAL_MISSION_ROOT_CLASS=' +
+              errorName +
+              '\n' +
+              'CI_ORIGINAL_MISSION_ROOT_MESSAGE_HASH=' +
+              digest +
+              '\n' +
+              'CI_ORIGINAL_MISSION_ROOT_MESSAGE_LENGTH=' +
+              String(message.length) +
+              '\n',
+          );
+        }
         throw Object.assign(
           new Error('Mission execution failed; a final answer was not published.'),
           {

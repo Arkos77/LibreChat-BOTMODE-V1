@@ -57,7 +57,7 @@ printf 'BOTMODE_CI_ORIGINAL_SECRET=%s\n' "$secret" | sudo tee -a .env >/dev/null
 printf "BOTMODE_CI_ORIGINAL_BINDINGS='%s'\n" "$catalog" | sudo tee -a .env >/dev/null
 unset secret catalog
 # All edits are in the disposable runner checkout, not in the stable source.
-sed -i '/      - OPENROUTER_KEY=/a\      - BOTMODE_NATIVE_ORIGINAL_BROKER_ENABLED=true\n      - BOTMODE_NATIVE_ORIGINAL_BROKER_URL=http://ci-original-provider-broker:8096/\n      - BOTMODE_NATIVE_ORIGINAL_BROKER_SECRET=${BOTMODE_CI_ORIGINAL_SECRET:?}\n      - BOTMODE_NATIVE_ORIGINAL_BROKER_BINDINGS=${BOTMODE_CI_ORIGINAL_BINDINGS:?}' docker-compose.botmode.yml
+sed -i '/      - OPENROUTER_KEY=/a\      - BOTMODE_NATIVE_ORIGINAL_BROKER_ENABLED=true\n      - BOTMODE_CI_ORIGINAL_MISSION_DIAGNOSTICS=1\n      - BOTMODE_NATIVE_ORIGINAL_BROKER_URL=http://ci-original-provider-broker:8096/\n      - BOTMODE_NATIVE_ORIGINAL_BROKER_SECRET=${BOTMODE_CI_ORIGINAL_SECRET:?}\n      - BOTMODE_NATIVE_ORIGINAL_BROKER_BINDINGS=${BOTMODE_CI_ORIGINAL_BINDINGS:?}' docker-compose.botmode.yml
 cat >> docker-compose.botmode-lite.yml <<'YAML_BROKER'
   ci-original-provider-broker:
     image: ${BOTMODE_IMAGE:?}
