@@ -136,6 +136,64 @@ describe('private fixture-only provider broker ingress', () => {
     ).toThrow('NATIVE_BROKER_FIXTURE_ENDPOINT_DENIED');
   });
 
+  it('leaves direct native graph broker reservation closed without a host proof', async () => {
+    const nativeGraph = {
+      mode: 'native_graph', userId: 'ci-user', tenantId: 'ci-tenant',
+      streamId: 'ci-conversation', responseMessageId: 'ci-response',
+      generationCreatedAt: 1700000000000, checkpointNamespace: '1700000000000',
+      graphCheckpointId: 'ci-checkpoint', nodeId: 'ci-node',
+      taskId: 'ci-task', agentId: 'ci-agent',
+      provider: 'ci-local-fixture', model: 'ci-free',
+    };
+    const response = await signed('/execute-native-graph', {
+      identity: nativeGraph, requestDigest: scope.requestDigest, authorizedRequest,
+    });
+    expect(response.status).toBe(404);
+    expect(broker.execute).not.toHaveBeenCalled();
+    expect(store.read).not.toHaveBeenCalled();
+    expect(authorizeScope).not.toHaveBeenCalled();
+  });
+
+  it('requires an independent original-graph host authorization before reservation', async () => {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+    const nativeGraph = {
+      mode: 'native_graph', userId: 'ci-user', tenantId: 'ci-tenant',
+      streamId: 'ci-conversation', responseMessageId: 'ci-response',
+      generationCreatedAt: 1700000000000, checkpointNamespace: '1700000000000',
+      graphCheckpointId: 'ci-checkpoint', nodeId: 'ci-node',
+      taskId: 'ci-task', agentId: 'ci-agent',
+      provider: 'ci-local-fixture', model: 'ci-free',
+    };
+    const proof = jest.fn().mockResolvedValue(false);
+    const reserve = jest.fn().mockResolvedValue({ status: 'result_committed' });
+    broker.executeOriginalNativeGraph = reserve;
+    server = createNativeMissionProviderBrokerHttpServer({
+      store, broker, secret, provider: 'ci-local-fixture',
+      authorizeScope, authorizeOriginalNativeGraph: proof,
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    port = server.address().port;
+    const payload = { identity: nativeGraph, requestDigest: scope.requestDigest,
+      authorizedRequest };
+    expect((await signed('/execute-native-graph', payload)).status).toBe(403);
+    expect(reserve).not.toHaveBeenCalled();
+    proof.mockResolvedValue(true);
+    expect((await signed('/execute-native-graph', payload)).status).toBe(200);
+    expect(reserve).toHaveBeenCalledWith(payload);
+    expect(proof).toHaveBeenCalledWith({
+      ...payload, operation: 'reserve_native_graph',
+    });
+    expect(authorizeScope).toHaveBeenCalledWith({
+      identity: nativeGraph, requestDigest: scope.requestDigest,
+      operation: 'reserve_native_graph',
+    });
+    expect((await signed('/execute-native-graph', {
+      ...payload, identity: { ...nativeGraph, operationKey: identity.operationKey },
+    })).status).toBe(403);
+    expect(reserve).toHaveBeenCalledTimes(1);
+  });
+
   it('continues an accepted call when the API client disconnects', async () => {
     let signalStarted;
     let releaseResult;
