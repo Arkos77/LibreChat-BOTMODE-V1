@@ -39,9 +39,10 @@ function createNativeMissionOriginalGraphBrokerHost({
   ) deny('NATIVE_GRAPH_BROKER_HOST_DEPENDENCIES_MISSING');
 
   return Object.freeze({
-    makeMissionFetchFactory: ({ original, plan, capabilityAttestation }) => {
+    makeMissionFetchFactory: ({ original, plan, capabilityAttestation, client }) => {
       if (
         !original ||
+        !client || client.orchestratorPlan !== plan ||
         !isId(original.userId) ||
         !isId(original.conversationId) ||
         !isId(original.parentResponseMessageId) ||
@@ -86,7 +87,8 @@ function createNativeMissionOriginalGraphBrokerHost({
       };
       const approved = createNativeMissionOriginalGraphBrokerModelFetchFactory({
         getScope,
-        getOriginalCheckpointReference: (scope) => readOriginalGraphCheckpoint(scope),
+        getOriginalCheckpointReference: (scope) =>
+          readOriginalGraphCheckpoint({ scope, plan, client }),
         resolveModelBinding,
         brokerUrl,
         secret,
@@ -130,7 +132,7 @@ function bindNativeMissionOriginalGraphBrokerForAcceptedMission({
   // touching the existing client. An exception leaves the original client
   // unchanged and fails the accepted run, rather than falling back silently.
   const factory = brokerHost.makeMissionFetchFactory({
-    original, plan, capabilityAttestation,
+    original, plan, capabilityAttestation, client,
   });
   if (typeof factory !== 'function') {
     deny('NATIVE_GRAPH_BROKER_FETCH_FACTORY_MISSING');
