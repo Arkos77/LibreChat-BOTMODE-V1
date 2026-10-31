@@ -255,10 +255,19 @@ const mongoose=require('mongoose');(async()=>{
  const sources=docs.map(x=>x.metadata_search?.source)
    .filter(x=>typeof x==='string');
  const allowed=['input','loop','update','fork'];
+ // Compare checkpoint write keys against the signed plan, without printing
+ // node names, metadata values, checkpoint identifiers, or model content.
+ const signedNodes=JSON.parse(process.env.CI_NATIVE_NODE_IDS);
+ const nodeWrites=signedNodes.map(node=>docs.filter(doc=>{
+   const writes=doc.metadata_search?.writes;
+   return writes && typeof writes==='object' && 
+     Object.prototype.hasOwnProperty.call(writes,node);
+ }).length);
  console.log(JSON.stringify({
   root:docs.filter(x=>x.checkpoint_ns==='').length,
   scoped:docs.filter(x=>typeof x.checkpoint_ns==='string'&&x.checkpoint_ns!=='').length,
   total:docs.length,
+  plannedNodeWriteCounts:nodeWrites,
   stepCount:steps.length,
   maxStep:steps.length?Math.max(...steps):null,
   sources:Object.fromEntries(allowed.map(k=>[k,sources.filter(v=>v===k).length])),
@@ -266,10 +275,16 @@ const mongoose=require('mongoose');(async()=>{
  await mongoose.disconnect();
 })().catch(e=>{console.log(JSON.stringify({unavailable:e.name}));process.exitCode=1});
 """
-        checkpoint_diag=json.loads(run_node(native_probe,[("CI_PARENT",conversation)]))
+        checkpoint_diag=json.loads(run_node(native_probe,[("CI_PARENT",conversation),("CI_NATIVE_NODE_IDS",json.dumps([task["nodeId"] for task in tasks]))]))
         for label in ("root","scoped","total"):
             print("CI_PR107_COLD_MULTI_NATIVE_CHECKPOINT_"+label.upper()+"="+
                   str(checkpoint_diag.get(label,"UNAVAILABLE")),flush=True)
+        write_counts=checkpoint_diag.get("plannedNodeWriteCounts")
+        if isinstance(write_counts,list) and len(write_counts)==2 and all(
+            type(value) is int and 0<=value<=100000 for value in write_counts
+        ):
+            print("CI_PR107_COLD_MULTI_NATIVE_RESEARCH_WRITES="+str(write_counts[0]),flush=True)
+            print("CI_PR107_COLD_MULTI_NATIVE_ANALYSIS_WRITES="+str(write_counts[1]),flush=True)
         for label in ("stepCount","maxStep"):
             value=checkpoint_diag.get(label)
             if type(value) is int and -1<=value<=100000:
