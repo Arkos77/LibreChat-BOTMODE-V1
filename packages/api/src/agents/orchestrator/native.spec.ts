@@ -917,8 +917,8 @@ describe('native mission direct graph broker compile seam', () => {
     const result = compileNativePlan(
       plan, source, undefined, undefined, undefined, undefined, approved,
     );
-    expect(result.graphConfig.agents[0].clientOptions?.configuration?.fetch).toBe(fetch);
-    expect(source.get(agentId)?.clientOptions?.configuration?.fetch).toBeUndefined();
+    expect(result.graphConfig.agents[0].clientOptions).toHaveProperty('configuration.fetch', fetch);
+    expect(source.get(agentId)?.clientOptions).not.toHaveProperty('configuration.fetch');
     expect(approved).toHaveBeenCalledWith({
       agentId,
       nodeId: plan.tasks[0].nodeId,
