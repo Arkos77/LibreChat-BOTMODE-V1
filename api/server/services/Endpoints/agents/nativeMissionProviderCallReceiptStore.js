@@ -49,9 +49,10 @@ function identify(input) {
     (direct && (
       !Number.isSafeInteger(input.generationCreatedAt) ||
       input.generationCreatedAt <= 0 ||
-      ID_FIELDS.some((key) => key === 'userId' || key === 'tenantId' ||
-        key === 'agentId' || key === 'provider' || key === 'model' ||
-        key === 'operationKey' ? false : input[key] != null)
+      // Only detached-child-only keys are forbidden. taskId is part of
+      // BOTH canonical identities and must remain mandatory.
+      ['parentConversationId', 'parentRunId', 'childThreadId', 'attemptKey']
+        .some((key) => input[key] != null)
     )) ||
     fields.some(
       (key) =>
@@ -115,7 +116,8 @@ function createNativeMissionProviderCallReceiptStore({ collection, makeToken = r
     // allocate a second provider call in the same original step.
     const nativeGraphSlotKey = original.mode === 'native_graph'
       ? fingerprint(JSON.stringify(Object.fromEntries(
-          DIRECT_GRAPH_ID_FIELDS.filter((field) => field !== 'operationKey')
+          DIRECT_GRAPH_ID_FIELDS.filter((field) =>
+            !['operationKey', 'agentId', 'provider', 'model'].includes(field))
             .map((field) => [field, original[field]]),
         )))
       : undefined;
