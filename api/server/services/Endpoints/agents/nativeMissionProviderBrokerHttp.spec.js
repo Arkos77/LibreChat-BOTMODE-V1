@@ -194,6 +194,47 @@ describe('private fixture-only provider broker ingress', () => {
     expect(reserve).toHaveBeenCalledTimes(1);
   });
 
+  it('reads native graph result only through the authenticated original status route', async () => {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+    const nativeGraph = {
+      mode: 'native_graph', userId: 'ci-user', tenantId: 'ci-tenant',
+      streamId: 'ci-conversation', responseMessageId: 'ci-response',
+      generationCreatedAt: 1700000000000, checkpointNamespace: '1700000000000',
+      graphCheckpointId: 'ci-checkpoint', nodeId: 'ci-node',
+      taskId: 'ci-task', agentId: 'ci-agent',
+      provider: 'ci-local-fixture', model: 'ci-free',
+    };
+    const proof = jest.fn().mockResolvedValue(true);
+    const original = { status: 'result_committed',
+      response: { choices: [{ message: { content: 'original' } }] } };
+    store.readOriginalNativeGraph = jest.fn().mockResolvedValue(original);
+    server = createNativeMissionProviderBrokerHttpServer({
+      store, broker, secret, provider: 'ci-local-fixture',
+      authorizeScope, authorizeOriginalNativeGraph: proof,
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    port = server.address().port;
+    const payload = { identity: nativeGraph, requestDigest: scope.requestDigest };
+    const response = await signed('/status-native-graph', payload);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(original);
+    expect(store.readOriginalNativeGraph).toHaveBeenCalledWith(payload);
+    expect(proof).toHaveBeenCalledWith({
+      ...payload, operation: 'read_native_graph',
+    });
+    expect(authorizeScope).toHaveBeenCalledWith({
+      ...payload, operation: 'read_native_graph',
+    });
+    expect(broker.execute).not.toHaveBeenCalled();
+    expect((await signed('/status-native-graph', {
+      ...payload, identity: { ...nativeGraph, operationKey: identity.operationKey },
+    })).status).toBe(403);
+    proof.mockResolvedValue(false);
+    expect((await signed('/status-native-graph', payload)).status).toBe(403);
+    expect(store.readOriginalNativeGraph).toHaveBeenCalledTimes(1);
+  });
+
   it('continues an accepted call when the API client disconnects', async () => {
     let signalStarted;
     let releaseResult;
