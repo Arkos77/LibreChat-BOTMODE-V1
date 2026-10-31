@@ -614,7 +614,7 @@ class Handler(BaseHTTPRequestHandler):
                 native_graph_calls += 1
                 native_turn = native_graph_calls
                 calls["native_graph_turns"] = calls.get("native_graph_turns",0) + 1
-                block = hold_second_child and native_hold_armed
+                block = hold_second_child and native_turn == 2
                 if block:
                     calls["held_second_child_requests"] += 1
             if block and not second_child_release.wait(timeout=120):
