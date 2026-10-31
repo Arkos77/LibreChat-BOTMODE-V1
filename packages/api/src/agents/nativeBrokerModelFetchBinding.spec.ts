@@ -52,12 +52,14 @@ describe('native child model transport binding (opt-in; no live dispatch)', () =
     });
     expect(factory).toHaveBeenCalledWith(persisted);
     expect(options.configuration?.fetch).toBe(fetch);
-    expect(() => attachNativeDetachedBrokerModelFetch({
-      clientOptions: {},
-      binding: { ...persisted, provider: 'OpenRouterCompatUnknown' },
-      modelFetchFactory: factory,
-      originalMissionHasDelegation: true,
-    })).toThrow('NATIVE_BROKER_MODEL_BINDING_UNAUTHORIZED');
+    expect(() =>
+      attachNativeDetachedBrokerModelFetch({
+        clientOptions: {},
+        binding: { ...persisted, provider: 'OpenRouterCompatUnknown' },
+        modelFetchFactory: factory,
+        originalMissionHasDelegation: true,
+      }),
+    ).toThrow('NATIVE_BROKER_MODEL_BINDING_UNAUTHORIZED');
     expect(factory).toHaveBeenCalledTimes(1);
   });
 
