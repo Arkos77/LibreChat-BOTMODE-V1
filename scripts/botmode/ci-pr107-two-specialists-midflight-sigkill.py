@@ -267,8 +267,22 @@ const mongoose=require('mongoose');(async()=>{
             "NATIVE_MISSION",
             "Failed to create run",
         )
-        relevant=[line for line in api_logs.splitlines()
-                  if any(marker in line for marker in markers)]
+        all_lines=api_logs.splitlines()
+        # Winston transports can render getSafeErrorMetadata(err) on separate
+        # following lines. Collect a bounded neighborhood, not only the
+        # matching warning line. Everything remains private in this process.
+        matches=[index for index,line in enumerate(all_lines)
+                 if any(marker in line for marker in markers)]
+        relevant=[line for index in matches
+                  for line in all_lines[index:min(index+20,len(all_lines))]]
+        # Independently classify the entire bounded log tail. This catches
+        # structured errors whose metadata precedes the terminal warning.
+        error_context=[line for line in all_lines
+                       if any(k in line for k in (
+                           "NATIVE_","MISSION_","ORCHESTRATOR_",
+                           "Error:", "errorCode", "errorClass",
+                           "Failed to create run", "Unsupported LLM provider",
+                       ))]
         allowed_prefixes=(
             "NATIVE_", "MISSION_", "ORCHESTRATOR_", "BOTMODE_",
             "SUBAGENT_", "AGENT_", "MODEL_", "PROVIDER_",
@@ -285,8 +299,30 @@ const mongoose=require('mongoose');(async()=>{
         print("CI_PR107_COLD_MULTI_API_ROOT_LOG_COUNT="+str(len(relevant)),flush=True)
         print("CI_PR107_COLD_MULTI_API_ROOT_CODES="+
               (",".join(sorted(codes)) or "NONE"),flush=True)
+        context_codes=sorted({code for line in error_context
+            for code in re.findall(r"\\b[A-Z][A-Z0-9_]{6,100}\\b",line)
+            if code.startswith(allowed_prefixes)})
+        print("CI_PR107_COLD_MULTI_API_CONTEXT_CODES="+
+              (",".join(context_codes[:16]) or "NONE"),flush=True)
+        print("CI_PR107_COLD_MULTI_API_CONTEXT_LINE_COUNT="+
+              str(len(error_context)),flush=True)
         print("CI_PR107_COLD_MULTI_API_ROOT_CLASSES="+
               (",".join(classes) or "NONE"),flush=True)
+        # Do not output raw message fields: emit only class and SHA-256
+        # prefixes of the metadata's own message value. This lets the host
+        # correlate a constant exception from source without leaking content.
+        import hashlib
+        message_hashes=[]
+        for line in relevant:
+            for item in re.findall(
+                r"""(?:['"]message['"]|\\bmessage)\\s*[:=]\\s*['"]([^'"]{1,250})['"]""",
+                line
+            ):
+                message_hashes.append(
+                    str(len(item))+":"+hashlib.sha256(item.lower().encode()).hexdigest()[:12]
+                )
+        print("CI_PR107_COLD_MULTI_API_ROOT_MESSAGE_HASHES="+
+              (",".join(sorted(set(message_hashes))[:8]) or "NONE"),flush=True)
         phrase_map={
             "HOST_MODEL_UNAUTHORIZED":"NATIVE_BROKER_HOST_MODEL_UNAUTHORIZED",
             "TRANSPORT_CONFLICT":"NATIVE_BROKER_MODEL_TRANSPORT_CONFLICT",
