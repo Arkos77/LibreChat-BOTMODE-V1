@@ -181,20 +181,46 @@ def snapshot():
 # spawning Mongo child conversations through the SDK subagent tool. A durable
 # node write is required before killing the API; fixture calls alone are NOT proof.
 native_proof_script=r"""
-const mongoose=require('mongoose');(async()=>{
- await mongoose.connect(process.env.MONGO_URI);
- const nodes=JSON.parse(process.env.CI_NATIVE_NODES);
- const docs=await mongoose.connection.db.collection('agent_checkpoints')
-  .find({thread_id:process.env.CI_PARENT})
-  .project({metadata_search:1}).toArray();
- const writes=nodes.map(node=>docs.filter(d=>
-   d.metadata_search?.writes &&
-   Object.prototype.hasOwnProperty.call(d.metadata_search.writes,node)).length);
- const steps=docs.map(d=>d.metadata_search?.step).filter(Number.isInteger);
- console.log(JSON.stringify({researchWrites:writes[0],analysisWrites:writes[1],
-    checkpoints:docs.length,maxStep:steps.length?Math.max(...steps):null}));
- await mongoose.disconnect();
-})().catch(e=>{console.log(JSON.stringify({unavailable:e.name}));process.exitCode=1});
+const mongoose=require('mongoose');
+const {getAgentCheckpointer}=require('@librechat/api');
+(async()=>{
+  await mongoose.connect(process.env.MONGO_URI);
+  const nodeIds=JSON.parse(process.env.CI_NATIVE_NODES);
+  const collection=mongoose.connection.db.collection('agent_checkpoints');
+  const namespaces=await collection.distinct('checkpoint_ns',{
+    thread_id:process.env.CI_PARENT
+  });
+  // Root checkpoint namespace is the host-owned generation; nested namespaces
+  // contain a "|" separator. Do not accept ambiguous generations.
+  const roots=namespaces.filter(ns=>typeof ns==='string'&&!ns.includes('|'));
+  if(roots.length!==1) throw Error('NATIVE_GENERATION_AMBIGUOUS');
+  const saver=await getAgentCheckpointer();
+  if(!saver||typeof saver.getTuple!=='function')
+    throw Error('NATIVE_SAVER_UNAVAILABLE');
+  const tuple=await saver.getTuple({configurable:{
+    thread_id:process.env.CI_PARENT,
+    checkpoint_ns:'',
+    __librechat_checkpoint_ns:roots[0]
+  }});
+  const values=tuple?.checkpoint?.channel_values;
+  const outputs=values?.agentOutputs;
+  // A model completion or metadata step is not proof: require the actual
+  // task-scoped output present in the durable root LangGraph state.
+  const durable=(id)=>outputs!=null &&
+    Object.prototype.hasOwnProperty.call(outputs,id) &&
+    typeof outputs[id]?.content==='string' &&
+    outputs[id].content.length>0;
+  console.log(JSON.stringify({
+    researchDurable:durable(nodeIds[0]),
+    analysisDurable:durable(nodeIds[1]),
+    rootCheckpointPresent:!!tuple?.checkpoint?.id,
+    checkpointStep:tuple?.metadata?.step??null
+  }));
+  await mongoose.disconnect();
+})().catch(e=>{
+  console.log(JSON.stringify({unavailable:e.message?.slice(0,80)||e.name}));
+  process.exitCode=1;
+});
 """
 def native_state():
     return json.loads(run_node(native_proof_script,[
@@ -205,15 +231,11 @@ def native_state():
 # Wait for first native child to finish and the second provider request to
 # be in-flight. No arbitrary sleeps or synthetic fake child database records.
 pre=None
-armed=False
 for attempt in range(110):
-    native_pre=native_state()
-    if native_pre.get("researchWrites",0)>0 and native_pre.get("analysisWrites",0)==0:
-        if not armed:
-            post_fixture("/arm-native-hold",{})
-            armed=True
-        counts=metrics()
-        if counts.get("held_second_child_requests",0)>0:
+    counts=metrics()
+    if counts.get("held_second_child_requests",0)>0:
+        native_pre=native_state()
+        if native_pre.get("researchDurable") is True and native_pre.get("analysisDurable") is False:
             pre=snapshot()
             break
     time.sleep(0.5)
@@ -476,7 +498,7 @@ except (ValueError,TypeError,AttributeError):
     print("CI_PR107_COLD_MULTI_PRECRASH_ORACLE_STATE=UNREADABLE",flush=True)
 if pre["published"]!=0:
     fail("P6_PREMATURE_BEFORE_NATIVE_ANALYSIS")
-if native_pre["researchWrites"]<1 or native_pre["analysisWrites"]!=0:
+if native_pre["researchDurable"] is not True or native_pre["analysisDurable"] is not False:
     fail("NATIVE_PRECRASH_CHECKPOINT_NOT_READY")
 if current_metrics.get("held_second_child_requests",0)!=1:
     fail("NATIVE_SECOND_PROVIDER_NOT_HELD")
@@ -516,21 +538,21 @@ for attempt in range(90):
     except (OSError,ValueError,KeyError,TypeError):
         time.sleep(2)
         continue
-    if native_post.get("researchWrites",0)>0 and native_post.get("analysisWrites",0)>0 and value["published"]==1:
+    if native_post.get("researchDurable") is True and native_post.get("analysisDurable") is True and value["published"]==1:
         outcome=(value,state,native_post)
         break
     if attempt%15==0:
         print("CI_PR107_COLD_MULTI_NATIVE_RECOVERY="+json.dumps({
-            "researchWrites":native_post.get("researchWrites",0),
-            "analysisWrites":native_post.get("analysisWrites",0),
+            "researchWrites":native_post.get("researchDurable"),
+            "analysisWrites":native_post.get("analysisDurable"),
             "published":value["published"]
         },sort_keys=True),flush=True)
     time.sleep(2)
 if outcome is None:
     fail("NATIVE_GRAPH_OR_PUBLICATION_RECOVERY_UNPROVEN")
 value,state,native_post=outcome
-if (native_post["researchWrites"]!=native_pre["researchWrites"] or
-    native_post["analysisWrites"]!=1 or value["published"]!=1):
+if (native_post["researchDurable"] is not True or
+    native_post["analysisDurable"] is not True or value["published"]!=1):
     fail("NATIVE_GRAPH_DUPLICATE_OR_INVALID_RECOVERY")
 _,plan_raw,oracle_raw=state
 try:
