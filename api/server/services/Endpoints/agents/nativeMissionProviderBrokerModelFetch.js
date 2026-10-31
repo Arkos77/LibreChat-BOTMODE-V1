@@ -272,4 +272,79 @@ function createNativeMissionBrokerModelFetch({
   };
 }
 
-module.exports = { createNativeMissionBrokerModelFetch };
+/**
+ * Authorize the SDK's ORIGINAL detached-child model binding before attaching
+ * a broker fetch. The per-fetch scope comes from the owning Task Engine's
+ * AsyncLocalStorage, never from a request body, model tool argument, or caller
+ * selected child id. This factory does not create original operation receipts.
+ *
+ * The host must supply an immutable binding catalog plus a resolver backed by
+ * the previously checkpointed ORIGINAL operation; missing evidence refuses
+ * the model call rather than falling back to direct provider HTTP.
+ */
+function createNativeMissionDetachedBrokerModelFetchFactory({
+  getExecutionScope,
+  resolveModelBinding,
+  resolveOriginalOperation,
+  brokerUrl,
+  secret,
+  fetchImpl,
+  now,
+  pause,
+  maxPolls,
+}) {
+  if (
+    typeof getExecutionScope !== 'function' ||
+    typeof resolveModelBinding !== 'function' ||
+    typeof resolveOriginalOperation !== 'function'
+  ) {
+    denied('NATIVE_BROKER_HOST_BINDING_DEPENDENCIES');
+  }
+  return (binding) => {
+    if (
+      !binding ||
+      typeof binding.agentId !== 'string' ||
+      !binding.agentId ||
+      typeof binding.provider !== 'string' ||
+      !binding.provider ||
+      typeof binding.model !== 'string' ||
+      !binding.model
+    ) {
+      denied('NATIVE_BROKER_HOST_MODEL_UNAUTHORIZED');
+    }
+    const known = resolveModelBinding(Object.freeze({ ...binding }));
+    if (
+      known?.agentId !== binding.agentId ||
+      known.provider !== binding.provider ||
+      known.model !== binding.model ||
+      typeof known.endpoint !== 'string' ||
+      !known.endpoint
+    ) {
+      denied('NATIVE_BROKER_HOST_MODEL_UNAUTHORIZED');
+    }
+    return createNativeMissionBrokerModelFetch({
+      getScope: () => {
+        const original = getExecutionScope();
+        if (original?.agentId !== binding.agentId) {
+          denied('NATIVE_BROKER_HOST_CHILD_IDENTITY_MISMATCH');
+        }
+        return original;
+      },
+      resolveOriginalOperation,
+      originalProvider: binding.provider,
+      originalModel: binding.model,
+      originalModelEndpoint: known.endpoint,
+      brokerUrl,
+      secret,
+      ...(fetchImpl == null ? {} : { fetchImpl }),
+      ...(now == null ? {} : { now }),
+      ...(pause == null ? {} : { pause }),
+      ...(maxPolls == null ? {} : { maxPolls }),
+    });
+  };
+}
+
+module.exports = {
+  createNativeMissionBrokerModelFetch,
+  createNativeMissionDetachedBrokerModelFetchFactory,
+};

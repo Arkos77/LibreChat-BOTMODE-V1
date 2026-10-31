@@ -1,7 +1,10 @@
 'use strict';
 
 const { createHash } = require('node:crypto');
-const { createNativeMissionBrokerModelFetch } = require('./nativeMissionProviderBrokerModelFetch');
+const {
+  createNativeMissionBrokerModelFetch,
+  createNativeMissionDetachedBrokerModelFetchFactory,
+} = require('./nativeMissionProviderBrokerModelFetch');
 
 const secret = 'ci-limited-transport-secret-with-32-plus-chars';
 const endpoint = 'http://127.0.0.1:8088/v1/chat/completions';
@@ -292,5 +295,94 @@ describe('native model transport via durable provider broker (not installed auto
       'NATIVE_BROKER_FETCH_RESULT_NOT_PROVEN',
     );
     expect(calls.map((c) => new URL(c.url).pathname)).toEqual(['/execute', '/status', '/status']);
+  });
+});
+
+describe('original detached-child host binding via real execution context', () => {
+  const binding = Object.freeze({
+    agentId: scope.agentId,
+    provider: 'ci-local-fixture',
+    model: 'ci-free',
+  });
+
+  function host(overrides = {}) {
+    const calls = [];
+    const fetchImpl = jest.fn(async (url, options) => {
+      calls.push({ url: String(url), options });
+      return new Response(
+        JSON.stringify({ status: 'result_committed', resultAvailable: true, response: final }),
+        { status: 200 },
+      );
+    });
+    const resolveOriginalOperation = jest.fn(async (args) => ({
+      approved: true,
+      scope,
+      provider: binding.provider,
+      model: binding.model,
+      requestDigest: args.requestDigest,
+      operationKey,
+    }));
+    const factory = createNativeMissionDetachedBrokerModelFetchFactory({
+      getExecutionScope: () => scope,
+      resolveModelBinding: () => ({ ...binding, endpoint }),
+      resolveOriginalOperation,
+      brokerUrl: 'http://127.0.0.1:8095/',
+      secret,
+      fetchImpl,
+      ...overrides,
+    });
+    return { factory, fetchImpl, resolveOriginalOperation, calls };
+  }
+
+  it('binds the model only when the trusted host and original child identity agree', async () => {
+    const { factory, calls, resolveOriginalOperation } = host();
+    const fetchModel = factory(binding);
+    const response = await fetchModel(endpoint, { method: 'POST', body });
+    expect(await response.json()).toEqual(final);
+    expect(calls.map((call) => call.url)).toEqual(['http://127.0.0.1:8095/execute']);
+    expect(resolveOriginalOperation).toHaveBeenCalledWith(
+      expect.objectContaining({ scope, provider: binding.provider, model: binding.model }),
+    );
+  });
+
+  it('rejects a sibling child identity before any journal or broker IO', async () => {
+    const { factory, fetchImpl, resolveOriginalOperation } = host({
+      getExecutionScope: () => ({ ...scope, agentId: 'other-child' }),
+    });
+    const fetchModel = factory(binding);
+    await expect(fetchModel(endpoint, { method: 'POST', body })).rejects.toThrow(
+      'NATIVE_BROKER_HOST_CHILD_IDENTITY_MISMATCH',
+    );
+    expect(resolveOriginalOperation).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('refuses an unknown or changed agent-model binding without direct provider fallback', () => {
+    for (const fake of [
+      { ...binding, model: 'changed-model' },
+      { ...binding, agentId: 'foreign-child' },
+    ]) {
+      const { factory, fetchImpl } = host();
+      expect(() => factory(fake)).toThrow('NATIVE_BROKER_HOST_MODEL_UNAUTHORIZED');
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
+  });
+
+  it('keeps recovered child requests read-only at the broker', async () => {
+    const { factory, calls } = host({
+      getExecutionScope: () => ({ ...scope, recoveryOnly: true }),
+    });
+    const result = await factory(binding)(endpoint, { method: 'POST', body });
+    expect(result.status).toBe(200);
+    expect(calls.map((call) => new URL(call.url).pathname)).toEqual(['/status']);
+  });
+
+  it('does not install a transport without a trusted operation resolver', () => {
+    expect(() =>
+      createNativeMissionDetachedBrokerModelFetchFactory({
+        getExecutionScope: () => scope,
+        resolveModelBinding: () => ({ ...binding, endpoint }),
+      }),
+    ).toThrow('NATIVE_BROKER_HOST_BINDING_DEPENDENCIES');
   });
 });
