@@ -572,6 +572,28 @@ else:
     fail("API_NOT_READY_AFTER_COLD_RESTART")
 print("CI_PR107_COLD_MULTI_API_RESTART=PASS",flush=True)
 
+# This exact build registers only the model-only cold mission recovery host.
+# Inspect the immutable ORIGINAL admission mode after the real SIGKILL.
+# Fail fast for receipts-required native graph calls: the detached-child broker
+# cannot prove a direct graph node's in-flight provider completion. Retrying
+# it without a model-operation receipt could duplicate an external call.
+raw_attestation=subprocess.run(
+    COMPOSE+["exec","-T","redis","redis-cli","--raw","HGET",
+             redis_key,"nativeMissionCapabilityAttestation"],
+    capture_output=True,text=True,timeout=20,check=True,
+).stdout.strip()
+try:
+    admission=json.loads(raw_attestation)
+    recovery_mode=admission.get("mode")
+except (ValueError,TypeError,AttributeError):
+    fail("ORIGINAL_CAPABILITY_ATTESTATION_UNREADABLE")
+if recovery_mode not in ("model_only","receipts_required"):
+    fail("ORIGINAL_CAPABILITY_ATTESTATION_UNKNOWN")
+print("CI_PR107_COLD_MULTI_ORIGINAL_RECOVERY_MODE="+recovery_mode.upper(),flush=True)
+if recovery_mode=="receipts_required":
+    print("CI_PR107_COLD_MULTI_DIRECT_NODE_RECEIPT_ADAPTER_AVAILABLE=False",flush=True)
+    fail("DIRECT_NATIVE_MODEL_OPERATION_RECOVERY_NOT_IMPLEMENTED")
+
 # Subscribe to the same old stream, not a new generation or second submission.
 threading.Thread(target=read_stream,daemon=True).start()
 outcome=None
