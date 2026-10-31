@@ -13,7 +13,7 @@ function createNativeMissionOriginalGraphCheckpointReader({ getGraph }) {
   if (typeof getGraph !== 'function') {
     throw new Error('NATIVE_GRAPH_CHECKPOINT_GRAPH_READER_MISSING');
   }
-  return async ({ scope, plan, expectedCheckpointId }) => {
+  return async ({ scope, plan, expectedCheckpointId, client }) => {
     if (
       !scope ||
       typeof scope.streamId !== 'string' || !scope.streamId ||
@@ -37,7 +37,7 @@ function createNativeMissionOriginalGraphCheckpointReader({ getGraph }) {
           typeof task?.nodeId !== 'string' || !task.nodeId)) {
       throw new Error('NATIVE_GRAPH_CHECKPOINT_NODE_NOT_PLANNED');
     }
-    const graph = await getGraph({ scope, plan });
+    const graph = await getGraph({ scope, plan, ...(client != null && { client }) });
     if (typeof graph?.getState !== 'function') {
       throw new Error('NATIVE_GRAPH_CHECKPOINT_GRAPH_UNAVAILABLE');
     }
