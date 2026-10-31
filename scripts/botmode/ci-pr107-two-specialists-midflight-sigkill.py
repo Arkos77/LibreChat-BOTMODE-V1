@@ -65,21 +65,33 @@ post_fixture("/configure",{"childIds":ids,"holdSecondChild":True})
 before = metrics()
 conversation = str(uuid.uuid4())
 mission_id = "ci-pr107-cold-"+str(uuid.uuid4())
+# The immutable plan MUST grant two actual native specialists. A single
+# basic objective is solved by the basic-capable Worker, producing only ONE
+# planned task; requiring 2 broker tasks then correctly fails admission.
+# Two distinct capabilities and an explicit dependency make this a genuine
+# signed research -> analysis mission, not a synthetic extra child side effect.
 mission = {"missionId":mission_id,"taskId":mission_id,
-           "objective":"Research then analysis with two delegated specialists, verify one answer.",
+           "objective":"Research then analyse; publish one verified synthesis.",
            "constraints":["Answer strictly with the approved JSON."],
-           "requiredCapabilities":["basic"],
+           "requiredCapabilities":["ci-native-research","ci-native-analysis"],
+           "objectives":[
+               {"key":"research","objective":"Perform the delegated research.",
+                "requiredCapabilities":["ci-native-research"],"dependsOn":[]},
+               {"key":"analysis","objective":"Analyse the research result.",
+                "requiredCapabilities":["ci-native-analysis"],"dependsOn":["research"]},
+           ],
            "validation":{"criteria":[{"id":"ci-ok","field":"ok","expected":True}]}}
 payload={"endpoint":"agents","agent_id":WORKER,
          "conversationId":conversation,"messageId":str(uuid.uuid4()),
          "parentMessageId":"00000000-0000-0000-0000-000000000000",
          "isNewConvo":True,
-         "text":'Perform both delegated steps then answer {"ok":true}.',
+         "text":'Execute the signed research then analysis tasks and answer {"ok":true}.',
          "orchestratorMission":{"mission":mission,"plannerContext":{
              "worker":{"id":"ci-worker","agentId":WORKER,"role":"worker","capabilities":["basic"],
                        "constraints":[]},
              "specialists":[{"id":a,"agentId":a,"role":"specialist",
-                             "capabilities":["basic"],"constraints":[]} for a in ids]}}}
+                             "capabilities":["basic",("ci-native-research" if i==0 else "ci-native-analysis")],
+                             "constraints":[]} for i,a in enumerate(ids)]}}}
 for attempt in range(15):
     try:
         status, raw = request("POST","/api/agents/chat/agents",payload)
@@ -100,6 +112,34 @@ try:
     if started.get("status")!="started":fail("BAD_START")
 except (ValueError, KeyError, TypeError):
     fail("BAD_START")
+
+# Fail immediately if the server-signed plan ever drifts back to a
+# DIRECT/one-task Worker plan. No child request, provider dispatch or SIGKILL
+# is allowed for a plan that cannot authorize BOTH selected specialists.
+planned=None
+for attempt in range(30):
+    try:
+        _,plan_raw,_=redis_job(stream_id)
+        if plan_raw:
+            planned=json.loads(plan_raw)
+            break
+    except (ValueError,TypeError,KeyError):
+        fail("ORIGINAL_SIGNED_PLAN_UNREADABLE")
+    time.sleep(0.2)
+if not isinstance(planned,dict):
+    fail("ORIGINAL_SIGNED_PLAN_MISSING")
+tasks=planned.get("tasks")
+if not (
+    planned.get("strategy")=="SEQUENTIAL" and
+    isinstance(tasks,list) and len(tasks)==2 and
+    tasks[0].get("agentId")==ids[0] and
+    tasks[1].get("agentId")==ids[1] and
+    tasks[0].get("key")=="research" and
+    tasks[1].get("key")=="analysis" and
+    tasks[1].get("dependsOn")==["research"]
+):
+    fail("ORIGINAL_SIGNED_TWO_SPECIALIST_PLAN_DENIED")
+print("CI_PR107_COLD_MULTI_TWO_SPECIALIST_SIGNED_PLAN=PASS",flush=True)
 
 stream_replies=[]
 def read_stream():
