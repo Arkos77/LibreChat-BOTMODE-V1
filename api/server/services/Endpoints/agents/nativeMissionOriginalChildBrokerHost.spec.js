@@ -4,10 +4,16 @@ const {
 } = require('./nativeMissionOriginalChildBrokerHost');
 
 describe('trusted native child transport installation', () => {
-  const host = { modelFetchFactory: () => undefined };
+  const selectedTransport = async () => ({ ok: true });
+  const host = { modelFetchFactory: jest.fn(() => selectedTransport) };
   const plan = { tasks: [{ agentId: 'worker' }, { agentId: 'analysis' }] };
   const attestation = { mode: 'receipts_required' };
-  const client = () => ({ options: { subagentTasks: { scopeId: 'original' } } });
+  const client = () => ({
+    options: {
+      agent: { id: 'worker' },
+      subagentTasks: { scopeId: 'original' },
+    },
+  });
   it('attaches only the trusted server host to a verified detached mission', () => {
     const run = client();
     expect(
@@ -18,7 +24,47 @@ describe('trusted native child transport installation', () => {
         capabilityAttestation: attestation,
       }),
     ).toBe(true);
-    expect(run.options.nativeDetachedModelFetchFactory).toBe(host.modelFetchFactory);
+    const selected = { agentId: 'analysis', provider: 'OpenRouter', model: 'openrouter/free' };
+    expect(run.options.nativeDetachedModelFetchFactory(selected)).toBe(selectedTransport);
+    expect(host.modelFetchFactory).toHaveBeenCalledWith(selected);
+  });
+  it('builds an eager multiagent graph without letting unplanned specialists reach any provider', async () => {
+    host.modelFetchFactory.mockClear();
+    const run = client();
+    expect(
+      bind({
+        client: run,
+        brokerHost: host,
+        originalPlan: plan,
+        capabilityAttestation: attestation,
+      }),
+    ).toBe(true);
+    const thirdChild = run.options.nativeDetachedModelFetchFactory({
+      agentId: 'unplanned-rewriter',
+      provider: 'OpenRouter',
+      model: 'openrouter/free',
+    });
+    const parentSelfChild = run.options.nativeDetachedModelFetchFactory({
+      agentId: 'worker',
+      provider: 'OpenRouter',
+      model: 'openrouter/free',
+    });
+    expect(typeof thirdChild).toBe('function');
+    expect(typeof parentSelfChild).toBe('function');
+    await expect(thirdChild('https://openrouter.ai/api/v1/chat/completions')).rejects.toThrow(
+      'NATIVE_ORIGINAL_CHILD_UNPLANNED_PROVIDER_EFFECT_DENIED',
+    );
+    await expect(parentSelfChild('https://openrouter.ai/api/v1/chat/completions')).rejects.toThrow(
+      'NATIVE_ORIGINAL_CHILD_UNPLANNED_PROVIDER_EFFECT_DENIED',
+    );
+    expect(host.modelFetchFactory).not.toHaveBeenCalled();
+    const selected = run.options.nativeDetachedModelFetchFactory({
+      agentId: 'analysis',
+      provider: 'OpenRouter',
+      model: 'openrouter/free',
+    });
+    expect(selected).toBe(selectedTransport);
+    expect(host.modelFetchFactory).toHaveBeenCalledTimes(1);
   });
   it('leaves model-only missions and hostless deployments unchanged', () => {
     const run = client();

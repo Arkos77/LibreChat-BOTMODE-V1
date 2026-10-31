@@ -190,7 +190,27 @@ function bindNativeMissionOriginalChildBrokerForAcceptedMission({
   ) {
     deny('NATIVE_ORIGINAL_CHILD_HOST_ADMISSION_DENIED');
   }
-  client.options.nativeDetachedModelFetchFactory = brokerHost.modelFetchFactory;
+  // The SDK eagerly constructs bindings for ALL reachable native children,
+  // including those not selected by this mission's immutable signed plan.
+  // Denying an unselected child here would abort the entire graph BEFORE the
+  // two selected specialists can execute. Instead give every unselected
+  // child a rejecting model transport: it can NEVER reach direct provider I/O,
+  // even if a model later tries to spawn it. Only the plan-selected children
+  // are delegated to the host's strict, per-agent provider/model catalog.
+  const planAgentIds = new Set(originalPlan.tasks.map((task) => task?.agentId));
+  const parentAgentId = client.options.agent?.id;
+  const rejectUnplannedProviderEffect = async () =>
+    deny('NATIVE_ORIGINAL_CHILD_UNPLANNED_PROVIDER_EFFECT_DENIED');
+  client.options.nativeDetachedModelFetchFactory = (binding) => {
+    if (
+      typeof binding?.agentId !== 'string' ||
+      !planAgentIds.has(binding.agentId) ||
+      binding.agentId === parentAgentId
+    ) {
+      return rejectUnplannedProviderEffect;
+    }
+    return brokerHost.modelFetchFactory(binding);
+  };
   return true;
 }
 
