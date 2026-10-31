@@ -38,7 +38,7 @@ const originalSlotKey = sha({
   checkpointNs: '',
   generationNamespace: 'generation',
 });
-function fixture() {
+function fixture(authorizeOriginalNativeGraph) {
   const row = {
     callKey: sha(identity),
     identity,
@@ -60,14 +60,20 @@ function fixture() {
   const collection = {
     createIndex: jest.fn(async () => {}),
     insertOne: jest.fn(async (doc) => {
-      if (records.has(doc.callKey)) {
+      if (records.has(doc.callKey) ||
+          (doc.nativeGraphSlotKey && [...records.values()].some(
+            (saved) => saved.nativeGraphSlotKey === doc.nativeGraphSlotKey))) {
         const error = new Error('duplicate');
         error.code = 11000;
         throw error;
       }
       records.set(doc.callKey, clone(doc));
     }),
-    findOne: jest.fn(async (query) => clone(records.get(query.callKey))),
+    findOne: jest.fn(async (query) => clone(
+      query.nativeGraphSlotKey
+        ? [...records.values()].find((row) => row.nativeGraphSlotKey === query.nativeGraphSlotKey)
+        : records.get(query.callKey),
+    )),
     findOneAndUpdate: jest.fn(async (filter, update) => {
       const current = records.get(filter.callKey);
       if (
@@ -144,6 +150,7 @@ function fixture() {
     canViewAgent: async () => owner,
     inspectOriginalChildOwner: async () => lease,
     getCurrentModelBinding: async () => ({ provider: 'openrouter', model: 'ci-free' }),
+    ...(authorizeOriginalNativeGraph && { authorizeOriginalNativeGraph }),
   });
   return {
     server,
@@ -211,5 +218,67 @@ describe('independent original-child broker: dispatch once and read after SIGKIL
         .status,
     ).toBe(403);
     expect(ctx.sender).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('independent broker native graph opt-in and original result reattachment', () => {
+  const direct = {
+    mode: 'native_graph', userId: 'owner', tenantId: 'tenant',
+    streamId: 'native-conversation', responseMessageId: 'native-response',
+    generationCreatedAt: 1700000000000, checkpointNamespace: 'generation',
+    graphCheckpointId: 'native-checkpoint', nodeId: 'analysis-node',
+    taskId: 'analysis-task', agentId: 'analysis', provider: 'openrouter', model: 'ci-free',
+  };
+  let ctx;
+  let port;
+  let lease;
+  let proof;
+  beforeEach(async () => {
+    lease = true;
+    proof = jest.fn(async ({ identity: requestIdentity, operation, authorizedRequest: body }) =>
+      requestIdentity?.mode === 'native_graph' &&
+      requestIdentity.operationKey == null &&
+      (operation === 'read_native_graph' || (lease && body?.model === 'ci-free')));
+    ctx = fixture(proof);
+    await new Promise((resolve) => ctx.server.listen(0, '127.0.0.1', resolve));
+    port = ctx.server.address().port;
+  });
+  afterEach(async () => {
+    ctx.server.closeAllConnections();
+    await new Promise((resolve) => ctx.server.close(resolve));
+  });
+
+  it('persists an original native model result and reads it after expired dispatch lease', async () => {
+    const payload = { identity: direct, requestDigest: digest, authorizedRequest };
+    const executed = await signed(port, '/execute-native-graph', payload);
+    expect(executed.status).toBe(200);
+    expect((await executed.json()).response.choices[0].message.content).toBe('durable-response');
+    expect(ctx.sender).toHaveBeenCalledTimes(1);
+    expect(ctx.records.size).toBe(2); // original detached row + native graph reservation
+    lease = false;
+    const recovered = await signed(port, '/status-native-graph', {
+      identity: direct, requestDigest: digest,
+    });
+    expect(recovered.status).toBe(200);
+    expect((await recovered.json()).response.choices[0].message.content).toBe('durable-response');
+    expect(ctx.sender).toHaveBeenCalledTimes(1);
+    expect((await signed(port, '/execute-native-graph', payload)).status).toBe(403);
+    expect(ctx.records.size).toBe(2);
+    expect(proof).toHaveBeenCalledWith(expect.objectContaining({
+      identity: direct, operation: 'read_native_graph',
+    }));
+  });
+
+  it('does not allow a caller-supplied operation key or changed model to dispatch', async () => {
+    const payload = { identity: direct, requestDigest: digest, authorizedRequest };
+    expect((await signed(port, '/execute-native-graph', {
+      ...payload, identity: { ...direct, operationKey: 'e'.repeat(64) },
+    })).status).toBe(403);
+    expect((await signed(port, '/execute-native-graph', {
+      ...payload, authorizedRequest: { ...authorizedRequest, model: 'changed' },
+    })).status).toBe(403);
+    expect(ctx.sender).not.toHaveBeenCalled();
+    expect(ctx.records.size).toBe(1);
   });
 });
