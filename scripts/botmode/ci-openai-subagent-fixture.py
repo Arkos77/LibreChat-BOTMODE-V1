@@ -23,6 +23,7 @@ child_ids = []  # Opt-in two-child synthetic test only; ordinary fixture unchang
 hold_second_child = False
 native_graph_fixture = False
 native_graph_calls = 0
+native_hold_armed = False
 held_baseline = 0
 second_child_release = threading.Event()
 broker_request_release = threading.Event()
@@ -360,7 +361,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.send({"object":"list","data":[{"id":MODEL,"object":"model","created":1700000000,"owned_by":"ci"}]})
         return self.send({"error":"not_found"},404)
     def do_POST(self):
-        global child_id, child_ids, hold_second_child, held_baseline, native_graph_fixture, native_graph_calls
+        global child_id, child_ids, hold_second_child, held_baseline, native_graph_fixture, native_graph_calls, native_hold_armed
+        if self.path == "/arm-native-hold":
+            with lock:
+                native_hold_armed = True
+            return self.send({"ok":True})
         if self.path == "/release-second-child":
             second_child_release.set()
             return self.send({"ok": True})
@@ -397,6 +402,7 @@ class Handler(BaseHTTPRequestHandler):
                     hold_second_child = obj.get("holdSecondChild") is True
                     native_graph_fixture = obj.get("nativeGraph") is True
                     native_graph_calls = 0
+                    native_hold_armed = False
                     held_baseline = calls.get("child_responses", 0)
                     calls["held_second_child_requests"] = 0
                     second_child_release.clear()
@@ -409,6 +415,7 @@ class Handler(BaseHTTPRequestHandler):
                 hold_second_child=False
                 native_graph_fixture=False
                 native_graph_calls=0
+                native_hold_armed=False
                 second_child_release.set()
             return self.send({"ok":True})
         if not self.path.rstrip("/").endswith("/chat/completions"):
@@ -607,7 +614,7 @@ class Handler(BaseHTTPRequestHandler):
                 native_graph_calls += 1
                 native_turn = native_graph_calls
                 calls["native_graph_turns"] = calls.get("native_graph_turns",0) + 1
-                block = hold_second_child and native_turn == 2
+                block = hold_second_child and native_hold_armed
                 if block:
                     calls["held_second_child_requests"] += 1
             if block and not second_child_release.wait(timeout=120):
