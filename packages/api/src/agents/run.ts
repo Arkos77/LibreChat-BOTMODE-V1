@@ -85,6 +85,10 @@ import {
   isSteerTerminalContinuationSupported,
 } from '~/agents/steering/runtime';
 import {
+  attachNativeDetachedBrokerModelFetch,
+  type NativeDetachedModelFetchFactory,
+} from './nativeBrokerModelFetchBinding';
+import {
   resolveToolApprovalPolicy,
   healToolApprovalPolicy,
   exemptAskUserQuestionFromApproval,
@@ -1467,6 +1471,7 @@ export async function createRun({
   initialSummary,
   modelCallbacks,
   modelCallbackFactory,
+  nativeDetachedModelFetchFactory,
   calibrationRatio,
   fadingTier,
   fadingTiers,
@@ -1528,6 +1533,10 @@ export async function createRun({
   modelCallbacks?: readonly ModelBoundChatModelCallback[];
   /** Binding-specific callbacks keyed by exact host-known model identity. */
   modelCallbackFactory?: ModelBindingCallbackFactory;
+  /** Optional host-fenced fetch transport for ORIGINAL detached child requests.
+   * Never supplied by default; requires a separately authorized operation
+   * resolver before any provider dispatch and is ignored by root models. */
+  nativeDetachedModelFetchFactory?: NativeDetachedModelFetchFactory;
   /** Calibration ratio from previous run's contextMeta, seeds the pruner EMA */
   calibrationRatio?: number;
   /**
@@ -1779,6 +1788,18 @@ export async function createRun({
       tenantId,
       body: requestBody,
     });
+
+    if (isSubagent && nativeDetachedModelFetchFactory != null) {
+      attachNativeDetachedBrokerModelFetch({
+        clientOptions: llmConfig,
+        // Broker authority uses the original saved agent provider, not the
+        // SDK's normalized transport provider (e.g. OpenRouter -> openAI).
+        // The host independently verifies this exact agent/model pairing.
+        binding: { agentId: agent.id, provider: String(agent.provider), model: selfModel ?? '' },
+        modelFetchFactory: nativeDetachedModelFetchFactory,
+        originalMissionHasDelegation: orchestratorPlan != null && subagentTasks != null,
+      });
+    }
 
     /** Resolves issues with new OpenAI usage field */
     if (

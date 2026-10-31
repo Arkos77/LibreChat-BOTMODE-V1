@@ -1,0 +1,238 @@
+jest.mock('mongoose', () => {
+  const rows = new Map();
+  const keyOf = (scope) =>
+    JSON.stringify([
+      scope.userId,
+      scope.tenantId,
+      scope.conversationId,
+      scope.parentResponseMessageId,
+    ]);
+  class Schema {
+    static Types = { Mixed: class Mixed {} };
+    index() {}
+  }
+  const model = {
+    collection: { createIndex: jest.fn(async () => 'original_parent_mission_unique') },
+    updateOne: jest.fn(async (scope, operation) => {
+      const key = keyOf(scope);
+      if (!rows.has(key)) {
+        rows.set(key, {
+          _id: key,
+          ...operation.$setOnInsert,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+    }),
+    findOne: jest.fn((scope) => ({
+      select: () => ({
+        lean: async () => {
+          const record = rows.get(keyOf(scope));
+          return record != null && (scope.agentId == null || record.agentId === scope.agentId)
+            ? structuredClone(record)
+            : null;
+        },
+      }),
+    })),
+    deleteMany: jest.fn(async (scope) => {
+      for (const [key, record] of rows) {
+        if (record.userId !== scope.userId || record.tenantId !== scope.tenantId) continue;
+        if (
+          scope.conversationId != null &&
+          !scope.conversationId.$in.includes(record.conversationId)
+        )
+          continue;
+        rows.delete(key);
+      }
+    }),
+  };
+  return { Schema, models: {}, model: () => model, __testModel: model, __rows: rows };
+});
+
+const mongoose = require('mongoose');
+const {
+  canonicalMissionJson,
+  saveNativeMissionWakeupOrigin,
+  getNativeMissionWakeupOrigin,
+  assertNativeMissionOriginalGenerationNamespace,
+  deleteNativeMissionWakeupOrigins,
+} = require('./nativeMissionWakeupOriginStore');
+
+const mission = { missionId: 'mission-1', taskId: 'task-1', objective: 'Analyze' };
+const original = {
+  userId: 'user-1',
+  tenantId: 'tenant-1',
+  conversationId: 'conversation-1',
+  parentResponseMessageId: 'response-1',
+  agentId: 'agent-1',
+  createdAt: 12345678,
+  checkpointNamespace: 'ci-original-generation',
+  plan: { planId: 'plan-1', mission },
+  orchestratorMission: { mission },
+  capabilityAttestation: { agents: ['agent-1'] },
+  botMode: { version: 1, mode: 'analyze', workerAgentId: 'agent-1' },
+};
+beforeEach(() => mongoose.__rows.clear());
+
+describe('immutable BOT MODE mission wakeup origin', () => {
+  it('canonicalizes nested object order without hiding real plan changes', () => {
+    const source = { mission: { taskId: 'task-1', objective: 'Analyze' }, planId: 'plan-1' };
+    const reordered = { planId: 'plan-1', mission: { objective: 'Analyze', taskId: 'task-1' } };
+    const drift = { planId: 'plan-1', mission: { objective: 'Changed', taskId: 'task-1' } };
+    expect(canonicalMissionJson(source)).toBe(canonicalMissionJson(reordered));
+    expect(canonicalMissionJson(source)).not.toBe(canonicalMissionJson(drift));
+  });
+
+  it('serves identical mission for successive sibling notifications after slot replacement', async () => {
+    await saveNativeMissionWakeupOrigin(original);
+    const scope = { ...original };
+    const first = await getNativeMissionWakeupOrigin(scope);
+    const second = await getNativeMissionWakeupOrigin(scope);
+    expect(first).toMatchObject({ planId: 'plan-1', plan: original.plan });
+    expect(second).toEqual(first);
+    expect(mongoose.__rows.size).toBe(1);
+  });
+
+  it('accepts MongoDB key reordering while still checking the original fingerprint', async () => {
+    await saveNativeMissionWakeupOrigin(original);
+    const [key, stored] = [...mongoose.__rows.entries()][0];
+    const reordered = Object.fromEntries(Object.entries(stored).reverse());
+    reordered.plan = {
+      mission: Object.fromEntries(Object.entries(stored.plan.mission).reverse()),
+      planId: stored.plan.planId,
+    };
+    mongoose.__rows.set(key, reordered);
+    await expect(getNativeMissionWakeupOrigin(original)).resolves.toMatchObject({
+      planId: original.plan.planId,
+    });
+  });
+
+  it('preserves immutable generation namespace separately from mutable Redis slots', async () => {
+    await saveNativeMissionWakeupOrigin(original);
+    const result = await getNativeMissionWakeupOrigin(original);
+    expect(result.checkpointNamespace).toBe('ci-original-generation');
+    await expect(
+      saveNativeMissionWakeupOrigin({
+        ...original,
+        checkpointNamespace: 'another-generation',
+      }),
+    ).rejects.toThrow('MISSION_ORIGIN_IMMUTABLE_CONFLICT');
+    const saved = [...mongoose.__rows.values()][0];
+    saved.checkpointNamespace = 'forged-generation';
+    await expect(getNativeMissionWakeupOrigin(original)).rejects.toThrow(
+      'MISSION_ORIGIN_INTEGRITY_FAILED',
+    );
+  });
+
+  it('accepts exact retry but rejects replacement of an original mission', async () => {
+    await saveNativeMissionWakeupOrigin(original);
+    await expect(saveNativeMissionWakeupOrigin(original)).resolves.toBeDefined();
+    await expect(
+      saveNativeMissionWakeupOrigin({
+        ...original,
+        orchestratorMission: { mission: { ...mission, objective: 'Different' } },
+        plan: { planId: 'plan-1', mission: { ...mission, objective: 'Different' } },
+      }),
+    ).rejects.toThrow('MISSION_ORIGIN_IMMUTABLE_CONFLICT');
+    expect(mongoose.__rows.size).toBe(1);
+  });
+
+  it('refuses foreign owner, tenant and agent scopes', async () => {
+    await saveNativeMissionWakeupOrigin(original);
+    await expect(
+      getNativeMissionWakeupOrigin({ ...original, userId: 'other' }),
+    ).resolves.toBeNull();
+    await expect(
+      getNativeMissionWakeupOrigin({ ...original, tenantId: 'other' }),
+    ).resolves.toBeNull();
+    await expect(
+      getNativeMissionWakeupOrigin({ ...original, agentId: 'other' }),
+    ).resolves.toBeNull();
+  });
+
+  it('detects tampered immutable origin data', async () => {
+    await saveNativeMissionWakeupOrigin(original);
+    const stored = [...mongoose.__rows.values()][0];
+    stored.plan = { ...stored.plan, planId: 'forged-plan' };
+    await expect(getNativeMissionWakeupOrigin(original)).rejects.toThrow(
+      'MISSION_ORIGIN_INTEGRITY_FAILED',
+    );
+  });
+
+  it('fences a recovered graph to the original generation, never the newest Redis slot', async () => {
+    const delegated = {
+      ...original,
+      capabilityAttestation: { mode: 'receipts_required' },
+    };
+    await saveNativeMissionWakeupOrigin(delegated);
+    const input = {
+      userId: delegated.userId,
+      tenantId: delegated.tenantId,
+      parentConversationId: delegated.conversationId,
+      parentRunId: delegated.parentResponseMessageId,
+      generationNamespace: delegated.checkpointNamespace,
+      getConvo: async () => ({
+        conversationId: delegated.conversationId,
+        tenantId: delegated.tenantId,
+        agent_id: delegated.agentId,
+      }),
+    };
+    await expect(assertNativeMissionOriginalGenerationNamespace(input)).resolves.toBe(true);
+    await expect(
+      assertNativeMissionOriginalGenerationNamespace({
+        ...input,
+        generationNamespace: 'newer-redis-generation',
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      assertNativeMissionOriginalGenerationNamespace({
+        ...input,
+        getConvo: async () => ({
+          conversationId: input.parentConversationId,
+          tenantId: 'foreign',
+          agent_id: delegated.agentId,
+        }),
+      }),
+    ).resolves.toBe(false);
+    await saveNativeMissionWakeupOrigin({
+      ...delegated,
+      conversationId: 'legacy-conversation',
+      parentResponseMessageId: 'legacy-response',
+      checkpointNamespace: undefined,
+    });
+    await expect(
+      assertNativeMissionOriginalGenerationNamespace({
+        ...input,
+        parentConversationId: 'legacy-conversation',
+        parentRunId: 'legacy-response',
+        getConvo: async () => ({
+          conversationId: 'legacy-conversation',
+          tenantId: delegated.tenantId,
+          agent_id: delegated.agentId,
+        }),
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it('prunes by authorized user, tenant, and conversation', async () => {
+    await saveNativeMissionWakeupOrigin(original);
+    await saveNativeMissionWakeupOrigin({
+      ...original,
+      conversationId: 'conversation-2',
+      parentResponseMessageId: 'response-2',
+    });
+    await deleteNativeMissionWakeupOrigins({
+      userId: 'user-1',
+      tenantId: 'tenant-1',
+      conversationIds: ['conversation-1'],
+    });
+    await expect(getNativeMissionWakeupOrigin(original)).resolves.toBeNull();
+    await expect(
+      getNativeMissionWakeupOrigin({
+        ...original,
+        conversationId: 'conversation-2',
+        parentResponseMessageId: 'response-2',
+      }),
+    ).resolves.toBeDefined();
+  });
+});

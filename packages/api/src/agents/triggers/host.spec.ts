@@ -588,6 +588,53 @@ describe('createAgentTriggerExecutionHost continue adapter', () => {
     });
   });
 
+  it('forwards a saved mission only for its exact internal subagent wakeup event', async () => {
+    const base = createContinueEnvelope();
+    const original = {
+      botMode: { version: 1, mode: 'analyze', workerAgentId: 'agent-1', agents: [] },
+      orchestratorMission: { mission: { missionId: 'mission-1', taskId: 'task-1' } },
+      originalPlanId: 'plan-1',
+      originalResponseMessageId: 'response-1',
+    };
+    const fetcher = fetchMock(async () =>
+      response({ streamId: 'conversation-1', conversationId: 'conversation-1', status: 'started' }),
+    );
+    const host = createAgentTriggerExecutionHost(
+      deps(fetcher, {
+        prepareContinue: async () => ({
+          status: 'ready',
+          input: 'The completed child result',
+          parentMessageId: 'response-1',
+          missionContext: original,
+        }),
+      }),
+    );
+    const internal = {
+      ...base,
+      event: { ...base.event, type: 'subagent.completion' },
+    } as typeof base;
+    await host.dispatch(internal);
+    const trusted = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
+    expect(trusted).toMatchObject({
+      botMode: original.botMode,
+      orchestratorMission: original.orchestratorMission,
+      nativeMissionWakeupSource: {
+        originalPlanId: 'plan-1',
+        originalResponseMessageId: 'response-1',
+      },
+    });
+
+    const wrongEvent = {
+      ...base,
+      event: { ...base.event, type: 'resource.ready' },
+    } as typeof base;
+    await host.dispatch(wrongEvent);
+    const rejectedProjection = JSON.parse(String(fetcher.mock.calls[1][1]?.body));
+    expect(rejectedProjection).not.toHaveProperty('botMode');
+    expect(rejectedProjection).not.toHaveProperty('orchestratorMission');
+    expect(rejectedProjection).not.toHaveProperty('nativeMissionWakeupSource');
+  });
+
   it('carries a prepared queued-turn payload and settles it after admission', async () => {
     const envelope = createContinueEnvelope();
     const admitted = {

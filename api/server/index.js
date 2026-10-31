@@ -286,6 +286,52 @@ const startServer = async () => {
     logger.error('[sweepOrphanedPreviews] Background sweep failed:', err);
   });
   const appConfig = await getAppConfig({ baseOnly: true });
+  // Original-child brokerage is an explicit operator-controlled integration.
+  // The detached provider-effect owner is a SEPARATE process. Never create
+  // a provider transport from client request content, and never silently
+  // activate a half-configured host on ordinary LibreChat installations.
+  if (process.env.BOTMODE_NATIVE_ORIGINAL_BROKER_ENABLED === 'true') {
+    const mongoose = require('mongoose');
+    const {
+      getAgentCheckpointer,
+      getDetachedSubagentExecutionScope,
+      getDetachedSubagentModelCheckpointReference,
+    } = require('@librechat/api');
+    const { checkPermission } = require('./services/PermissionService');
+    const {
+      createNativeMissionOriginalChildBrokerBootstrap,
+    } = require('./services/Endpoints/agents/nativeMissionOriginalChildBrokerBootstrap');
+    let bindingCatalog;
+    try {
+      bindingCatalog = JSON.parse(process.env.BOTMODE_NATIVE_ORIGINAL_BROKER_BINDINGS ?? '');
+    } catch {
+      throw new Error('NATIVE_ORIGINAL_BROKER_MODEL_CATALOG_INVALID');
+    }
+    const host = createNativeMissionOriginalChildBrokerBootstrap({
+      enabled: true,
+      bindingCatalog,
+      brokerUrl: process.env.BOTMODE_NATIVE_ORIGINAL_BROKER_URL,
+      secret: process.env.BOTMODE_NATIVE_ORIGINAL_BROKER_SECRET,
+      collection: mongoose.connection.db?.collection('native_mission_provider_calls'),
+      getUserById: agentEventMethods.getUserById,
+      isSubagentOwnerAdmissible: agentEventMethods.isSubagentOwnerAdmissible,
+      getConvo: agentEventMethods.getConvo,
+      getAgent: agentEventMethods.getAgent,
+      getMessage: agentEventMethods.getMessage,
+      listActiveSubagentThreadLeases: agentEventMethods.listActiveSubagentThreadLeases,
+      getCheckpointer: () => getAgentCheckpointer(appConfig?.endpoints?.agents?.checkpointer),
+      getExecutionScope: getDetachedSubagentExecutionScope,
+      getOriginalCheckpointReference: getDetachedSubagentModelCheckpointReference,
+      checkPermission,
+    });
+    const probeUrl = new URL('status', process.env.BOTMODE_NATIVE_ORIGINAL_BROKER_URL);
+    const probe = await fetch(probeUrl, { method: 'POST', signal: AbortSignal.timeout(3000) });
+    if (probe.status !== 401) throw new Error('NATIVE_ORIGINAL_BROKER_NOT_AUTHENTICATED');
+    app.locals.nativeMissionOriginalChildBrokerHost = host;
+    logger.info(
+      '[NativeMission] Original-child broker host enabled after independent broker check',
+    );
+  }
   configureAgentEventRuntime(appConfig?.endpoints?.agents?.eventDriven);
   initializeFileStorage(appConfig);
   const projectRoot = path.resolve(__dirname, '../..');

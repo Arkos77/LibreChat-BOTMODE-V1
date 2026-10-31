@@ -61,6 +61,8 @@ export * from './subagentThreads';
 export {
   getDetachedSubagentTaskId,
   getDetachedSubagentProducerAgentId,
+  getDetachedSubagentExecutionScope,
+  getDetachedSubagentModelCheckpointReference,
 } from './subagentTaskContext';
 export * from './subagentActivity';
 export * from './subagentCompletionWakeup';

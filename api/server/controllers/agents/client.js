@@ -1,5 +1,5 @@
 require('events').EventEmitter.defaultMaxListeners = 100;
-const { randomUUID } = require('crypto');
+const { createHash, randomUUID } = require('crypto');
 const { projectHostModelUsage } = require('~/server/services/Endpoints/agents/hostModelUsage');
 const {
   logger,
@@ -198,6 +198,9 @@ const { getAccessibleMCPServers } = require('~/server/services/MCP');
 const BaseClient = require('~/app/clients/BaseClient');
 const { getMCPManager } = require('~/config');
 const db = require('~/models');
+const {
+  assertNativeMissionDetachedChildrenTerminal,
+} = require('~/server/services/Endpoints/agents/nativeMissionDetachedChildTerminalGate');
 const { logViolation } = require('~/cache');
 
 const loadAgent = (params) =>
@@ -4621,6 +4624,12 @@ class AgentClient extends BaseClient {
               }
             : undefined,
           modelCallbackFactory: createModelBoundBudgetAdmissionFactory(this, balanceConfig),
+          // Only the trusted AgentClient host can supply a scoped, pre-authorized
+          // model operation resolver. The SDK rejects unsupported bindings and
+          // does not install the transport when this is absent.
+          ...(this.options.nativeDetachedModelFetchFactory == null
+            ? {}
+            : { nativeDetachedModelFetchFactory: this.options.nativeDetachedModelFetchFactory }),
           // This controller implements the full HITL pause/resume lifecycle (handleRunInterrupt
           // persists the pending action; the /resume route rebuilds + continues the run), so it
           // opts into the tool-approval wiring. Non-resumable callers (OpenAI-compat, Responses)
@@ -4852,6 +4861,45 @@ class AgentClient extends BaseClient {
           '[api/server/controllers/agents/client.js #sendCompletion] Mission execution failed before publication',
           getSafeErrorMetadata(err),
         );
+        // GitHub PR107 disposable CI only. The ordinary application never
+        // emits this diagnostic, and no exception message or provider data
+        // leaves the container; only a code/class and an opaque digest.
+        if (process.env.BOTMODE_CI_ORIGINAL_MISSION_DIAGNOSTICS === '1') {
+          const errorCode =
+            typeof err?.code === 'string' && /^[A-Z][A-Z0-9_]{3,90}$/.test(err.code)
+              ? err.code
+              : 'NONE';
+          const errorName = [
+            'Error',
+            'TypeError',
+            'ReferenceError',
+            'RangeError',
+            'SyntaxError',
+            'ValidationError',
+            'MongoServerError',
+          ].includes(err?.name)
+            ? err.name
+            : 'OTHER';
+          const message = typeof err?.message === 'string' ? err.message : '';
+          const digest = createHash('sha256')
+            .update(message.toLowerCase())
+            .digest('hex')
+            .slice(0, 12);
+          process.stderr.write(
+            'CI_ORIGINAL_MISSION_ROOT_CODE=' +
+              errorCode +
+              '\n' +
+              'CI_ORIGINAL_MISSION_ROOT_CLASS=' +
+              errorName +
+              '\n' +
+              'CI_ORIGINAL_MISSION_ROOT_MESSAGE_HASH=' +
+              digest +
+              '\n' +
+              'CI_ORIGINAL_MISSION_ROOT_MESSAGE_LENGTH=' +
+              String(message.length) +
+              '\n',
+          );
+        }
         throw Object.assign(
           new Error('Mission execution failed; a final answer was not published.'),
           {
@@ -5106,6 +5154,21 @@ class AgentClient extends BaseClient {
     }
 
     try {
+      // Model outputs alone cannot authorize Oracle/P6 while a detached
+      // specialist remains active. Read exact parent-owned Mongo task receipts;
+      // a pending or uncertain child fails closed, never promotes a false VERIFIED.
+      if (this.options?.subagentTasks != null) {
+        await assertNativeMissionDetachedChildrenTerminal({
+          getMessages: db.getMessages,
+          userId: String(this.user ?? this.options?.req?.user?.id ?? ''),
+          parentResponseMessageId: this.responseMessageId,
+          // A detached child may finish slightly after the model's last token.
+          // Wait only for a matching durable receipt; pending past this bound
+          // and every corrupt/failed receipt continue to fail closed.
+          pendingRetryCount: 25,
+          pendingRetryDelayMs: 200,
+        });
+      }
       await this.persistTransientMissionOracleEvidence();
 
       await assertTerminalMissionTasksVerified(
@@ -5490,6 +5553,11 @@ class AgentClient extends BaseClient {
         conversationId: this.conversationId,
         modelCallbacks: [modelBoundCallback],
         modelCallbackFactory: createModelBoundBudgetAdmissionFactory(this, balanceConfig),
+        // The same original model transport is required for a rebuilt native
+        // specialist; never fall back to direct provider IO on resume.
+        ...(this.options.nativeDetachedModelFetchFactory == null
+          ? {}
+          : { nativeDetachedModelFetchFactory: this.options.nativeDetachedModelFetchFactory }),
         // State (messages, tool calls) is rehydrated from the checkpoint by
         // run.resume; createRun only needs the agents to rebuild the graph.
         messages: [],

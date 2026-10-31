@@ -19,6 +19,14 @@ lock = threading.Lock()
 calls = {"parent_tool_requests": 0, "child_responses": 0, "parent_final": 0,
          "missing_tool": 0, "completion_calls": 0}
 child_id = os.environ.get("CI_AUTHORIZED_CHILD_ID", "").strip()
+child_ids = []  # Opt-in two-child synthetic test only; ordinary fixture unchanged.
+hold_second_child = False
+native_graph_fixture = False
+native_graph_calls = 0
+held_baseline = 0
+second_child_release = threading.Event()
+broker_request_release = threading.Event()
+broker_request_release.set()
 MODEL = "openrouter/free"
 SOURCE_MODE = os.environ.get("CI_MISSION_SOURCE_MODE") == "1"
 REAL_MODE = os.environ.get('CI_REAL_FREE_PROVIDER') == '1'
@@ -352,7 +360,19 @@ class Handler(BaseHTTPRequestHandler):
             return self.send({"object":"list","data":[{"id":MODEL,"object":"model","created":1700000000,"owned_by":"ci"}]})
         return self.send({"error":"not_found"},404)
     def do_POST(self):
-        global child_id
+        global child_id, child_ids, hold_second_child, held_baseline, native_graph_fixture, native_graph_calls
+        if self.path == "/release-second-child":
+            second_child_release.set()
+            return self.send({"ok": True})
+        if self.path == "/hold-ci-broker":
+            broker_request_release.clear()
+            with lock:
+                calls["broker_held_requests"] = 0
+                calls["broker_finished_requests"] = 0
+            return self.send({"ok": True})
+        if self.path == "/release-ci-broker":
+            broker_request_release.set()
+            return self.send({"ok": True})
         if self.path.rstrip('/').endswith('/scrape'):
             length=int(self.headers.get('Content-Length','0'))
             if length < 2 or length > 1048576: return self.send({'error':'size'},400)
@@ -365,9 +385,31 @@ class Handler(BaseHTTPRequestHandler):
             if length < 2 or length > 2048: return self.send({"error":"size"},400)
             try: obj=json.loads(self.rfile.read(length))
             except ValueError: return self.send({"error":"json"},400)
+            if "childIds" in obj:
+                proposed_ids = obj["childIds"]
+                if (not isinstance(proposed_ids, list) or len(proposed_ids) != 2 or
+                    len(set(map(str, proposed_ids))) != 2 or
+                    any(not isinstance(item, str) or not item.strip() or len(item) > 256
+                        for item in proposed_ids)):
+                    return self.send({"error": "two_distinct_child_ids_required"}, 400)
+                with lock:
+                    child_ids = list(proposed_ids)
+                    hold_second_child = obj.get("holdSecondChild") is True
+                    native_graph_fixture = obj.get("nativeGraph") is True
+                    native_graph_calls = 0
+                    held_baseline = calls.get("child_responses", 0)
+                    calls["held_second_child_requests"] = 0
+                    second_child_release.clear()
+                return self.send({"ok": True, "multi": True})
             proposed=obj.get("childId")
             if not isinstance(proposed,str) or not proposed.strip(): return self.send({"error":"child"},400)
-            child_id=proposed.strip()
+            with lock:
+                child_id=proposed.strip()
+                child_ids=[]
+                hold_second_child=False
+                native_graph_fixture=False
+                native_graph_calls=0
+                second_child_release.set()
             return self.send({"ok":True})
         if not self.path.rstrip("/").endswith("/chat/completions"):
             return self.send({"error":"not_found"},404)
@@ -377,12 +419,37 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError: return self.send({"error":"json"},400)
         if not isinstance(req.get("messages"),list): return self.send({"error":"messages"},400)
         messages=req["messages"]
+        # CI-only broker durability probe: exactly one synthetic provider reply
+        # is held while the separate API container is killed. No live secrets.
+        if (len(messages) == 1 and isinstance(messages[0], dict) and
+            messages[0].get("content") == "CI_BROKER_INFLIGHT" and
+            req.get("model") == "ci-free" and req.get("stream") is False):
+            with lock:
+                calls["completion_calls"] += 1
+                calls["broker_held_requests"] = calls.get("broker_held_requests", 0) + 1
+                number = calls["completion_calls"]
+            if not broker_request_release.wait(timeout=90):
+                return self.send({"error": "CI_BROKER_BOUNDED_HOLD_EXPIRED"}, 503)
+            with lock:
+                calls["broker_finished_requests"] = calls.get("broker_finished_requests", 0) + 1
+            return self.send({
+                "id": "chatcmpl-broker-ci-" + str(number),
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": "ci-free",
+                "choices": [{"index": 0, "message": {
+                    "role": "assistant", "content": "CI_BROKER_HELD_RECEIPT"
+                }, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 4, "completion_tokens": 4, "total_tokens": 8}
+            })
         # Tool message only appears after the runtime executed the native subagent.
         has_tool_result=any(m.get("role")=="tool" for m in messages if isinstance(m,dict))
-        already_requested=any(
-            any(tc.get("function",{}).get("name")=="subagent" for tc in (m.get("tool_calls") or []))
-            for m in messages if isinstance(m,dict) and m.get("role")=="assistant"
-        )
+        prior_subagent_calls=[
+            tc for m in messages if isinstance(m,dict) and m.get("role")=="assistant"
+            for tc in (m.get("tool_calls") or []) if isinstance(tc,dict)
+            and tc.get("function",{}).get("name")=="subagent"
+        ]
+        already_requested=bool(prior_subagent_calls)
         advertised=tool_name(req)
         with lock:
             calls["completion_calls"]+=1
@@ -492,23 +559,70 @@ class Handler(BaseHTTPRequestHandler):
             with lock: calls['source_final']=calls.get('source_final',0)+1
             message={'role':'assistant','content':SOURCE_RESULT}
             reason='stop'
+        elif advertised and len(child_ids) == 2 and len(prior_subagent_calls) < 2 and (
+                not prior_subagent_calls or has_tool_result):
+            # OpenAI-compatible hosts may disable parallel tool calls. Issue one
+            # native delegated call per parent turn and do not publish until both
+            # distinct child result tool messages have been observed.
+            selected = child_ids[len(prior_subagent_calls)]
+            with lock:
+                calls["parent_tool_requests"] += 1
+                calls["last_multi_prior_calls"] = len(prior_subagent_calls)
+                calls["last_parallel_tool_calls_flag"] = str(req.get("parallel_tool_calls"))
+            message={"role":"assistant","content":None,"tool_calls":[{
+                "id":"call_ci_child_"+str(number)+"_"+str(len(prior_subagent_calls)),
+                "type":"function",
+                "function":{"name":"subagent","arguments":json.dumps({
+                    "description":"Independent synthetic delegated task "+str(len(prior_subagent_calls)+1),
+                    "subagent_type":selected,
+                    "run_in_background":True
+                })}
+            }]}
+            reason="tool_calls"
         elif has_tool_result and already_requested:
             with lock: calls["parent_final"]+=1
             message={"role":"assistant","content":'{"ok":true}'}
             reason="stop"
         elif advertised and child_id and not already_requested:
-            with lock: calls["parent_tool_requests"]+=1
-            message={"role":"assistant","content":None,"tool_calls":[{
-                "id":"call_ci_child_"+str(number),"type":"function",
-                "function":{"name":"subagent","arguments":json.dumps({
-                    "description":"Return the delegated fixture result for parent verification.",
-                    "subagent_type":child_id,
-                    "run_in_background":True
-                })}
-            }]}
+            with lock:
+                selected_children = list(child_ids) if child_ids else [child_id]
+                calls["parent_tool_requests"] += len(selected_children)
+            message={"role":"assistant","content":None,"tool_calls":[
+                {
+                    "id":"call_ci_child_"+str(number)+"_"+str(index),"type":"function",
+                    "function":{"name":"subagent","arguments":json.dumps({
+                        "description":"Complete independent synthetic specialist task "+str(index+1)+
+                                      " and return an evidence receipt.",
+                        "subagent_type":selected,
+                        "run_in_background":True
+                    })}
+                }
+                for index,selected in enumerate(selected_children)
+            ]}
             reason="tool_calls"
+        elif native_graph_fixture and not advertised and not already_requested and not has_tool_result:
+            # Native mission plans use direct graph edges, not the subagent tool.
+            # This mode is CI-only and opted in by the isolated 4C scenario.
+            with lock:
+                native_graph_calls += 1
+                native_turn = native_graph_calls
+                calls["native_graph_turns"] = calls.get("native_graph_turns",0) + 1
+                block = hold_second_child and native_turn == 2
+                if block:
+                    calls["held_second_child_requests"] += 1
+            if block and not second_child_release.wait(timeout=120):
+                return self.send({"error":"CI_NATIVE_GRAPH_SECOND_NODE_HOLD_EXPIRED"},503)
+            message={"role":"assistant","content":json.dumps({"ok":True,"result":"Synthetic CI native graph task completed"})}
+            reason="stop"
         elif not advertised and child_id and not already_requested and not has_tool_result:
             # The authorized child has no nested subagent tool; its first model turn returns the receipt.
+            with lock:
+                block = (hold_second_child and len(child_ids) == 2 and
+                         calls["child_responses"] - held_baseline == 1)
+                if block:
+                    calls["held_second_child_requests"] += 1
+            if block and not second_child_release.wait(timeout=120):
+                return self.send({"error":"CI_SECOND_CHILD_BOUNDED_HOLD_EXPIRED"},503)
             with lock: calls["child_responses"]+=1
             message={"role":"assistant","content":"CI_DELEGATED_CHILD_RECEIPT"}
             reason="stop"
