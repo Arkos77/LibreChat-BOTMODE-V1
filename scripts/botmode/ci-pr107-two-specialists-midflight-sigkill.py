@@ -175,6 +175,74 @@ if pre["published"]!=0:
     fail("PARENT_OUTPUT_BEFORE_SECOND_CHILD_RESULT")
 print("CI_PR107_COLD_MULTI_PRECRASH_TWO_THREADS_ONE_COMPLETED=PASS",flush=True)
 
+# Prove the actual second child's operation (not the separately successful
+# synthetic broker smoke) belongs to the exact original provider journal.
+# On a disconnected integration, fail in seconds instead of timing out after
+# a SIGKILL and wrongly treating an unrelated broker receipt as recovery proof.
+actual_child_proof = r"""
+const m=require('mongoose');
+(async()=>{
+  await m.connect(process.env.MONGO_URI);
+  const db=m.connection.db, parent=process.env.CI_PARENT;
+  const children=await db.collection('conversations')
+    .find({'subagentThread.parentConversationId':parent}).toArray();
+  const pending=[];
+  for(const child of children) {
+    const rows=await db.collection('messages')
+      .find({conversationId:child.conversationId}).toArray();
+    if(rows.some(row=>row.subagentTask?.status==='completed')) continue;
+    const starts=rows.filter(row=>row.subagentTask?.status==='running');
+    if(starts.length!==1) throw Error('NATIVE_SECOND_CHILD_START_AMBIGUOUS');
+    const lineage=child.subagentThread;
+    const taskId=starts[0].messageId.replace(/:user$/, '');
+    if(taskId===starts[0].messageId ||
+       starts[0].subagentTask?.parentRunId!==lineage?.parentMessageId ||
+       !lineage?.parentToolCallId) throw Error('NATIVE_SECOND_CHILD_LINEAGE_INVALID');
+    const calls=await db.collection('native_mission_provider_calls_ci').countDocuments({
+      'identity.childThreadId':child.conversationId,
+      'identity.parentRunId':lineage.parentMessageId,
+      // The broker's immutable identity deliberately excludes the tool call;
+      // the task+attempt bind that original parent tool call in Mongo.
+      'identity.taskId':taskId,
+      'identity.attemptKey':starts[0].subagentTask.attemptKey,
+    });
+    // An SDK child checkpoint uses a separate, encoded subagent: thread id,
+    // not the Task Engine's Mongo conversation UUID. Check its exact original
+    // parent tool identity without disclosing checkpoint content or keys.
+    const checkpointRows=await db.collection('agent_checkpoints')
+      .find({thread_id:/^subagent:/}).project({thread_id:1}).toArray();
+    let checkpoints=0;
+    for(const row of checkpointRows){
+      let coordinates;
+      try {
+        coordinates=JSON.parse(Buffer.from(row.thread_id.slice('subagent:'.length),
+           'base64url').toString('utf8'));
+      } catch {continue;}
+      if(Array.isArray(coordinates) && coordinates.length===5 &&
+         coordinates[0]===lineage.parentMessageId &&
+         coordinates[3]===lineage.parentToolCallId) checkpoints++;
+    }
+    pending.push({calls,checkpoints});
+  }
+  console.log(JSON.stringify({pending:pending.length,
+    originalBrokerReceipts:pending.reduce((n,c)=>n+c.calls,0),
+    childCheckpointRows:pending.reduce((n,c)=>n+c.checkpoints,0)}));
+  await m.disconnect();
+})().catch(e=>{console.error(e.name);process.exitCode=1});
+"""
+proof=json.loads(run_node(actual_child_proof,[("CI_PARENT",conversation)]))
+print("CI_PR107_COLD_MULTI_ORIGINAL_BROKER_RECEIPTS="+str(
+    proof["originalBrokerReceipts"]),flush=True)
+print("CI_PR107_COLD_MULTI_CHILD_CHECKPOINT_ROWS="+str(
+    proof["childCheckpointRows"]),flush=True)
+if proof["pending"]!=1:
+    fail("SECOND_CHILD_ORIGINAL_IDENTITY_AMBIGUOUS")
+if proof["originalBrokerReceipts"]!=1:
+    fail("SECOND_CHILD_PROVIDER_NOT_BOUND_TO_ORIGINAL_BROKER")
+if proof["childCheckpointRows"]<1:
+    fail("SECOND_CHILD_DURABLE_SDK_CHECKPOINT_MISSING")
+
+
 # Only this disposable GitHub Actions compose service is ever killed.
 dead=subprocess.run(COMPOSE+["kill","-s","SIGKILL","api"],
                     capture_output=True,text=True,timeout=20)
