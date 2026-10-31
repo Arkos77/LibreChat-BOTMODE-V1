@@ -202,6 +202,15 @@ function createNativeMissionOriginalChildModelOperationResolver({
     const checkpoint = await getOriginalCheckpoint({
       ...original,
       checkpointId: receipt.checkpointId,
+      provider,
+      model,
+      ...(typeof receipt.originalSlotKey === 'string'
+        ? {
+            graphThreadId: receipt.graphThreadId,
+            checkpointNs: receipt.checkpointNs,
+            generationNamespace: receipt.generationNamespace,
+          }
+        : {}),
     });
     if (
       checkpoint?.checkpointId !== receipt.checkpointId ||

@@ -6,6 +6,7 @@ const {
 const {
   createNativeMissionOriginalChildModelOperationResolver,
 } = require('./nativeMissionOriginalChildModelOperationResolver');
+const { createNativeMissionOriginalChildCheckpointReader } = require('./nativeMissionOriginalChildCheckpointReader');
 const {
   createNativeMissionDetachedBrokerModelFetchFactory,
 } = require('./nativeMissionProviderBrokerModelFetch');
@@ -30,6 +31,8 @@ function createNativeMissionOriginalChildBrokerHost({
   collection,
   authorizeOriginal,
   readOriginalCheckpoint,
+  getCheckpointer,
+  assertGenerationNamespace,
   getMissionOrigin,
   getConvo,
   getStartReceipt,
@@ -43,23 +46,31 @@ function createNativeMissionOriginalChildBrokerHost({
   secret,
   fetchImpl,
 }) {
-  if (
-    typeof readOriginalCheckpoint !== 'function' ||
-    typeof getOriginalCheckpointReference !== 'function'
-  ) {
+  if (typeof getOriginalCheckpointReference !== 'function') {
+    deny('NATIVE_ORIGINAL_CHILD_HOST_CHECKPOINT_READER_REQUIRED');
+  }
+  const checkpointReader =
+    readOriginalCheckpoint ??
+    createNativeMissionOriginalChildCheckpointReader({
+      getCheckpointer,
+      getConvo,
+      getStartReceipt,
+      assertGenerationNamespace,
+    });
+  if (typeof checkpointReader !== 'function') {
     deny('NATIVE_ORIGINAL_CHILD_HOST_CHECKPOINT_READER_REQUIRED');
   }
   const journal = createNativeMissionOriginalChildModelOperationJournal({
     collection,
     authorizeOriginal,
-    readOriginalCheckpoint,
+    readOriginalCheckpoint: checkpointReader,
   });
   const resolveOriginalOperation = createNativeMissionOriginalChildModelOperationResolver({
     getMissionOrigin,
     getConvo,
     getStartReceipt,
     findOriginalOperations: journal.findOriginalOperations,
-    getOriginalCheckpoint: readOriginalCheckpoint,
+    getOriginalCheckpoint: checkpointReader,
     authorizeCurrentOwner,
     canViewAgent,
     inspectOriginalChildOwner,
@@ -86,12 +97,14 @@ function createNativeMissionOriginalChildBrokerHost({
     ) {
       deny('NATIVE_ORIGINAL_CHILD_HOST_GRAPH_PROOF_MISSING');
     }
-    const saved = await readOriginalCheckpoint({
+    const saved = await checkpointReader({
       ...scope,
       checkpointId: checkpoint.checkpointId,
       graphThreadId: checkpoint.threadId,
       checkpointNs: checkpoint.checkpointNs,
       generationNamespace: checkpoint.generationNamespace,
+      provider,
+      model,
     });
     if (
       saved?.checkpointId !== checkpoint.checkpointId ||

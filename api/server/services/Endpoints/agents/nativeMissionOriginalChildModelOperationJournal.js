@@ -130,6 +130,8 @@ function createNativeMissionOriginalChildModelOperationJournal({
     const checkpoint = await readOriginalCheckpoint({
       ...coords.scope,
       checkpointId: coords.checkpointId,
+      provider: coords.original.provider,
+      model: coords.original.model,
       ...(graphReference == null ? {} : graphReference),
     });
     if (
