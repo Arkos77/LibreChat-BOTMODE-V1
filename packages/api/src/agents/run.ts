@@ -1792,7 +1792,10 @@ export async function createRun({
     if (isSubagent && nativeDetachedModelFetchFactory != null) {
       attachNativeDetachedBrokerModelFetch({
         clientOptions: llmConfig,
-        binding: { agentId: agent.id, provider: String(provider), model: selfModel ?? '' },
+        // Broker authority uses the original saved agent provider, not the
+        // SDK's normalized transport provider (e.g. OpenRouter -> openAI).
+        // The host independently verifies this exact agent/model pairing.
+        binding: { agentId: agent.id, provider: String(agent.provider), model: selfModel ?? '' },
         modelFetchFactory: nativeDetachedModelFetchFactory,
         originalMissionHasDelegation: orchestratorPlan != null && subagentTasks != null,
       });
