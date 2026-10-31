@@ -58,6 +58,9 @@ const {
 const {
   bindNativeMissionOriginalChildBrokerForAcceptedMission,
 } = require('~/server/services/Endpoints/agents/nativeMissionOriginalChildBrokerHost');
+const {
+  bindNativeMissionOriginalGraphBrokerForAcceptedMission,
+} = require('~/server/services/Endpoints/agents/nativeMissionOriginalGraphBrokerHost');
 const { disposeClient } = require('~/server/cleanup');
 const { observeMtoEvent } = require('~/server/services/Endpoints/agents/mtoObservation');
 const {
@@ -2006,6 +2009,26 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         originalPlan: client.orchestratorPlan,
         capabilityAttestation: persistedPlanJob.metadata.nativeMissionCapabilityAttestation,
       });
+      if (req.app?.locals?.nativeMissionOriginalGraphBrokerHost != null) {
+        // Only the original Mongo admission, re-read with its integrity
+        // fingerprint, can authorize the direct native graph model transport.
+        // A changed wakeup, missing original, or partial broker host aborts
+        // BEFORE graph execution: never fall back to provider HTTP.
+        const original = await getNativeMissionWakeupOrigin({
+          userId,
+          tenantId,
+          conversationId,
+          parentResponseMessageId: preallocatedResponseMessageId,
+          agentId: primaryAgentId,
+        });
+        bindNativeMissionOriginalGraphBrokerForAcceptedMission({
+          client,
+          brokerHost: req.app.locals.nativeMissionOriginalGraphBrokerHost,
+          original,
+          plan: client.orchestratorPlan,
+          capabilityAttestation: persistedPlanJob.metadata.nativeMissionCapabilityAttestation,
+        });
+      }
       client.publicationBarrier?.activate?.();
 
       const sourceTasks = orchestratorPlan.tasks
