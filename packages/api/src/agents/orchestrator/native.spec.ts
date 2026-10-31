@@ -895,3 +895,51 @@ it('passes same-task observed sources into dependency-transition Oracle validati
     } as BaseGraphState),
   ).resolves.toBeUndefined();
 });
+
+
+describe('native mission direct graph broker compile seam', () => {
+  const plan = deterministicPlanner.planMission(
+    {
+      ...base,
+      validation: { criteria: [{ id: 'complete', field: 'complete', expected: true }] },
+    },
+    context,
+  );
+
+  it('binds the original saved specialist to its unique signed graph node', () => {
+    const agentId = plan.tasks[0].agentId;
+    const source = new Map(bindings);
+    source.set(agentId, {
+      ...bindings.get(agentId)!,
+      clientOptions: { model: 'ci-free' },
+    });
+    const approved = jest.fn(() => fetch);
+    const result = compileNativePlan(
+      plan, source, undefined, undefined, undefined, undefined, approved,
+    );
+    expect(result.graphConfig.agents[0].clientOptions?.configuration?.fetch).toBe(fetch);
+    expect(source.get(agentId)?.clientOptions?.configuration?.fetch).toBeUndefined();
+    expect(approved).toHaveBeenCalledWith({
+      agentId,
+      nodeId: plan.tasks[0].nodeId,
+      taskId: plan.tasks[0].taskId,
+      provider: source.get(agentId)?.provider,
+      model: 'ci-free',
+    });
+  });
+
+  it('denies graph tool effects and cannot silently fall through to provider', () => {
+    const agentId = plan.tasks[0].agentId;
+    const source = new Map(bindings);
+    source.set(agentId, {
+      ...bindings.get(agentId)!,
+      clientOptions: { model: 'ci-free' },
+      toolDefinitions: [{ name: 'web_search' }],
+    });
+    const approved = jest.fn(() => fetch);
+    expect(() => compileNativePlan(
+      plan, source, undefined, undefined, undefined, undefined, approved,
+    )).toThrow('NATIVE_GRAPH_BROKER_EFFECTS_UNSUPPORTED');
+    expect(approved).not.toHaveBeenCalled();
+  });
+});
