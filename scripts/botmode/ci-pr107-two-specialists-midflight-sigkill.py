@@ -61,7 +61,7 @@ console.log(JSON.stringify(ids.slice(0,2)));
 await m.disconnect()})().catch(e=>{console.error(e.name);process.exitCode=1});
 """
 ids = json.loads(run_node(lookup,[("CI_WORKER_ID",WORKER)]))
-post_fixture("/configure",{"childIds":ids,"holdSecondChild":True})
+post_fixture("/configure",{"childIds":ids,"holdSecondChild":True,"nativeGraph":True})
 before = metrics()
 conversation = str(uuid.uuid4())
 mission_id = "ci-pr107-cold-"+str(uuid.uuid4())
