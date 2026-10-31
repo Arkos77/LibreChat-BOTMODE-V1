@@ -173,7 +173,9 @@ function createNativeMissionOriginalChildBrokerBootstrap({
     // Operator bindings are only a transport allowlist. The model/provider
     // must STILL match the agent currently stored by the authenticated host.
     const currentAgent = await getAgent({ id: scope.agentId });
-    if (currentAgent?.provider !== provider || currentAgent?.model !== model) {
+    const savedProvider =
+      currentAgent?.provider === 'OpenRouter' ? 'openrouter' : currentAgent?.provider;
+    if (savedProvider !== provider || currentAgent?.model !== model) {
       return { approved: false };
     }
     const parent = await getConvo(scope.userId, scope.parentConversationId);

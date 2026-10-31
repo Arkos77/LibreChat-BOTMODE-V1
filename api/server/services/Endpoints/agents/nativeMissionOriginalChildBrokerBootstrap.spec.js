@@ -35,6 +35,7 @@ describe('original child broker server bootstrap', () => {
   it('installs only the configured server-owned model binding', () => {
     const host = create(base());
     expect(typeof host.modelFetchFactory(binding)).toBe('function');
+    expect(typeof host.modelFetchFactory({ ...binding, provider: 'OpenRouter' })).toBe('function');
     expect(() => host.modelFetchFactory({ ...binding, agentId: 'other' })).toThrow(
       'NATIVE_BROKER_HOST_MODEL_UNAUTHORIZED',
     );

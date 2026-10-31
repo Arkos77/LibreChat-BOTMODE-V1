@@ -375,10 +375,15 @@ function createNativeMissionDetachedBrokerModelFetchFactory({
     ) {
       denied('NATIVE_BROKER_HOST_MODEL_UNAUTHORIZED');
     }
-    const known = resolveModelBinding(Object.freeze({ ...binding }));
+    // LibreChat persists the custom provider name 'OpenRouter'; the trusted
+    // host model catalog and the independent broker use its canonical
+    // lowercase identity. Normalize ONLY this known alias. Never normalize
+    // the model, agent ID, URL or any provider chosen by a user request.
+    const provider = binding.provider === 'OpenRouter' ? 'openrouter' : binding.provider;
+    const known = resolveModelBinding(Object.freeze({ ...binding, provider }));
     if (
       known?.agentId !== binding.agentId ||
-      known.provider !== binding.provider ||
+      known.provider !== provider ||
       known.model !== binding.model ||
       typeof known.endpoint !== 'string' ||
       !known.endpoint
@@ -396,7 +401,7 @@ function createNativeMissionDetachedBrokerModelFetchFactory({
       resolveOriginalOperation,
       prepareOriginalOperation,
       getOriginalCheckpointReference,
-      originalProvider: binding.provider,
+      originalProvider: provider,
       originalModel: binding.model,
       originalModelEndpoint: known.endpoint,
       brokerUrl,

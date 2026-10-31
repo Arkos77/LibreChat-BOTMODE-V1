@@ -397,6 +397,37 @@ describe('original detached-child host binding via real execution context', () =
     );
   });
 
+  it('binds persisted LibreChat OpenRouter spelling to the exact trusted lowercase provider', async () => {
+    const saved = { ...binding, provider: 'OpenRouter' };
+    const canonical = { ...binding, provider: 'openrouter' };
+    const realEndpoint = 'https://openrouter.ai/api/v1/chat/completions';
+    const { factory, calls, prepareOriginalOperation } = host({
+      resolveModelBinding: (requested) => {
+        if (requested.provider !== canonical.provider) return undefined;
+        expect(requested).toEqual(canonical);
+        return { ...canonical, endpoint: realEndpoint };
+      },
+      resolveOriginalOperation: async (args) => ({
+        approved: true,
+        scope,
+        provider: 'openrouter',
+        model: canonical.model,
+        requestDigest: args.requestDigest,
+        operationKey,
+        checkpointId,
+      }),
+    });
+    const response = await factory(saved)(realEndpoint, { method: 'POST', body });
+    expect(response.status).toBe(200);
+    expect(calls.map((call) => new URL(call.url).pathname)).toEqual(['/execute']);
+    expect(prepareOriginalOperation).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'openrouter', model: canonical.model }),
+    );
+    expect(() => factory({ ...saved, provider: 'OpenROUTER' })).toThrow(
+      'NATIVE_BROKER_HOST_MODEL_UNAUTHORIZED',
+    );
+  });
+
   it('rejects a sibling child identity before any journal or broker IO', async () => {
     const { factory, fetchImpl, resolveOriginalOperation } = host({
       getExecutionScope: () => ({ ...scope, agentId: 'other-child' }),
