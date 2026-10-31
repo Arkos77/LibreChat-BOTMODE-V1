@@ -59,6 +59,13 @@ function createNativeMissionIndependentOriginalBrokerServer({
         : false)
       : authorizeScope({ identity, ...rest });
   const assertAuthorized = async ({ identity, requestDigest: digest, authorizedRequest }) => {
+    // The broker's private Mongo reservation supplies operationKey. The
+    // independent graph authority always receives only the original graph
+    // coordinates, not a caller-selected provider operation key.
+    const { operationKey: _reservedKey, ...nativeCoordinates } = identity?.mode === 'native_graph'
+      ? identity
+      : {};
+    const authorityIdentity = identity?.mode === 'native_graph' ? nativeCoordinates : identity;
     if (
       authorizedRequest == null ||
       authorizedRequest.model !== identity?.model ||
@@ -68,7 +75,7 @@ function createNativeMissionIndependentOriginalBrokerServer({
       authorizedRequest.tool_choice != null ||
       requestDigest(authorizedRequest) !== digest ||
       (await authorizeBrokerScope({
-        identity, requestDigest: digest, authorizedRequest,
+        identity: authorityIdentity, requestDigest: digest, authorizedRequest,
         operation: identity?.mode === 'native_graph' ? 'reserve_native_graph' : 'execute',
       })) !== true
     ) {
