@@ -67,7 +67,9 @@ function createNativeMissionOriginalChildBrokerBootstrap({
   }
   if (
     broker.protocol !== 'http:' ||
-    !['127.0.0.1', 'localhost', 'ci-provider-broker', 'ci-original-provider-broker'].includes(broker.hostname) ||
+    !['127.0.0.1', 'localhost', 'ci-provider-broker', 'ci-original-provider-broker'].includes(
+      broker.hostname,
+    ) ||
     !['', '/'].includes(broker.pathname) ||
     broker.username ||
     broker.password ||
