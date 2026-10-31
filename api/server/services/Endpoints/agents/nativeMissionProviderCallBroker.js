@@ -16,8 +16,7 @@ function createNativeMissionProviderCallBroker({ store, sendProvider, assertAuth
   ) {
     throw new Error('NATIVE_PROVIDER_BROKER_DEPENDENCIES_MISSING');
   }
-  return Object.freeze({
-    execute: async ({ identity, requestDigest, authorizedRequest }) => {
+  const execute = async ({ identity, requestDigest, authorizedRequest }) => {
       // This broker does not persist raw prompts or provider credentials.
       const scope = { identity, requestDigest };
       await assertAuthorized({ ...scope, authorizedRequest });
@@ -42,8 +41,26 @@ function createNativeMissionProviderCallBroker({ store, sendProvider, assertAuth
         throw error;
       }
       return store.read(scope);
-    },
-  });
+    };
+
+  /** The API process never creates or chooses an operation key. This entry
+   * point runs ONLY in the independent broker; its injected authority must
+   * verify original signed task/ACL/generation/checkpoint BEFORE reservation.
+   * A returning caller receives the original Mongo-allocated key, not a
+   * second provider dispatch. It is not wired to public HTTP by default.
+   */
+  const executeOriginalNativeGraph = async ({ identity, requestDigest, authorizedRequest }) => {
+    if (identity?.mode !== 'native_graph' ||
+        Object.prototype.hasOwnProperty.call(identity, 'operationKey') ||
+        typeof store.reserveNativeGraph !== 'function') {
+      throw new Error('NATIVE_GRAPH_ORIGINAL_BROKER_RESERVATION_DENIED');
+    }
+    await assertAuthorized({ identity, requestDigest, authorizedRequest,
+      operation: 'reserve_native_graph' });
+    const reserved = await store.reserveNativeGraph({ identity, requestDigest });
+    return execute({ ...reserved, authorizedRequest });
+  };
+  return Object.freeze({ execute, executeOriginalNativeGraph });
 }
 
 module.exports = { createNativeMissionProviderCallBroker };
