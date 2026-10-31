@@ -54,6 +54,7 @@ const {
   canonicalMissionJson,
   saveNativeMissionWakeupOrigin,
   getNativeMissionWakeupOrigin,
+  assertNativeMissionOriginalGenerationNamespace,
   deleteNativeMissionWakeupOrigins,
 } = require('./nativeMissionWakeupOriginStore');
 
@@ -65,6 +66,7 @@ const original = {
   parentResponseMessageId: 'response-1',
   agentId: 'agent-1',
   createdAt: 12345678,
+  checkpointNamespace: 'ci-original-generation',
   plan: { planId: 'plan-1', mission },
   orchestratorMission: { mission },
   capabilityAttestation: { agents: ['agent-1'] },
@@ -105,6 +107,23 @@ describe('immutable BOT MODE mission wakeup origin', () => {
     });
   });
 
+  it('preserves immutable generation namespace separately from mutable Redis slots', async () => {
+    await saveNativeMissionWakeupOrigin(original);
+    const result = await getNativeMissionWakeupOrigin(original);
+    expect(result.checkpointNamespace).toBe('ci-original-generation');
+    await expect(
+      saveNativeMissionWakeupOrigin({
+        ...original,
+        checkpointNamespace: 'another-generation',
+      }),
+    ).rejects.toThrow('MISSION_ORIGIN_IMMUTABLE_CONFLICT');
+    const saved = [...mongoose.__rows.values()][0];
+    saved.checkpointNamespace = 'forged-generation';
+    await expect(getNativeMissionWakeupOrigin(original)).rejects.toThrow(
+      'MISSION_ORIGIN_INTEGRITY_FAILED',
+    );
+  });
+
   it('accepts exact retry but rejects replacement of an original mission', async () => {
     await saveNativeMissionWakeupOrigin(original);
     await expect(saveNativeMissionWakeupOrigin(original)).resolves.toBeDefined();
@@ -138,6 +157,61 @@ describe('immutable BOT MODE mission wakeup origin', () => {
     await expect(getNativeMissionWakeupOrigin(original)).rejects.toThrow(
       'MISSION_ORIGIN_INTEGRITY_FAILED',
     );
+  });
+
+  it('fences a recovered graph to the original generation, never the newest Redis slot', async () => {
+    const delegated = {
+      ...original,
+      capabilityAttestation: { mode: 'receipts_required' },
+    };
+    await saveNativeMissionWakeupOrigin(delegated);
+    const input = {
+      userId: delegated.userId,
+      tenantId: delegated.tenantId,
+      parentConversationId: delegated.conversationId,
+      parentRunId: delegated.parentResponseMessageId,
+      generationNamespace: delegated.checkpointNamespace,
+      getConvo: async () => ({
+        conversationId: delegated.conversationId,
+        tenantId: delegated.tenantId,
+        agent_id: delegated.agentId,
+      }),
+    };
+    await expect(assertNativeMissionOriginalGenerationNamespace(input)).resolves.toBe(true);
+    await expect(
+      assertNativeMissionOriginalGenerationNamespace({
+        ...input,
+        generationNamespace: 'newer-redis-generation',
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      assertNativeMissionOriginalGenerationNamespace({
+        ...input,
+        getConvo: async () => ({
+          conversationId: input.parentConversationId,
+          tenantId: 'foreign',
+          agent_id: delegated.agentId,
+        }),
+      }),
+    ).resolves.toBe(false);
+    await saveNativeMissionWakeupOrigin({
+      ...delegated,
+      conversationId: 'legacy-conversation',
+      parentResponseMessageId: 'legacy-response',
+      checkpointNamespace: undefined,
+    });
+    await expect(
+      assertNativeMissionOriginalGenerationNamespace({
+        ...input,
+        parentConversationId: 'legacy-conversation',
+        parentRunId: 'legacy-response',
+        getConvo: async () => ({
+          conversationId: 'legacy-conversation',
+          tenantId: delegated.tenantId,
+          agent_id: delegated.agentId,
+        }),
+      }),
+    ).resolves.toBe(false);
   });
 
   it('prunes by authorized user, tenant, and conversation', async () => {

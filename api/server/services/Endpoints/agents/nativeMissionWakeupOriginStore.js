@@ -17,6 +17,7 @@ const originSchema = new mongoose.Schema(
     agentId: { type: String, required: true, maxlength: 256 },
     planId: { type: String, required: true, maxlength: 256 },
     originalCreatedAt: { type: Number, required: true, min: 1 },
+    checkpointNamespace: { type: String, required: false, maxlength: 256 },
     hasAttachments: { type: Boolean, required: true, default: false },
     fingerprint: { type: String, required: true, minlength: 64, maxlength: 64 },
     botMode: { type: mongoose.Schema.Types.Mixed, select: false },
@@ -89,7 +90,15 @@ function requireScope(scope) {
 
 async function saveNativeMissionWakeupOrigin(input) {
   const key = requireScope(input);
-  const { agentId, plan, orchestratorMission, capabilityAttestation, botMode, createdAt } = input;
+  const {
+    agentId,
+    plan,
+    orchestratorMission,
+    capabilityAttestation,
+    botMode,
+    createdAt,
+    checkpointNamespace,
+  } = input;
   if (
     !plan?.planId ||
     !plan?.mission ||
@@ -97,6 +106,10 @@ async function saveNativeMissionWakeupOrigin(input) {
     !capabilityAttestation ||
     !Number.isSafeInteger(createdAt) ||
     createdAt <= 0 ||
+    (checkpointNamespace != null &&
+      (typeof checkpointNamespace !== 'string' ||
+        checkpointNamespace.length === 0 ||
+        checkpointNamespace.length > 256)) ||
     plan.mission.missionId !== orchestratorMission.mission.missionId ||
     plan.mission.taskId !== orchestratorMission.mission.taskId ||
     plan.mission.objective !== orchestratorMission.mission.objective
@@ -108,6 +121,7 @@ async function saveNativeMissionWakeupOrigin(input) {
     agentId,
     planId: plan.planId,
     originalCreatedAt: createdAt,
+    ...(checkpointNamespace != null && { checkpointNamespace }),
     hasAttachments: input.hasAttachments === true,
     ...(botMode != null && { botMode }),
     orchestratorMission,
@@ -153,6 +167,63 @@ async function getNativeMissionWakeupOrigin(scope) {
   };
 }
 
+/**
+ * The root generation's original checkpoint namespace is immutable mission
+ * provenance. Unlike Redis's mutable conversation slot, it survives another
+ * wakeup and cannot be replaced by a newer stream. A missing older field is
+ * intentionally NOT a valid broker admission proof.
+ */
+async function assertNativeMissionOriginalGenerationNamespace({
+  userId,
+  tenantId,
+  parentConversationId,
+  parentRunId,
+  generationNamespace,
+  getConvo,
+  getOrigin = getNativeMissionWakeupOrigin,
+}) {
+  if (
+    typeof userId !== 'string' ||
+    !userId ||
+    typeof parentConversationId !== 'string' ||
+    !parentConversationId ||
+    typeof parentRunId !== 'string' ||
+    !parentRunId ||
+    typeof generationNamespace !== 'string' ||
+    !generationNamespace ||
+    typeof getConvo !== 'function' ||
+    typeof getOrigin !== 'function'
+  ) {
+    return false;
+  }
+  const parent = await getConvo(userId, parentConversationId);
+  if (
+    parent?.conversationId !== parentConversationId ||
+    typeof parent.agent_id !== 'string' ||
+    !parent.agent_id ||
+    parent.subagentThread != null ||
+    (parent.tenantId ?? '') !== (tenantId ?? '')
+  ) {
+    return false;
+  }
+  const original = await getOrigin({
+    userId,
+    tenantId,
+    conversationId: parentConversationId,
+    parentResponseMessageId: parentRunId,
+    agentId: parent.agent_id,
+  });
+  return (
+    original?.conversationId === parentConversationId &&
+    original?.parentResponseMessageId === parentRunId &&
+    original?.agentId === parent.agent_id &&
+    original?.checkpointNamespace === generationNamespace &&
+    original?.capabilityAttestation?.mode === 'receipts_required' &&
+    typeof original.fingerprint === 'string' &&
+    /^[a-f0-9]{64}$/.test(original.fingerprint)
+  );
+}
+
 /** Called only after the authorized conversation deletion fence. The scope is
  * mandatory even for delete-all, so a tenant cannot erase another owner's data. */
 async function deleteNativeMissionWakeupOrigins({ userId, tenantId, conversationIds }) {
@@ -181,5 +252,6 @@ module.exports = {
   canonicalMissionJson,
   saveNativeMissionWakeupOrigin,
   getNativeMissionWakeupOrigin,
+  assertNativeMissionOriginalGenerationNamespace,
   deleteNativeMissionWakeupOrigins,
 };

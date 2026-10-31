@@ -6,7 +6,9 @@ const {
 const {
   createNativeMissionOriginalChildModelOperationResolver,
 } = require('./nativeMissionOriginalChildModelOperationResolver');
-const { createNativeMissionOriginalChildCheckpointReader } = require('./nativeMissionOriginalChildCheckpointReader');
+const {
+  createNativeMissionOriginalChildCheckpointReader,
+} = require('./nativeMissionOriginalChildCheckpointReader');
 const {
   createNativeMissionDetachedBrokerModelFetchFactory,
 } = require('./nativeMissionProviderBrokerModelFetch');
@@ -49,13 +51,21 @@ function createNativeMissionOriginalChildBrokerHost({
   if (typeof getOriginalCheckpointReference !== 'function') {
     deny('NATIVE_ORIGINAL_CHILD_HOST_CHECKPOINT_READER_REQUIRED');
   }
+  const generationGuard =
+    assertGenerationNamespace ??
+    ((scope) =>
+      require('./nativeMissionWakeupOriginStore').assertNativeMissionOriginalGenerationNamespace({
+        ...scope,
+        getConvo,
+        getOrigin: getMissionOrigin,
+      }));
   const checkpointReader =
     readOriginalCheckpoint ??
     createNativeMissionOriginalChildCheckpointReader({
       getCheckpointer,
       getConvo,
       getStartReceipt,
-      assertGenerationNamespace,
+      assertGenerationNamespace: generationGuard,
     });
   if (typeof checkpointReader !== 'function') {
     deny('NATIVE_ORIGINAL_CHILD_HOST_CHECKPOINT_READER_REQUIRED');
