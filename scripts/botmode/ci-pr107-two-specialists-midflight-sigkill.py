@@ -150,6 +150,20 @@ if not (
     fail("ORIGINAL_SIGNED_TWO_SPECIALIST_PLAN_DENIED")
 print("CI_PR107_COLD_MULTI_TWO_SPECIALIST_SIGNED_PLAN=PASS",flush=True)
 
+# Source the immutable physical checkpoint generation directly from this
+# running Redis job. The Mongo collection can also contain legacy root ('')
+# and unrelated nested namespaces, so never guess the generation from distinct().
+redis_key=gate["REDIS_PHYSICAL_PREFIX"]+"stream:{"+stream_id+"}:job"
+job_ns_read=subprocess.run(COMPOSE+["exec","-T","redis","redis-cli","--raw",
+    "HMGET",redis_key,"checkpointNamespace","createdAt","generationProtocolVersion"],
+    capture_output=True,text=True,timeout=20,check=True)
+job_fields=job_ns_read.stdout.splitlines()
+if (len(job_fields)!=3 or job_fields[2]!="2" or not job_fields[0] or
+    job_fields[0]!=job_fields[1] or len(job_fields[0])>256):
+    fail("ORIGINAL_GENERATION_CHECKPOINT_NAMESPACE_UNAVAILABLE")
+checkpoint_namespace=job_fields[0]
+print("CI_PR107_COLD_MULTI_GENERATION_NAMESPACE_PINNED=PASS",flush=True)
+
 stream_replies=[]
 def read_stream():
     try:
@@ -199,20 +213,19 @@ const {MongoDBSaver}=apiRequire('@langchain/langgraph-checkpoint-mongodb');
   await mongoose.connect(process.env.MONGO_URI);
   const nodeIds=JSON.parse(process.env.CI_NATIVE_NODES);
   const collection=mongoose.connection.db.collection('agent_checkpoints');
-  const namespaces=await collection.distinct('checkpoint_ns',{
-    thread_id:process.env.CI_PARENT
-  });
-  // Root checkpoint namespace is the host-owned generation; nested namespaces
-  // contain a "|" separator. Do not accept ambiguous generations.
-  const roots=namespaces.filter(ns=>typeof ns==='string'&&!ns.includes('|'));
-  if(roots.length===0){
-    // Before the first graph checkpoint, an empty read is expected.
+  const namespace=process.env.CI_GENERATION_NS;
+  if(typeof namespace!=='string'||!namespace||namespace.length>256)
+    throw Error('NATIVE_GENERATION_SCOPE_MISSING');
+  const root=await collection.findOne({
+    thread_id:process.env.CI_PARENT,checkpoint_ns:namespace
+  },{projection:{_id:1}});
+  if(!root){
+    // It is safe to poll before the first real checkpoint is committed.
     console.log(JSON.stringify({researchDurable:false,analysisDurable:false,
       rootCheckpointPresent:false,checkpointStep:null}));
     await mongoose.disconnect();
     process.exit(0);
   }
-  if(roots.length!==1) throw Error('NATIVE_GENERATION_AMBIGUOUS');
   // Read with the original LangGraph Mongo saver, without importing the
   // entire LibreChat API or running index setup in a throwaway probe process.
   const saver=new MongoDBSaver({
@@ -223,8 +236,9 @@ const {MongoDBSaver}=apiRequire('@langchain/langgraph-checkpoint-mongodb');
   });
   const tuple=await saver.getTuple({configurable:{
     thread_id:process.env.CI_PARENT,
-    checkpoint_ns:'',
-    __librechat_checkpoint_ns:roots[0]
+    // The raw MongoDBSaver does not interpret LibreChat's private
+    // __librechat_checkpoint_ns key: pass its physical namespace directly.
+    checkpoint_ns:namespace
   }});
   const values=tuple?.checkpoint?.channel_values;
   const outputs=values?.agentOutputs;
@@ -243,7 +257,7 @@ const {MongoDBSaver}=apiRequire('@langchain/langgraph-checkpoint-mongodb');
   await mongoose.disconnect();
   process.exit(0);
 })().catch(e=>{
-  const known=['NATIVE_GENERATION_AMBIGUOUS','NATIVE_SAVER_UNAVAILABLE'];
+  const known=['NATIVE_GENERATION_SCOPE_MISSING','NATIVE_SAVER_UNAVAILABLE'];
   const category=known.includes(e.message)?e.message:(e.code==='MODULE_NOT_FOUND'?'MODULE_NOT_FOUND':e.name);
   console.log(JSON.stringify({unavailable:category}));
   process.exit(1);
@@ -253,6 +267,7 @@ def native_state():
     return json.loads(run_node(native_proof_script,[
         ("CI_PARENT",conversation),
         ("CI_NATIVE_NODES",json.dumps([task["nodeId"] for task in tasks])),
+        ("CI_GENERATION_NS",checkpoint_namespace),
     ]))
 
 # Wait for first native child to finish and the second provider request to
