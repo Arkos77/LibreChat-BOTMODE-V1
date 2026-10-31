@@ -557,14 +557,18 @@ if (native_post["researchDurable"] is not True or
 _,plan_raw,oracle_raw=state
 try:
     plan,oracle=json.loads(plan_raw),json.loads(oracle_raw)
-    verdicts=oracle["results"][mission_id+"/main"]["verdicts"]
+    expected_task_ids=[task["taskId"] for task in tasks]
+    results=oracle["results"]
+    verdicts_by_task=[results[task_id]["verdicts"] for task_id in expected_task_ids]
 except (ValueError,TypeError,KeyError):
     fail("ORACLE_DURABLE_VERDICT_MISSING")
 if (plan.get("mission",{}).get("missionId")!=mission_id or
-    len(verdicts)!=1 or verdicts[0].get("status")!="VERIFIED"):
-    fail("ORACLE_NOT_SINGLE_VERIFIED")
+    set(results)!=set(expected_task_ids) or
+    any(len(verdicts)!=1 or verdicts[0].get("status")!="VERIFIED"
+        for verdicts in verdicts_by_task)):
+    fail("ORACLE_NOT_ALL_TASKS_VERIFIED")
 if metrics().get("native_graph_turns",0)-before.get("native_graph_turns",0)!=2:
     fail("NATIVE_GRAPH_MODEL_EFFECT_REEXECUTED_OR_MISSING")
 print("CI_PR107_COLD_MULTI_NATIVE_GRAPH_REPLAY_SAFE=PASS",flush=True)
-print("CI_PR107_COLD_MULTI_SINGLE_ORACLE_VERIFIED=PASS",flush=True)
+print("CI_PR107_COLD_MULTI_BOTH_TASKS_ORACLE_VERIFIED=PASS",flush=True)
 print("CI_PR107_COLD_MULTI_SINGLE_P6_AFTER_SIGKILL=PASS",flush=True)
