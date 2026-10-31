@@ -104,7 +104,9 @@ function createNativeMissionBrokerModelFetch({
     modelEndpoint.hash ||
     !['http:', 'https:'].includes(modelEndpoint.protocol) ||
     broker.protocol !== 'http:' ||
-    !['127.0.0.1', 'localhost', 'ci-provider-broker', 'ci-original-provider-broker'].includes(broker.hostname) ||
+    !['127.0.0.1', 'localhost', 'ci-provider-broker', 'ci-original-provider-broker'].includes(
+      broker.hostname,
+    ) ||
     (broker.pathname !== '/' && broker.pathname !== '') ||
     broker.search ||
     broker.hash ||
