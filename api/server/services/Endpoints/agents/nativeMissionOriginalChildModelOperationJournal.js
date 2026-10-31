@@ -226,7 +226,9 @@ function createNativeMissionOriginalChildModelOperationJournal({
       !identity ||
       ID_FIELDS.slice(0, -1).some((key) => !bounded(identity[key], key === 'tenantId')) ||
       !bounded(parentToolCallId) ||
-      !bounded(graphThreadId) ||
+      typeof graphThreadId !== 'string' ||
+      graphThreadId.length === 0 ||
+      graphThreadId.length > 3072 ||
       !graphThreadId.startsWith('subagent:') ||
       !bounded(checkpointId) ||
       !bounded(checkpointNs, true) ||
