@@ -928,6 +928,54 @@ describe('native mission direct graph broker compile seam', () => {
     });
   });
 
+  it('keeps durable Research separate while protecting the later model-only Analyse node', () => {
+    const researchPlan = deterministicPlanner.planMission({
+      ...base,
+      researchExecutionVersion: 1,
+      objectives: [
+        {
+          key: 'research', objective: 'Research with web evidence',
+          requiredCapabilities: ['x'], dependsOn: [],
+          validation: {
+            criteria: [{ id: 'complete', field: 'complete', expected: true }],
+            outputContract: 'research-v1',
+          },
+        },
+        {
+          key: 'analysis', objective: 'Analyse persisted research result',
+          requiredCapabilities: ['basic'], dependsOn: ['research'],
+          validation: {
+            criteria: [{ id: 'complete', field: 'complete', expected: true }],
+          },
+        },
+      ],
+    }, context);
+    const source = new Map(bindings);
+    for (const task of researchPlan.tasks) {
+      source.set(task.agentId, {
+        ...bindings.get(task.agentId)!,
+        clientOptions: { model: 'ci-free' },
+        ...(task.key === 'research' ? { toolDefinitions: [{ name: 'web_search' }] } : {}),
+      });
+    }
+    const approved = jest.fn(() => fetch);
+    const native = compileNativePlan(researchPlan, source,
+      undefined, undefined, undefined, undefined, approved);
+    const analysisTask = researchPlan.tasks.find((task) => task.key === 'analysis')!;
+    const analysis = native.graphConfig.agents.find((agent) => agent.agentId === analysisTask.nodeId)!;
+    expect(analysis.clientOptions).toHaveProperty('configuration.fetch', fetch);
+    expect(approved).toHaveBeenCalledTimes(1);
+    expect(approved).toHaveBeenCalledWith(expect.objectContaining({
+      nodeId: analysisTask.nodeId, taskId: analysisTask.taskId,
+    }));
+    const researchNodes = native.graphConfig.agents.filter((agent) =>
+      agent.agentId !== analysisTask.nodeId);
+    expect(researchNodes.length).toBeGreaterThan(0);
+    for (const research of researchNodes) {
+      expect(research.clientOptions).not.toHaveProperty('configuration.fetch');
+    }
+  });
+
   it('denies graph tool effects and cannot silently fall through to provider', () => {
     const agentId = plan.tasks[0].agentId;
     const source = new Map(bindings);
