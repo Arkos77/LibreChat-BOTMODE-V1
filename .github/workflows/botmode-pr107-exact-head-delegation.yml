@@ -569,6 +569,14 @@ jobs:
       - name: Verify two distinct real detached specialist runs, durable Oracle and one P6 publication
         shell: bash
         run: python3 scripts/botmode/ci-pr107-two-specialists-oracle-gate.py
+      - name: Activate genuine original broker for persisted two-specialist mission
+        shell: bash
+        env:
+          BOTMODE_IMAGE: ${{ env.BOTMODE_HEAD_IMAGE }}
+          BOTMODE_MONGO_PASSWORD: ci-isolated-only
+          POSTGRES_PASSWORD: ci-isolated-only
+          BOTMODE_HOST_PORT: '3090'
+        run: bash scripts/botmode/ci-pr107-activate-original-broker.sh
       - name: Verify independent broker process with a real disposable Mongo claim
         id: broker_smoke
         shell: bash
