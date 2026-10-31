@@ -661,7 +661,7 @@ jobs:
           OPENROUTER_KEY: ci-local-fixture-no-real-key
         run: python3 scripts/botmode/ci-pr107-two-specialists-midflight-sigkill.py
       - name: Verify independent broker survived API SIGKILL with original durable result
-        if: always() && steps.broker_smoke.outcome == 'success'
+        if: success() && steps.broker_smoke.outcome == 'success'
         shell: bash
         env:
           BOTMODE_IMAGE: ${{ env.BOTMODE_HEAD_IMAGE }}
@@ -812,4 +812,11 @@ jobs:
           BOTMODE_MONGO_PASSWORD: ci-isolated-only
           POSTGRES_PASSWORD: ci-isolated-only
           BOTMODE_IMAGE: ${{ env.BOTMODE_HEAD_IMAGE }}
-        run: sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down --volumes --remove-orphans || true
+        run: |
+          # sudo does not retain the runner's interpolation variables unless
+          # explicitly passed. No production volume or image is in scope.
+          sudo env BOTMODE_IMAGE="$BOTMODE_IMAGE" \
+            BOTMODE_MONGO_PASSWORD="$BOTMODE_MONGO_PASSWORD" \
+            POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml \
+            down --volumes --remove-orphans || true
