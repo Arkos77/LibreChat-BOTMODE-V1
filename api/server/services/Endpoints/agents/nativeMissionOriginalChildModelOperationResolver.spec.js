@@ -104,6 +104,7 @@ describe('original native child model operation grant: immutable and fail closed
       provider: args.provider,
       model: args.model,
       requestDigest: DIGEST,
+      checkpointId: receipt.checkpointId,
     });
     expect(Object.isFrozen(result)).toBe(true);
     expect(Object.isFrozen(result.scope)).toBe(true);

@@ -211,7 +211,7 @@ const m=require('mongoose');
     // parent/agent/tool identity without revealing checkpoint content or keys.
     const checkpointRows=await db.collection('agent_checkpoints')
       .find({thread_id:/^subagent:/}).project({thread_id:1}).toArray();
-    let checkpoints=0, fromSameParent=0;
+    let checkpoints=0, fromSameParent=0, matchedAgent=0, matchedTool=0;
     for(const row of checkpointRows){
       let coordinates;
       try {
@@ -226,6 +226,8 @@ const m=require('mongoose');
          coordinates.every(v=>typeof v==='string' && v.length>0) &&
          coordinates[0]===parent) {
         fromSameParent++;
+        if(coordinates[2]===lineage.parentAgentId) matchedAgent++;
+        if(coordinates[3]===lineage.parentToolCallId) matchedTool++;
         if(coordinates[2]===lineage.parentAgentId &&
            coordinates[3]===lineage.parentToolCallId) {
           // The optional sixth field is a durable SDK resume attempt ID,
@@ -236,12 +238,14 @@ const m=require('mongoose');
         }
       }
     }
-    pending.push({calls,checkpoints,fromSameParent,raw:checkpointRows.length});
+    pending.push({calls,checkpoints,fromSameParent,matchedAgent,matchedTool,raw:checkpointRows.length});
   }
   console.log(JSON.stringify({pending:pending.length,
     originalBrokerReceipts:pending.reduce((n,c)=>n+c.calls,0),
     childCheckpointRows:pending.reduce((n,c)=>n+c.checkpoints,0),
     parentCheckpointRows:pending.reduce((n,c)=>n+c.fromSameParent,0),
+    parentAgentMatches:pending.reduce((n,c)=>n+c.matchedAgent,0),
+    parentToolMatches:pending.reduce((n,c)=>n+c.matchedTool,0),
     rawSubagentCheckpointRows:pending.reduce((n,c)=>n+c.raw,0)}));
   await m.disconnect();
 })().catch(e=>{console.error(e.name);process.exitCode=1});
@@ -255,6 +259,10 @@ print("CI_PR107_COLD_MULTI_PARENT_CHECKPOINT_ROWS="+str(
     proof["parentCheckpointRows"]),flush=True)
 print("CI_PR107_COLD_MULTI_RAW_SDK_CHECKPOINT_ROWS="+str(
     proof["rawSubagentCheckpointRows"]),flush=True)
+print("CI_PR107_COLD_MULTI_PARENT_AGENT_MATCHES="+str(
+    proof["parentAgentMatches"]),flush=True)
+print("CI_PR107_COLD_MULTI_PARENT_TOOL_MATCHES="+str(
+    proof["parentToolMatches"]),flush=True)
 if proof["pending"]!=1:
     fail("SECOND_CHILD_ORIGINAL_IDENTITY_AMBIGUOUS")
 if proof["originalBrokerReceipts"]!=1:

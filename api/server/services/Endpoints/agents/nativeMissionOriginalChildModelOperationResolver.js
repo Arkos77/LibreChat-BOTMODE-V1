@@ -233,6 +233,7 @@ function createNativeMissionOriginalChildModelOperationResolver({
       model,
       requestDigest,
       operationKey: receipt.operationKey,
+      checkpointId: receipt.checkpointId,
     });
   };
 }
