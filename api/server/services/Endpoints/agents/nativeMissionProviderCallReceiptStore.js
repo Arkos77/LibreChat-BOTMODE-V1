@@ -110,7 +110,17 @@ function createNativeMissionProviderCallReceiptStore({ collection, makeToken = r
   const match = (identity, requestDigest) => {
     requireDigest(requestDigest);
     const { callKey, identity: original } = identify(identity);
-    return { callKey, identity: original, requestDigest };
+    // One immutable provider effect per native graph node checkpoint.
+    // Neither a changed operation key nor a changed request digest may
+    // allocate a second provider call in the same original step.
+    const nativeGraphSlotKey = original.mode === 'native_graph'
+      ? fingerprint(JSON.stringify(Object.fromEntries(
+          DIRECT_GRAPH_ID_FIELDS.filter((field) => field !== 'operationKey')
+            .map((field) => [field, original[field]]),
+        )))
+      : undefined;
+    return { callKey, identity: original, requestDigest,
+      ...(nativeGraphSlotKey && { nativeGraphSlotKey }) };
   };
   const assertSame = (doc, expected) => {
     if (
@@ -131,6 +141,13 @@ function createNativeMissionProviderCallReceiptStore({ collection, makeToken = r
   const prepare = async ({ identity, requestDigest }) => {
     const original = match(identity, requestDigest);
     await ensureIndex();
+    if (original.nativeGraphSlotKey) {
+      await collection.createIndex(
+        { nativeGraphSlotKey: 1 },
+        { unique: true, name: 'native_direct_graph_original_slot_unique',
+          partialFilterExpression: { nativeGraphSlotKey: { $type: 'string' } } },
+      );
+    }
     try {
       await collection.insertOne({
         ...original,
