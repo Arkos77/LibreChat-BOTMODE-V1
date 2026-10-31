@@ -97,6 +97,7 @@ function fixture() {
     server, sender, records,
     revokeLease:()=>{lease=false;},
     revokeOwner:()=>{owner=false;},
+    restoreOwner:()=>{owner=true;},
     replaceOriginal:(changes)=>{original={...original,...changes};records.set(row.callKey,original);},
   };
 }
@@ -138,6 +139,7 @@ describe('independent original-child broker: dispatch once and read after SIGKIL
     ctx.revokeOwner();
     expect((await signed(port,'/status',{identity,requestDigest:digest})).status).toBe(403);
     expect(ctx.sender).not.toHaveBeenCalled();
+    ctx.restoreOwner();
     ctx.replaceOriginal({originFingerprint:'f'.repeat(64)});
     expect((await signed(port,'/execute',{identity,requestDigest:digest,authorizedRequest})).status)
       .toBe(403);
