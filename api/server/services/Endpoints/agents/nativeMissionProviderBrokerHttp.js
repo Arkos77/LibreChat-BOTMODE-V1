@@ -45,6 +45,9 @@ function createNativeMissionProviderBrokerHttpServer({
   secret,
   provider,
   authorizeScope,
+  // Opt-in only: the host must independently prove the original native
+  // plan, user/tenant ACL, provider binding and saved graph checkpoint.
+  authorizeOriginalNativeGraph,
   now = Date.now,
 }) {
   if (
@@ -70,7 +73,14 @@ function createNativeMissionProviderBrokerHttpServer({
       });
       res.end(JSON.stringify(value));
     };
-    if (req.method !== 'POST' || (req.url !== '/execute' && req.url !== '/status')) {
+    const directGraphRoute = req.url === '/execute-native-graph';
+    if (
+      req.method !== 'POST' ||
+      (req.url !== '/execute' && req.url !== '/status' && !directGraphRoute) ||
+      (directGraphRoute && (
+        typeof authorizeOriginalNativeGraph !== 'function' ||
+        typeof broker.executeOriginalNativeGraph !== 'function'))
+    ) {
       return respond(404, { error: 'not_found' });
     }
     try {
@@ -102,7 +112,9 @@ function createNativeMissionProviderBrokerHttpServer({
       // Reading a committed receipt after SIGKILL is not permission to
       // create another provider effect. The independent authority decides
       // whether an active lease is required for this specific operation.
-      const operation = req.url === '/status' ? 'read' : 'execute';
+      const operation = req.url === '/status'
+        ? 'read'
+        : (directGraphRoute ? 'reserve_native_graph' : 'execute');
       if ((await authorizeScope({ identity, requestDigest: digest, operation })) !== true) {
         return respond(403, { error: 'forbidden' });
       }
@@ -119,6 +131,20 @@ function createNativeMissionProviderBrokerHttpServer({
         requestDigest(authorizedRequest) !== digest
       ) {
         return respond(403, { error: 'request_mismatch' });
+      }
+      if (directGraphRoute) {
+        if (identity.mode !== 'native_graph' ||
+            Object.prototype.hasOwnProperty.call(identity, 'operationKey') ||
+            (await authorizeOriginalNativeGraph({
+              identity, requestDigest: digest, authorizedRequest,
+              operation: 'reserve_native_graph',
+            })) !== true) {
+          return respond(403, { error: 'forbidden' });
+        }
+        const result = await broker.executeOriginalNativeGraph({
+          identity, requestDigest: digest, authorizedRequest,
+        });
+        return respond(200, result);
       }
       const result = await broker.execute({ identity, requestDigest: digest, authorizedRequest });
       return respond(200, result);
