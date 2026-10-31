@@ -17,6 +17,10 @@ import {
 import { assertMissionTaskVerified, validateMissionTask } from './missionOracle';
 import { getTaskLevels, nodeIdentity } from './planner';
 import { structuredTaskOptions } from './schema';
+import {
+  attachNativeGraphBrokerModelFetch,
+  type NativeGraphModelFetchFactory,
+} from '../nativeGraphModelFetchBinding';
 
 export interface NativeMissionPlan {
   planId: string;
@@ -164,6 +168,7 @@ export function compileNativePlan(
   resolveMissionOracleEvidence?: MissionOracleEvidenceResolver,
   persistMissionOracleResult?: MissionOracleResultPersister,
   resolveMissionOracleSources?: MissionOracleSourcesResolver,
+  nativeGraphModelFetchFactory?: NativeGraphModelFetchFactory,
 ): NativeMissionPlan {
   getTaskLevels(plan.tasks);
   if (plan.tasks.some(isResearchTask) && plan.mission.researchExecutionVersion !== 1) {
@@ -215,6 +220,33 @@ export function compileNativePlan(
         .filter(Boolean)
         .join('\n'),
     };
+    if (nativeGraphModelFetchFactory != null) {
+      // The current receipt adapter supports model-only direct graph steps.
+      // A research observation, tool, or nested delegation could have extra
+      // effects and must get an independently verified receipt adapter first.
+      if (
+        isResearchTask(task) ||
+        binding.tools?.length ||
+        binding.graphTools?.length ||
+        binding.toolDefinitions?.length ||
+        binding.subagentConfigs?.length
+      ) {
+        throw new Error('NATIVE_GRAPH_BROKER_EFFECTS_UNSUPPORTED');
+      }
+      result.clientOptions = attachNativeGraphBrokerModelFetch({
+        clientOptions: result.clientOptions as Parameters<
+          typeof attachNativeGraphBrokerModelFetch
+        >[0]['clientOptions'],
+        binding: {
+          agentId: task.agentId,
+          nodeId: task.nodeId,
+          taskId: task.taskId,
+          provider: binding.provider,
+          model: String(result.clientOptions?.model ?? ''),
+        },
+        factory: nativeGraphModelFetchFactory,
+      }) as AgentInputs['clientOptions'];
+    }
     if (!isResearchTask(task)) return [result];
     const observationId = researchObservationNodeId(task.nodeId);
     if (plan.tasks.some((other) => other.nodeId === observationId)) {
