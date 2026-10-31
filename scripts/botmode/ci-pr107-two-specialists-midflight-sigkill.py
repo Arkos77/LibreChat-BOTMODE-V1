@@ -198,7 +198,10 @@ const m=require('mongoose');
     if(taskId===starts[0].messageId ||
        starts[0].subagentTask?.parentRunId!==lineage?.parentMessageId ||
        !lineage?.parentToolCallId) throw Error('NATIVE_SECOND_CHILD_LINEAGE_INVALID');
-    const calls=await db.collection('native_mission_provider_calls_ci').countDocuments({
+    // The real original child host writes the production-named Mongo journal
+    // in this disposable CI DB. The "_ci" collection belongs exclusively to
+    // the independent synthetic broker smoke and MUST NOT satisfy this proof.
+    const calls=await db.collection('native_mission_provider_calls').countDocuments({
       'identity.childThreadId':child.conversationId,
       'identity.parentRunId':lineage.parentMessageId,
       // The broker's immutable identity deliberately excludes the tool call;
@@ -251,6 +254,8 @@ const m=require('mongoose');
 })().catch(e=>{console.error(e.name);process.exitCode=1});
 """
 proof=json.loads(run_node(actual_child_proof,[("CI_PARENT",conversation)]))
+# Keep the standalone synthetic /ci broker smoke independent from genuine
+# mission child effects; a fixture call cannot satisfy the real Mongo proof.
 print("CI_PR107_COLD_MULTI_ORIGINAL_BROKER_RECEIPTS="+str(
     proof["originalBrokerReceipts"]),flush=True)
 print("CI_PR107_COLD_MULTI_CHILD_CHECKPOINT_ROWS="+str(
