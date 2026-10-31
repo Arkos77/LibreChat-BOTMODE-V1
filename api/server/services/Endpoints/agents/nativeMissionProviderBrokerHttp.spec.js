@@ -186,7 +186,7 @@ describe('private fixture-only provider broker ingress', () => {
     });
     expect(authorizeScope).toHaveBeenCalledWith({
       identity: nativeGraph, requestDigest: scope.requestDigest,
-      operation: 'reserve_native_graph',
+      operation: 'reserve_native_graph', authorizedRequest,
     });
     expect((await signed('/execute-native-graph', {
       ...payload, identity: { ...nativeGraph, operationKey: identity.operationKey },
