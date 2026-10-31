@@ -1,6 +1,6 @@
 'use strict';
 
-const { createHash, randomUUID } = require('node:crypto');
+const { createHash, randomUUID, randomBytes } = require('node:crypto');
 
 /** Private, durable model-call journal for an independent execution owner.
  * No component here sends model requests or grants permission to replay them.
@@ -86,13 +86,18 @@ function publicStatus(record) {
   });
 }
 
-function createNativeMissionProviderCallReceiptStore({ collection, makeToken = randomUUID }) {
+function createNativeMissionProviderCallReceiptStore({
+  collection,
+  makeToken = randomUUID,
+  makeOperationKey = () => randomBytes(32).toString('hex'),
+}) {
   if (
     !collection ||
     ['createIndex', 'insertOne', 'findOne', 'findOneAndUpdate'].some(
       (name) => typeof collection[name] !== 'function',
     ) ||
-    typeof makeToken !== 'function'
+    typeof makeToken !== 'function' ||
+    typeof makeOperationKey !== 'function'
   ) {
     refuse('NATIVE_PROVIDER_CALL_STORE_UNAVAILABLE');
   }
@@ -140,15 +145,71 @@ function createNativeMissionProviderCallReceiptStore({ collection, makeToken = r
     return assertSame(record, expected);
   };
 
+  const ensureNativeGraphSlotIndex = () =>
+    collection.createIndex(
+      { nativeGraphSlotKey: 1 },
+      {
+        unique: true,
+        name: 'native_direct_graph_original_slot_unique',
+        partialFilterExpression: { nativeGraphSlotKey: { $type: 'string' } },
+      },
+    );
+
+  /** Reserve the ORIGINAL provider operation before any network dispatch.
+   * The trusted host must first verify the live ACL, signed task, original
+   * generation and persisted LangGraph checkpoint. A caller may not choose
+   * the opaque operation key; Mongo's unique graph-step index wins races.
+   * Retries read that exact original key, never allocate another dispatch.
+   */
+  const reserveNativeGraph = async ({ identity, requestDigest }) => {
+    if (!identity || identity.mode !== 'native_graph' ||
+        Object.prototype.hasOwnProperty.call(identity, 'operationKey')) {
+      refuse('NATIVE_GRAPH_RESERVATION_IDENTITY_INVALID');
+    }
+    const operationKey = makeOperationKey();
+    if (!HEX_DIGEST.test(operationKey)) {
+      refuse('NATIVE_GRAPH_RESERVATION_OPERATION_KEY_INVALID');
+    }
+    const proposed = match({ ...identity, operationKey }, requestDigest);
+    await ensureIndex();
+    await ensureNativeGraphSlotIndex();
+    try {
+      await collection.insertOne({
+        ...proposed,
+        status: 'prepared',
+        createdAt: new Date(),
+      });
+    } catch (error) {
+      if (error?.code !== 11000) throw error;
+    }
+    const saved = await collection.findOne({ nativeGraphSlotKey: proposed.nativeGraphSlotKey });
+    if (!saved || !HEX_DIGEST.test(saved?.identity?.operationKey)) {
+      refuse('NATIVE_GRAPH_RESERVATION_MISSING');
+    }
+    // The slot key excludes model/agent and request bytes. They must still
+    // match the original record or we refuse a changed model/prompt after crash.
+    const original = match(saved.identity, requestDigest);
+    if (original.nativeGraphSlotKey !== proposed.nativeGraphSlotKey ||
+        saved.requestDigest !== requestDigest ||
+        saved.identity.agentId !== identity.agentId ||
+        saved.identity.provider !== identity.provider ||
+        saved.identity.model !== identity.model) {
+      refuse('NATIVE_PROVIDER_CALL_IMMUTABLE_CONFLICT');
+    }
+    assertSame(saved, original);
+    return Object.freeze({
+      identity: Object.freeze({ ...original.identity }),
+      requestDigest,
+      callKey: original.callKey,
+      status: saved.status,
+    });
+  };
+
   const prepare = async ({ identity, requestDigest }) => {
     const original = match(identity, requestDigest);
     await ensureIndex();
     if (original.nativeGraphSlotKey) {
-      await collection.createIndex(
-        { nativeGraphSlotKey: 1 },
-        { unique: true, name: 'native_direct_graph_original_slot_unique',
-          partialFilterExpression: { nativeGraphSlotKey: { $type: 'string' } } },
-      );
+      await ensureNativeGraphSlotIndex();
     }
     try {
       await collection.insertOne({
@@ -276,7 +337,7 @@ function createNativeMissionProviderCallReceiptStore({ collection, makeToken = r
     return { ...publicStatus(doc), response };
   };
 
-  return Object.freeze({ prepare, claim, dispatch, markUnknown, commit, read });
+  return Object.freeze({ reserveNativeGraph, prepare, claim, dispatch, markUnknown, commit, read });
 }
 
 module.exports = { createNativeMissionProviderCallReceiptStore };
