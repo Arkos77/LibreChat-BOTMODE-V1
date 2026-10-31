@@ -117,6 +117,7 @@ import { getOpenAIConfig } from '~/endpoints/openai/config';
 import { createStepBudgetHook } from '~/agents/stepBudget';
 import { buildHITLRunWiring } from '~/agents/hitl/runtime';
 import { compileNativePlan } from './orchestrator/native';
+import type { NativeGraphModelFetchFactory } from './nativeGraphModelFetchBinding';
 import { buildLangfuseConfig } from '~/langfuse/config';
 import { applyTestRunHook } from '~/agents/testHook';
 import { attachRunOracle } from '~/agents/oracle';
@@ -1472,6 +1473,7 @@ export async function createRun({
   modelCallbacks,
   modelCallbackFactory,
   nativeDetachedModelFetchFactory,
+  nativeGraphModelFetchFactory,
   calibrationRatio,
   fadingTier,
   fadingTiers,
@@ -1537,6 +1539,9 @@ export async function createRun({
    * Never supplied by default; requires a separately authorized operation
    * resolver before any provider dispatch and is ignored by root models. */
   nativeDetachedModelFetchFactory?: NativeDetachedModelFetchFactory;
+  /** Optional original-task- and checkpoint-fenced native graph broker.
+   * Only the authenticated host can provide this capability. */
+  nativeGraphModelFetchFactory?: NativeGraphModelFetchFactory;
   /** Calibration ratio from previous run's contextMeta, seeds the pruner EMA */
   calibrationRatio?: number;
   /**
@@ -2041,6 +2046,7 @@ export async function createRun({
       resolveMissionOracleEvidence,
       persistMissionOracleResult,
       resolveMissionOracleSources,
+      nativeGraphModelFetchFactory,
     );
     // Preserve the cancellation signal on the native SDK graph configuration.
     graphConfig = Object.assign(nativePlan.graphConfig, { signal });
