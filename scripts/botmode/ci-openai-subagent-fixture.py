@@ -21,6 +21,8 @@ calls = {"parent_tool_requests": 0, "child_responses": 0, "parent_final": 0,
 child_id = os.environ.get("CI_AUTHORIZED_CHILD_ID", "").strip()
 child_ids = []  # Opt-in two-child synthetic test only; ordinary fixture unchanged.
 hold_second_child = False
+native_graph_fixture = False
+native_graph_calls = 0
 held_baseline = 0
 second_child_release = threading.Event()
 broker_request_release = threading.Event()
@@ -358,7 +360,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send({"object":"list","data":[{"id":MODEL,"object":"model","created":1700000000,"owned_by":"ci"}]})
         return self.send({"error":"not_found"},404)
     def do_POST(self):
-        global child_id, child_ids, hold_second_child, held_baseline
+        global child_id, child_ids, hold_second_child, held_baseline, native_graph_fixture, native_graph_calls
         if self.path == "/release-second-child":
             second_child_release.set()
             return self.send({"ok": True})
@@ -393,6 +395,8 @@ class Handler(BaseHTTPRequestHandler):
                 with lock:
                     child_ids = list(proposed_ids)
                     hold_second_child = obj.get("holdSecondChild") is True
+                    native_graph_fixture = obj.get("nativeGraph") is True
+                    native_graph_calls = 0
                     held_baseline = calls.get("child_responses", 0)
                     calls["held_second_child_requests"] = 0
                     second_child_release.clear()
@@ -403,6 +407,8 @@ class Handler(BaseHTTPRequestHandler):
                 child_id=proposed.strip()
                 child_ids=[]
                 hold_second_child=False
+                native_graph_fixture=False
+                native_graph_calls=0
                 second_child_release.set()
             return self.send({"ok":True})
         if not self.path.rstrip("/").endswith("/chat/completions"):
@@ -594,6 +600,20 @@ class Handler(BaseHTTPRequestHandler):
                 for index,selected in enumerate(selected_children)
             ]}
             reason="tool_calls"
+        elif native_graph_fixture and not advertised and not already_requested and not has_tool_result:
+            # Native mission plans use direct graph edges, not the subagent tool.
+            # This mode is CI-only and opted in by the isolated 4C scenario.
+            with lock:
+                native_graph_calls += 1
+                native_turn = native_graph_calls
+                calls["native_graph_turns"] = calls.get("native_graph_turns",0) + 1
+                block = hold_second_child and native_turn == 2
+                if block:
+                    calls["held_second_child_requests"] += 1
+            if block and not second_child_release.wait(timeout=120):
+                return self.send({"error":"CI_NATIVE_GRAPH_SECOND_NODE_HOLD_EXPIRED"},503)
+            message={"role":"assistant","content":json.dumps({"ok":True,"result":"Synthetic CI native graph task completed"})}
+            reason="stop"
         elif not advertised and child_id and not already_requested and not has_tool_result:
             # The authorized child has no nested subagent tool; its first model turn returns the receipt.
             with lock:
