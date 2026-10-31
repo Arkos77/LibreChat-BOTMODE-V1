@@ -1,6 +1,7 @@
 'use strict';
 const {
   createNativeMissionOriginalChildBrokerBootstrap: create,
+  matchesPersistedNativeBrokerAgentBinding,
 } = require('./nativeMissionOriginalChildBrokerBootstrap');
 const binding = {
   agentId: 'specialist',
@@ -31,6 +32,28 @@ const base = () => ({
   checkPermission: async () => false,
 });
 describe('original child broker server bootstrap', () => {
+  it('admits the exact persisted LibreChat model_parameters binding, never a stale top-level model', () => {
+    const stored = {
+      provider: 'OpenRouter',
+      model: 'stale-older-model',
+      model_parameters: { model: 'openrouter/free' },
+    };
+    expect(matchesPersistedNativeBrokerAgentBinding({
+      agent: stored, provider: 'openrouter', model: 'openrouter/free',
+    })).toBe(true);
+    for (const request of [
+      { provider: 'OpenROUTER', model: 'openrouter/free' },
+      { provider: 'openrouter', model: 'stale-older-model' },
+      { provider: 'openrouter', model: 'other-provider/free' },
+    ]) {
+      expect(matchesPersistedNativeBrokerAgentBinding({ agent: stored, ...request }))
+        .toBe(false);
+    }
+    expect(matchesPersistedNativeBrokerAgentBinding({
+      agent: { provider: 'OpenRouter', model_parameters: { model: 'another/free' } },
+      provider: 'openrouter', model: 'openrouter/free',
+    })).toBe(false);
+  });
   it('remains disabled by default', () => expect(create({ enabled: false })).toBeUndefined());
   it('installs only the configured server-owned model binding', () => {
     const host = create(base());
