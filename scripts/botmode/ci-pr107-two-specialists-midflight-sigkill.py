@@ -91,6 +91,7 @@ mission = {"missionId":mission_id,"taskId":mission_id,
            ],
            "validation":{"criteria":[{"id":"ci-ok","field":"ok","expected":True}]}}
 payload={"endpoint":"agents","agent_id":WORKER,
+         "generationProtocolVersion":2,
          "conversationId":conversation,"messageId":str(uuid.uuid4()),
          "parentMessageId":"00000000-0000-0000-0000-000000000000",
          "isNewConvo":True,
@@ -119,6 +120,8 @@ try:
     started=json.loads(raw)
     stream_id=started["streamId"]
     if started.get("status")!="started":fail("BAD_START")
+    if started.get("generationProtocolVersion")!=2:
+        fail("NATIVE_COLD_REQUIRES_GENERATION_PROTOCOL_V2")
 except (ValueError, KeyError, TypeError):
     fail("BAD_START")
 
