@@ -6,9 +6,7 @@ const {
 const {
   createNativeMissionProviderCallReceiptStore,
 } = require('./nativeMissionProviderCallReceiptStore');
-const {
-  createNativeMissionProviderCallBroker,
-} = require('./nativeMissionProviderCallBroker');
+const { createNativeMissionProviderCallBroker } = require('./nativeMissionProviderCallBroker');
 const {
   createNativeMissionProviderBrokerHttpServer,
   requestDigest,
@@ -65,10 +63,16 @@ function createNativeMissionIndependentOriginalBrokerServer({
     }
   };
   const broker = createNativeMissionProviderCallBroker({
-    store, sendProvider, assertAuthorized,
+    store,
+    sendProvider,
+    assertAuthorized,
   });
   return createNativeMissionProviderBrokerHttpServer({
-    store, broker, secret, provider, authorizeScope,
+    store,
+    broker,
+    secret,
+    provider,
+    authorizeScope,
   });
 }
 

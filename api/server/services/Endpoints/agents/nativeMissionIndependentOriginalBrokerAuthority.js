@@ -4,9 +4,17 @@ const { createHash } = require('node:crypto');
 
 const HASH = /^[a-f0-9]{64}$/;
 const FIELDS = [
-  'userId', 'tenantId', 'parentConversationId', 'parentRunId',
-  'childThreadId', 'taskId', 'attemptKey', 'agentId',
-  'provider', 'model', 'operationKey',
+  'userId',
+  'tenantId',
+  'parentConversationId',
+  'parentRunId',
+  'childThreadId',
+  'taskId',
+  'attemptKey',
+  'agentId',
+  'provider',
+  'model',
+  'operationKey',
 ];
 const bounded = (value, empty = false) =>
   typeof value === 'string' && value.length <= 256 && (empty || value.length > 0);
@@ -34,10 +42,17 @@ function createNativeMissionIndependentOriginalBrokerAuthority({
   getCurrentModelBinding,
 }) {
   if (
-    [findOriginalOperation, getMissionOrigin, getConvo, getStartReceipt,
-      readOriginalCheckpoint, authorizeCurrentOwner, canViewAgent,
-      inspectOriginalChildOwner, getCurrentModelBinding]
-      .some((fn) => typeof fn !== 'function')
+    [
+      findOriginalOperation,
+      getMissionOrigin,
+      getConvo,
+      getStartReceipt,
+      readOriginalCheckpoint,
+      authorizeCurrentOwner,
+      canViewAgent,
+      inspectOriginalChildOwner,
+      getCurrentModelBinding,
+    ].some((fn) => typeof fn !== 'function')
   ) {
     throw new Error('NATIVE_BROKER_ORIGINAL_AUTH_DEPENDENCIES');
   }
@@ -48,10 +63,12 @@ function createNativeMissionIndependentOriginalBrokerAuthority({
       !HASH.test(identity.operationKey) ||
       !HASH.test(requestDigest) ||
       !['execute', 'read'].includes(operation)
-    ) return false;
+    )
+      return false;
     const original = Object.fromEntries(FIELDS.map((field) => [field, identity[field]]));
     const scope = {
-      userId: original.userId, tenantId: original.tenantId,
+      userId: original.userId,
+      tenantId: original.tenantId,
       parentConversationId: original.parentConversationId,
       parentRunId: original.parentRunId,
       childThreadId: original.childThreadId,
@@ -87,17 +104,22 @@ function createNativeMissionIndependentOriginalBrokerAuthority({
       lineage?.subagentKind !== 'agent' ||
       (lineage?.subagentType !== scope.agentId &&
         !(lineage?.subagentType === 'self' && scope.agentId === parent.agent_id))
-    ) return false;
+    )
+      return false;
     if (!(await canViewAgent({ ...scope, agentId: parent.agent_id }))) return false;
     const [origin, start, row] = await Promise.all([
       getMissionOrigin({
-        userId: scope.userId, tenantId: scope.tenantId,
+        userId: scope.userId,
+        tenantId: scope.tenantId,
         conversationId: scope.parentConversationId,
-        parentResponseMessageId: scope.parentRunId, agentId: parent.agent_id,
+        parentResponseMessageId: scope.parentRunId,
+        agentId: parent.agent_id,
       }),
       getStartReceipt({
-        userId: scope.userId, tenantId: scope.tenantId,
-        conversationId: scope.childThreadId, messageId: scope.taskId + ':user',
+        userId: scope.userId,
+        tenantId: scope.tenantId,
+        conversationId: scope.childThreadId,
+        messageId: scope.taskId + ':user',
       }),
       findOriginalOperation({ callKey: sha(original) }),
     ]);
@@ -128,7 +150,8 @@ function createNativeMissionIndependentOriginalBrokerAuthority({
       typeof row.checkpointNs !== 'string' ||
       !bounded(row.generationNamespace) ||
       row.generationNamespace !== origin.checkpointNamespace
-    ) return false;
+    )
+      return false;
     let address;
     try {
       address = JSON.parse(
@@ -144,7 +167,8 @@ function createNativeMissionIndependentOriginalBrokerAuthority({
       address[0] !== scope.parentConversationId ||
       address[2] !== parent.agent_id ||
       address[3] !== lineage.parentToolCallId
-    ) return false;
+    )
+      return false;
     const slot = {
       ...Object.fromEntries(FIELDS.slice(0, -1).map((field) => [field, original[field]])),
       parentToolCallId: lineage.parentToolCallId,
@@ -172,13 +196,21 @@ function createNativeMissionIndependentOriginalBrokerAuthority({
       checkpoint?.taskId !== scope.taskId ||
       checkpoint?.attemptKey !== scope.attemptKey ||
       checkpoint?.childThreadId !== scope.childThreadId
-    ) return false;
-    if (operation === 'execute' && !(await inspectOriginalChildOwner({
-      ...scope, parentToolCallId: lineage.parentToolCallId,
-    }))) return false;
-    return (await authorizeCurrentOwner(scope)) === true &&
+    )
+      return false;
+    if (
+      operation === 'execute' &&
+      !(await inspectOriginalChildOwner({
+        ...scope,
+        parentToolCallId: lineage.parentToolCallId,
+      }))
+    )
+      return false;
+    return (
+      (await authorizeCurrentOwner(scope)) === true &&
       (await canViewAgent({ ...scope, agentId: scope.agentId })) === true &&
-      (await canViewAgent({ ...scope, agentId: parent.agent_id })) === true;
+      (await canViewAgent({ ...scope, agentId: parent.agent_id })) === true
+    );
   };
 }
 
