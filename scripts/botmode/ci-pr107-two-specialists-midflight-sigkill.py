@@ -447,6 +447,13 @@ const mongoose=require('mongoose');(async()=>{
             COMPOSE+["logs","--no-color","--tail","2500","api"],
             capture_output=True,text=True,timeout=25,check=True,
         ).stdout
+        for field in ('REJECT','AI_PRESENT','AI_ID_PRESENT','TOOL_CALLS','STATE_MESSAGES'):
+            values=re.findall(
+                r'CI_RESEARCH_OBSERVATION_'+field+r'=([A-Z_0-9a-z-]{1,32})',
+                api_logs,
+            )
+            print('CI_PR107_COLD_MULTI_RESEARCH_OBSERVATION_'+field+'='+
+                  (values[-1] if values else 'NOT_OBSERVED'),flush=True)
         # This diagnostic is emitted ONLY when the SDK refuses a forbidden
         # native graph effect surface in the disposable CI mission.
         for field in ('NODE','TOOLS','GRAPH_TOOLS','DEFINITIONS','DELEGATION'):

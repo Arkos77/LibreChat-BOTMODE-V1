@@ -128,7 +128,19 @@ export function requireResearchObservation(
   return async (state: BaseGraphState): Promise<void> => {
     const ai = state.agentOutputs?.[phaseId] as AIMessage | undefined;
     const calls = ai?.tool_calls ?? [];
-    const reject = () => {
+    const reject = (reason: string) => {
+      // CI-only shape diagnostics. Never log message text, tool arguments,
+      // source URLs or original mission identities.
+      if (process.env.BOTMODE_CI_ORIGINAL_MISSION_DIAGNOSTICS === '1') {
+        process.stderr.write(
+          'CI_RESEARCH_OBSERVATION_REJECT=' + reason + '\n' +
+          'CI_RESEARCH_OBSERVATION_AI_PRESENT=' + Boolean(ai) + '\n' +
+          'CI_RESEARCH_OBSERVATION_AI_ID_PRESENT=' + Boolean(ai?.id) + '\n' +
+          'CI_RESEARCH_OBSERVATION_TOOL_CALLS=' + calls.length + '\n' +
+          'CI_RESEARCH_OBSERVATION_STATE_MESSAGES=' +
+          (Array.isArray(state.messages) ? state.messages.length : -1) + '\n'
+        );
+      }
       throw new Error('BOTMODE_RESEARCH_OBSERVATION_REQUIRED');
     };
     if (
@@ -137,11 +149,11 @@ export function requireResearchObservation(
       calls.some((call) => !call.id || call.name !== 'web_search') ||
       new Set(calls.map((call) => call.id)).size !== calls.length
     )
-      reject();
+      reject('INVALID_AI_TOOL_CALLS');
     const index = state.messages.findIndex(
       (message) => message.id === ai!.id && message.getType() === 'ai',
     );
-    if (index < 0) reject();
+    if (index < 0) reject('AI_NOT_IN_MESSAGES');
     const following = state.messages.slice(index + 1);
     for (const call of calls) {
       const results = following.filter(
@@ -156,7 +168,8 @@ export function requireResearchObservation(
         !('status' in results[0]) ||
         results[0].status !== 'success'
       )
-        reject();
+        reject(results.length !== 1 ? 'TOOL_RESULT_COUNT' :
+          results[0].name !== 'web_search' ? 'TOOL_RESULT_NAME' : 'TOOL_RESULT_STATUS');
     }
     await onObserved?.(calls.map((call) => call.id!));
   };
