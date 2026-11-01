@@ -63,11 +63,13 @@ describe('cold native graph original receipt proof (read-only)', () => {
       .rejects.toThrow('NATIVE_COLD_GRAPH_ORIGINAL_INTENT_UNVERIFIED');
     expect(h.store.readOriginalNativeGraph).not.toHaveBeenCalled();
   });
-  it('rejects revoked authorization after Mongo read', async () => {
+  it('rejects revoked authorization after Mongo receipt read', async () => {
     const h = setup();
     h.assertAuthorized.mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error('REVOKED'));
     await expect(h.prove({ candidate, claim, identity, requestDigest, pendingNodes }))
       .rejects.toThrow('REVOKED');
+    expect(h.store.readOriginalNativeGraph).toHaveBeenCalledTimes(1);
   });
 });
