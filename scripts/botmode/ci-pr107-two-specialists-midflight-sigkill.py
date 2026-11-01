@@ -496,6 +496,25 @@ const mongoose=require('mongoose');(async()=>{
                    'NOT_OBSERVED'),flush=True)
             print('CI_PR107_COLD_MULTI_NATIVE_'+label+'_MARKERS='+
                   str(len(values)),flush=True)
+        http_statuses=re.findall(
+            r'CI_NATIVE_4C_BROKER_HTTP_STATUS=(200|400|401|403|404|409|500|503|OTHER)',api_logs)
+        print('CI_PR107_COLD_MULTI_BROKER_HTTP='+
+              (http_statuses[-1] if http_statuses else 'NOT_OBSERVED'),flush=True)
+        print('CI_PR107_COLD_MULTI_BROKER_HTTP_ATTEMPTS='+
+              str(len(http_statuses)),flush=True)
+        try:
+            broker_logs=subprocess.run(
+                COMPOSE+['logs','--no-color','--tail','1500','ci-original-provider-broker'],
+                capture_output=True,text=True,timeout=20,check=True).stdout
+            rejects=re.findall(
+                r'CI_NATIVE_4C_BROKER_AUTH_DENY=(SHAPE|OWNER|CONVERSATION|MISSION_BINDING|CHECKPOINT|LEASE|REQUEST)',
+                broker_logs)
+            print('CI_PR107_COLD_MULTI_BROKER_AUTH_DENY='+
+                  (rejects[-1] if rejects else 'NOT_OBSERVED'),flush=True)
+            print('CI_PR107_COLD_MULTI_BROKER_AUTH_DENY_COUNT='+
+                  str(len(rejects)),flush=True)
+        except (OSError,subprocess.SubprocessError):
+            print('CI_PR107_COLD_MULTI_BROKER_AUTH_DIAG_UNAVAILABLE=TRUE',flush=True)
         # This diagnostic is emitted ONLY when the SDK refuses a forbidden
         # native graph effect surface in the disposable CI mission.
         for field in ('NODE','TOOLS','GRAPH_TOOLS','DEFINITIONS','DELEGATION'):

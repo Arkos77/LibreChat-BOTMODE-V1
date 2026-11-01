@@ -102,6 +102,12 @@ function createNativeMissionOriginalGraphBrokerModelFetch({
       signal,
       redirect: 'error',
     });
+    if (process.env.BOTMODE_CI_ORIGINAL_MISSION_DIAGNOSTICS === '1') {
+      const status = response?.status;
+      const category = [200, 400, 401, 403, 404, 409, 500, 503].includes(status)
+        ? String(status) : 'OTHER';
+      process.stderr.write('CI_NATIVE_4C_BROKER_HTTP_STATUS=' + category + '\n');
+    }
     if (response?.status !== 200) deny('NATIVE_GRAPH_FETCH_BROKER_UNAVAILABLE');
     const receipt = await response.json();
     if (!receipt || typeof receipt !== 'object' || typeof receipt.status !== 'string') {
