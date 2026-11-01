@@ -20,10 +20,10 @@ routes[0]['baseURL']='http://host.docker.internal:8088/api/v1'
 # real provider credential, or change to a persistent user's web settings.
 data['webSearch']={
     'searchProvider':'searxng','scraperProvider':'firecrawl','rerankerType':'none',
-    'searxngInstanceUrl':'http://host.docker.internal:8088',
-    'searxngApiKey':'ci-local-fixture-no-real-key',
-    'firecrawlApiUrl':'http://host.docker.internal:8088',
-    'firecrawlApiKey':'ci-local-fixture-no-real-key',
+    'searxngInstanceUrl':'${BOTMODE_CI_WEB_URL}',
+    'searxngApiKey':'${BOTMODE_CI_WEB_KEY}',
+    'firecrawlApiUrl':'${BOTMODE_CI_WEB_URL}',
+    'firecrawlApiKey':'${BOTMODE_CI_WEB_KEY}',
     'allowedAddresses':['host.docker.internal:8088'],
 }
 path.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
@@ -63,6 +63,13 @@ assert len(items)==2 and len({v['agentId'] for v in items})==2
 assert all(v['provider']=='openrouter' and v['model']=='openrouter/free' for v in items)
 print('CI_ORIGINAL_TWO_REAL_AGENT_BINDINGS=PASS')
 PY_VALIDATE
+
+# The web auth loader reads only explicit environment-variable references
+# from librechat.yaml. Direct string literals are not credentials and result
+# in an unregistered web_search tool despite its advertised model schema.
+# CI runner only: make these fixed fixture variables available to the API.
+sed -i '/      - HOST=0.0.0.0/a\      - BOTMODE_CI_WEB_URL=http://host.docker.internal:8088\n      - BOTMODE_CI_WEB_KEY=ci-local-fixture-no-real-key' docker-compose.botmode.yml
+echo 'CI_ORIGINAL_RESEARCH_WEB_ENV_REFERENCES_CONFIGURED=PASS'
 
 secret="$(openssl rand -hex 48)"
 catalog="$(cat /tmp/botmode-ci-original-bindings.json)"
