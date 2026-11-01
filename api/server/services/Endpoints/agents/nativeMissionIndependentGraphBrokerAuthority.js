@@ -40,17 +40,20 @@ function createNativeMissionIndependentGraphBrokerAuthority({
   }
   // Disposable CI diagnostics only. Do not record principal IDs, prompts,
   // request digests, agent bindings or token material.
+  const ciActive = () => process.env.BOTMODE_CI_ORIGINAL_BROKER === '1' &&
+    process.env.COMPOSE_PROJECT_NAME?.startsWith('botmode-pr107-head-');
+  const ciStage = (stage) => {
+    if (ciActive()) process.stderr.write('CI_NATIVE_4C_AUTH_STAGE=' + stage + '\n');
+  };
   const denyStage = (stage) => {
-    if (process.env.BOTMODE_CI_ORIGINAL_BROKER === '1' &&
-        process.env.COMPOSE_PROJECT_NAME?.startsWith('botmode-pr107-head-')) {
-      process.stderr.write('CI_NATIVE_4C_BROKER_AUTH_DENY=' + stage + '\n');
-    }
+    if (ciActive()) process.stderr.write('CI_NATIVE_4C_BROKER_AUTH_DENY=' + stage + '\n');
     return false;
   };
   return async ({
     identity, requestDigest, operation,
     authorizedRequest,
   }) => {
+    ciStage('ENTER');
     if (
       identity?.mode !== 'native_graph' ||
       fields.some((field) => !bounded(identity[field], field === 'tenantId')) ||
@@ -77,7 +80,9 @@ function createNativeMissionIndependentGraphBrokerAuthority({
       provider: identity.provider,
       model: identity.model,
     };
+    ciStage('BEFORE_OWNER');
     if ((await authorizeCurrentOwner(scope)) !== true) return denyStage('OWNER');
+    ciStage('BEFORE_CONVERSATION');
     const parent = await getConvo(scope.userId, scope.conversationId);
     if (
       parent?.conversationId !== scope.conversationId ||
@@ -85,6 +90,7 @@ function createNativeMissionIndependentGraphBrokerAuthority({
       parent.subagentThread != null ||
       !bounded(parent.agent_id)
     ) return denyStage('CONVERSATION');
+    ciStage('BEFORE_MISSION');
     const [origin, binding, specialistVisible, workerVisible] = await Promise.all([
       getMissionOrigin({
         userId: scope.userId, tenantId: scope.tenantId,
@@ -120,6 +126,7 @@ function createNativeMissionIndependentGraphBrokerAuthority({
       binding?.model !== scope.model
     ) return denyStage('MISSION_BINDING');
 
+    ciStage('BEFORE_CHECKPOINT');
     const checkpoint = await readOriginalGraphCheckpoint({
       ...scope, requestDigest, plan: origin.plan,
     });
@@ -138,9 +145,11 @@ function createNativeMissionIndependentGraphBrokerAuthority({
     // In a recovered API we can inspect a committed result without the
     // original live dispatch lease. We must NEVER infer fresh dispatch rights.
     if (operation === 'reserve_native_graph') {
+      ciStage('BEFORE_LEASE');
       if ((await inspectOriginalGraphLease({
         ...scope, workerAgentId: parent.agent_id, plan: origin.plan,
       })) !== true) return denyStage('LEASE');
+      ciStage('BEFORE_REQUEST');
       if ((await verifyOriginalModelRequest({
         ...scope, requestDigest, authorizedRequest,
       })) !== true) return denyStage('REQUEST');

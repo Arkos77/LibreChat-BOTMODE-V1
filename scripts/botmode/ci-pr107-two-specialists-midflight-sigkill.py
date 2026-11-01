@@ -513,6 +513,19 @@ const mongoose=require('mongoose');(async()=>{
                   (rejects[-1] if rejects else 'NOT_OBSERVED'),flush=True)
             print('CI_PR107_COLD_MULTI_BROKER_AUTH_DENY_COUNT='+
                   str(len(rejects)),flush=True)
+            stages=re.findall(
+                r'CI_NATIVE_4C_AUTH_STAGE=(ENTER|BEFORE_OWNER|BEFORE_CONVERSATION|BEFORE_MISSION|BEFORE_CHECKPOINT|BEFORE_LEASE|BEFORE_REQUEST)',
+                broker_logs)
+            print('CI_PR107_COLD_MULTI_BROKER_AUTH_LAST_STAGE='+
+                  (stages[-1] if stages else 'NOT_OBSERVED'),flush=True)
+            for field,pattern in (
+                ('EXCEPTION_CLASS',r'(TypeError|ReferenceError|SyntaxError|RangeError|MongoServerError|ValidationError|Error|OTHER)'),
+                ('EXCEPTION_HASH',r'([a-f0-9]{12})'),
+                ('EXCEPTION_LENGTH',r'([0-9]{1,4})'),
+            ):
+                values=re.findall('CI_NATIVE_4C_BROKER_'+field+'='+pattern,broker_logs)
+                print('CI_PR107_COLD_MULTI_BROKER_'+field+'='+
+                      (values[-1] if values else 'NOT_OBSERVED'),flush=True)
         except (OSError,subprocess.SubprocessError):
             print('CI_PR107_COLD_MULTI_BROKER_AUTH_DIAG_UNAVAILABLE=TRUE',flush=True)
         # This diagnostic is emitted ONLY when the SDK refuses a forbidden

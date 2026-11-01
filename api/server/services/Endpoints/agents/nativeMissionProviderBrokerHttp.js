@@ -174,7 +174,21 @@ function createNativeMissionProviderBrokerHttpServer({
       }
       const result = await broker.execute({ identity, requestDigest: digest, authorizedRequest });
       return respond(200, result);
-    } catch {
+    } catch (error) {
+      // A disposable CI run may classify hidden broker exceptions by stable
+      // fingerprint. Never log the message, arguments, bodies, IDs or stack.
+      if (process.env.BOTMODE_CI_ORIGINAL_BROKER === '1' &&
+          process.env.COMPOSE_PROJECT_NAME?.startsWith('botmode-pr107-head-')) {
+        const message = typeof error?.message === 'string' ? error.message : '';
+        const hash = createHash('sha256').update(message.toLowerCase()).digest('hex').slice(0, 12);
+        const category = ['TypeError','ReferenceError','SyntaxError','RangeError',
+          'MongoServerError','ValidationError','Error'].includes(error?.name)
+          ? error.name : 'OTHER';
+        process.stderr.write(
+          'CI_NATIVE_4C_BROKER_EXCEPTION_CLASS=' + category + '\n' +
+          'CI_NATIVE_4C_BROKER_EXCEPTION_HASH=' + hash + '\n' +
+          'CI_NATIVE_4C_BROKER_EXCEPTION_LENGTH=' + message.length + '\n');
+      }
       // Never log payloads, provider credentials, responses, or stack traces.
       return respond(503, { error: 'unavailable' });
     }
