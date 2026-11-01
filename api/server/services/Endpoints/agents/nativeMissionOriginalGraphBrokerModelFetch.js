@@ -179,7 +179,7 @@ function createNativeMissionOriginalGraphBrokerModelFetch({
     // Only the original running graph may record a one-shot model intent.
     // Cold recovery never creates an intent and never dispatches a provider.
     if (scope.recoveryOnly !== true &&
-      (await recordOriginalModelRequest(query)) !== true) {
+      (await recordOriginalModelRequest({ ...query, checkpointProof: checkpoint })) !== true) {
       deny('NATIVE_GRAPH_FETCH_ORIGINAL_INTENT_NOT_DURABLE');
     }
     let receipt = scope.recoveryOnly === true
