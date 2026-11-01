@@ -129,7 +129,9 @@ function createNativeMissionIndependentGraphBrokerAuthority({
     // In a recovered API we can inspect a committed result without the
     // original live dispatch lease. We must NEVER infer fresh dispatch rights.
     if (operation === 'reserve_native_graph') {
-      if ((await inspectOriginalGraphLease(scope)) !== true) return false;
+      if ((await inspectOriginalGraphLease({
+        ...scope, workerAgentId: parent.agent_id, plan: origin.plan,
+      })) !== true) return false;
       if ((await verifyOriginalModelRequest({
         ...scope, requestDigest, authorizedRequest,
       })) !== true) return false;
