@@ -87,6 +87,32 @@ function createNativeMissionOriginalGraphRequestIntentStore({ collection }) {
       pendingNodes: Object.freeze([...observed.checkpointProof.pendingNodes]),
     });
   };
+  // Recovery lookup accepts the full host-authenticated operation identity,
+  // never an inferred digest. The immutable original digest comes from Mongo.
+  const readOriginalIntent = async ({ identity }) => {
+    if (!identity || typeof identity !== 'object' ||
+        Object.prototype.hasOwnProperty.call(identity, 'operationKey')) {
+      fail('NATIVE_GRAPH_ORIGINAL_INTENT_IDENTITY_INVALID');
+    }
+    const exact = validate({ identity, requestDigest: '0'.repeat(64) });
+    const observed = await collection.findOne({ slotKey: exact.slotKey });
+    if (!observed || !SHA.test(observed.requestDigest) ||
+        observed.slotKey !== exact.slotKey ||
+        JSON.stringify(observed.identity) !== JSON.stringify(exact.identity) ||
+        !validateProof(exact.identity, observed.checkpointProof)) {
+      fail('NATIVE_GRAPH_ORIGINAL_INTENT_NOT_VERIFIED');
+    }
+    return Object.freeze({
+      identity: Object.freeze({ ...exact.identity }),
+      requestDigest: observed.requestDigest,
+      checkpointProof: Object.freeze({
+        threadId: observed.checkpointProof.threadId,
+        checkpointNamespace: observed.checkpointProof.checkpointNamespace,
+        checkpointId: observed.checkpointProof.checkpointId,
+        pendingNodes: Object.freeze([...observed.checkpointProof.pendingNodes]),
+      }),
+    });
+  };
   const register = async (input) => {
     const exact = validate(input);
     if (!validateProof(exact.identity, input.checkpointProof)) {
@@ -110,7 +136,7 @@ function createNativeMissionOriginalGraphRequestIntentStore({ collection }) {
     if (!(await verify(input))) fail('NATIVE_GRAPH_REQUEST_INTENT_IMMUTABLE_CONFLICT');
     return true;
   };
-  return Object.freeze({ register, verify, readProof });
+  return Object.freeze({ register, verify, readProof, readOriginalIntent });
 }
 
 /**
