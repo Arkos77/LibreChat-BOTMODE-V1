@@ -26,6 +26,7 @@ function deny(code) {
  */
 function createNativeMissionOriginalGraphBrokerHost({
   readOriginalGraphCheckpoint,
+  readRecoveredGraphCheckpoint,
   recordOriginalModelRequest,
   resolveModelBinding,
   brokerUrl,
@@ -41,7 +42,16 @@ function createNativeMissionOriginalGraphBrokerHost({
   ) deny('NATIVE_GRAPH_BROKER_HOST_DEPENDENCIES_MISSING');
 
   return Object.freeze({
-    makeMissionFetchFactory: ({ original, plan, capabilityAttestation, client }) => {
+    makeRecoveryFetchFactory: (args) => {
+      if (typeof readRecoveredGraphCheckpoint !== 'function') {
+        deny('NATIVE_GRAPH_BROKER_COLD_CHECKPOINT_READER_MISSING');
+      }
+      return makeFactory(args, true);
+    },
+    makeMissionFetchFactory: (args) => makeFactory(args, false),
+  });
+
+  function makeFactory({ original, plan, capabilityAttestation, client }, recoveryOnly) {
       if (
         !original ||
         !client || client.orchestratorPlan !== plan ||
@@ -85,12 +95,14 @@ function createNativeMissionOriginalGraphBrokerHost({
           nodeId: task.nodeId,
           taskId: task.taskId,
           agentId: task.agentId,
+          ...(recoveryOnly ? { recoveryOnly: true } : {}),
         });
       };
       const approved = createNativeMissionOriginalGraphBrokerModelFetchFactory({
         getScope,
         getOriginalCheckpointReference: (scope) =>
-          readOriginalGraphCheckpoint({ scope, plan, client }),
+          (recoveryOnly ? readRecoveredGraphCheckpoint : readOriginalGraphCheckpoint)(
+            { scope, plan, client }),
         recordOriginalModelRequest,
         resolveModelBinding,
         brokerUrl,
@@ -104,8 +116,7 @@ function createNativeMissionOriginalGraphBrokerHost({
         getScope(binding);
         return approved(binding);
       };
-    },
-  });
+  }
 }
 
 /** Called only after reading the immutable origin from Mongo. This function
