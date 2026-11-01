@@ -351,8 +351,15 @@ const startServer = async () => {
       } = require('./services/Endpoints/agents/nativeMissionOriginalGraphBrokerHost');
       const catalog = new Map(bindingCatalog.map((entry) =>
         [[entry.agentId, entry.provider, entry.model].join('\\0'), Object.freeze({ ...entry })]));
+      const {
+        createNativeMissionOriginalGraphRequestIntentStore,
+      } = require('./services/Endpoints/agents/nativeMissionOriginalGraphRequestIntentStore');
+      const requestIntents = createNativeMissionOriginalGraphRequestIntentStore({
+        collection: mongoose.connection.db.collection('native_mission_graph_request_intents'),
+      });
       const graphHost = createNativeMissionOriginalGraphBrokerHost({
         readOriginalGraphCheckpoint: createNativeMissionLiveGraphCheckpointReader(),
+        recordOriginalModelRequest: requestIntents.register,
         resolveModelBinding: (binding) =>
           catalog.get([binding.agentId, binding.provider, binding.model].join('\\0')),
         brokerUrl: process.env.BOTMODE_NATIVE_ORIGINAL_BROKER_URL,
