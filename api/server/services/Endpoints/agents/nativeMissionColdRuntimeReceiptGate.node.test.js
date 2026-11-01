@@ -3,7 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createNativeMissionColdRuntimeHost } = require('./nativeMissionColdRuntimeHost');
 
-function fixture(proveColdGraphReceipt, withTransport = true) {
+function fixture(proveColdGraphReceipt, withTransport = true, installResult) {
   const candidate = {
     streamId: 'conversation', createdAt: 1700000000000,
     checkpointNamespace: 'generation', checkpointId: 'checkpoint',
@@ -41,6 +41,13 @@ function fixture(proveColdGraphReceipt, withTransport = true) {
       actions.push('publication');
       return { getCandidate: async () => null, publishTerminal: async () => true };
     },
+    ...(installResult === undefined ? {} : {
+      installRecoveryTransport: async ({ client: actual }) => {
+        actions.push('install');
+        assert.equal(actual, client);
+        return installResult;
+      },
+    }),
     proveColdGraphReceipt: async (context) => {
       actions.push('proof');
       assert.equal(context.graph, graph);
@@ -91,4 +98,18 @@ test('receipt recovery cannot reconstruct a graph without broker transport', asy
     /NATIVE_COLD_GRAPH_RECOVERY_ONLY_TRANSPORT_MISSING/,
   );
   assert.deepEqual(f.actions, []);
+});
+
+test('auth-bound read-only transport installer runs before graph proof', async () => {
+  const f = fixture(true, true, true);
+  await f.run({ candidate: f.candidate, claim: f.claim, assertAuthorized: async () => true });
+  assert.deepEqual(f.actions.slice(0, 2), ['install', 'proof']);
+});
+test('refused transport installer blocks graph, proof and publication', async () => {
+  const f = fixture(true, true, false);
+  await assert.rejects(
+    f.run({ candidate: f.candidate, claim: f.claim, assertAuthorized: async () => true }),
+    /NATIVE_COLD_RUNTIME_TRANSPORT_INSTALL_DENIED/,
+  );
+  assert.deepEqual(f.actions, ['install']);
 });

@@ -19,7 +19,13 @@ function createNativeMissionColdRuntimeHost({
   oracle,
   publication,
   proveColdGraphReceipt,
+  installRecoveryTransport,
 }) {
+  if (installRecoveryTransport != null &&
+      (typeof installRecoveryTransport !== 'function' ||
+       typeof proveColdGraphReceipt !== 'function')) {
+    throw new Error('NATIVE_COLD_RUNTIME_TRANSPORT_INSTALLER_INVALID');
+  }
   if (proveColdGraphReceipt != null && typeof proveColdGraphReceipt !== 'function') {
     throw new Error('NATIVE_COLD_RUNTIME_RECEIPT_PROOF_INVALID');
   }
@@ -78,6 +84,17 @@ function createNativeMissionColdRuntimeHost({
         throw new Error('NATIVE_COLD_RUNTIME_HOST_SIGNAL_UNAVAILABLE');
       }
       client.options.nativeMissionRecoverySignal = signal;
+    }
+    // The authenticated host installs its ORIGINAL read-only broker binding
+    // before graph compilation. No transport is invented from a Redis claim.
+    if (installRecoveryTransport != null) {
+      await assertAuthorized();
+      if ((await installRecoveryTransport({
+        client, job: initialized.job, candidate, claim, assertAuthorized,
+      })) !== true) {
+        throw new Error('NATIVE_COLD_RUNTIME_TRANSPORT_INSTALL_DENIED');
+      }
+      await assertAuthorized();
     }
     // A receipts-required graph must never silently compile a direct provider
     // transport when the cold broker binding has not been installed.

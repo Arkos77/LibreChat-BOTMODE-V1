@@ -17,6 +17,7 @@ function createNativeMissionRecoveryHandlerFactory({
   oracle,
   publication,
   proveColdGraphReceipt,
+  installRecoveryTransport,
   qualifyAndExecuteRecoveredMissionSegment,
   continueColdNativeMissionGraph,
   log,
@@ -36,6 +37,7 @@ function createNativeMissionRecoveryHandlerFactory({
     oracle,
     publication,
     ...(proveColdGraphReceipt == null ? {} : { proveColdGraphReceipt }),
+    ...(installRecoveryTransport == null ? {} : { installRecoveryTransport }),
   });
   return createNativeMissionRecoveryCoordinator({
     manager,
