@@ -111,7 +111,9 @@ function createNativeMissionIndependentGraphBrokerAuthority({
       binding?.model !== scope.model
     ) return false;
 
-    const checkpoint = await readOriginalGraphCheckpoint(scope);
+    const checkpoint = await readOriginalGraphCheckpoint({
+      ...scope, requestDigest, plan: origin.plan,
+    });
     if (
       checkpoint?.checkpointId !== scope.checkpointId ||
       checkpoint.threadId !== scope.conversationId ||
