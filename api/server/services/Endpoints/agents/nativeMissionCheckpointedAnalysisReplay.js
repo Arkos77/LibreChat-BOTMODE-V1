@@ -1,7 +1,7 @@
 'use strict';
 const {
-  assertNativeMissionCapabilityAttestation,
-} = require('./nativeMissionCapabilityAttestation');
+  assertColdResearchCapabilityBaseline,
+} = require('./nativeMissionColdCommittedResearchAdmission');
 
 // This is deliberately narrower than general receipts_required replay.
 // Only a completed, checkpointed predecessor and ONE pending tool-free model
@@ -94,9 +94,12 @@ function createNativeMissionCheckpointedAnalysisReplay({ manager }) {
       throw new Error('NATIVE_COLD_ANALYSIS_PLAN_DENIED');
     }
     const agents = client.getReachableMissionAgents();
-    assertNativeMissionCapabilityAttestation({
-      recorded: job.nativeMissionCapabilityAttestation,
-      plan, agents, subagentTasks: client.options.subagentTasks,
+    // The original Worker may have owned a background queue; a cold graph
+    // never reinstalls it. Compare that historical bit in the signed hash
+    // only, while retaining an empty executable queue and strict pending-node
+    // checks below.
+    assertColdResearchCapabilityBaseline({
+      recorded: job.nativeMissionCapabilityAttestation, plan, agents,
     });
     const predecessor = agents.filter((agent) => agent.id === research.agentId);
     const pending = agents.filter((agent) => agent.id === analysis.agentId);

@@ -1951,9 +1951,20 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       // begin. The digest is not a grant or replay receipt. In particular,
       // delegation, code/file tools and host evidence paths must still acquire
       // real effect receipts before a recovered provider can execute them.
+      // Only the signed execution members are nodes in the native MissionPlan.
+      // Other reachable specialists may be available for a future mission,
+      // but cannot execute or acquire effects in THIS graph. Fingerprinting
+      // them would make a 2-specialist cold run irreconstructible when the
+      // Worker has 5 authorized choices. The Worker's original delegation
+      // capability remains in the fingerprint; the current ACL for both
+      // selected agents is checked separately. Keep duplicate snapshots for
+      // signed members: conflicting capabilities must still demand receipts.
+      const signedNativeAgentIds = new Set([
+        primaryAgentId, ...orchestratorPlan.tasks.map((task) => task.agentId),
+      ]);
       const nativeMissionCapabilityAttestation = createNativeMissionCapabilityAttestation({
         plan: orchestratorPlan,
-        agents: reachableAgents,
+        agents: reachableAgents.filter((agent) => signedNativeAgentIds.has(agent.id)),
         subagentTasks: client.options.subagentTasks,
         hostEffectPathsPresent: (orchestratorMission?.evidenceDeclarations?.length ?? 0) > 0,
       });
