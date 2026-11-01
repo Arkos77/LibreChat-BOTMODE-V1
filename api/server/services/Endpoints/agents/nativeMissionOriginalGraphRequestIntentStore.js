@@ -40,10 +40,11 @@ function createNativeMissionOriginalGraphRequestIntentStore({ collection }) {
       !SHA.test(requestDigest)
     ) fail('NATIVE_GRAPH_REQUEST_INTENT_INVALID');
     const original = Object.fromEntries(FIELDS.map((name) => [name, identity[name]]));
-    // Provider/model/agent are NOT part of the slot: a modified binding
-    // cannot allocate an additional request against the same graph node.
+    // Provider/model/agent AND checkpoint ID are NOT part of the slot:
+    // a changed checkpoint must not allocate another original node call
+    // within the same generation. Exact checkpoint remains part of identity.
     const slotKey = hash(Object.fromEntries(FIELDS.filter(
-      (name) => !['agentId', 'provider', 'model'].includes(name)
+      (name) => !['agentId', 'provider', 'model', 'graphCheckpointId'].includes(name)
     ).map((name) => [name, original[name]])));
     return { slotKey, identity: original, requestDigest };
   };
