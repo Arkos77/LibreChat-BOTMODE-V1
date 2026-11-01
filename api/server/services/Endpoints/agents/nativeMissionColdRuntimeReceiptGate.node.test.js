@@ -3,7 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createNativeMissionColdRuntimeHost } = require('./nativeMissionColdRuntimeHost');
 
-function fixture(proveColdGraphReceipt) {
+function fixture(proveColdGraphReceipt, withTransport = true) {
   const candidate = {
     streamId: 'conversation', createdAt: 1700000000000,
     checkpointNamespace: 'generation', checkpointId: 'checkpoint',
@@ -23,6 +23,9 @@ function fixture(proveColdGraphReceipt) {
       agentRuntime: { user: { id: 'owner', tenantId: 'tenant' },
         requestBody: { conversationId: candidate.streamId } },
       agent: { id: 'worker' },
+      ...(withTransport ? { nativeGraphModelFetchFactory: () => async () => {
+        throw new Error('DIRECT_DISPATCH_DENIED');
+      } } : {}),
     },
     conversationId: candidate.streamId,
     publicationBarrier: { activate: () => true },
@@ -79,4 +82,13 @@ test('revoked authorization during original receipt verification cannot continue
     /ACL_REVOKED/,
   );
   assert.deepEqual(f.actions, ['proof']);
+});
+
+test('receipt recovery cannot reconstruct a graph without broker transport', async () => {
+  const f = fixture(true, false);
+  await assert.rejects(
+    f.run({ candidate: f.candidate, claim: f.claim, assertAuthorized: async () => true }),
+    /NATIVE_COLD_GRAPH_RECOVERY_ONLY_TRANSPORT_MISSING/,
+  );
+  assert.deepEqual(f.actions, []);
 });

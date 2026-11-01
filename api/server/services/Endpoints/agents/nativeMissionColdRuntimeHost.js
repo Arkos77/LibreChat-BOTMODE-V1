@@ -79,6 +79,12 @@ function createNativeMissionColdRuntimeHost({
       }
       client.options.nativeMissionRecoverySignal = signal;
     }
+    // A receipts-required graph must never silently compile a direct provider
+    // transport when the cold broker binding has not been installed.
+    if (proveColdGraphReceipt != null &&
+        typeof client.options?.nativeGraphModelFetchFactory !== 'function') {
+      throw new Error('NATIVE_COLD_GRAPH_RECOVERY_ONLY_TRANSPORT_MISSING');
+    }
     await assertAuthorized();
     const graph = await buildGraph({ client, candidate, claim, assertAuthorized });
     if (!graph || typeof graph.invoke !== 'function' || typeof graph.getState !== 'function') {
