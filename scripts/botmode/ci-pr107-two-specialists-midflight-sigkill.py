@@ -724,6 +724,17 @@ for attempt in range(90):
             "analysisWrites":native_post.get("analysisDurable"),
             "published":value["published"]
         },sort_keys=True),flush=True)
+    if attempt in (15, 30):
+        # An already-rejected static agent document cannot change as the
+        # same API process polls. Collect the bounded diagnostics immediately
+        # instead of spending several minutes repeating an identical 4C FAIL.
+        logs=subprocess.run(COMPOSE+['logs','--no-color','--tail','800','api'],
+                            capture_output=True,text=True,timeout=30)
+        if (logs.returncode==0 and
+            'NATIVE_COLD_DOCUMENT_CLIENT_TOOL_RUNTIME_UNAVAILABLE' in logs.stdout):
+            print('CI_PR107_COLD_MULTI_FATAL_COLD_ADMISSION=TOOL_RUNTIME_UNAVAILABLE',
+                  flush=True)
+            break
     time.sleep(2)
 if outcome is None:
     # Diagnose *after* the real SIGKILL and API restart, without granting a

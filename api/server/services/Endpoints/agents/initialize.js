@@ -2154,7 +2154,7 @@ async function initializeClientFromDocuments({ candidate, claim, job, context, a
     documents.some(
       (agent) =>
         ((agent.tools?.length ?? 0) > 0 &&
-          !(committedResearch && agent.id === committedResearch.researchAgentId &&
+          !(committedResearch?.historicalWebToolAgentIds.includes(agent.id) &&
             agent.tools.length === 1 && agent.tools[0] === 'web_search')) ||
         Object.keys(agent.tool_options ?? {}).length > 0 ||
         // Delegation is an implicit SDK tool, even when `tools` is empty.
@@ -2274,7 +2274,7 @@ async function initializeClientFromDocuments({ candidate, claim, job, context, a
         endpointOption: { endpoint: EModelEndpoint.agents },
         isInitialAgent: definition.id === job.agent_id,
         loadTools: async ({ tools }) => {
-          if (committedResearch && definition.id === committedResearch.researchAgentId &&
+          if (committedResearch?.historicalWebToolAgentIds.includes(definition.id) &&
               tools.length === 1 && tools[0] === 'web_search') {
             // This is an INERT historical graph descriptor, never a runnable
             // web tool. If a crash recovery ever attempts to revisit Research,
@@ -2294,7 +2294,7 @@ async function initializeClientFromDocuments({ candidate, claim, job, context, a
       { ...db, filterFilesByAgentAccess },
     );
     const historicalResearchDefinition =
-      committedResearch && definition.id === committedResearch.researchAgentId &&
+      committedResearch?.historicalWebToolAgentIds.includes(definition.id) &&
       config?.toolDefinitions?.length === 1 &&
       config.toolDefinitions[0]?.name === 'web_search';
     if (
@@ -2321,6 +2321,12 @@ async function initializeClientFromDocuments({ candidate, claim, job, context, a
       throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_EXTERNAL_EFFECTS_DENIED');
     },
   });
+  if (committedResearch) {
+    // The runtime has no executable historical tools, but the signed
+    // fingerprint must still include their NAMES when replay is admitted.
+    client.options.nativeMissionColdHistoricalWebToolAgentIds =
+      committedResearch.historicalWebToolAgentIds;
+  }
   // This is the EXACT original admission fingerprint persisted alongside the
   // durable plan, not a current-configuration guess. Older jobs without it are
   // intentionally ineligible for automatic cold execution. Matching the digest
@@ -2330,6 +2336,7 @@ async function initializeClientFromDocuments({ candidate, claim, job, context, a
         recorded: job.nativeMissionCapabilityAttestation,
         plan: job.orchestratorPlan,
         agents: client.getReachableMissionAgents(),
+        historicalWebToolAgentIds: committedResearch.historicalWebToolAgentIds,
       })
     : assertNativeMissionCapabilityAttestation({
         recorded: job.nativeMissionCapabilityAttestation,

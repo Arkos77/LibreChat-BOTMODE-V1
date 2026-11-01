@@ -43,6 +43,8 @@ test('only the signed, two-agent research-v1 history may carry inert web_search'
     .researchAgentId, 'researcher');
   for (const alter of [
     (x) => { x.docs[2].tools = ['send_email']; },
+    (x) => { x.docs[0].tools = ['web_search', 'send_email']; },
+    (x) => { x.docs[0].tools = 'web_search'; },
     (x) => { x.docs[1].tools = ['web_search', 'file_search']; },
     (x) => { x.docs[1].skills_enabled = true; },
     (x) => { x.docs[0].subagents.agent_ids.push('researcher'); },
@@ -62,6 +64,33 @@ test('only the signed, two-agent research-v1 history may carry inert web_search'
       job: mutated.job, documents: mutated.docs,
     }), null);
   }
+});
+test('the real onboarding Worker web_search is inert during recovery yet signed', () => {
+  const f = fixture(true);
+  f.docs[0].tools = ['web_search'];
+  const shape = committedResearchRecoveryShape({ job: f.job, documents: f.docs });
+  assert.deepEqual(shape.historicalWebToolAgentIds, ['worker', 'researcher']);
+  const cold = f.runtime.map(a => ({
+    ...a, tools: [],
+    toolDefinitions: shape.historicalWebToolAgentIds.includes(a.id)
+      ? [{ name: 'web_search' }] : [],
+  }));
+  const original = f.runtime.map(a => ({
+    ...a, tools: shape.historicalWebToolAgentIds.includes(a.id)
+      ? [{ name: 'web_search' }] : [],
+    toolDefinitions: shape.historicalWebToolAgentIds.includes(a.id)
+      ? [{ name: 'web_search' }] : [],
+  }));
+  const recorded = createNativeMissionCapabilityAttestation({
+    plan, agents: original, subagentTasks: { store: 'original' },
+  });
+  assert.equal(assertColdResearchCapabilityBaseline({
+    recorded, plan, agents: cold, historicalWebToolAgentIds: shape.historicalWebToolAgentIds,
+  }), true);
+  assert.throws(() => assertColdResearchCapabilityBaseline({
+    recorded, plan, agents: cold,
+  }), /BASELINE_CHANGED/);
+  assert.ok(cold.every(a => !a.tools.length));
 });
 test('original subagent queue bit may be proven by hash but cannot be recreated', () => {
   for (const hadQueue of [false, true]) {

@@ -29,7 +29,10 @@ function committedResearchRecoveryShape({ job, documents }) {
     worker.id === researcher.id || worker.id === analyst.id ||
     !Array.isArray(researcher.tools) || researcher.tools.length !== 1 ||
     researcher.tools[0] !== 'web_search' ||
-    (worker.tools?.length ?? 0) !== 0 ||
+    !Array.isArray(worker.tools ?? []) ||
+    ((worker.tools?.length ?? 0) > 0 &&
+      !(worker.tools.length === 1 && worker.tools[0] === 'web_search')) ||
+    !Array.isArray(analyst.tools ?? []) ||
     (analyst.tools?.length ?? 0) !== 0 ||
     // No embedded tool configuration or hidden effect-capable agent surfaces.
     documents.some((a) =>
@@ -50,19 +53,36 @@ function committedResearchRecoveryShape({ job, documents }) {
         !worker.subagents.agent_ids.includes(researcher.id) ||
         !worker.subagents.agent_ids.includes(analyst.id)))
   ) return null;
-  return Object.freeze({ researchAgentId: researcher.id });
+  return Object.freeze({
+    researchAgentId: researcher.id,
+    // A Worker created through BOT MODE onboarding also has web_search.
+    // It is NEVER an executable graph node in this two-specialist mission.
+    historicalWebToolAgentIds: Object.freeze([
+      ...(worker.tools?.length === 1 ? [worker.id] : []), researcher.id,
+    ]),
+  });
 }
 
 // The original run may have had a subagent task queue on its Worker. Record
 // that ORIGINAL capability bit in a hash comparison only; NEVER reinstall a
 // queue or an executable subagent tool during cold graph reconstruction.
-function assertColdResearchCapabilityBaseline({ recorded, plan, agents }) {
+function assertColdResearchCapabilityBaseline({
+  recorded, plan, agents, historicalWebToolAgentIds,
+}) {
   if (recorded?.mode !== 'receipts_required') {
     throw new Error('NATIVE_COLD_RESEARCH_CAPABILITY_MODE_DENIED');
   }
+  // The initialized cold graph deliberately contains NO executable web tool.
+  // For signature comparison alone, reconstruct the tool NAMES that were
+  // authenticated from the original documents. No tool instance is created,
+  // no search can execute and a changed original signature still fails.
+  const baselineAgents = agents.map((agent) =>
+    historicalWebToolAgentIds?.includes(agent.id) && (agent.tools?.length ?? 0) === 0
+      ? { ...agent, tools: [{ name: 'web_search' }] }
+      : agent);
   const matches = [undefined, Object.freeze({})].filter((tasks) => {
     const observed = createNativeMissionCapabilityAttestation({
-      plan, agents, subagentTasks: tasks,
+      plan, agents: baselineAgents, subagentTasks: tasks,
       hostEffectPathsPresent: recorded.hostEffectPathsPresent === true,
     });
     return JSON.stringify(recorded) === JSON.stringify(observed);

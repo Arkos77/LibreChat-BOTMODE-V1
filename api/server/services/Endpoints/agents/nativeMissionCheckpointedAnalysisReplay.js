@@ -100,6 +100,8 @@ function createNativeMissionCheckpointedAnalysisReplay({ manager }) {
     // checks below.
     assertColdResearchCapabilityBaseline({
       recorded: job.nativeMissionCapabilityAttestation, plan, agents,
+      historicalWebToolAgentIds:
+        client.options.nativeMissionColdHistoricalWebToolAgentIds,
     });
     const predecessor = agents.filter((agent) => agent.id === research.agentId);
     const pending = agents.filter((agent) => agent.id === analysis.agentId);
