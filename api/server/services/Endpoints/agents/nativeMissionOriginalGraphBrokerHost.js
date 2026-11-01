@@ -141,10 +141,22 @@ function bindNativeMissionOriginalGraphBrokerForAcceptedMission({
     !client?.options ||
     client.options.nativeGraphModelFetchFactory != null ||
     client.options.agent?.id !== original?.agentId ||
-    client.conversationId !== original?.conversationId ||
+    // On a new original turn, BaseClient.setMessageOptions() has not run
+    // yet: client.user and client.conversationId are still undefined.
+    // The live, authenticated Express request is already bound to this
+    // initialized AgentClient. Require it to match original Mongo provenance
+    // when present, and never accept a conflicting post-initialized identity.
+    (client.options.req != null &&
+      (String(client.options.req.user?.id ?? '') !== original?.userId ||
+       client.options.req.body?.conversationId !== original?.conversationId)) ||
+    (client.conversationId == null
+      ? client.options.req?.body?.conversationId !== original?.conversationId
+      : client.conversationId !== original?.conversationId) ||
     client.jobCreatedAt !== original?.originalCreatedAt ||
     client.checkpointNamespace !== original?.checkpointNamespace ||
-    String(client.user ?? '') !== original?.userId ||
+    (client.user == null
+      ? String(client.options.req?.user?.id ?? '') !== original?.userId
+      : String(client.user) !== original?.userId) ||
     canonicalMissionJson(client.orchestratorPlan) !== canonicalMissionJson(plan)
   ) deny('NATIVE_GRAPH_BROKER_CLIENT_ORIGINAL_MISSION_MISMATCH');
 

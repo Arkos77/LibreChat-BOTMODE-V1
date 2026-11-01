@@ -142,6 +142,49 @@ describe('original native graph host binding (opt-in only)', () => {
     }
   });
 
+  it('accepts an authenticated ORIGINAL client before BaseClient.setMessageOptions', () => {
+    const { host } = setup();
+    const beforeMessageOptions = newClient();
+    delete beforeMessageOptions.user;
+    delete beforeMessageOptions.conversationId;
+    beforeMessageOptions.options.req = {
+      user: { id: original.userId },
+      body: { conversationId: original.conversationId },
+    };
+    expect(bindNativeMissionOriginalGraphBrokerForAcceptedMission({
+      client: beforeMessageOptions, brokerHost: host, original, plan, capabilityAttestation,
+    })).toBe(true);
+    expect(beforeMessageOptions.user).toBeUndefined();
+    expect(beforeMessageOptions.conversationId).toBeUndefined();
+    expect(typeof beforeMessageOptions.options.nativeGraphModelFetchFactory).toBe('function');
+  });
+
+  it('refuses forged or drifted request identities before and after message initialization', () => {
+    const { host } = setup();
+    for (const request of [
+      { user: { id: 'other-owner' }, body: { conversationId: original.conversationId } },
+      { user: { id: original.userId }, body: { conversationId: 'other-conversation' } },
+      { user: { id: original.userId }, body: {} },
+    ]) {
+      const beforeMessageOptions = newClient();
+      delete beforeMessageOptions.user;
+      delete beforeMessageOptions.conversationId;
+      beforeMessageOptions.options.req = request;
+      expect(() => bindNativeMissionOriginalGraphBrokerForAcceptedMission({
+        client: beforeMessageOptions, brokerHost: host, original, plan, capabilityAttestation,
+      })).toThrow('NATIVE_GRAPH_BROKER_CLIENT_ORIGINAL_MISSION_MISMATCH');
+      expect(beforeMessageOptions.options.nativeGraphModelFetchFactory).toBeUndefined();
+    }
+    const afterMessageOptions = newClient();
+    afterMessageOptions.options.req = {
+      user: { id: original.userId },
+      body: { conversationId: 'other-conversation' },
+    };
+    expect(() => bindNativeMissionOriginalGraphBrokerForAcceptedMission({
+      client: afterMessageOptions, brokerHost: host, original, plan, capabilityAttestation,
+    })).toThrow('NATIVE_GRAPH_BROKER_CLIENT_ORIGINAL_MISSION_MISMATCH');
+  });
+
   it('leaves the client unchanged when no host is configured or admission is denied', () => {
     const client = newClient();
     expect(bindNativeMissionOriginalGraphBrokerForAcceptedMission({
