@@ -81,11 +81,14 @@ mission_id = "ci-pr107-cold-"+str(uuid.uuid4())
 # signed research -> analysis mission, not a synthetic extra child side effect.
 mission = {"missionId":mission_id,"taskId":mission_id,
            "objective":"Research then analyse; publish one verified synthesis.",
+           "researchExecutionVersion":1,
            "constraints":["Answer strictly with the approved JSON."],
-           "requiredCapabilities":["ci-native-research","ci-native-analysis"],
+           "requiredCapabilities":["ci-native-research","web_search","ci-native-analysis"],
            "objectives":[
-               {"key":"research","objective":"Perform the delegated research.",
-                "requiredCapabilities":["ci-native-research"],"dependsOn":[]},
+               {"key":"research","objective":"Perform the delegated research and cite only observed sources.",
+                "requiredCapabilities":["ci-native-research","web_search"],"dependsOn":[],
+                "validation":{"criteria":[{"id":"ci-research-ok","field":"ok","expected":True}],
+                              "outputContract":"research-v1"}},
                {"key":"analysis","objective":"Analyse the research result.",
                 "requiredCapabilities":["ci-native-analysis"],"dependsOn":["research"]},
            ],
@@ -100,7 +103,8 @@ payload={"endpoint":"agents","agent_id":WORKER,
              "worker":{"id":"ci-worker","agentId":WORKER,"role":"worker","capabilities":["basic"],
                        "constraints":[]},
              "specialists":[{"id":a,"agentId":a,"role":"specialist",
-                             "capabilities":["basic",("ci-native-research" if i==0 else "ci-native-analysis")],
+                             "capabilities":(["basic","ci-native-research","web_search"] if i==0
+                                             else ["basic","ci-native-analysis"]),
                              "constraints":[]} for i,a in enumerate(ids)]}}}
 for attempt in range(15):
     try:
@@ -151,6 +155,14 @@ if not (
     tasks[1].get("dependsOn")==["research"]
 ):
     fail("ORIGINAL_SIGNED_TWO_SPECIALIST_PLAN_DENIED")
+research_signed=tasks[0]
+if (planned.get("mission",{}).get("researchExecutionVersion")!=1 or
+    "web_search" not in research_signed.get("requiredCapabilities",[]) or
+    not any(req.get("outputContract")=="research-v1"
+            for req in research_signed.get("validation",[])
+            if isinstance(req,dict))):
+    fail("ORIGINAL_RESEARCH_OBSERVATION_CONTRACT_MISSING")
+print("CI_PR107_COLD_MULTI_RESEARCH_V1_SIGNED=PASS",flush=True)
 print("CI_PR107_COLD_MULTI_TWO_SPECIALIST_SIGNED_PLAN=PASS",flush=True)
 
 # Source the immutable physical checkpoint generation directly from this
