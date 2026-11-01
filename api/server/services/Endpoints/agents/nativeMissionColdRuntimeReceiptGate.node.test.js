@@ -45,7 +45,11 @@ function fixture(proveColdGraphReceipt, withTransport = true, installResult) {
       installRecoveryTransport: async ({ client: actual }) => {
         actions.push('install');
         assert.equal(actual, client);
-        return installResult;
+        return installResult ? { bindGraph: async (graph) => {
+          actions.push('bindGraph');
+          assert.equal(typeof graph.getState, 'function');
+          return true;
+        } } : false;
       },
     }),
     proveColdGraphReceipt: async (context) => {
@@ -103,7 +107,7 @@ test('receipt recovery cannot reconstruct a graph without broker transport', asy
 test('auth-bound read-only transport installer runs before graph proof', async () => {
   const f = fixture(true, true, true);
   await f.run({ candidate: f.candidate, claim: f.claim, assertAuthorized: async () => true });
-  assert.deepEqual(f.actions.slice(0, 2), ['install', 'proof']);
+  assert.deepEqual(f.actions.slice(0, 3), ['install', 'bindGraph', 'proof']);
 });
 test('refused transport installer blocks graph, proof and publication', async () => {
   const f = fixture(true, true, false);

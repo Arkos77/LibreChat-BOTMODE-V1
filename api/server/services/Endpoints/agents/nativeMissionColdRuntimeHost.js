@@ -87,11 +87,14 @@ function createNativeMissionColdRuntimeHost({
     }
     // The authenticated host installs its ORIGINAL read-only broker binding
     // before graph compilation. No transport is invented from a Redis claim.
+    let transportBinding;
     if (installRecoveryTransport != null) {
       await assertAuthorized();
-      if ((await installRecoveryTransport({
+      transportBinding = await installRecoveryTransport({
         client, job: initialized.job, candidate, claim, assertAuthorized,
-      })) !== true) {
+      });
+      if (!transportBinding ||
+          typeof transportBinding.bindGraph !== 'function') {
         throw new Error('NATIVE_COLD_RUNTIME_TRANSPORT_INSTALL_DENIED');
       }
       await assertAuthorized();
@@ -106,6 +109,13 @@ function createNativeMissionColdRuntimeHost({
     const graph = await buildGraph({ client, candidate, claim, assertAuthorized });
     if (!graph || typeof graph.invoke !== 'function' || typeof graph.getState !== 'function') {
       throw new Error('NATIVE_COLD_RUNTIME_HOST_GRAPH_UNAVAILABLE');
+    }
+    if (transportBinding != null) {
+      await assertAuthorized();
+      if ((await transportBinding.bindGraph(graph)) !== true) {
+        throw new Error('NATIVE_COLD_RUNTIME_TRANSPORT_GRAPH_BIND_DENIED');
+      }
+      await assertAuthorized();
     }
     // Optional receipts-required path: authorize the *reconstructed* graph
     // and original committed broker operation before any replay or promotion.
