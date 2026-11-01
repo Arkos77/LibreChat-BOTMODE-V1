@@ -45,10 +45,13 @@ function testHarness(recoveryOnly = false, overrides = {}) {
   const getScope = jest.fn(() => ({
     ...scope, ...(recoveryOnly ? { recoveryOnly: true } : {}),
   }));
+  const recordOriginalModelRequest = jest.fn(async () => true);
   return {
     traffic, fetchImpl, getScope, getOriginalCheckpointReference,
+    recordOriginalModelRequest,
     modelFetch: createNativeMissionOriginalGraphBrokerModelFetch({
-      getScope, getOriginalCheckpointReference, provider: 'openrouter',
+      getScope, getOriginalCheckpointReference, recordOriginalModelRequest,
+      provider: 'openrouter',
       model: 'ci-free', modelEndpoint, brokerUrl, secret,
       fetchImpl, pause: async () => {}, maxPolls: 2, ...overrides,
     }),
@@ -67,6 +70,11 @@ describe('original direct LangGraph model transport (no detached child thread)',
     expect(sse).toContain('verified original completion');
     expect(sse).toContain('data: [DONE]');
     expect(h.traffic).toHaveLength(1);
+    expect(h.recordOriginalModelRequest).toHaveBeenCalledTimes(1);
+    expect(h.recordOriginalModelRequest).toHaveBeenCalledWith({
+      identity: h.traffic[0].payload.identity,
+      requestDigest: requestDigest(canonicalBody),
+    });
     expect(h.traffic[0].path).toBe('/execute-native-graph');
     expect(h.traffic[0].payload.requestDigest).toBe(requestDigest(canonicalBody));
     expect(h.traffic[0].payload.authorizedRequest).toEqual(canonicalBody);
@@ -89,6 +97,7 @@ describe('original direct LangGraph model transport (no detached child thread)',
       'verified original completion',
     );
     expect(h.traffic.map((e) => e.path)).toEqual(['/status-native-graph']);
+    expect(h.recordOriginalModelRequest).not.toHaveBeenCalled();
     expect(h.traffic[0].payload.authorizedRequest).toBeUndefined();
   });
 
@@ -153,6 +162,7 @@ describe('original direct LangGraph model transport (no detached child thread)',
     const factory = createNativeMissionOriginalGraphBrokerModelFetchFactory({
       getScope: () => scope,
       getOriginalCheckpointReference: async () => checkpoint,
+      recordOriginalModelRequest: async () => true,
       resolveModelBinding, brokerUrl, secret,
       fetchImpl: jest.fn(async () => new Response(JSON.stringify(receipt), { status: 200 })),
     });
