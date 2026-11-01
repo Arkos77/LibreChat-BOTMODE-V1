@@ -331,6 +331,38 @@ const startServer = async () => {
     logger.info(
       '[NativeMission] Original-child broker host enabled after independent broker check',
     );
+    // Direct graph brokerage is separately opt-in. A healthy detached-child
+    // broker does NOT prove it can authorize/read a native graph receipt.
+    // Demand the graph route BEFORE registering any graph model transport.
+    if (process.env.BOTMODE_NATIVE_ORIGINAL_GRAPH_BROKER_ENABLED === 'true') {
+      const graphProbe = new URL('status-native-graph', process.env.BOTMODE_NATIVE_ORIGINAL_BROKER_URL);
+      const graphResponse = await fetch(graphProbe, {
+        method: 'POST',
+        signal: AbortSignal.timeout(3000),
+      });
+      if (graphResponse.status !== 401) {
+        throw new Error('NATIVE_GRAPH_BROKER_INDEPENDENT_AUTHORITY_NOT_READY');
+      }
+      const {
+        createNativeMissionLiveGraphCheckpointReader,
+      } = require('./services/Endpoints/agents/nativeMissionOriginalGraphBrokerCheckpointReader');
+      const {
+        createNativeMissionOriginalGraphBrokerHost,
+      } = require('./services/Endpoints/agents/nativeMissionOriginalGraphBrokerHost');
+      const catalog = new Map(bindingCatalog.map((entry) =>
+        [[entry.agentId, entry.provider, entry.model].join('\\0'), Object.freeze({ ...entry })]));
+      const graphHost = createNativeMissionOriginalGraphBrokerHost({
+        readOriginalGraphCheckpoint: createNativeMissionLiveGraphCheckpointReader(),
+        resolveModelBinding: (binding) =>
+          catalog.get([binding.agentId, binding.provider, binding.model].join('\\0')),
+        brokerUrl: process.env.BOTMODE_NATIVE_ORIGINAL_BROKER_URL,
+        secret: process.env.BOTMODE_NATIVE_ORIGINAL_BROKER_SECRET,
+      });
+      app.locals.nativeMissionOriginalGraphBrokerHost = graphHost;
+      logger.info('[NativeMission] Original native graph broker host enabled with independent authority');
+    }
+  } else if (process.env.BOTMODE_NATIVE_ORIGINAL_GRAPH_BROKER_ENABLED === 'true') {
+    throw new Error('NATIVE_GRAPH_BROKER_PARENT_HOST_NOT_ENABLED');
   }
   configureAgentEventRuntime(appConfig?.endpoints?.agents?.eventDriven);
   initializeFileStorage(appConfig);
