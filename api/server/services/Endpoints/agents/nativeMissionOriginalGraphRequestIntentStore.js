@@ -57,21 +57,50 @@ function createNativeMissionOriginalGraphRequestIntentStore({ collection }) {
     }
     return indexPromise;
   };
+  const validateProof = (identity, proof) =>
+    proof != null &&
+    proof.threadId === identity.streamId &&
+    proof.checkpointNamespace === identity.checkpointNamespace &&
+    proof.checkpointId === identity.graphCheckpointId &&
+    Array.isArray(proof.pendingNodes) &&
+    proof.pendingNodes.length === 1 &&
+    proof.pendingNodes[0] === identity.nodeId;
   const equals = (observed, expected) =>
     observed?.slotKey === expected.slotKey &&
     observed.requestDigest === expected.requestDigest &&
-    JSON.stringify(observed.identity) === JSON.stringify(expected.identity);
+    JSON.stringify(observed.identity) === JSON.stringify(expected.identity) &&
+    validateProof(expected.identity, observed.checkpointProof);
   const verify = async (input) => {
     const exact = validate(input);
     const observed = await collection.findOne({ slotKey: exact.slotKey });
     return equals(observed, exact);
   };
+  const readProof = async (input) => {
+    const exact = validate(input);
+    const observed = await collection.findOne({ slotKey: exact.slotKey });
+    if (!equals(observed, exact)) return null;
+    return Object.freeze({
+      threadId: observed.checkpointProof.threadId,
+      checkpointNamespace: observed.checkpointProof.checkpointNamespace,
+      checkpointId: observed.checkpointProof.checkpointId,
+      pendingNodes: Object.freeze([...observed.checkpointProof.pendingNodes]),
+    });
+  };
   const register = async (input) => {
     const exact = validate(input);
+    if (!validateProof(exact.identity, input.checkpointProof)) {
+      fail('NATIVE_GRAPH_REQUEST_INTENT_CHECKPOINT_PROOF_MISSING');
+    }
     await ensureIndex();
     try {
       await collection.insertOne({
         ...exact,
+        checkpointProof: {
+          threadId: exact.identity.streamId,
+          checkpointNamespace: exact.identity.checkpointNamespace,
+          checkpointId: exact.identity.graphCheckpointId,
+          pendingNodes: [exact.identity.nodeId],
+        },
         registeredAt: new Date(),
       });
     } catch (error) {
@@ -80,7 +109,7 @@ function createNativeMissionOriginalGraphRequestIntentStore({ collection }) {
     if (!(await verify(input))) fail('NATIVE_GRAPH_REQUEST_INTENT_IMMUTABLE_CONFLICT');
     return true;
   };
-  return Object.freeze({ register, verify });
+  return Object.freeze({ register, verify, readProof });
 }
 
 /**
