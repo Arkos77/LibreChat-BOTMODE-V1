@@ -66,18 +66,21 @@ describe('original graph canonical request intent: independent durable pre-dispa
       expect(rows.size).toBe(1);
     }
   });
-  it('separates checkpoint generations, nodes, and tasks without a reusable operation key', async () => {
+  it('refuses a changed checkpoint for the same original node but isolates other nodes', async () => {
     const { store, rows } = fixture();
     await store.register(input);
-    await store.register({
+    await expect(store.register({
       identity: { ...original, graphCheckpointId: 'next-checkpoint' }, requestDigest,
       checkpointProof: { ...checkpointProof, checkpointId: 'next-checkpoint' },
-    });
+    })).rejects.toThrow('NATIVE_GRAPH_REQUEST_INTENT_IMMUTABLE_CONFLICT');
+    expect(await store.verify({
+      identity: { ...original, graphCheckpointId: 'next-checkpoint' }, requestDigest,
+    })).toBe(false);
     await store.register({
       identity: { ...original, nodeId: 'next-node' }, requestDigest,
       checkpointProof: { ...checkpointProof, pendingNodes: ['next-node'] },
     });
-    expect(rows.size).toBe(3);
+    expect(rows.size).toBe(2);
     for (const bad of [
       { ...original, operationKey: 'f'.repeat(64) },
       { ...original, generationCreatedAt: 'bad' },
