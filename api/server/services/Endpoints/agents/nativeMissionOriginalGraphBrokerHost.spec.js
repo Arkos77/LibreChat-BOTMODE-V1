@@ -39,6 +39,7 @@ const reader = jest.fn(async (scope) => ({
 }));
 function setup(changes = {}) {
   const readOriginalGraphCheckpoint = jest.fn(async ({ scope }) => reader(scope));
+  const recordOriginalModelRequest = jest.fn(async () => true);
   const resolveModelBinding = jest.fn(() => ({
     agentId: 'analyst',
     provider: 'openrouter',
@@ -57,6 +58,7 @@ function setup(changes = {}) {
   }), { status: 200 }));
   const host = createNativeMissionOriginalGraphBrokerHost({
     readOriginalGraphCheckpoint,
+    recordOriginalModelRequest,
     resolveModelBinding,
     brokerUrl: 'http://ci-original-provider-broker:8096/',
     secret: 'ci-original-native-graph-transport-secret-32-plus-chars',
