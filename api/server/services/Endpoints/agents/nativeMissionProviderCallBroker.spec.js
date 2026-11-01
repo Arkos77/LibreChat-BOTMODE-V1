@@ -379,6 +379,7 @@ describe('direct native graph model-operation identities', () => {
       { identity: { ...originalIdentity, nodeId: 'other-node' } },
       { identity: { ...originalIdentity, agentId: 'other-specialist' } },
       { identity: { ...originalIdentity, checkpointNamespace: 'other-generation' } },
+      { identity: { ...originalIdentity, graphCheckpointId: 'changed-checkpoint' } },
       { requestDigest: digest('changed-original-prompt') },
     ]) {
       await expect(afterCrash.readOriginalNativeGraph({
@@ -415,6 +416,7 @@ describe('direct native graph model-operation identities', () => {
     for (const [identity, requestDigest] of [
       [{ ...originalGraph, model: 'different-model' }, directScope.requestDigest],
       [{ ...originalGraph, agentId: 'different-specialist' }, directScope.requestDigest],
+      [{ ...originalGraph, graphCheckpointId: 'changed-checkpoint' }, directScope.requestDigest],
       [originalGraph, digest('changed-prompt')],
     ]) {
       await expect(store.reserveNativeGraph({ identity, requestDigest })).rejects.toThrow(
