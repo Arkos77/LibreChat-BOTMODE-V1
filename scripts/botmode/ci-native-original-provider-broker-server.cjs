@@ -11,6 +11,7 @@
 const path = require('node:path');
 require('module-alias')({ base: path.resolve(__dirname, '../../api') });
 const mongoose = require('mongoose');
+const Redis = require('ioredis');
 const { ResourceType, PermissionBits } = require('librechat-data-provider');
 const { getAgentCheckpointer } = require('@librechat/api');
 const db = require('~/models');
@@ -28,6 +29,19 @@ const {
 const {
   createNativeMissionIndependentOriginalBrokerServer,
 } = require('../../api/server/services/Endpoints/agents/nativeMissionIndependentOriginalBrokerServer');
+const {
+  createNativeMissionOriginalGraphRequestIntentStore,
+  createNativeMissionOriginalGraphRequestVerifier,
+} = require('../../api/server/services/Endpoints/agents/nativeMissionOriginalGraphRequestIntentStore');
+const {
+  createNativeMissionIndependentOriginalGraphCheckpointReader,
+} = require('../../api/server/services/Endpoints/agents/nativeMissionIndependentOriginalGraphCheckpointReader');
+const {
+  createNativeMissionIndependentGraphLeaseReader,
+} = require('../../api/server/services/Endpoints/agents/nativeMissionIndependentGraphLeaseReader');
+const {
+  createNativeMissionIndependentGraphBrokerAuthority,
+} = require('../../api/server/services/Endpoints/agents/nativeMissionIndependentGraphBrokerAuthority');
 
 const validCI =
   process.env.BOTMODE_CI_ORIGINAL_BROKER === '1' &&
@@ -111,6 +125,50 @@ const getStartReceipt = ({ userId, messageId }) => db.getMessage({ user: userId,
         getConvo: db.getConvo,
       }),
   });
+  const redisUri = process.env.BOTMODE_CI_ORIGINAL_REDIS_URI;
+  if (redisUri !== 'redis://redis:6379') {
+    throw new Error('NATIVE_GRAPH_BROKER_CI_REDIS_CONFIGURATION_DENIED');
+  }
+  const redis = new Redis(redisUri, {
+    lazyConnect: true, enableOfflineQueue: false,
+    maxRetriesPerRequest: 1, retryStrategy: () => null,
+  });
+  await redis.connect();
+  const intentStore = createNativeMissionOriginalGraphRequestIntentStore({
+    collection: mongoose.connection.db.collection('native_mission_graph_request_intents'),
+  });
+  const readOriginalGraphCheckpoint =
+    createNativeMissionIndependentOriginalGraphCheckpointReader({
+      intentStore,
+      getCheckpointer: () => getAgentCheckpointer(undefined),
+    });
+  const verifyOriginalModelRequest =
+    createNativeMissionOriginalGraphRequestVerifier({ intentStore });
+  const inspectOriginalGraphLease = createNativeMissionIndependentGraphLeaseReader({
+    readOriginalJob: (streamId) => {
+      if (!/^[a-zA-Z0-9_-]{1,128}$/.test(streamId)) return null;
+      // RedisJobStore's physical namespace is :: on this disposable CI
+      // runner; the actual job is a hash, not an unsigned API payload.
+      return redis.hgetall('::stream:{' + streamId + '}:job');
+    },
+  });
+  const getCurrentModelBinding = async ({ agentId }) => {
+    const agent = await db.getAgent({ id: agentId });
+    return {
+      provider: normalizedProvider(agent?.provider),
+      model: agent?.model_parameters?.model ?? agent?.model,
+    };
+  };
+  const authorizeOriginalNativeGraph = createNativeMissionIndependentGraphBrokerAuthority({
+    getMissionOrigin: getNativeMissionWakeupOrigin,
+    getConvo: db.getConvo,
+    authorizeCurrentOwner: currentOwner,
+    canViewAgent,
+    getCurrentModelBinding,
+    readOriginalGraphCheckpoint,
+    verifyOriginalModelRequest,
+    inspectOriginalGraphLease,
+  });
   const server = createNativeMissionIndependentOriginalBrokerServer({
     collection,
     secret,
@@ -127,17 +185,15 @@ const getStartReceipt = ({ userId, messageId }) => db.getMessage({ user: userId,
     authorizeCurrentOwner: currentOwner,
     canViewAgent,
     inspectOriginalChildOwner,
-    getCurrentModelBinding: async ({ agentId }) => {
-      const agent = await db.getAgent({ id: agentId });
-      return {
-        provider: normalizedProvider(agent?.provider),
-        model: agent?.model_parameters?.model ?? agent?.model,
-      };
-    },
+    getCurrentModelBinding,
+    authorizeOriginalNativeGraph,
   });
   const shutdown = () => {
     server.closeAllConnections();
-    server.close(() => void mongoose.disconnect());
+    server.close(() => {
+      void redis.quit().catch(() => {});
+      void mongoose.disconnect();
+    });
   };
   process.once('SIGTERM', shutdown);
   process.once('SIGINT', shutdown);
