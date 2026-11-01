@@ -54,7 +54,6 @@ describe('original persisted native graph node checkpoint reader', () => {
         checkpoint_ns: '',
         __librechat_checkpoint_ns: scope.checkpointNamespace,
         __librechat_mission_sync: true,
-        checkpoint_id: 'original-checkpoint',
       },
     });
   });
