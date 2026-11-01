@@ -726,6 +726,97 @@ for attempt in range(90):
         },sort_keys=True),flush=True)
     time.sleep(2)
 if outcome is None:
+    # Diagnose *after* the real SIGKILL and API restart, without granting a
+    # new provider operation or manipulating the original Redis generation.
+    # The query checks independently durable Mongo facts, not private output.
+    receipt_probe=r"""
+const mongoose=require('mongoose');(async()=>{
+ await mongoose.connect(process.env.MONGO_URI);
+ const db=mongoose.connection.db;
+ const scope={'identity.streamId':process.env.CI_PARENT};
+ const [intents,receipts]=await Promise.all([
+   db.collection('native_mission_graph_request_intents')
+     .countDocuments(scope),
+   db.collection('native_mission_provider_calls').aggregate([
+     {$match:scope},{$group:{_id:'$status',count:{$sum:1}}}
+   ]).toArray(),
+ ]);
+ console.log(JSON.stringify({intents,receipts:receipts.map(r=>({
+   status:typeof r._id==='string'&&/^[a-z_]{1,35}$/.test(r._id)?r._id:'OTHER',
+   count:r.count,
+ }))}));
+ await mongoose.disconnect();
+})().catch(e=>{console.log(JSON.stringify({unavailable:e.name}));process.exitCode=1;});
+"""
+    try:
+        receipts=json.loads(run_node(receipt_probe,[('CI_PARENT',conversation)]))
+        print('CI_PR107_COLD_MULTI_POSTCRASH_ORIGINAL_INTENTS='+
+              str(receipts.get('intents','UNAVAILABLE')),flush=True)
+        for entry in receipts.get('receipts',[]):
+            safe=entry.get('status','OTHER')
+            if safe not in {'prepared','claimed','dispatched','result_committed',
+                            'error','failed','OTHER'}: safe='OTHER'
+            print('CI_PR107_COLD_MULTI_POSTCRASH_BROKER_'+safe.upper()+'='+
+                  str(entry.get('count',0)),flush=True)
+    except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError) as e:
+        print('CI_PR107_COLD_MULTI_POSTCRASH_RECEIPT_DIAG_UNAVAILABLE='+
+              type(e).__name__,flush=True)
+    try:
+        # Do not reveal lease tokens, IDs or timestamps. Only classify whether
+        # Redis's stored execution identity and owner state remained eligible.
+        fields={}
+        for field in ('providerDrained','providerExecutionId',
+                      'providerExecutionStartedId','checkpointNamespace',
+                      'status','pendingAction'):
+            fields[field]=subprocess.run(
+                COMPOSE+['exec','-T','redis','redis-cli','--raw','HGET',
+                         redis_key,field],capture_output=True,text=True,
+                timeout=20,check=True).stdout.strip()
+        print('CI_PR107_COLD_MULTI_POSTCRASH_PROVIDER_UNDRAINED='+
+              str(fields['providerDrained']=='0'),flush=True)
+        print('CI_PR107_COLD_MULTI_POSTCRASH_PROVIDER_ID_MATCH='+
+              str(bool(fields['providerExecutionId']) and
+                  fields['providerExecutionId']==fields['providerExecutionStartedId']),
+              flush=True)
+        print('CI_PR107_COLD_MULTI_POSTCRASH_NAMESPACE_PRESENT='+
+              str(bool(fields['checkpointNamespace'])),flush=True)
+        print('CI_PR107_COLD_MULTI_POSTCRASH_STATUS='+
+              (fields['status'] if fields['status'] in
+               ('running','completed','error','failed','cancelled','interrupted')
+               else 'OTHER'),flush=True)
+    except (OSError,subprocess.SubprocessError) as e:
+        print('CI_PR107_COLD_MULTI_POSTCRASH_REDIS_DIAG_UNAVAILABLE='+
+              type(e).__name__,flush=True)
+    try:
+        import re
+        api_logs=subprocess.run(
+            COMPOSE+['logs','--no-color','--tail','4000','api'],
+            capture_output=True,text=True,timeout=30,check=True).stdout
+        markers=(
+            'Host native mission recovery attempt failed',
+            'Native mission checkpoint preflight failed',
+            'Native mission recovery',
+            'NATIVE_COLD_',
+            'NATIVE_RECOVERY_',
+            'NATIVE_RECEIPTS_',
+        )
+        hits=[line for line in api_logs.splitlines()
+              if any(marker in line for marker in markers)]
+        allowed_prefixes=('NATIVE_COLD_','NATIVE_RECOVERY_',
+                          'NATIVE_RECEIPTS_','NATIVE_MISSION_')
+        codes=sorted({code for line in hits for code in
+            re.findall(r'\b[A-Z][A-Z0-9_]{8,110}\b',line)
+            if code.startswith(allowed_prefixes)})
+        print('CI_PR107_COLD_MULTI_POSTCRASH_RECOVERY_LOG_COUNT='+
+              str(len(hits)),flush=True)
+        print('CI_PR107_COLD_MULTI_POSTCRASH_RECOVERY_CODES='+
+              (','.join(codes[:12]) or 'NONE'),flush=True)
+        print('CI_PR107_COLD_MULTI_POSTCRASH_ATTEMPT_ERROR='+
+              str('Host native mission recovery attempt failed' in api_logs),
+              flush=True)
+    except (OSError,subprocess.SubprocessError) as e:
+        print('CI_PR107_COLD_MULTI_POSTCRASH_RECOVERY_LOGS_UNAVAILABLE='+
+              type(e).__name__,flush=True)
     fail("NATIVE_GRAPH_OR_PUBLICATION_RECOVERY_UNPROVEN")
 value,state,native_post=outcome
 if (native_post["researchDurable"] is not True or
