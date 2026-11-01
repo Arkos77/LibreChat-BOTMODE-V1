@@ -42,6 +42,7 @@ function validScope(scope) {
 function createNativeMissionOriginalGraphBrokerModelFetch({
   getScope,
   getOriginalCheckpointReference,
+  recordOriginalModelRequest,
   provider,
   model,
   modelEndpoint,
@@ -55,6 +56,7 @@ function createNativeMissionOriginalGraphBrokerModelFetch({
   if (
     typeof getScope !== 'function' ||
     typeof getOriginalCheckpointReference !== 'function' ||
+    typeof recordOriginalModelRequest !== 'function' ||
     !['openai', 'openrouter'].includes(provider) ||
     typeof model !== 'string' || !model || model.length > 256 ||
     typeof modelEndpoint !== 'string' ||
@@ -174,6 +176,12 @@ function createNativeMissionOriginalGraphBrokerModelFetch({
     const query = { identity, requestDigest: digest };
     const statusPath = '/status-native-graph';
     // Never send a provider effect when replaying a crashed API run.
+    // Only the original running graph may record a one-shot model intent.
+    // Cold recovery never creates an intent and never dispatches a provider.
+    if (scope.recoveryOnly !== true &&
+      (await recordOriginalModelRequest(query)) !== true) {
+      deny('NATIVE_GRAPH_FETCH_ORIGINAL_INTENT_NOT_DURABLE');
+    }
     let receipt = scope.recoveryOnly === true
       ? await post(statusPath, query, init.signal)
       : await post('/execute-native-graph',
@@ -231,6 +239,7 @@ function createNativeMissionOriginalGraphBrokerModelFetch({
 function createNativeMissionOriginalGraphBrokerModelFetchFactory({
   getScope,
   getOriginalCheckpointReference,
+  recordOriginalModelRequest,
   resolveModelBinding,
   brokerUrl,
   secret,
@@ -242,6 +251,7 @@ function createNativeMissionOriginalGraphBrokerModelFetchFactory({
   if (
     typeof getScope !== 'function' ||
     typeof getOriginalCheckpointReference !== 'function' ||
+    typeof recordOriginalModelRequest !== 'function' ||
     typeof resolveModelBinding !== 'function'
   ) deny('NATIVE_GRAPH_FETCH_FACTORY_DEPENDENCIES_MISSING');
   return (binding) => {
@@ -275,6 +285,7 @@ function createNativeMissionOriginalGraphBrokerModelFetchFactory({
         return scope;
       },
       getOriginalCheckpointReference,
+      recordOriginalModelRequest,
       provider,
       model: binding.model,
       modelEndpoint: persisted.endpoint,
