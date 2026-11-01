@@ -2,6 +2,7 @@
 
 const {
   createNativeMissionOriginalGraphRequestIntentStore,
+  createNativeMissionOriginalGraphRequestVerifier,
 } = require('./nativeMissionOriginalGraphRequestIntentStore');
 const original = {
   mode: 'native_graph', userId: 'ci-user', tenantId: 'tenant',
@@ -78,6 +79,39 @@ describe('original graph canonical request intent: independent durable pre-dispa
         .rejects.toThrow('NATIVE_GRAPH_REQUEST_INTENT_INVALID');
     }
   });
+  it('independent broker compares original model request bytes to the saved digest', async () => {
+    const { store } = fixture();
+    const { requestDigest: canonicalDigest } = require('./nativeMissionProviderBrokerHttp');
+    const body = {
+      model: 'openrouter/free', stream: false,
+      messages: [{ role: 'user', content: 'original fixed prompt' }],
+    };
+    const digest = canonicalDigest(body);
+    await store.register({ identity: original, requestDigest: digest });
+    const verify = createNativeMissionOriginalGraphRequestVerifier({ intentStore: store });
+    const brokerScope = {
+      userId: original.userId, tenantId: original.tenantId,
+      conversationId: original.streamId,
+      responseMessageId: original.responseMessageId,
+      createdAt: original.generationCreatedAt,
+      checkpointNamespace: original.checkpointNamespace,
+      checkpointId: original.graphCheckpointId,
+      nodeId: original.nodeId, taskId: original.taskId, agentId: original.agentId,
+      provider: original.provider, model: original.model,
+      requestDigest: digest, authorizedRequest: body,
+    };
+    expect(await verify(brokerScope)).toBe(true);
+    for (const modified of [
+      { authorizedRequest: { ...body, messages: [{ role: 'user', content: 'changed' }] } },
+      { model: 'paid-model' }, { checkpointId: 'foreign-checkpoint' },
+      { agentId: 'other-agent' }, { requestDigest: 'c'.repeat(64) },
+    ]) {
+      expect(await verify({ ...brokerScope, ...modified })).toBe(false);
+    }
+    expect(() => createNativeMissionOriginalGraphRequestVerifier({}))
+      .toThrow('NATIVE_GRAPH_REQUEST_INTENT_VERIFIER_MISSING');
+  });
+
   it('does not interpret missing or malformed original intent as a granted provider request', async () => {
     const { store, collection } = fixture();
     expect(await store.verify(input)).toBe(false);
