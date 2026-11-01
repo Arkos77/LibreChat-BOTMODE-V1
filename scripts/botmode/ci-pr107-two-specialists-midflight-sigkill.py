@@ -316,12 +316,15 @@ else:
         # Bounded schema/phase metadata only. No request bodies, tool args,
         # model outputs or identities are emitted to CI logs.
         for label in ("advertised_subagent_requests","requests_without_subagent_tool",
-                      "parent_tool_requests","missing_tool","unclassified_no_tool_turns"):
+                      "parent_tool_requests","missing_tool","unclassified_no_tool_turns",
+                      "source_tool_requests","source_search_calls","source_scrape_calls",
+                      "source_final","native_graph_turns"):
             if isinstance(mm.get(label),int) and isinstance(before.get(label,0),int):
                 print("CI_PR107_COLD_MULTI_MISSION_DELTA_"+label.upper()+"="+
                       str(mm[label]-before.get(label,0)),flush=True)
         for label in ("last_tool_count","last_has_tool_result",
-                      "last_prior_subagent_call","last_advertised_subagent"):
+                      "last_prior_subagent_call","last_advertised_subagent",
+                      "last_advertised_web_search","last_tool_choice_forced"):
             value=mm.get(label)
             if type(value) is int and 0<=value<=1000:
                 print("CI_PR107_COLD_MULTI_LAST_"+label.upper()+"="+str(value),flush=True)

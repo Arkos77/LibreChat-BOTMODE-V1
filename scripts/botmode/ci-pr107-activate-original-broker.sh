@@ -14,8 +14,21 @@ data=json.loads(path.read_text())
 routes=[e for e in data['endpoints']['custom'] if e.get('name')=='OpenRouter']
 if len(routes)!=1: raise SystemExit('CI_ORIGINAL_OPENROUTER_CONFIG_MISSING')
 routes[0]['baseURL']='http://host.docker.internal:8088/api/v1'
+# A research-v1 node must execute a REAL web_search tool round trip.
+# Reuse the already validated host-research SearXNG/Firecrawl fixture,
+# restricted to the disposable runner's local service. No outside traffic,
+# real provider credential, or change to a persistent user's web settings.
+data['webSearch']={
+    'searchProvider':'searxng','scraperProvider':'firecrawl','rerankerType':'none',
+    'searxngInstanceUrl':'http://host.docker.internal:8088',
+    'searxngApiKey':'ci-local-fixture-no-real-key',
+    'firecrawlApiUrl':'http://host.docker.internal:8088',
+    'firecrawlApiKey':'ci-local-fixture-no-real-key',
+    'allowedAddresses':['host.docker.internal:8088'],
+}
 path.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
 print('CI_ORIGINAL_PROVIDER_FIXED_ENDPOINT=PASS')
+print('CI_ORIGINAL_RESEARCH_WEB_FIXTURE_CONFIGURED=PASS')
 PY_CONFIG
 
 # Fetch the current, persisted two native specialist bindings from Mongo.
