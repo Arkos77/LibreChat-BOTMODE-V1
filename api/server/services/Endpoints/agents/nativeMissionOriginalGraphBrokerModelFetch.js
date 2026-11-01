@@ -110,8 +110,15 @@ function createNativeMissionOriginalGraphBrokerModelFetch({
     return receipt;
   };
 
+  const ciStage = (stage) => {
+    if (process.env.BOTMODE_CI_ORIGINAL_MISSION_DIAGNOSTICS === '1') {
+      process.stderr.write('CI_NATIVE_4C_FETCH_STAGE=' + stage + '\n');
+    }
+  };
   return async (url, init = {}) => {
+    ciStage('ENTER');
     const scope = await getScope();
+    ciStage('SCOPED');
     if (!validScope(scope) || scope.provider != null || scope.model != null ||
       scope.operationKey != null || scope.graphCheckpointId != null) {
       deny('NATIVE_GRAPH_FETCH_SCOPE_INVALID');
@@ -146,7 +153,9 @@ function createNativeMissionOriginalGraphBrokerModelFetch({
       : body;
     const digest = requestDigest(authorizedRequest);
     if (!HEX.test(digest)) deny('NATIVE_GRAPH_FETCH_DIGEST_INVALID');
+    ciStage('BEFORE_CHECKPOINT');
     const checkpoint = await getOriginalCheckpointReference(Object.freeze({ ...scope }));
+    ciStage('AFTER_CHECKPOINT');
     if (
       checkpoint?.threadId !== scope.streamId ||
       checkpoint?.checkpointNamespace !== scope.checkpointNamespace ||
@@ -178,10 +187,12 @@ function createNativeMissionOriginalGraphBrokerModelFetch({
     // Never send a provider effect when replaying a crashed API run.
     // Only the original running graph may record a one-shot model intent.
     // Cold recovery never creates an intent and never dispatches a provider.
+    ciStage('BEFORE_ORIGINAL_INTENT');
     if (scope.recoveryOnly !== true &&
       (await recordOriginalModelRequest({ ...query, checkpointProof: checkpoint })) !== true) {
       deny('NATIVE_GRAPH_FETCH_ORIGINAL_INTENT_NOT_DURABLE');
     }
+    ciStage('BEFORE_BROKER');
     let receipt = scope.recoveryOnly === true
       ? await post(statusPath, query, init.signal)
       : await post('/execute-native-graph',

@@ -482,6 +482,20 @@ const mongoose=require('mongoose');(async()=>{
             )
             print('CI_PR107_COLD_MULTI_RESEARCH_OBSERVATION_'+field+'='+
                   (values[-1] if values else 'NOT_OBSERVED'),flush=True)
+        # Staged markers are emitted only under disposable CI diagnostics;
+        # report presence/last stage, not prompt, graph data, or identities.
+        for label in ('TRANSITION','FETCH'):
+            values=re.findall(
+                r'CI_NATIVE_4C_'+label+r'_STAGE=([A-Z_]{2,32})',api_logs)
+            stages={'ENTER','BEFORE_VALIDATION','BEFORE_PERSISTENCE',
+                    'AFTER_PERSISTENCE','COMPLETE'} if label=='TRANSITION' else {
+                    'ENTER','SCOPED','BEFORE_CHECKPOINT','AFTER_CHECKPOINT',
+                    'BEFORE_ORIGINAL_INTENT','BEFORE_BROKER'}
+            print('CI_PR107_COLD_MULTI_NATIVE_'+label+'_LAST_STAGE='+
+                  (values[-1] if values and values[-1] in stages else
+                   'NOT_OBSERVED'),flush=True)
+            print('CI_PR107_COLD_MULTI_NATIVE_'+label+'_MARKERS='+
+                  str(len(values)),flush=True)
         # This diagnostic is emitted ONLY when the SDK refuses a forbidden
         # native graph effect surface in the disposable CI mission.
         for field in ('NODE','TOOLS','GRAPH_TOOLS','DEFINITIONS','DELEGATION'):

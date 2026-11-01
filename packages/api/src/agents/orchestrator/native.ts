@@ -125,7 +125,15 @@ function requirePredecessorOutputs(
   resolveMissionOracleSources?: MissionOracleSourcesResolver,
 ) {
   const sourceNodeIds = sourceTasks.map((task) => task.nodeId);
+  // Diagnostic only: staged markers distinguish blocked Oracle persistence
+  // from a stalled Analyse graph turn. No outputs, identities or prompts.
+  const ciStage = (stage: string) => {
+    if (process.env.BOTMODE_CI_ORIGINAL_MISSION_DIAGNOSTICS === '1') {
+      process.stderr.write('CI_NATIVE_4C_TRANSITION_STAGE=' + stage + '\n');
+    }
+  };
   return async (state: BaseGraphState): Promise<void> => {
+    ciStage('ENTER');
     const missing = sourceNodeIds.filter((nodeId) => state.agentOutputs?.[nodeId] == null);
     if (missing.length > 0) {
       throw new Error(
@@ -137,6 +145,7 @@ function requirePredecessorOutputs(
       if (task.validation.length === 0) {
         continue;
       }
+      ciStage('BEFORE_VALIDATION');
       const result = await validateMissionTask({
         taskId: task.taskId,
         nodeId: task.nodeId,
@@ -150,9 +159,12 @@ function requirePredecessorOutputs(
             ? []
             : await resolveMissionOracleEvidence(task.taskId),
       });
+      ciStage('BEFORE_PERSISTENCE');
       await persistMissionOracleResult?.(result);
+      ciStage('AFTER_PERSISTENCE');
       assertMissionTaskVerified(result);
     }
+    ciStage('COMPLETE');
   };
 }
 
