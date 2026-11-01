@@ -45,7 +45,7 @@ function fixture() {
       assert.equal(digest, requestDigest);
       return {
         status: 'result_committed', resultAvailable: true,
-        response: { choices: [{ index: 0, message: { role: 'assistant', content: 'saved' } }] },
+        response: { choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'saved' } }] },
       };
     },
   };

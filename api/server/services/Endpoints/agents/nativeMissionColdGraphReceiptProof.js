@@ -54,7 +54,13 @@ function createNativeMissionColdGraphReceiptProof({ store, intentStore, assertAu
     if (receipt?.status !== 'result_committed' ||
         receipt.resultAvailable !== true ||
         !Array.isArray(receipt.response?.choices) ||
-        receipt.response.choices.length !== 1) {
+        receipt.response.choices.length !== 1 ||
+        receipt.response.choices[0]?.index !== 0 ||
+        receipt.response.choices[0]?.finish_reason !== 'stop' ||
+        receipt.response.choices[0]?.message?.role !== 'assistant' ||
+        typeof receipt.response.choices[0].message.content !== 'string' ||
+        receipt.response.choices[0].message.tool_calls != null ||
+        receipt.response.choices[0].message.function_call != null) {
       throw new Error('NATIVE_COLD_GRAPH_RECEIPT_UNAVAILABLE');
     }
     return Object.freeze({ identity: Object.freeze({ ...identity }), requestDigest: originalDigest });

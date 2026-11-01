@@ -13,7 +13,7 @@ const identity = { mode: 'native_graph', userId: 'owner', tenantId: 'tenant',
 const requestDigest = 'a'.repeat(64);
 const pendingNodes = ['analysis'];
 const success = { status: 'result_committed', resultAvailable: true,
-  response: { choices: [{ message: { role: 'assistant', content: 'result' } }] } };
+  response: { choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'result' } }] } };
 function setup(receipt = success) {
   const store = { readOriginalNativeGraph: jest.fn().mockResolvedValue(receipt) };
   const intentStore = { readOriginalIntent: jest.fn().mockResolvedValue({
@@ -55,6 +55,9 @@ describe('cold native graph original receipt proof (read-only)', () => {
     { status: 'dispatched', resultAvailable: false, response: null },
     { status: 'outcome_unknown', resultAvailable: false },
     { status: 'result_committed', resultAvailable: true, response: null },
+    { status: 'result_committed', resultAvailable: true,
+      response: { choices: [{ index: 0, finish_reason: 'stop',
+        message: { role: 'assistant', content: 'invalid', tool_calls: [{}] } }] } },
   ])('refuses missing or ambiguous provider outcomes', async (receipt) => {
     const h = setup(receipt);
     await expect(h.prove({ candidate, claim, identity, requestDigest, pendingNodes }))
