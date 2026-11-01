@@ -22,7 +22,11 @@ function createNativeMissionColdGraphReceiptProof({ store, assertAuthorized }) {
         identity.generationCreatedAt !== candidate.createdAt ||
         identity.checkpointNamespace !== candidate.checkpointNamespace ||
         identity.graphCheckpointId !== candidate.checkpointId ||
-        typeof identity.nodeId !== 'string' || !identity.nodeId ||
+        ['userId', 'streamId', 'responseMessageId', 'checkpointNamespace',
+          'nodeId', 'taskId', 'agentId', 'provider', 'model'].some(
+          (key) => typeof identity[key] !== 'string' ||
+            identity[key].length === 0 || identity[key].length > 256) ||
+        typeof identity.tenantId !== 'string' || identity.tenantId.length > 256 ||
         !Array.isArray(pendingNodes) || pendingNodes.length !== 1 ||
         pendingNodes[0] !== identity.nodeId ||
         typeof requestDigest !== 'string' ||

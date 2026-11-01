@@ -4,7 +4,10 @@ const { createNativeMissionColdGraphReceiptProof } = require('./nativeMissionCol
 const candidate = { streamId: 'parent', createdAt: 1700000000000,
   checkpointNamespace: 'gen', checkpointId: 'checkpoint-1' };
 const claim = { ...candidate, ownerToken: 'original-owner-token-1234' };
-const identity = { mode: 'native_graph', streamId: 'parent',
+const identity = { mode: 'native_graph', userId: 'owner', tenantId: 'tenant',
+  streamId: 'parent', responseMessageId: 'original-response',
+  taskId: 'analysis-task', agentId: 'analysis-agent', provider: 'openrouter',
+  model: 'ci-free',
   generationCreatedAt: candidate.createdAt, checkpointNamespace: 'gen',
   graphCheckpointId: 'checkpoint-1', nodeId: 'analysis' };
 const requestDigest = 'a'.repeat(64);
@@ -28,6 +31,9 @@ describe('cold native graph original receipt proof (read-only)', () => {
   it.each([
     { identity: { ...identity, graphCheckpointId: 'different' } },
     { identity: { ...identity, nodeId: 'research' } },
+    { identity: { ...identity, taskId: '' } },
+    { identity: { ...identity, provider: '' } },
+    { identity: { ...identity, userId: '' } },
     { identity: { ...identity, operationKey: 'a'.repeat(64) } },
     { claim: { ...claim, ownerToken: '' } },
     { pendingNodes: ['research'] },
