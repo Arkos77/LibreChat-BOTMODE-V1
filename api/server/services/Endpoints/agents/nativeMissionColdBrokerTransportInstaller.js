@@ -16,7 +16,11 @@ function createNativeMissionColdBrokerTransportInstaller({ brokerHost, getOrigin
         client.conversationId !== candidate.streamId ||
         job.streamId !== candidate.streamId || job.createdAt !== candidate.createdAt ||
         job.checkpointNamespace !== candidate.checkpointNamespace ||
+        claim.streamId !== candidate.streamId ||
+        claim.createdAt !== candidate.createdAt ||
+        claim.checkpointNamespace !== candidate.checkpointNamespace ||
         claim.checkpointId !== candidate.checkpointId ||
+        typeof claim.ownerToken !== 'string' || claim.ownerToken.length < 16 ||
         client.orchestratorPlan !== job.orchestratorPlan) {
       throw new Error('NATIVE_COLD_BROKER_INSTALLER_IDENTITY_DENIED');
     }
@@ -36,6 +40,10 @@ function createNativeMissionColdBrokerTransportInstaller({ brokerHost, getOrigin
         original.checkpointNamespace !== candidate.checkpointNamespace ||
         original.agentId !== job.agent_id ||
         original.planId !== job.orchestratorPlan.planId ||
+        String(client.user ?? '') !== job.userId ||
+        client.responseMessageId !== job.responseMessageId ||
+        client.jobCreatedAt !== candidate.createdAt ||
+        client.checkpointNamespace !== candidate.checkpointNamespace ||
         original.capabilityAttestation?.mode !== 'receipts_required' ||
         canonicalMissionJson(original.plan) !== canonicalMissionJson(job.orchestratorPlan) ||
         canonicalMissionJson(original.capabilityAttestation) !==
