@@ -814,6 +814,16 @@ const mongoose=require('mongoose');(async()=>{
         print('CI_PR107_COLD_MULTI_POSTCRASH_ATTEMPT_ERROR='+
               str('Host native mission recovery attempt failed' in api_logs),
               flush=True)
+        shape_codes=re.findall(
+            r'CI_NATIVE_4C_COLD_RESEARCH_SHAPE=(ADMITTED|MODE|RESEARCH_VERSION|PLAN|DEPENDENCIES|CAPABILITY|CONTRACT|DOCUMENTS|DOCUMENT_EFFECT_SURFACE)',
+            api_logs)
+        denied=re.findall(
+            r'CI_NATIVE_4C_COLD_RESOURCE_DENIAL=([A-Z_,]{2,160})',
+            api_logs)
+        print('CI_PR107_COLD_MULTI_POSTCRASH_SHAPE='+
+              (shape_codes[-1] if shape_codes else 'NOT_OBSERVED'),flush=True)
+        print('CI_PR107_COLD_MULTI_POSTCRASH_DENIED_SURFACES='+
+              (denied[-1] if denied else 'NOT_OBSERVED'),flush=True)
     except (OSError,subprocess.SubprocessError) as e:
         print('CI_PR107_COLD_MULTI_POSTCRASH_RECOVERY_LOGS_UNAVAILABLE='+
               type(e).__name__,flush=True)

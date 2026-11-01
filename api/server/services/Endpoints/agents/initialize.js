@@ -2174,6 +2174,56 @@ async function initializeClientFromDocuments({ candidate, claim, job, context, a
         Object.keys(agent.tool_resources ?? {}).length > 0,
     );
   if (containsUnsupportedResources) {
+    // CI-only, bounded classification of a denied cold agent document.
+    // No IDs, tool names, private fields, prompts or values are emitted.
+    if (process.env.BOTMODE_CI_ORIGINAL_MISSION_DIAGNOSTICS === '1') {
+      const role = (agent) => agent.id === job.agent_id ? 'WORKER' :
+        agent.id === job.orchestratorPlan.tasks[0]?.agentId ? 'RESEARCH' :
+          agent.id === job.orchestratorPlan.tasks[1]?.agentId ? 'ANALYSIS' : 'OTHER';
+      const offending = documents.map((agent) => {
+        const explicitTools = (agent.tools?.length ?? 0) > 0 &&
+          !(committedResearch && agent.id === committedResearch.researchAgentId &&
+            agent.tools.length === 1 && agent.tools[0] === 'web_search');
+        const delegation = (agent.subagents?.enabled === true ||
+          (agent.subagents?.agent_ids?.length ?? 0) > 0) &&
+          !(committedResearch && agent.id === job.agent_id);
+        const otherSurfaces = [
+          ['TOOL_OPTIONS', Object.keys(agent.tool_options ?? {}).length > 0],
+          ['GRAPH_CONFIGS', (agent.subagentAgentConfigs?.length ?? 0) > 0 ||
+            (agent.lazySubagentConfigs?.length ?? 0) > 0 ||
+            (agent.subagentGraphConfigs?.length ?? 0) > 0],
+          ['SKILLS', (agent.skills?.length ?? 0) > 0 || agent.skills_enabled === true],
+          ['FILES', (agent.attachments?.length ?? 0) > 0 || (agent.files?.length ?? 0) > 0],
+          ['TOOL_RESOURCES', Object.keys(agent.tool_resources ?? {}).length > 0],
+        ];
+        const reason = explicitTools ? 'EXPLICIT_TOOLS' :
+          delegation ? 'DELEGATION' :
+            otherSurfaces.find(([, present]) => present)?.[0];
+        return reason ? role(agent) + '_' + reason : null;
+      }).filter(Boolean);
+      const plan = job.orchestratorPlan;
+      const research = plan.tasks[0];
+      const analysis = plan.tasks[1];
+      const shape = committedResearch ? 'ADMITTED' :
+        job.nativeMissionCapabilityAttestation?.mode !== 'receipts_required' ? 'MODE' :
+        plan.mission?.researchExecutionVersion !== 1 ? 'RESEARCH_VERSION' :
+        (plan.tasks.length !== 2 || research?.key !== 'research' ||
+          analysis?.key !== 'analysis') ? 'PLAN' :
+        (!Array.isArray(research?.dependsOn) || research.dependsOn.length !== 0 ||
+          !Array.isArray(analysis?.dependsOn) || analysis.dependsOn.length !== 1) ? 'DEPENDENCIES' :
+        !research?.requiredCapabilities?.includes('web_search') ? 'CAPABILITY' :
+        !research.validation?.some((v) => v.outputContract === 'research-v1') ? 'CONTRACT' :
+        (documents.length !== 3 ||
+          !documents.find((a) => a.id === research.agentId) ||
+          !documents.find((a) => a.id === analysis.agentId)) ? 'DOCUMENTS' :
+        'DOCUMENT_EFFECT_SURFACE';
+      process.stderr.write(
+        'CI_NATIVE_4C_COLD_RESEARCH_SHAPE=' + shape + '\n' +
+        'CI_NATIVE_4C_COLD_RESOURCE_DENIAL=' +
+          (offending.join(',') || (conversation.files?.length ||
+            conversation.attachments?.length ? 'CONVERSATION_FILES' : 'OTHER')) + '\n'
+      );
+    }
     throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_TOOL_RUNTIME_UNAVAILABLE');
   }
   await assertAuthorized();
