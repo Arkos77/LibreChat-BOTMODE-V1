@@ -48,10 +48,16 @@ function createNativeMissionOriginalGraphBrokerHost({
       }
       return makeFactory(args, true);
     },
+    makeRecoveryFetchFactoryWithReader: (args, reader) => {
+      if (typeof reader !== 'function') {
+        deny('NATIVE_GRAPH_BROKER_COLD_CHECKPOINT_READER_MISSING');
+      }
+      return makeFactory(args, true, reader);
+    },
     makeMissionFetchFactory: (args) => makeFactory(args, false),
   });
 
-  function makeFactory({ original, plan, capabilityAttestation, client }, recoveryOnly) {
+  function makeFactory({ original, plan, capabilityAttestation, client }, recoveryOnly, reader) {
       if (
         !original ||
         !client || client.orchestratorPlan !== plan ||
@@ -101,7 +107,7 @@ function createNativeMissionOriginalGraphBrokerHost({
       const approved = createNativeMissionOriginalGraphBrokerModelFetchFactory({
         getScope,
         getOriginalCheckpointReference: (scope) =>
-          (recoveryOnly ? readRecoveredGraphCheckpoint : readOriginalGraphCheckpoint)(
+          (recoveryOnly ? (reader ?? readRecoveredGraphCheckpoint) : readOriginalGraphCheckpoint)(
             { scope, plan, client }),
         recordOriginalModelRequest,
         resolveModelBinding,

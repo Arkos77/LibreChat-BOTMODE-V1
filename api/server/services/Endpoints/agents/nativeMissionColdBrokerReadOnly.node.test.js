@@ -71,3 +71,24 @@ test('cold factory rejects missing reconstructed checkpoint reader', () => {
     capabilityAttestation: attestation, client: { orchestratorPlan: plan } }),
   /NATIVE_GRAPH_BROKER_COLD_CHECKPOINT_READER_MISSING/);
 });
+
+test('cold reader can be bound from authenticated reconstructed graph context', async () => {
+  const f = fixture(false);
+  let reads = 0;
+  const client = { orchestratorPlan: plan };
+  const factory = f.host.makeRecoveryFetchFactoryWithReader({ original, plan,
+    capabilityAttestation: attestation, client }, ({ scope }) => {
+      reads++;
+      assert.equal(scope.recoveryOnly, true);
+      return { threadId: scope.streamId, checkpointNamespace: scope.checkpointNamespace,
+        checkpointId: 'checkpoint', pendingNodes: ['analysis'] };
+    });
+  const transport = factory(binding);
+  const result = await transport('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST', body: JSON.stringify({ model: 'free', stream: false, messages: [] }),
+  });
+  assert.equal(result.status, 200);
+  assert.equal(reads, 1);
+  assert.deepEqual(f.requests.map((request) => request.path), ['/status-native-graph']);
+  assert.equal(f.getDispatches(), 0);
+});
