@@ -11,6 +11,11 @@
 const path = require('node:path');
 require('module-alias')({ base: path.resolve(__dirname, '../../api') });
 const mongoose = require('mongoose');
+const { createModels } = require('@librechat/data-schemas');
+// Standalone broker runs outside the API process and never loads api/db.
+// Register the same Mongoose models as the API BEFORE any db method can
+// access mongoose.models.User/Agent/Conversation. No seed or migration.
+createModels(mongoose);
 const Redis = require('ioredis');
 const { ResourceType, PermissionBits } = require('librechat-data-provider');
 const { getAgentCheckpointer } = require('@librechat/api');
