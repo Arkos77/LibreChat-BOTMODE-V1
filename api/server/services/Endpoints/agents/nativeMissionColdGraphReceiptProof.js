@@ -5,8 +5,9 @@
  * This is NOT permission to resume a graph or replay any other effect.
  * Caller must separately prove ACL, original checkpoint and live Redis owner.
  */
-function createNativeMissionColdGraphReceiptProof({ store, assertAuthorized }) {
+function createNativeMissionColdGraphReceiptProof({ store, intentStore, assertAuthorized }) {
   if (typeof store?.readOriginalNativeGraph !== 'function' ||
+      typeof intentStore?.verify !== 'function' ||
       typeof assertAuthorized !== 'function') {
     throw new Error('NATIVE_COLD_GRAPH_RECEIPT_DEPENDENCIES_MISSING');
   }
@@ -33,6 +34,10 @@ function createNativeMissionColdGraphReceiptProof({ store, assertAuthorized }) {
         !/^[a-f0-9]{64}$/.test(requestDigest) ||
         Object.prototype.hasOwnProperty.call(identity, 'operationKey')) {
       throw new Error('NATIVE_COLD_GRAPH_RECEIPT_IDENTITY_DENIED');
+    }
+    await assertAuthorized();
+    if (await intentStore.verify({ identity, requestDigest }) !== true) {
+      throw new Error('NATIVE_COLD_GRAPH_ORIGINAL_INTENT_UNVERIFIED');
     }
     await assertAuthorized();
     const receipt = await store.readOriginalNativeGraph({ identity, requestDigest });
