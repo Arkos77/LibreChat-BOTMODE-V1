@@ -13,7 +13,13 @@ const original = {
   provider: 'openrouter', model: 'openrouter/free',
 };
 const requestDigest = 'a'.repeat(64);
-const input = { identity: original, requestDigest };
+const checkpointProof = {
+  threadId: original.streamId,
+  checkpointNamespace: original.checkpointNamespace,
+  checkpointId: original.graphCheckpointId,
+  pendingNodes: [original.nodeId],
+};
+const input = { identity: original, requestDigest, checkpointProof };
 function fixture() {
   const rows = new Map();
   const collection = {
@@ -48,10 +54,10 @@ describe('original graph canonical request intent: independent durable pre-dispa
     const { store, rows } = fixture();
     await store.register(input);
     for (const modified of [
-      { identity: original, requestDigest: 'b'.repeat(64) },
-      { identity: { ...original, provider: 'openai' }, requestDigest },
-      { identity: { ...original, model: 'paid-model' }, requestDigest },
-      { identity: { ...original, agentId: 'other-agent' }, requestDigest },
+      { ...input, requestDigest: 'b'.repeat(64) },
+      { ...input, identity: { ...original, provider: 'openai' } },
+      { ...input, identity: { ...original, model: 'paid-model' } },
+      { ...input, identity: { ...original, agentId: 'other-agent' } },
     ]) {
       await expect(store.register(modified)).rejects.toThrow(
         'NATIVE_GRAPH_REQUEST_INTENT_IMMUTABLE_CONFLICT'
@@ -65,9 +71,11 @@ describe('original graph canonical request intent: independent durable pre-dispa
     await store.register(input);
     await store.register({
       identity: { ...original, graphCheckpointId: 'next-checkpoint' }, requestDigest,
+      checkpointProof: { ...checkpointProof, checkpointId: 'next-checkpoint' },
     });
     await store.register({
       identity: { ...original, nodeId: 'next-node' }, requestDigest,
+      checkpointProof: { ...checkpointProof, pendingNodes: ['next-node'] },
     });
     expect(rows.size).toBe(3);
     for (const bad of [
@@ -75,7 +83,7 @@ describe('original graph canonical request intent: independent durable pre-dispa
       { ...original, generationCreatedAt: 'bad' },
       { ...original, checkpointNamespace: '' },
     ]) {
-      await expect(store.register({ identity: bad, requestDigest }))
+      await expect(store.register({ identity: bad, requestDigest, checkpointProof }))
         .rejects.toThrow('NATIVE_GRAPH_REQUEST_INTENT_INVALID');
     }
   });
@@ -87,7 +95,7 @@ describe('original graph canonical request intent: independent durable pre-dispa
       messages: [{ role: 'user', content: 'original fixed prompt' }],
     };
     const digest = canonicalDigest(body);
-    await store.register({ identity: original, requestDigest: digest });
+    await store.register({ identity: original, requestDigest: digest, checkpointProof });
     const verify = createNativeMissionOriginalGraphRequestVerifier({ intentStore: store });
     const brokerScope = {
       userId: original.userId, tenantId: original.tenantId,
@@ -115,8 +123,8 @@ describe('original graph canonical request intent: independent durable pre-dispa
   it('does not interpret missing or malformed original intent as a granted provider request', async () => {
     const { store, collection } = fixture();
     expect(await store.verify(input)).toBe(false);
-    const invalid = [{ identity: original, requestDigest: 'bad' },
-      { identity: { ...original, mode: 'detached' }, requestDigest }];
+    const invalid = [{ ...input, requestDigest: 'bad' },
+      { ...input, identity: { ...original, mode: 'detached' } }];
     for (const item of invalid) {
       await expect(store.verify(item)).rejects.toThrow(
         'NATIVE_GRAPH_REQUEST_INTENT_INVALID'
