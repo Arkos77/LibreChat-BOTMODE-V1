@@ -96,3 +96,78 @@ test('receipts-required rejects compilation with direct-provider fallback', asyn
   await assert.rejects(f.build({ ...f, assertAuthorized: async () => true }), /RECEIPTS_TRANSPORT_UNVERIFIED/);
   assert.deepEqual(f.actions, []);
 });
+
+test('whole cold runtime authenticates graph and original receipt before replay-fence proof or Oracle', async () => {
+  const { createNativeMissionColdRuntimeHost } = require('./nativeMissionColdRuntimeHost');
+  const f = fixture();
+  f.client.options.agentRuntime.requestBody = { conversationId: f.candidate.streamId };
+  f.client.publicationBarrier = { activate: () => true };
+  const job = {
+    streamId: f.candidate.streamId, createdAt: f.candidate.createdAt,
+    checkpointNamespace: f.candidate.checkpointNamespace,
+    checkpointId: f.candidate.checkpointId, status: 'running',
+    userId: 'owner', tenantId: 'tenant', agent_id: 'worker',
+    responseMessageId: 'response', userMessage: { messageId: 'original-message' },
+    orchestratorPlan: f.client.orchestratorPlan,
+  };
+  const host = createNativeMissionColdRuntimeHost({
+    initializeAuthorizedClient: async () => ({ client: f.client, job }),
+    normalizeOracleState: () => ({}),
+    reconstructGraph: f.build,
+    installRecoveryTransport: async () => {
+      f.actions.push('install-original-broker');
+      return { bindGraph: async (graph) => {
+        assert.equal(graph, f.graph);
+        f.actions.push('bind-original-graph');
+        return true;
+      } };
+    },
+    proveColdGraphReceipt: async () => {
+      f.actions.push('original-model-receipt');
+      return true;
+    },
+    effectFences: async () => { f.actions.push('effects-fenced'); return async () => true; },
+    replaySafety: async () => { f.actions.push('replay-fenced'); return async () => true; },
+    oracle: async () => { f.actions.push('oracle'); return async () => true; },
+    publication: async () => {
+      f.actions.push('publication');
+      return { getCandidate: async () => null, publishTerminal: async () => true };
+    },
+  });
+  await host({ candidate: f.candidate, claim: f.claim, assertAuthorized: async () => true });
+  assert.deepEqual(f.actions, [
+    'install-original-broker', 'compile', 'bind-original-graph',
+    'original-model-receipt', 'verify-replay-fences', 'effects-fenced',
+    'replay-fenced', 'oracle', 'publication',
+  ]);
+});
+
+test('whole cold runtime refuses failed deferred proof before effects or Oracle', async () => {
+  const { createNativeMissionColdRuntimeHost } = require('./nativeMissionColdRuntimeHost');
+  const f = fixture({ verified: false });
+  f.client.options.agentRuntime.requestBody = { conversationId: f.candidate.streamId };
+  f.client.publicationBarrier = { activate: () => true };
+  const job = {
+    streamId: f.candidate.streamId, createdAt: f.candidate.createdAt,
+    checkpointNamespace: f.candidate.checkpointNamespace,
+    checkpointId: f.candidate.checkpointId, status: 'running',
+    userId: 'owner', tenantId: 'tenant', agent_id: 'worker',
+    responseMessageId: 'response', userMessage: { messageId: 'original-message' },
+    orchestratorPlan: f.client.orchestratorPlan,
+  };
+  const host = createNativeMissionColdRuntimeHost({
+    initializeAuthorizedClient: async () => ({ client: f.client, job }),
+    normalizeOracleState: () => ({}), reconstructGraph: f.build,
+    installRecoveryTransport: async () => ({ bindGraph: async () => true }),
+    proveColdGraphReceipt: async () => { f.actions.push('original-model-receipt'); return true; },
+    effectFences: async () => { throw Error('EFFECTS_MUST_NOT_BE_REACHED'); },
+    replaySafety: async () => { throw Error('REPLAY_MUST_NOT_BE_REACHED'); },
+    oracle: async () => { throw Error('ORACLE_MUST_NOT_BE_REACHED'); },
+    publication: async () => { throw Error('PUBLICATION_MUST_NOT_BE_REACHED'); },
+  });
+  await assert.rejects(
+    host({ candidate: f.candidate, claim: f.claim, assertAuthorized: async () => true }),
+    /DEFERRED_REPLAY_PROOF_DENIED/,
+  );
+  assert.deepEqual(f.actions, ['compile', 'original-model-receipt', 'verify-replay-fences']);
+});
