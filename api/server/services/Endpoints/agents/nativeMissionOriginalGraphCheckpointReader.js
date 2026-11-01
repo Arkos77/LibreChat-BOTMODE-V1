@@ -47,7 +47,10 @@ function createNativeMissionOriginalGraphCheckpointReader({ getGraph }) {
         checkpoint_ns: '',
         __librechat_checkpoint_ns: scope.checkpointNamespace,
         __librechat_mission_sync: true,
-        ...(expectedCheckpointId && { checkpoint_id: expectedCheckpointId }),
+        // Read the CURRENT original head, never request a historical
+        // checkpoint by ID. Passing checkpoint_id here could validate an
+        // obsolete pending node after the graph already advanced.
+        // expectedCheckpointId is checked against the returned head below.
       },
     });
     const config = state?.config?.configurable;
