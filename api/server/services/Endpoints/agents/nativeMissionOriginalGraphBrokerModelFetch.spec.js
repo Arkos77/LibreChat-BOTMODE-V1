@@ -74,6 +74,7 @@ describe('original direct LangGraph model transport (no detached child thread)',
     expect(h.recordOriginalModelRequest).toHaveBeenCalledWith({
       identity: h.traffic[0].payload.identity,
       requestDigest: requestDigest(canonicalBody),
+      checkpointProof: checkpoint,
     });
     expect(h.traffic[0].path).toBe('/execute-native-graph');
     expect(h.traffic[0].payload.requestDigest).toBe(requestDigest(canonicalBody));
