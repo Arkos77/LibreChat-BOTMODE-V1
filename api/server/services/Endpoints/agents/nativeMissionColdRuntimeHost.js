@@ -1,4 +1,7 @@
-const { createNativeMissionColdGraphBuilder } = require('./nativeMissionColdGraphBuilder');
+const {
+  createNativeMissionColdGraphBuilder,
+  proveDeferredNativeMissionColdReplayFences,
+} = require('./nativeMissionColdGraphBuilder');
 const { bindNativeMissionRecoveredClient } = require('./nativeMissionRecoveredClientBinding');
 
 /** Construct the coordinator's cold runtime solely from a host-initialized client.
@@ -127,6 +130,17 @@ function createNativeMissionColdRuntimeHost({
       })) !== true) {
         throw new Error('NATIVE_COLD_RUNTIME_RECEIPT_PROOF_DENIED');
       }
+      await assertAuthorized();
+    }
+    // The original graph and model receipt are now authenticated. Only at
+    // this point can the receipts-required replay-fence proof inspect the
+    // reconstructed original checkpoint; prior to this it is unavailable.
+    if (client.options?.nativeMissionRecoveryRequiresReceipts === true) {
+      if (proveColdGraphReceipt == null || installRecoveryTransport == null) {
+        throw new Error('NATIVE_COLD_RUNTIME_RECEIPTS_HOST_PROOFS_MISSING');
+      }
+      await assertAuthorized();
+      await proveDeferredNativeMissionColdReplayFences({ graph, candidate, claim });
       await assertAuthorized();
     }
     // The callbacks are host-owned. Carry the current document authorization
