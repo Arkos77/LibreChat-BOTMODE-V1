@@ -318,7 +318,8 @@ else:
         for label in ("advertised_subagent_requests","requests_without_subagent_tool",
                       "parent_tool_requests","missing_tool","unclassified_no_tool_turns",
                       "source_tool_requests","source_search_calls","source_scrape_calls",
-                      "source_final","native_graph_turns"):
+                      "source_final","native_graph_turns",
+                      "native_analysis_model_requests"):
             if isinstance(mm.get(label),int) and isinstance(before.get(label,0),int):
                 print("CI_PR107_COLD_MULTI_MISSION_DELTA_"+label.upper()+"="+
                       str(mm[label]-before.get(label,0)),flush=True)
@@ -350,6 +351,33 @@ const mongoose=require('mongoose');(async()=>{
                   record["status"].upper()+"="+str(record["count"]),flush=True)
     except Exception as e:
         print("CI_PR107_COLD_MULTI_WAIT_DIAG_UNAVAILABLE="+type(e).__name__,flush=True)
+    try:
+        current_native = native_state()
+        for name in ('researchDurable', 'analysisDurable',
+                     'rootCheckpointPresent', 'checkpointStep'):
+            value = current_native.get(name)
+            if type(value) in (bool, int) or value is None:
+                print('CI_PR107_COLD_MULTI_NATIVE_LATEST_'+name.upper()+'='+
+                      str(value), flush=True)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        print('CI_PR107_COLD_MULTI_NATIVE_LATEST_UNAVAILABLE='+
+              type(error).__name__,flush=True)
+    # Report only small Oracle verdict counts/status classifications. Never
+    # disclose task identity, criteria, model text, evidence or raw sources.
+    try:
+        _, _, oracle_raw = redis_job(stream_id)
+        state = json.loads(oracle_raw) if oracle_raw else {}
+        results = state.get('results', {}) if isinstance(state,dict) else {}
+        for index, task in enumerate(tasks):
+            verdicts = results.get(task['taskId'], {}).get('verdicts', [])
+            statuses = [v.get('status') for v in verdicts if isinstance(v,dict)]
+            allowed = {'VERIFIED','REJECTED','UNKNOWN','HUMAN_REVIEW'}
+            print('CI_PR107_COLD_MULTI_ORACLE_TASK_'+str(index+1)+'='+
+                  (','.join(status for status in statuses if status in allowed)
+                   or 'MISSING'), flush=True)
+    except (ValueError, TypeError, KeyError, AttributeError) as error:
+        print('CI_PR107_COLD_MULTI_ORACLE_DIAG_UNAVAILABLE='+
+              type(error).__name__,flush=True)
     # Native Oracle plans compile direct graph nodes, not necessarily SDK
     # subagent tool calls. Probe only checkpoint counts for this conversation;
     # never print checkpoint data, namespace, identities or agent messages.
@@ -670,7 +698,22 @@ if (plan.get("mission",{}).get("missionId")!=mission_id or
     any(len(verdicts)!=1 or verdicts[0].get("status")!="VERIFIED"
         for verdicts in verdicts_by_task)):
     fail("ORACLE_NOT_ALL_TASKS_VERIFIED")
-if metrics().get("native_graph_turns",0)-before.get("native_graph_turns",0)!=2:
+# Exactly ONE independent brokered Analyse model operation may execute.
+# Research-v1 separately proves one web_search, one actual source fetch,
+# and one model-produced research result. Do not count those as Analyse.
+final_metrics=metrics()
+if (final_metrics.get("native_analysis_model_requests",0)-
+        before.get("native_analysis_model_requests",0)!=1 or
+    final_metrics.get("native_graph_turns",0)-
+        before.get("native_graph_turns",0)!=1 or
+    final_metrics.get("source_tool_requests",0)-
+        before.get("source_tool_requests",0)!=1 or
+    final_metrics.get("source_search_calls",0)-
+        before.get("source_search_calls",0)!=1 or
+    final_metrics.get("source_scrape_calls",0)-
+        before.get("source_scrape_calls",0)!=1 or
+    final_metrics.get("source_final",0)-
+        before.get("source_final",0)!=1):
     fail("NATIVE_GRAPH_MODEL_EFFECT_REEXECUTED_OR_MISSING")
 print("CI_PR107_COLD_MULTI_NATIVE_GRAPH_REPLAY_SAFE=PASS",flush=True)
 print("CI_PR107_COLD_MULTI_BOTH_TASKS_ORACLE_VERIFIED=PASS",flush=True)

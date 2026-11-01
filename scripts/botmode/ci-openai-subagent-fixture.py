@@ -313,6 +313,33 @@ def message_text(message):
                          and part.get('type') == 'text' and isinstance(part.get('text'), str))
     return ''
 
+def is_original_native_analysis_request(messages):
+    # Strictly CI fixture-local routing, not an authorization or a substitute
+    # for the signed plan. Research-v1 has two provider calls (tool then JSON);
+    # Analyse must be held by its own declared capability, not by call index.
+    marker = 'Mission planning context (not execution permission):'
+    for message in reversed(messages):
+        if not isinstance(message, dict) or message.get('role') not in ('system', 'developer'):
+            continue
+        content = message_text(message)
+        if marker not in content:
+            continue
+        try:
+            context, _ = json.JSONDecoder().raw_decode(content.split(marker, 1)[1].lstrip())
+        except ValueError:
+            continue
+        if not isinstance(context, dict):
+            return False
+        capabilities = context.get('requiredCapabilities')
+        return (isinstance(capabilities, list) and
+                set(capabilities) == {'ci-native-analysis'} and
+                isinstance(context.get('taskId'), str) and
+                bool(context['taskId']) and
+                isinstance(context.get('missionId'), str) and
+                bool(context['missionId']))
+    return False
+
+
 def planned_output_contract(messages):
     marker='Mission planning context (not execution permission):'
     for message in reversed(messages):
@@ -554,7 +581,30 @@ class Handler(BaseHTTPRequestHandler):
         forced_web=isinstance(choice,dict) and choice.get('type')=='function' and isinstance(choice.get('function'),dict) and choice['function'].get('name')=='web_search'
         if forced_web and not web_advertised:
             return self.send({'error':'fixture_tool_choice_schema_mismatch'},400)
-        if planned_contract=='result-v1' and not forced_web:
+        # A signed 4C analysis request passes through the independent
+        # original-graph broker; it is NEVER a second generic child reply.
+        # Hold this specific provider request (whatever prior web messages
+        # LangGraph carries), not the second non-tool model call.
+        original_native_analysis = (
+            native_graph_fixture and is_original_native_analysis_request(messages)
+        )
+        if original_native_analysis and not advertised and not forced_web:
+            with lock:
+                native_graph_calls += 1
+                calls['native_graph_turns'] = calls.get('native_graph_turns', 0) + 1
+                calls['native_analysis_model_requests'] = (
+                    calls.get('native_analysis_model_requests', 0) + 1
+                )
+                block = hold_second_child
+                if block:
+                    calls['held_second_child_requests'] += 1
+            if block and not second_child_release.wait(timeout=120):
+                return self.send({'error':'CI_NATIVE_GRAPH_ANALYSIS_HOLD_EXPIRED'},503)
+            message={'role':'assistant','content':json.dumps({
+                'ok':True,'result':'Synthetic CI native Analyse completed',
+            })}
+            reason='stop'
+        elif planned_contract=='result-v1' and not forced_web:
             with lock: calls['planned_final']=calls.get('planned_final',0)+1
             message={'role':'assistant','content':SOURCE_RESULT}
             reason='stop'
