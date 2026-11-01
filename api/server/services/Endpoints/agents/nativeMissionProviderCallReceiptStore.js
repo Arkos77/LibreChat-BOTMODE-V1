@@ -116,13 +116,13 @@ function createNativeMissionProviderCallReceiptStore({
   const match = (identity, requestDigest) => {
     requireDigest(requestDigest);
     const { callKey, identity: original } = identify(identity);
-    // One immutable provider effect per native graph node checkpoint.
-    // Neither a changed operation key nor a changed request digest may
-    // allocate a second provider call in the same original step.
+    // One irreversible provider effect per ORIGINAL graph node per generation.
+    // A different checkpoint_id must NOT open a second provider slot for the
+    // same node. The original checkpoint is still checked on every lookup.
     const nativeGraphSlotKey = original.mode === 'native_graph'
       ? fingerprint(JSON.stringify(Object.fromEntries(
           DIRECT_GRAPH_ID_FIELDS.filter((field) =>
-            !['operationKey', 'agentId', 'provider', 'model'].includes(field))
+            !['operationKey', 'agentId', 'provider', 'model', 'graphCheckpointId'].includes(field))
             .map((field) => [field, original[field]]),
         )))
       : undefined;
@@ -193,7 +193,8 @@ function createNativeMissionProviderCallReceiptStore({
         saved.requestDigest !== requestDigest ||
         saved.identity.agentId !== identity.agentId ||
         saved.identity.provider !== identity.provider ||
-        saved.identity.model !== identity.model) {
+        saved.identity.model !== identity.model ||
+        saved.identity.graphCheckpointId !== identity.graphCheckpointId) {
       refuse('NATIVE_PROVIDER_CALL_IMMUTABLE_CONFLICT');
     }
     assertSame(saved, original);
@@ -225,7 +226,8 @@ function createNativeMissionProviderCallReceiptStore({
         saved.requestDigest !== requestDigest ||
         saved.identity.agentId !== identity.agentId ||
         saved.identity.provider !== identity.provider ||
-        saved.identity.model !== identity.model) {
+        saved.identity.model !== identity.model ||
+        saved.identity.graphCheckpointId !== identity.graphCheckpointId) {
       refuse('NATIVE_GRAPH_ORIGINAL_READ_PROOF_MISSING');
     }
     const resolved = match(saved.identity, requestDigest);
