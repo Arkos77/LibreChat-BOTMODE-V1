@@ -447,7 +447,7 @@ const mongoose=require('mongoose');(async()=>{
             COMPOSE+["logs","--no-color","--tail","2500","api"],
             capture_output=True,text=True,timeout=25,check=True,
         ).stdout
-        for field in ('REJECT','AI_PRESENT','AI_ID_PRESENT','TOOL_CALLS','STATE_MESSAGES'):
+        for field in ('REJECT','AI_PRESENT','AI_ID_PRESENT','TOOL_CALLS','STATE_MESSAGES','RESULT_STATUS','TOOL_ERROR_CLASS'):
             values=re.findall(
                 r'CI_RESEARCH_OBSERVATION_'+field+r'=([A-Z_0-9a-z-]{1,32})',
                 api_logs,

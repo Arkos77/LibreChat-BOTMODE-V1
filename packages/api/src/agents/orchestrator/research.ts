@@ -138,7 +138,30 @@ export function requireResearchObservation(
           'CI_RESEARCH_OBSERVATION_AI_ID_PRESENT=' + Boolean(ai?.id) + '\n' +
           'CI_RESEARCH_OBSERVATION_TOOL_CALLS=' + calls.length + '\n' +
           'CI_RESEARCH_OBSERVATION_STATE_MESSAGES=' +
-          (Array.isArray(state.messages) ? state.messages.length : -1) + '\n'
+          (Array.isArray(state.messages) ? state.messages.length : -1) + '\n' +
+          'CI_RESEARCH_OBSERVATION_RESULT_STATUS=' + (() => {
+            if (reason !== 'TOOL_RESULT_STATUS') return 'NOT_APPLICABLE';
+            const index = state.messages.findIndex((m) => m.id === ai?.id && m.getType() === 'ai');
+            const result = state.messages.slice(index + 1).find(
+              (m) => m.getType() === 'tool' && 'tool_call_id' in m && m.tool_call_id === calls[0]?.id,
+            );
+            return result == null || !('status' in result) ? 'MISSING' :
+              result.status === 'error' ? 'ERROR' : result.status === 'success' ? 'SUCCESS' : 'OTHER';
+          })() + '\n' +
+          'CI_RESEARCH_OBSERVATION_TOOL_ERROR_CLASS=' + (() => {
+            if (reason !== 'TOOL_RESULT_STATUS') return 'NOT_APPLICABLE';
+            const index = state.messages.findIndex((m) => m.id === ai?.id && m.getType() === 'ai');
+            const result = state.messages.slice(index + 1).find(
+              (m) => m.getType() === 'tool' && 'tool_call_id' in m && m.tool_call_id === calls[0]?.id,
+            );
+            // Non-reversible classes only, no model text or tool outputs.
+            const content = typeof result?.content === 'string' ? result.content : '';
+            return /not found/i.test(content) ? 'TOOL_NOT_FOUND' :
+              /(?:SSRF|private address|blocked address|not allowed)/i.test(content) ? 'NETWORK_POLICY' :
+              /(?:search provider|searxng|scraper|firecrawl)/i.test(content) ? 'WEB_PROVIDER' :
+              /(?:failed|error|exception|unavailable)/i.test(content) ? 'EXECUTION_ERROR' :
+              content ? 'UNCLASSIFIED' : 'EMPTY';
+          })() + '\n'
         );
       }
       throw new Error('BOTMODE_RESEARCH_OBSERVATION_REQUIRED');
