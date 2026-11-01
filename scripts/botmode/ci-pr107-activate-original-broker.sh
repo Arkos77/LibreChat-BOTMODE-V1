@@ -57,7 +57,7 @@ printf 'BOTMODE_CI_ORIGINAL_SECRET=%s\n' "$secret" | sudo tee -a .env >/dev/null
 printf "BOTMODE_CI_ORIGINAL_BINDINGS='%s'\n" "$catalog" | sudo tee -a .env >/dev/null
 unset secret catalog
 # All edits are in the disposable runner checkout, not in the stable source.
-sed -i '/      - OPENROUTER_KEY=/a\      - BOTMODE_NATIVE_ORIGINAL_BROKER_ENABLED=true\n      - BOTMODE_CI_ORIGINAL_MISSION_DIAGNOSTICS=1\n      - BOTMODE_NATIVE_ORIGINAL_BROKER_URL=http://ci-original-provider-broker:8096/\n      - BOTMODE_NATIVE_ORIGINAL_BROKER_SECRET=${BOTMODE_CI_ORIGINAL_SECRET:?}\n      - BOTMODE_NATIVE_ORIGINAL_BROKER_BINDINGS=${BOTMODE_CI_ORIGINAL_BINDINGS:?}' docker-compose.botmode.yml
+sed -i '/      - OPENROUTER_KEY=/a\      - BOTMODE_NATIVE_ORIGINAL_GRAPH_BROKER_ENABLED=true\n      - BOTMODE_NATIVE_ORIGINAL_BROKER_ENABLED=true\n      - BOTMODE_CI_ORIGINAL_MISSION_DIAGNOSTICS=1\n      - BOTMODE_NATIVE_ORIGINAL_BROKER_URL=http://ci-original-provider-broker:8096/\n      - BOTMODE_NATIVE_ORIGINAL_BROKER_SECRET=${BOTMODE_CI_ORIGINAL_SECRET:?}\n      - BOTMODE_NATIVE_ORIGINAL_BROKER_BINDINGS=${BOTMODE_CI_ORIGINAL_BINDINGS:?}' docker-compose.botmode.yml
 cat >> docker-compose.botmode-lite.yml <<'YAML_BROKER'
   ci-original-provider-broker:
     image: ${BOTMODE_IMAGE:?}
@@ -66,6 +66,7 @@ cat >> docker-compose.botmode-lite.yml <<'YAML_BROKER'
       BOTMODE_CI_ORIGINAL_BROKER: "1"
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:?}
       BOTMODE_CI_ORIGINAL_BROKER_SECRET: ${BOTMODE_CI_ORIGINAL_SECRET:?}
+      BOTMODE_CI_ORIGINAL_REDIS_URI: "redis://redis:6379"
       BOTMODE_CI_ORIGINAL_MONGO_URI: "mongodb://botmode_admin:ci-isolated-only@mongodb:27017/LibreChat?authSource=admin"
       BOTMODE_CI_ORIGINAL_FIXTURE_URL: "http://host.docker.internal:8088/v1/chat/completions"
       MONGO_URI: "mongodb://botmode_admin:ci-isolated-only@mongodb:27017/LibreChat?authSource=admin"
@@ -77,7 +78,7 @@ YAML_BROKER
 broker_ready=0
 for i in $(seq 1 30); do
   if "${COMPOSE[@]}" exec -T ci-original-provider-broker \
-    node -e "fetch('http://127.0.0.1:8096/status',{method:'POST'}).then(r=>process.exit(r.status===401?0:1)).catch(()=>process.exit(1))" \
+    node -e "Promise.all(['/status','/status-native-graph'].map(path=>fetch('http://127.0.0.1:8096'+path,{method:'POST'}))).then(a=>process.exit(a.every(r=>r.status===401)?0:1)).catch(()=>process.exit(1))" \
     >/dev/null 2>&1; then broker_ready=1; break; fi
   sleep 1
 done
@@ -103,3 +104,9 @@ if ! "${COMPOSE[@]}" logs --no-color api 2>/dev/null |
   exit 1
 fi
 echo 'CI_ORIGINAL_BROKER_HOST_INSTALLED=PASS'
+if ! "${COMPOSE[@]}" logs --no-color api 2>/dev/null |
+  grep -Fq 'Original native graph broker host enabled with independent authority'; then
+  echo 'CI_ORIGINAL_GRAPH_BROKER_HOST_NOT_ACTIVATED=FAIL'
+  exit 1
+fi
+echo 'CI_ORIGINAL_GRAPH_BROKER_HOST_INSTALLED=PASS'
