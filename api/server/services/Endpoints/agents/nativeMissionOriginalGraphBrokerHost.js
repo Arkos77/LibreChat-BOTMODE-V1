@@ -26,6 +26,7 @@ function deny(code) {
  */
 function createNativeMissionOriginalGraphBrokerHost({
   readOriginalGraphCheckpoint,
+  recordOriginalModelRequest,
   resolveModelBinding,
   brokerUrl,
   secret,
@@ -33,6 +34,7 @@ function createNativeMissionOriginalGraphBrokerHost({
 }) {
   if (
     typeof readOriginalGraphCheckpoint !== 'function' ||
+    typeof recordOriginalModelRequest !== 'function' ||
     typeof resolveModelBinding !== 'function' ||
     typeof brokerUrl !== 'string' || !brokerUrl ||
     typeof secret !== 'string' || secret.length < 32
@@ -89,6 +91,7 @@ function createNativeMissionOriginalGraphBrokerHost({
         getScope,
         getOriginalCheckpointReference: (scope) =>
           readOriginalGraphCheckpoint({ scope, plan, client }),
+        recordOriginalModelRequest,
         resolveModelBinding,
         brokerUrl,
         secret,
