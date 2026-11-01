@@ -83,4 +83,45 @@ function createNativeMissionOriginalGraphRequestIntentStore({ collection }) {
   return Object.freeze({ register, verify });
 }
 
-module.exports = { createNativeMissionOriginalGraphRequestIntentStore };
+/**
+ * Broker-side request verifier. An HMAC alone cannot prove that the model
+ * prompt was issued by the original graph; verify the exact durable intent.
+ * The separate graph authority also verifies live ACL, pending head & lease.
+ */
+function createNativeMissionOriginalGraphRequestVerifier({ intentStore }) {
+  if (typeof intentStore?.verify !== 'function') {
+    fail('NATIVE_GRAPH_REQUEST_INTENT_VERIFIER_MISSING');
+  }
+  const { requestDigest: canonicalDigest } = require('./nativeMissionProviderBrokerHttp');
+  return async (scope) => {
+    const body = scope?.authorizedRequest;
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+        body.model !== scope.model || body.stream !== false ||
+        !Array.isArray(body.messages) || body.tools != null ||
+        body.tool_choice != null) return false;
+    if (canonicalDigest(body) !== scope.requestDigest) return false;
+    return intentStore.verify({
+      identity: {
+        mode: 'native_graph',
+        userId: scope.userId,
+        tenantId: scope.tenantId,
+        streamId: scope.conversationId,
+        responseMessageId: scope.responseMessageId,
+        generationCreatedAt: scope.createdAt,
+        checkpointNamespace: scope.checkpointNamespace,
+        graphCheckpointId: scope.checkpointId,
+        nodeId: scope.nodeId,
+        taskId: scope.taskId,
+        agentId: scope.agentId,
+        provider: scope.provider,
+        model: scope.model,
+      },
+      requestDigest: scope.requestDigest,
+    });
+  };
+}
+
+module.exports = {
+  createNativeMissionOriginalGraphRequestIntentStore,
+  createNativeMissionOriginalGraphRequestVerifier,
+};
