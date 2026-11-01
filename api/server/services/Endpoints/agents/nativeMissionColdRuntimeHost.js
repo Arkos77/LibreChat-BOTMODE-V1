@@ -18,7 +18,11 @@ function createNativeMissionColdRuntimeHost({
   effectFences,
   oracle,
   publication,
+  proveColdGraphReceipt,
 }) {
+  if (proveColdGraphReceipt != null && typeof proveColdGraphReceipt !== 'function') {
+    throw new Error('NATIVE_COLD_RUNTIME_RECEIPT_PROOF_INVALID');
+  }
   const buildGraph =
     reconstructGraph ??
     (typeof createRun === 'function'
@@ -79,6 +83,18 @@ function createNativeMissionColdRuntimeHost({
     const graph = await buildGraph({ client, candidate, claim, assertAuthorized });
     if (!graph || typeof graph.invoke !== 'function' || typeof graph.getState !== 'function') {
       throw new Error('NATIVE_COLD_RUNTIME_HOST_GRAPH_UNAVAILABLE');
+    }
+    // Optional receipts-required path: authorize the *reconstructed* graph
+    // and original committed broker operation before any replay or promotion.
+    // No callback, no receipts-required authorization is inferred here.
+    if (proveColdGraphReceipt != null) {
+      await assertAuthorized();
+      if ((await proveColdGraphReceipt({
+        client, graph, candidate, claim, assertAuthorized,
+      })) !== true) {
+        throw new Error('NATIVE_COLD_RUNTIME_RECEIPT_PROOF_DENIED');
+      }
+      await assertAuthorized();
     }
     // The callbacks are host-owned. Carry the current document authorization
     // closure rather than letting Oracle/publication invent an HTTP principal.
