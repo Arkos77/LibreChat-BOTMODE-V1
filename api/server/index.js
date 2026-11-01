@@ -224,6 +224,85 @@ const configureGenerationStreams = () => {
   });
 };
 
+/**
+ * The original broker is initialized after Mongo connects, but the Redis
+ * generation manager is configured only in configureGenerationStreams().
+ * Register receipt recovery AFTER both host authorities exist; registering
+ * during broker construction silently skips the handler.
+ */
+const configureOriginalGraphRecoveryAfterStreams = () => {
+  const graphHost = app.locals.nativeMissionOriginalGraphBrokerHost;
+  const requestIntents = app.locals.nativeMissionOriginalGraphRequestIntentStore;
+  if (!graphHost || !requestIntents) return;
+  // Only after stream configuration is the Redis manager and model-only
+  // dispatch available. Unknown modes continue to fail closed.
+  if (GenerationJobManager.isRedis &&
+      !isEnabled(process.env.BOTMODE_DISABLE_NATIVE_MISSION_RECOVERY) &&
+      app.locals.nativeMissionModelOnlyRecoveryHandler &&
+      process.env.BOTMODE_NATIVE_RECOVERY_READONLY_AUDIT !== 'true' &&
+      process.env.BOTMODE_NATIVE_RECOVERY_CLAIM_AUDIT !== 'true') {
+    const mongoose = require('mongoose');
+    const {
+      createNativeMissionReceiptsRequiredRecoveryHandler,
+    } = require('./services/Endpoints/agents/nativeMissionReceiptsRequiredRecoveryHandler');
+    const {
+      createNativeMissionProviderCallReceiptStore,
+    } = require('./services/Endpoints/agents/nativeMissionProviderCallReceiptStore');
+    const {
+      getNativeMissionWakeupOrigin,
+    } = require('./services/Endpoints/agents/nativeMissionWakeupOriginStore');
+    const { initializeClientFromDocuments } =
+      require('./services/Endpoints/agents/initialize');
+    const {
+      createRun,
+      validateMissionTask,
+      normalizeMissionOracleState,
+      areMissionOracleResultsEquivalent,
+      qualifyAndExecuteRecoveredMissionSegment,
+      continueColdNativeMissionGraph,
+      sanitizeMessageForTransmit,
+    } = require('@librechat/api');
+    const receiptsHandler = createNativeMissionReceiptsRequiredRecoveryHandler({
+      manager: GenerationJobManager,
+      brokerHost: graphHost,
+      getOriginal: getNativeMissionWakeupOrigin,
+      intentStore: requestIntents,
+      providerReceiptStore: createNativeMissionProviderCallReceiptStore({
+        collection: mongoose.connection.db.collection('native_mission_provider_calls'),
+      }),
+      getUserById: agentEventMethods.getUserById,
+      isSubagentOwnerAdmissible: agentEventMethods.isSubagentOwnerAdmissible,
+      getConvo: agentEventMethods.getConvo,
+      getAgent: agentEventMethods.getAgent,
+      getMessage: agentEventMethods.getMessage,
+      saveMessage: agentEventMethods.saveMessage,
+      initializeClientFromDocuments,
+      createRun,
+      validateMissionTask,
+      normalizeMissionOracleState,
+      areMissionOracleResultsEquivalent,
+      qualifyAndExecuteRecoveredMissionSegment,
+      continueColdNativeMissionGraph,
+      sanitizeMessage: sanitizeMessageForTransmit,
+      emitDone: GenerationJobManager.emitDone.bind(GenerationJobManager),
+      log: logger,
+    });
+    const modelOnlyHandler = app.locals.nativeMissionModelOnlyRecoveryHandler;
+    GenerationJobManager.setNativeMissionRecoveryHandler(async (candidate) => {
+      const job = await GenerationJobManager.getJobStore()?.getJob(candidate.streamId);
+      if (job?.createdAt !== candidate.createdAt) return false;
+      if (job.nativeMissionCapabilityAttestation?.mode === 'receipts_required') {
+        return receiptsHandler(candidate);
+      }
+      if (job.nativeMissionCapabilityAttestation?.mode === 'model_only') {
+        return modelOnlyHandler(candidate);
+      }
+      return false;
+    });
+    logger.info('[NativeMission] Strict two-node broker receipt recovery host registered');
+  }
+};
+
 const startServer = async () => {
   await waitForKeyvRedisClient();
   await configureSubagentTaskRouting();
@@ -366,74 +445,9 @@ const startServer = async () => {
         secret: process.env.BOTMODE_NATIVE_ORIGINAL_BROKER_SECRET,
       });
       app.locals.nativeMissionOriginalGraphBrokerHost = graphHost;
-      // Mongo and the independently authenticated graph broker are now ready.
-      // The Redis manager was initialized earlier; replace its model-only
-      // dispatch ONLY after this authority is available. Unknown modes and
-      // non-checkpointed/tool-bearing pending nodes continue to fail closed.
-      if (GenerationJobManager.isRedis &&
-          !isEnabled(process.env.BOTMODE_DISABLE_NATIVE_MISSION_RECOVERY) &&
-          app.locals.nativeMissionModelOnlyRecoveryHandler &&
-          process.env.BOTMODE_NATIVE_RECOVERY_READONLY_AUDIT !== 'true' &&
-          process.env.BOTMODE_NATIVE_RECOVERY_CLAIM_AUDIT !== 'true') {
-        const {
-          createNativeMissionReceiptsRequiredRecoveryHandler,
-        } = require('./services/Endpoints/agents/nativeMissionReceiptsRequiredRecoveryHandler');
-        const {
-          createNativeMissionProviderCallReceiptStore,
-        } = require('./services/Endpoints/agents/nativeMissionProviderCallReceiptStore');
-        const {
-          getNativeMissionWakeupOrigin,
-        } = require('./services/Endpoints/agents/nativeMissionWakeupOriginStore');
-        const { initializeClientFromDocuments } =
-          require('./services/Endpoints/agents/initialize');
-        const {
-          createRun,
-          validateMissionTask,
-          normalizeMissionOracleState,
-          areMissionOracleResultsEquivalent,
-          qualifyAndExecuteRecoveredMissionSegment,
-          continueColdNativeMissionGraph,
-          sanitizeMessageForTransmit,
-        } = require('@librechat/api');
-        const receiptsHandler = createNativeMissionReceiptsRequiredRecoveryHandler({
-          manager: GenerationJobManager,
-          brokerHost: graphHost,
-          getOriginal: getNativeMissionWakeupOrigin,
-          intentStore: requestIntents,
-          providerReceiptStore: createNativeMissionProviderCallReceiptStore({
-            collection: mongoose.connection.db.collection('native_mission_provider_calls'),
-          }),
-          getUserById: agentEventMethods.getUserById,
-          isSubagentOwnerAdmissible: agentEventMethods.isSubagentOwnerAdmissible,
-          getConvo: agentEventMethods.getConvo,
-          getAgent: agentEventMethods.getAgent,
-          getMessage: agentEventMethods.getMessage,
-          saveMessage: agentEventMethods.saveMessage,
-          initializeClientFromDocuments,
-          createRun,
-          validateMissionTask,
-          normalizeMissionOracleState,
-          areMissionOracleResultsEquivalent,
-          qualifyAndExecuteRecoveredMissionSegment,
-          continueColdNativeMissionGraph,
-          sanitizeMessage: sanitizeMessageForTransmit,
-          emitDone: GenerationJobManager.emitDone.bind(GenerationJobManager),
-          log: logger,
-        });
-        const modelOnlyHandler = app.locals.nativeMissionModelOnlyRecoveryHandler;
-        GenerationJobManager.setNativeMissionRecoveryHandler(async (candidate) => {
-          const job = await GenerationJobManager.getJobStore()?.getJob(candidate.streamId);
-          if (job?.createdAt !== candidate.createdAt) return false;
-          if (job.nativeMissionCapabilityAttestation?.mode === 'receipts_required') {
-            return receiptsHandler(candidate);
-          }
-          if (job.nativeMissionCapabilityAttestation?.mode === 'model_only') {
-            return modelOnlyHandler(candidate);
-          }
-          return false;
-        });
-        logger.info('[NativeMission] Strict two-node broker receipt recovery host registered');
-      }
+      // Broker construction precedes stream initialization. Retain the
+      // original intent reader until the configured Redis manager is ready.
+      app.locals.nativeMissionOriginalGraphRequestIntentStore = requestIntents;
       logger.info('[NativeMission] Original native graph broker host enabled with independent authority');
     }
   } else if (process.env.BOTMODE_NATIVE_ORIGINAL_GRAPH_BROKER_ENABLED === 'true') {
@@ -659,6 +673,7 @@ const startServer = async () => {
   app.use(ErrorController);
 
   configureGenerationStreams();
+  configureOriginalGraphRecoveryAfterStreams();
 
   const server = app.listen(port, host, async (err) => {
     if (err) {
