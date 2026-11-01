@@ -432,6 +432,15 @@ const mongoose=require('mongoose');(async()=>{
             COMPOSE+["logs","--no-color","--tail","2500","api"],
             capture_output=True,text=True,timeout=25,check=True,
         ).stdout
+        # This diagnostic is emitted ONLY when the SDK refuses a forbidden
+        # native graph effect surface in the disposable CI mission.
+        for field in ('NODE','TOOLS','GRAPH_TOOLS','DEFINITIONS','DELEGATION'):
+            entries=re.findall(
+                r'CI_NATIVE_GRAPH_EFFECTS_REJECTED_'+field+r'=([A-Za-z]{2,9})',
+                api_logs,
+            )
+            print('CI_PR107_COLD_MULTI_EFFECTS_REJECTED_'+field+'='+
+                  (entries[-1] if entries else 'NOT_OBSERVED'),flush=True)
         # The isolated API emits this directly BEFORE wrapping the original
         # exception for SSE. Only bounded, nonsecret fields are surfaced.
         for field in ("CODE","CLASS","MESSAGE_HASH","MESSAGE_LENGTH"):

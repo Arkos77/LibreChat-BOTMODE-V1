@@ -232,6 +232,18 @@ export function compileNativePlan(
         binding.toolDefinitions?.length ||
         binding.subagentConfigs?.length
       ) {
+        // Disposable CI only: identify the forbidden execution surface without
+        // logging user content, model prompts, tool names or agent identities.
+        if (process.env.BOTMODE_CI_ORIGINAL_MISSION_DIAGNOSTICS === '1') {
+          const first = plan.tasks[0]?.nodeId === task.nodeId;
+          process.stderr.write(
+            'CI_NATIVE_GRAPH_EFFECTS_REJECTED_NODE=' + (first ? 'FIRST' : 'LATER') + '\n' +
+            'CI_NATIVE_GRAPH_EFFECTS_REJECTED_TOOLS=' + Boolean(binding.tools?.length) + '\n' +
+            'CI_NATIVE_GRAPH_EFFECTS_REJECTED_GRAPH_TOOLS=' + Boolean(binding.graphTools?.length) + '\n' +
+            'CI_NATIVE_GRAPH_EFFECTS_REJECTED_DEFINITIONS=' + Boolean(binding.toolDefinitions?.length) + '\n' +
+            'CI_NATIVE_GRAPH_EFFECTS_REJECTED_DELEGATION=' + Boolean(binding.subagentConfigs?.length) + '\n',
+          );
+        }
         throw new Error('NATIVE_GRAPH_BROKER_EFFECTS_UNSUPPORTED');
       }
       result.clientOptions = attachNativeGraphBrokerModelFetch({
