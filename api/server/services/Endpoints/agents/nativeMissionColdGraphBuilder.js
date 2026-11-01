@@ -61,6 +61,15 @@ function createNativeMissionColdGraphBuilder({ createRun }) {
     ) {
       throw new Error('NATIVE_COLD_GRAPH_REPLAY_PROOFS_MISSING');
     }
+    // Receipts-required recovery must never compile an SDK graph with a
+    // direct-provider fallback. An arbitrary proof callback alone cannot
+    // guarantee that the original model operation is status-only.
+    if (client.options?.nativeMissionRecoveryRequiresReceipts === true &&
+        (typeof options.nativeGraphModelFetchFactory !== 'function' ||
+         options.nativeGraphModelFetchFactory !==
+           client.options.nativeGraphModelFetchFactory)) {
+      throw new Error('NATIVE_COLD_GRAPH_RECEIPTS_TRANSPORT_UNVERIFIED');
+    }
     // The authenticated host must rebuild every originally planned specialist
     // and the primary agent. Missing configs would silently route checkpointed
     // nodes through a different model/tool authority after a cold restart.

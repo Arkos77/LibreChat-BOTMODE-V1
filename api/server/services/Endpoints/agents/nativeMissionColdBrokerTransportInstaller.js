@@ -64,6 +64,7 @@ function createNativeMissionColdBrokerTransportInstaller({ brokerHost, getOrigin
       throw new Error('NATIVE_COLD_BROKER_FACTORY_INVALID');
     }
     client.options.nativeGraphModelFetchFactory = factory;
+    client.options.nativeMissionRecoveryRequiresReceipts = true;
     return Object.freeze({ bindGraph: async (reconstructed) => {
       await assertAuthorized();
       if (graph || typeof reconstructed?.getState !== 'function' ||
