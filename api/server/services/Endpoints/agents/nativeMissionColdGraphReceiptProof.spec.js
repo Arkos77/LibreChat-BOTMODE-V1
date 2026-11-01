@@ -16,7 +16,11 @@ const success = { status: 'result_committed', resultAvailable: true,
   response: { choices: [{ message: { role: 'assistant', content: 'result' } }] } };
 function setup(receipt = success) {
   const store = { readOriginalNativeGraph: jest.fn().mockResolvedValue(receipt) };
-  const intentStore = { verify: jest.fn().mockResolvedValue(true) };
+  const intentStore = { readOriginalIntent: jest.fn().mockResolvedValue({
+    requestDigest, checkpointProof: { threadId: candidate.streamId,
+      checkpointNamespace: candidate.checkpointNamespace, checkpointId: candidate.checkpointId,
+      pendingNodes: ['analysis'] },
+  }) };
   const assertAuthorized = jest.fn().mockResolvedValue(undefined);
   const prove = createNativeMissionColdGraphReceiptProof({ store, intentStore, assertAuthorized });
   return { prove, store, intentStore, assertAuthorized };
@@ -28,7 +32,7 @@ describe('cold native graph original receipt proof (read-only)', () => {
       .resolves.toMatchObject({ identity, requestDigest });
     expect(h.store.readOriginalNativeGraph).toHaveBeenCalledTimes(1);
     expect(h.assertAuthorized).toHaveBeenCalledTimes(3);
-    expect(h.intentStore.verify).toHaveBeenCalledTimes(1);
+    expect(h.intentStore.readOriginalIntent).toHaveBeenCalledTimes(1);
   });
   it.each([
     { identity: { ...identity, graphCheckpointId: 'different' } },
@@ -58,8 +62,22 @@ describe('cold native graph original receipt proof (read-only)', () => {
   });
   it('does not read a result without the durable original request intent', async () => {
     const h = setup();
-    h.intentStore.verify.mockResolvedValue(false);
+    h.intentStore.readOriginalIntent.mockResolvedValue(null);
     await expect(h.prove({ candidate, claim, identity, requestDigest, pendingNodes }))
+      .rejects.toThrow('NATIVE_COLD_GRAPH_ORIGINAL_INTENT_UNVERIFIED');
+    expect(h.store.readOriginalNativeGraph).not.toHaveBeenCalled();
+  });
+  it('recovers the digest only from the immutable Mongo intent', async () => {
+    const h = setup();
+    await expect(h.prove({ candidate, claim, identity, pendingNodes }))
+      .resolves.toMatchObject({ requestDigest });
+    expect(h.store.readOriginalNativeGraph)
+      .toHaveBeenCalledWith({ identity, requestDigest });
+  });
+  it('rejects a caller supplied digest differing from the original', async () => {
+    const h = setup();
+    await expect(h.prove({ candidate, claim, identity,
+      requestDigest: 'b'.repeat(64), pendingNodes }))
       .rejects.toThrow('NATIVE_COLD_GRAPH_ORIGINAL_INTENT_UNVERIFIED');
     expect(h.store.readOriginalNativeGraph).not.toHaveBeenCalled();
   });

@@ -7,7 +7,7 @@
  */
 function createNativeMissionColdGraphReceiptProof({ store, intentStore, assertAuthorized }) {
   if (typeof store?.readOriginalNativeGraph !== 'function' ||
-      typeof intentStore?.verify !== 'function' ||
+      typeof intentStore?.readOriginalIntent !== 'function' ||
       typeof assertAuthorized !== 'function') {
     throw new Error('NATIVE_COLD_GRAPH_RECEIPT_DEPENDENCIES_MISSING');
   }
@@ -30,17 +30,26 @@ function createNativeMissionColdGraphReceiptProof({ store, intentStore, assertAu
         typeof identity.tenantId !== 'string' || identity.tenantId.length > 256 ||
         !Array.isArray(pendingNodes) || pendingNodes.length !== 1 ||
         pendingNodes[0] !== identity.nodeId ||
-        typeof requestDigest !== 'string' ||
-        !/^[a-f0-9]{64}$/.test(requestDigest) ||
+        (requestDigest != null && (typeof requestDigest !== 'string' ||
+          !/^[a-f0-9]{64}$/.test(requestDigest))) ||
         Object.prototype.hasOwnProperty.call(identity, 'operationKey')) {
       throw new Error('NATIVE_COLD_GRAPH_RECEIPT_IDENTITY_DENIED');
     }
     await assertAuthorized();
-    if (await intentStore.verify({ identity, requestDigest }) !== true) {
+    const original = await intentStore.readOriginalIntent({ identity });
+    if (!original || original.requestDigest == null ||
+        (requestDigest != null && original.requestDigest !== requestDigest) ||
+        original.checkpointProof?.checkpointId !== candidate.checkpointId ||
+        original.checkpointProof?.threadId !== candidate.streamId ||
+        original.checkpointProof?.checkpointNamespace !== candidate.checkpointNamespace ||
+        !Array.isArray(original.checkpointProof?.pendingNodes) ||
+        original.checkpointProof.pendingNodes.length !== 1 ||
+        original.checkpointProof.pendingNodes[0] !== identity.nodeId) {
       throw new Error('NATIVE_COLD_GRAPH_ORIGINAL_INTENT_UNVERIFIED');
     }
     await assertAuthorized();
-    const receipt = await store.readOriginalNativeGraph({ identity, requestDigest });
+    const originalDigest = original.requestDigest;
+    const receipt = await store.readOriginalNativeGraph({ identity, requestDigest: originalDigest });
     await assertAuthorized();
     if (receipt?.status !== 'result_committed' ||
         receipt.resultAvailable !== true ||
@@ -48,7 +57,7 @@ function createNativeMissionColdGraphReceiptProof({ store, intentStore, assertAu
         receipt.response.choices.length !== 1) {
       throw new Error('NATIVE_COLD_GRAPH_RECEIPT_UNAVAILABLE');
     }
-    return Object.freeze({ identity: Object.freeze({ ...identity }), requestDigest });
+    return Object.freeze({ identity: Object.freeze({ ...identity }), requestDigest: originalDigest });
   };
 }
 
