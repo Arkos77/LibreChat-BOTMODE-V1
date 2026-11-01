@@ -2003,7 +2003,15 @@ export async function createRun({
       /** Seed the SDK countdown that bounds nested delegation across isolated child graphs. */
       agentInput.maxSubagentDepth = MAX_SUBAGENT_DEPTH;
     }
-    if (subagentTasks != null) {
+    // A signed native MissionPlan owns task ordering through graph edges,
+    // not through the Worker subagent queue or check_background_task. The
+    // queue may be available on the authenticated Worker, but injecting its
+    // poll tool into EVERY native node would give the tool-free Analyse node
+    // an unplanned effect and correctly trip the broker's fail-closed gate.
+    // Preserve all saved/authorized tool definitions unchanged: the native
+    // broker still rejects an actual tool on Analyse. Ordinary detached
+    // subagent runs retain their background poll tool without change.
+    if (subagentTasks != null && orchestratorPlan == null) {
       agentInput.toolDefinitions = registerBackgroundTaskTool({
         toolRegistry: agentInput.toolRegistry,
         toolDefinitions: agentInput.toolDefinitions,
