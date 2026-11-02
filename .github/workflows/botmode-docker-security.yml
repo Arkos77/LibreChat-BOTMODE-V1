@@ -22,9 +22,37 @@ on:
         description: Verify Happy DOM 21.0.4 and six Jest suites on isolated runner
         type: boolean
         default: false
+      happy_dom_bun_diag_only:
+        description: Inspect Bun-only lock delta without rerunning the 66 PASS Jest tests
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
+  happy-dom-bun-diagnostic:
+    if: ${{ inputs.happy_dom_bun_diag_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Assert exact candidate
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test "${{ github.ref_name }}" = simplify/botmode-v1-lot-a-20261102
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.6
+      - name: Inspect Bun lock reconciliation only (no installs or app tests)
+        run: |
+          set -euo pipefail
+          bun install --lockfile-only --ignore-scripts
+          echo 'BOTMODE_HAPPY_BUN_DIFF_BEGIN'
+          git diff --numstat -- bun.lock
+          git diff -- bun.lock | head -130
+          echo 'BOTMODE_HAPPY_BUN_DIFF_END'
   happy-dom-patch-security:
     if: ${{ inputs.happy_dom_security_only }}
     runs-on: ubuntu-latest
@@ -139,7 +167,7 @@ jobs:
           fi
           echo 'BOTMODE_GO_GRPC_1_83_2_PATCHED_AND_TESTED=PASS'
   compose-auth:
-    if: ${{ !inputs.go_security_only && !inputs.vite_security_only && !inputs.happy_dom_security_only }}
+    if: ${{ !inputs.go_security_only && !inputs.vite_security_only && !inputs.happy_dom_security_only && !inputs.happy_dom_bun_diag_only }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
