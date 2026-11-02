@@ -10,7 +10,6 @@ on:
       - 'e2e/playwright.config.oracle-restart.ts'
       - 'e2e/specs/qualification/mission-oracle-runtime.spec.ts'
       - 'api/server/index.js'
-      - 'api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js'
 
 permissions:
   contents: read
@@ -42,10 +41,7 @@ jobs:
       REDIS_URI: redis://127.0.0.1:6379
       E2E_RESTART_CONTROL_PORT: '8979'
       STREAM_KEEP_COMPLETED_JOBS: 'true'
-      # Qualification of the REAL production host recovery path. Deliberately
-      # exclude read-only audit mode: the test must prove autonomous replay,
-      # durable task Oracle verdicts and unique saved FINAL after SIGKILL.
-      BOTMODE_DISABLE_NATIVE_MISSION_RECOVERY: 'false'
+      # Historical scope: restart AFTER publication; no mid-provider replay.
       NODE_OPTIONS: '--max-old-space-size=6144'
     steps:
       - uses: actions/checkout@v5

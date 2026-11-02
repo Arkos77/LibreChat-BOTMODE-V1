@@ -14,12 +14,11 @@
 | --- | --- | --- |
 | Orchestrateur, spécialistes, Oracle, P6, outils métier | KEEP | Parcours ordinaires à conserver, sans refonte |
 | `nativeMissionCapabilityAttestation.js` | KEEP | Utilisé par `request.js`, `initialize.js` et les métadonnées de mission |
-| `nativeMissionRecoveredOraclePersister.js` | KEEP | Utilisé par `initialize.js`, `client.js` et le vérificateur Oracle |
+| `nativeMissionRecoveredOraclePersister.js` | KEEP | Importé par `initialize.js` et utilisé via les options du client ; conserver avant qualification du lot B |
 | `nativeMissionReplayReceiptProof.js` | KEEP | Utilisé par `client.js` et les contrôles de preuve |
-| `nativeMissionRecoveryAuthorization.js`, `nativeMissionRecoveryHostAuthorization.js` | SHARED | Autorisations à réexaminer lors de la reprise aux frontières durables |
-| `nativeMissionRecoveryCoordinator.js`, `nativeMissionRecoveryHandlerFactory.js` | SHARED | Logique de coordination potentiellement réutilisable au lot B, aucun replay réactivé |
-| `nativeMissionColdRuntimeHost.js`, `nativeMissionColdGraphBuilder.js` et liaison du client | UNKNOWN | Reconstruction à ne ni réinstaller ni retirer sans qualifier les frontières durables |
-| Publication et contrôle des résultats récupérés, callbacks de présentation | SHARED | Tests Oracle et publication existants en dépendent ; conservation provisoire |
+| Les 14 modules de la chaîne de récupération à froid non reliés à des appelants de production | DELETE | Graphe d'imports sans entrée de production après retrait du handler ; inclut autorisation spéciale, coordination et assemblage, runtime froid, présentation terminale récupérée et leurs tests exclusifs |
+| `nativeMissionRecoveredOracleSources.spec.js` | KEEP / ADAPT | Conserver les cas de persistance Oracle, retrait des assertions utilisant le vérificateur de reprise supprimé |
+| Tests historiques du replay à froid | DELETE | Exclusifs aux composants sans appelants ; les preuves restent consultables dans l'historique Git |
 | Sondes de diagnostic host/claim 4C et leurs tests | DELETE | Uniquement branchées sur les anciens modes d'audit CI |
 | Assembleur original de reprise automatique `model-only` et replay dédié | DELETE | Cible la reprise automatique fournisseur incertaine abandonnée |
 | Workflow `botmode-sdk-cold-sigkill-qualification.yml` | DELETE | Qualification coûteuse de récupération à froid abandonnée ; scripts génériques utiles conservés |
@@ -46,6 +45,26 @@ Bilan au HEAD `7426540401d33a4fece1be80f8bbe86076e33682` : **14 chemins modifié
 - Qualification Docker **hors réseau** sur image locale déjà présente, sans construction ni appel fournisseur : `native-orphan-preflight-cadence-regression.cjs` PASS (six contrôles), transpilation TypeScript des deux fichiers modifiés PASS, parsing YAML des workflows ciblés PASS. Aucun service ni volume utilisateur monté/modifié.
 - Compilation TypeScript **complète avec vérification de types** et qualification LibreChat intégrée : NON CONCLUANT (environnement de dépendances local incomplet ; non exécutées). La transpilation de deux fichiers n'est pas une vérification de types.
 - Aucun test CI Docker, SIGKILL intégré ou consommation de fournisseur n'a été déclenché.
+
+
+## Retrait d'orphelins supplémentaires (lot A, même branche)
+
+Analyse par import et référence depuis les parcours hors tests : 17 modules JavaScript `nativeMission` examinés après les deux premiers commits, dont **3 avec des appelants de production** et **14 appartenant seulement à la chaîne de récupération désactivée**. Les 14 modules exclusifs ont été retirés avec 15 scripts de régression correspondants et trois tests Jest dédiés à l'ancien replay à froid. Le test mixte `nativeMissionRecoveredOracleSources.spec.js` est conservé pour ses contrôles d'autorisation, de CAS et de persistance Oracle ; les seuls cas dépendant du vérificateur supprimé ont été retirés.
+
+Références de workflows nettoyées : test ancien `nativeMissionPresentation.spec.js` non exécutable et paramètre sans effet `BOTMODE_DISABLE_NATIVE_MISSION_RECOVERY`. Les workflows P6, Oracle et checkpoint ordinaires n'ont pas été supprimés.
+
+Modules supprimés dans ce second nettoyage (14, aucun appelant de production confirmé dans le graphe d'import examiné) :
+
+- Identification et autorisation exclusivement cold : `nativeMissionAuthenticatedRecoveryContext`, `nativeMissionAuthorizedClientInitializer`, `nativeMissionRecoveryAuthorization`, `nativeMissionRecoveryHostAuthorization`.
+- Reconstruction et assemblage exclusivement cold : `nativeMissionColdGraphBuilder`, `nativeMissionColdRuntimeHost`, `nativeMissionRecoveredClientBinding`, `nativeMissionRecoveryCoordinator`, `nativeMissionRecoveryHandlerFactory`.
+- Publication/contrôle exclusivement cold : `nativeMissionDurablePublicationStage`, `nativeMissionModelOnlyRecoveryCallbacks`, `nativeMissionRecoveredGraphOutput`, `nativeMissionRecoveredOracleVerifier`, `nativeMissionRecoveredTerminalPublisher`.
+
+Cette qualification de non-usage se fonde sur les références de fichiers et imports statiques du dépôt ; elle ne constitue pas une preuve de l'absence de chargement dynamique externe. Les fichiers sont conservés dans l'historique Git et la release officielle reste intacte.
+
+
+Tests Node encore exécutables sur le code de la candidate : garde de non-reprise automatique (8 configurations), persistance Oracle avec refus d'autorisation et de relecture contradictoire, attestation des capacités et vérification des reçus : PASS. La régression de schéma Oracle réel et le test de préflight/checkpoint ont été exécutés hors réseau dans une image existante : PASS. Références locales aux modules supprimés : aucune trouvée par le contrôle ciblé.
+
+La build TypeScript complète et la qualification de la mission intégrée restent **NON CONCLUANTES** ; aucune relance CI ni fournisseur n'a été effectuée pour ces suppressions.
 
 ## Verdict et suite
 
