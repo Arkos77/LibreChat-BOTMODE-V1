@@ -23,3 +23,13 @@ C3 ne pourra être déclaré globalement PASS qu'après des preuves cohérentes 
 ## Premier résultat de qualification C3
 
 Run `41386621665` sur le commit `565df960557601dc00abd66a4b19719e6b95ecce` : **API PASS, 5 suites / 22 tests** (permissions, projection, initialisation, contrôles agent). Les quatre suites React ont échoué **avant d'exécuter le moindre test** : le workflow ne construisait pas `@librechat/client`, dépendance déjà définie dans le dépôt (`npm run build:client-package`). Verdict client : **NON CONCLUANT**, il ne s'agit pas d'un défaut produit. Correctif limité à la préparation du package client ; prochain run `c3_ui_only` pour ne pas répéter les 22 tests API déjà acquis. Aucun code produit modifié.
+
+## Résultats C3 hors fournisseur — vérifiés sur GitHub Actions
+
+- Run API [41386621665](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/41386621665), commit `565df960557601dc00abd66a4b19719e6b95ecce` : **5 suites / 22 tests API PASS**, incluant l'inventaire des spécialistes, les contrôles d'identité et de permissions, les projections Projet et les routes HTTP simulées. Verdict du run global : FAIL, car les suites UI qui suivaient ne pouvaient pas démarrer sans le package interne client.
+- Run client [41386838354](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/41386838354), commit `5a9709d4dcc7966672048da7a9a74856eaca6515` : **4 suites / 23 tests React PASS**, après `npm run build:client-package`. Le workflow est SUCCESS. Teste notamment Idée → Projet → lancement Chat, choix du Worker autorisé, sélection auto/manuelle, résultats Oracle affichés, suivi d'exécution.
+- Total C3 sur les deux sous-périmètres : **45 tests PASS**. Pas de modification du code de production ; seule la CI et la documentation ont changé depuis C2.
+
+**Verdict : C3 contrats API/UI ciblés PASS, C3 parcours complet NON CONCLUANT.** Une authentique session utilisateur avec LibreChat API démarrée, propagation de l'état des spécialistes, appel fournisseur réel contrôlé, Oracle VERIFIED et publication P6 unique sur une même mission n'a pas été réalisée sur cette candidate. Aucune nouvelle qualification 4C ne doit être engagée pour compenser cette absence.
+
+**Point de sortie pour le prochain sous-lot** : produire une seule preuve E2E sur environnement isolé de la candidate source exacte, en réutilisant les briques déjà présentes ; ne pas basculer la release officielle, ne pas utiliser les secrets privés sans mandat, et ne pas relancer les 45 tests sans changement pertinent.
