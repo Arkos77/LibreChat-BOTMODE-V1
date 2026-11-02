@@ -38,3 +38,17 @@ Aucun changement sur `main`, la release officielle `v1.0.1`, les conteneurs, les
 L'advisory officielle GitHub [GHSA-2v4p-qf9q-27wj](https://github.com/advisories/ghsa-2v4p-qf9q-27wj) confirme que le risque de déni de service concerne certains serveurs Go créés via `xds.NewGRPCServer` et utilisant des requêtes sans `:authority` ni `Host`. La version du module `otel/langfuse-fanout` a été alignée **strictement de `google.golang.org/grpc v1.83.1` à `v1.83.2`**, avec les deux sommes officielles de `sum.golang.org` vérifiées, sans mise à jour majeure ni modification de l'API Lite ou du module principal.
 
 Un contrôle `go_security_only` a été ajouté au workflow de sécurité Docker **déjà existant** : checkout exact, installation du Go requis par le module sur runner GitHub, `go mod download`, `go mod verify`, `go test ./...`, contrôle du verrou commité, **sans relancer la matrice Docker ni solliciter le Chromebook**. Verdict Go : **en qualification** avant résultat de cette CI. Ne pas fermer manuellement les alertes GitHub de la branche par défaut avant fusion/décision de release.
+
+## Bilan final de la correction Go
+
+Le run #41437922901 est PASS : grpc-go 1.83.2, x/net 0.58.0, x/sys 0.47.0 et x/text 0.41.0 ; go mod tidy, go mod verify et go test sans differences du verrou.
+
+## Vite 8.2.4 : qualification terminee
+
+Run GitHub #41439007720, commit 8607a19f : PASS. npm ci propre, builds data-provider, data-schemas, client-package et frontend avec Vite 8.2.4. Changement de trois champs seulement dans package-lock.json, dependances et plages peer identiques a Vite 8.2.2. Aucun manifeste ou code applicatif modifie.
+
+Bilan sur la branche candidate : 4 alertes HIGH sur 6 disposent d un correctif verifie (2 follow-redirects, 1 grpc-go, 1 vite). Deux HIGH happy-dom restent a traiter : correctif 21.0.4 exigeant une mise a jour majeure non engagee. Les autres alertes dev sont a qualifier separément ; elles ne sont pas automatiquement supprimees sur main.
+
+Go grpc-go : run #41437922901 PASS, go mod tidy reproductible, go mod verify et go test sur la version 1.83.2 et ses trois dependances transitives ajustées.
+
+Aucun nouveau deploiement Lite Chromebook, aucune fusion ou release. Verdict release stable : NO-GO.
