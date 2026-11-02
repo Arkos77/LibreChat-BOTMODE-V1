@@ -9,6 +9,11 @@ on:
       - 'scripts/botmode/ci-real-idea-runner.sh'
       - 'scripts/botmode/ci-release-composition-source-guard.py'
   workflow_dispatch:
+    inputs:
+      simplified_v1:
+        description: Qualify exact simplified V1 candidate source, without the obsolete D03 source pin
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -23,10 +28,27 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: Verify exact source composition and preserve published OCI guard
+        if: ${{ !inputs.simplified_v1 }}
         shell: bash
         env:
           CI_EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: python3 scripts/botmode/ci-release-composition-source-guard.py
+      - name: Verify simplified source checkout and no release mutation
+        if: ${{ inputs.simplified_v1 }}
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test -z "$(git status --porcelain)"
+          test "${{ github.ref_type }}" = branch
+          test "${{ github.ref_name }}" = simplify/botmode-v1-lot-a-20261102
+          test -e scripts/botmode/ci-real-idea-runner.sh
+          test -e scripts/botmode/ci-oracle-publication-project-gate.py
+          test -e scripts/botmode/ci-idea-browser-e2e.cjs
+          echo 'BOTMODE_C3_EXACT_SIMPLIFIED_HEAD=PASS'
+          echo 'BOTMODE_C3_NO_LEGACY_4C_REPLAY=REQUIRED'
       - name: Set up Buildx (ephemeral source runtime, never push)
         uses: docker/setup-buildx-action@v4
       - name: Build exact tested source into the runner only

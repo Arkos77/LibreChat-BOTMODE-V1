@@ -33,3 +33,11 @@ Run `41386621665` sur le commit `565df960557601dc00abd66a4b19719e6b95ecce` : **A
 **Verdict : C3 contrats API/UI ciblés PASS, C3 parcours complet NON CONCLUANT.** Une authentique session utilisateur avec LibreChat API démarrée, propagation de l'état des spécialistes, appel fournisseur réel contrôlé, Oracle VERIFIED et publication P6 unique sur une même mission n'a pas été réalisée sur cette candidate. Aucune nouvelle qualification 4C ne doit être engagée pour compenser cette absence.
 
 **Point de sortie pour le prochain sous-lot** : produire une seule preuve E2E sur environnement isolé de la candidate source exacte, en réutilisant les briques déjà présentes ; ne pas basculer la release officielle, ne pas utiliser les secrets privés sans mandat, et ne pas relancer les 45 tests sans changement pertinent.
+
+## Qualifier une seule mission E2E dans l'API et le navigateur réels
+
+Le workflow existant `botmode-v1-real-oci-idea-projection-e2e.yml` a déjà qualifié une ancienne candidate, mais son contrôle D03 (`ci-release-composition-source-guard.py`) refuse par conception les modifications de runtime de notre simplification. Ajouter une entrée explicite `simplified_v1=true` pour autoriser exclusivement un **checkout propre au SHA exact de cette branche**, sans remplacer ni supprimer le garde D03 des autres exécutions. Construire l'image localement sur le runner (Buildx `push: false`, `load: true`), ne jamais utiliser l'image publiée `v1.0.1` ou GHCR et ne pas passer de véritable secret fournisseur.
+
+Le scénario existant `ci-real-idea-runner.sh` doit vérifier sur une même mission : création du Worker et des cinq spécialistes via API authentifiée, exécution SSE avec fixture de fournisseur local (aucun quota payant), Oracle VERIFIED, P6 finale unique, persistance des messages, projection vers un Projet et une Idée, puis lecture du vrai résultat dans un navigateur Chromium et refus d'accès à un second utilisateur. La fixture reste **une simulation des réponses du modèle**, mais l'orchestration, les stockages et les interfaces doivent provenir du runtime source-built réel.
+
+Ne conclure PASS global que si le workflow atteint tous ces marqueurs effectivement mesurés ; distinguer strictement mise en route, verdict Oracle, P6 et lecture navigateur. Ne pas réparer l'ancien replay 4C même si un diagnostic historique l'évoque.
