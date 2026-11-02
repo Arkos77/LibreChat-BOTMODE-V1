@@ -7,6 +7,10 @@ on:
         description: Run the C2 SIGKILL integration without repeating earlier PASS tests
         type: boolean
         default: false
+      c3_only:
+        description: Run the C3 Ideas Projects Chat and specialist UI contracts only
+        type: boolean
+        default: false
   pull_request:
     paths:
       - '.github/workflows/botmode-v1-native-subagent-contract.yml'
@@ -53,13 +57,13 @@ jobs:
           npm run build:data-schemas
           npm run build:api
       - name: Execute native parent-subagent-parent model contract
-        if: ${{ !inputs.c2_only }}
+        if: ${{ !inputs.c2_only && !inputs.c3_only }}
         working-directory: packages/api
         run: |
           npx jest --ci --runInBand --coverage=false --runTestsByPath src/agents/__tests__/custom-endpoint-tenant.e2e.test.ts
           echo 'BOTMODE_NATIVE_PARENT_CHILD_PARENT_CONTRACT=PASS'
       - name: Verify simplified V1 direct, research-analysis, Oracle and P6 contracts
-        if: ${{ !inputs.c2_only }}
+        if: ${{ !inputs.c2_only && !inputs.c3_only }}
         working-directory: packages/api
         run: |
           npx jest --ci --runInBand --coverage=false --runTestsByPath \
@@ -70,31 +74,53 @@ jobs:
             src/agents/orchestrator/authorization.spec.ts
           echo 'BOTMODE_C1_OFFLINE_ORCHESTRATION_AND_PUBLICATION=PASS'
       - name: Reject uncertain provider replay after cold restart
-        if: ${{ !inputs.c2_only }}
+        if: ${{ !inputs.c2_only && !inputs.c3_only }}
         run: |
           node scripts/botmode/native-no-auto-cold-provider-replay-regression.cjs
           node scripts/botmode/native-outcome-unknown-regression.cjs
           node scripts/botmode/native-outcome-unknown-redis-regression.cjs
       - name: Prove durable Mongo boundary cannot authorize replay alone
-        if: ${{ !inputs.c2_only }}
+        if: ${{ !inputs.c2_only && !inputs.c3_only }}
         working-directory: packages/api
         run: |
           npx jest --ci --runInBand --coverage=false --runTestsByPath \
             src/agents/checkpointer.integration.spec.ts \
             --testNamePattern='B3 safety: a checkpoint head cannot distinguish pending from already-started provider execution'
       - name: C2 real process SIGKILL with isolated Mongo and Redis
+        if: ${{ !inputs.c3_only }}
         env:
           C2_MONGO_URI: mongodb://127.0.0.1:27017/botmode_c2_isolated
           C2_REDIS_URI: redis://127.0.0.1:6379
         run: |
           node scripts/botmode/native-outcome-unknown-sigkill-integration.cjs
       - name: Confirm uncertain outcome warning in LibreChat UI
-        if: ${{ !inputs.c2_only }}
+        if: ${{ !inputs.c2_only && !inputs.c3_only }}
         working-directory: client
         run: |
           npx jest --ci --runInBand --coverage=false --runTestsByPath \
             src/hooks/Messages/__tests__/unknownOutcomeRetry.spec.tsx \
             src/components/Messages/Content/Error.outcomeUnknown.spec.tsx
+      - name: C3 API access, specialist selection and project evidence contracts
+        if: ${{ inputs.c3_only }}
+        working-directory: api
+        run: |
+          npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            server/routes/projects.botmode.test.js \
+            server/services/Projects/__tests__/botModeProjectProjection.spec.js \
+            server/routes/agents/botmodeSetupRoute.spec.js \
+            server/routes/agents/botmodeSetupValidation.spec.js \
+            server/controllers/agents/orchestratorMissionBindings.spec.js
+          echo 'BOTMODE_C3_API_AUTH_PROJECTION_SELECTION=PASS'
+      - name: C3 Ideas Projects Chat visual contracts
+        if: ${{ inputs.c3_only }}
+        working-directory: client
+        run: |
+          npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            src/components/Ideas/IdeasView.test.tsx \
+            src/components/Projects/BotModeProjectPanel.test.tsx \
+            src/components/Chat/BotModeProgress/BotModeProgressPanel.spec.tsx \
+            src/components/Chat/Header.botMode.spec.tsx
+          echo 'BOTMODE_C3_UI_IDEA_PROJECT_CHAT=PASS'
       - name: Evidence boundary
         if: always()
         run: |
