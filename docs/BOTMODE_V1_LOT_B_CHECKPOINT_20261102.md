@@ -68,3 +68,9 @@ Le compromis B3 a été explicitement accepté : **conserver les résultats déj
 - C2 : une qualification intégrée avec MongoDB et Redis, en conservant les données de l'installation actuelle intactes. Crash du service pendant appel externe → aucun rejeu, aucune publication, issue incertaine visible après reconnexion ; étape persistée A reste accessible.
 - C3 : parcours LibreChat Idées → Projets → Chat, sélection 0/1/N, Oracle VERIFIED et publication P6 unique sur succès et zéro sur échec ; si un cas n'est pas testé réellement, verdict NON CONCLUANT.
 - Les tests de replay automatique d'appel en plein vol 4C sont exclus. Aucune fusion/release avant autorisation explicite. Aucun appel payant.
+
+## Lot C2 — qualification intégrée ciblée du redémarrage (candidate)
+
+Un unique test supplémentaire est ajouté au workflow source-built existant : `native-outcome-unknown-sigkill-integration.cjs`. Il utilise un Redis et un Mongo éphémères de GitHub Actions, `RedisJobStore`, `GenerationJobManagerClass`, `getAgentCheckpointer`, `inspectDurableNativeMissionCheckpoint` et un graphe LangGraph minimal A → B. L'étape A est persistée, l'étape B entre réellement avant de se bloquer, puis son processus reçoit `SIGKILL`. Un nouveau processus charge les mêmes données et le gestionnaire intact, sans handler de replay, et vérifie la transition `running -> error / OUTCOME_UNKNOWN`, le checkpoint A conservé, aucun nouveau fournisseur/effet ni message FINAL, et l'unicité de la transition CAS.
+
+**Limitation explicite** : c'est une qualification intégrée *du gestionnaire et de ses stores* avec graphe factice. Elle ne démarre pas le serveur HTTP/API LibreChat, ne teste pas sa reconnexion SSE dans un navigateur, n'appelle aucun modèle, et n'atteste pas Oracle VERIFIED/P6 sur une mission utilisateur. En cas de FAIL du test, examiner la preuve exacte avant tout correctif. Aucune installation locale n'est touchée.

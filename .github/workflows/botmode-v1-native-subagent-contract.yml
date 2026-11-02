@@ -14,6 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:
+      mongodb:
+        image: mongo:4.4.29
+        ports:
+          - 27017:27017
       redis:
         image: redis:7-alpine
         ports:
@@ -69,6 +73,12 @@ jobs:
           npx jest --ci --runInBand --coverage=false --runTestsByPath \
             src/agents/checkpointer.integration.spec.ts \
             --testNamePattern='B3 safety: a checkpoint head cannot distinguish pending from already-started provider execution'
+      - name: C2 real process SIGKILL with isolated Mongo and Redis
+        env:
+          C2_MONGO_URI: mongodb://127.0.0.1:27017/botmode_c2_isolated
+          C2_REDIS_URI: redis://127.0.0.1:6379
+        run: |
+          node scripts/botmode/native-outcome-unknown-sigkill-integration.cjs
       - name: Confirm uncertain outcome warning in LibreChat UI
         working-directory: client
         run: |
