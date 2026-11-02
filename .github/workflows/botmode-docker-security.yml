@@ -9,10 +9,43 @@ on:
       - 'docs/BOT_MODE_INSTALL.md'
       - '.github/workflows/botmode-docker-security.yml'
   workflow_dispatch:
+    inputs:
+      go_security_only:
+        description: Verify patched grpc-go module only; skip Docker profiles already qualified
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
+  go-grpc-security:
+    if: ${{ inputs.go_security_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate and official patched grpc-go pin
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test "${{ github.ref_name }}" = simplify/botmode-v1-lot-a-20261102
+          grep -q 'google.golang.org/grpc v1.83.2' otel/langfuse-fanout/go.mod
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: otel/langfuse-fanout/go.mod
+          cache-dependency-path: otel/langfuse-fanout/go.sum
+      - name: Verify Go module and compile/tests (no Docker or production services)
+        working-directory: otel/langfuse-fanout
+        run: |
+          set -euo pipefail
+          go mod download
+          go mod verify
+          go test ./...
+          test -z "$(git status --porcelain -- go.mod go.sum)"
+          echo 'BOTMODE_GO_GRPC_1_83_2_PATCHED_AND_TESTED=PASS'
   compose-auth:
+    if: ${{ !inputs.go_security_only }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
