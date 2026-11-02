@@ -50,6 +50,17 @@ const {
   assertAuthorizedOrchestratorTasks,
 } = require('./orchestratorMissionBindings');
 const { prepareBotModeSettings } = require('./botModeSettings');
+const {
+  canonicalMissionJson,
+  getNativeMissionWakeupOrigin,
+  saveNativeMissionWakeupOrigin,
+} = require('~/server/services/Endpoints/agents/nativeMissionWakeupOriginStore');
+const {
+  bindNativeMissionOriginalChildBrokerForAcceptedMission,
+} = require('~/server/services/Endpoints/agents/nativeMissionOriginalChildBrokerHost');
+const {
+  bindNativeMissionOriginalGraphBrokerForAcceptedMission,
+} = require('~/server/services/Endpoints/agents/nativeMissionOriginalGraphBrokerHost');
 const { disposeClient } = require('~/server/cleanup');
 const { observeMtoEvent } = require('~/server/services/Endpoints/agents/mtoObservation');
 const {
@@ -1456,6 +1467,48 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       userId,
     });
 
+    // Only a trusted internal trigger may resume an exact, durable mission.
+    // The client-supplied plan reference is NEVER accepted as authorization:
+    // read the previous epoch from Redis before createJob replaces its slot.
+    const wakeupSource = req.body?.nativeMissionWakeupSource;
+    let originalWakeupPlan;
+    let originalWakeupCapabilities;
+    let originalWakeupHasAttachments;
+    if (wakeupSource != null) {
+      if (
+        !isTriggerContinuation ||
+        req._isAgentTrigger !== true ||
+        typeof wakeupSource !== 'object' ||
+        Array.isArray(wakeupSource) ||
+        typeof wakeupSource.originalPlanId !== 'string' ||
+        typeof wakeupSource.originalResponseMessageId !== 'string' ||
+        req.body?.orchestratorMission?.mission == null
+      ) {
+        throw new Error('MISSION_WAKEUP_UNAUTHORIZED');
+      }
+      const original = await getNativeMissionWakeupOrigin({
+        userId,
+        tenantId,
+        conversationId,
+        parentResponseMessageId: wakeupSource.originalResponseMessageId,
+        agentId: endpointOption.agent_id ?? req.body?.agent_id,
+      });
+      if (
+        original == null ||
+        original.planId !== wakeupSource.originalPlanId ||
+        canonicalMissionJson(original.orchestratorMission) !==
+          canonicalMissionJson(req.body.orchestratorMission) ||
+        (original.botMode == null
+          ? req.body?.botMode != null
+          : canonicalMissionJson(original.botMode) !== canonicalMissionJson(req.body?.botMode))
+      ) {
+        throw new Error('MISSION_WAKEUP_ORIGIN_MISMATCH');
+      }
+      originalWakeupPlan = structuredClone(original.plan);
+      originalWakeupCapabilities = structuredClone(original.capabilityAttestation);
+      originalWakeupHasAttachments = original.hasAttachments;
+    }
+
     const endpointIconURL = getEndpointIconURL(req, endpointOption);
     const responseModel = getAgentResponseModel(req, endpointOption);
     const preliminaryUserMessage = getPreliminaryUserMessage(
@@ -1878,22 +1931,51 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
               settings: botModeSettings,
               reachableAgents,
               legacyContext: orchestratorMission.plannerContext,
-              hasAttachments: Array.isArray(req.body.files) && req.body.files.length > 0,
+              hasAttachments:
+                originalWakeupHasAttachments ??
+                (Array.isArray(req.body.files) && req.body.files.length > 0),
             });
       assertAuthorizedOrchestratorTasks(orchestratorPlan.tasks, authorizedAgentIds);
       assertResearchToolAvailability(orchestratorPlan, reachableAgents);
+      // Replanning under the CURRENT agent ACL must reproduce the immutable
+      // originating plan exactly, including every task and Oracle requirement.
+      if (
+        originalWakeupPlan != null &&
+        canonicalMissionJson(orchestratorPlan) !== canonicalMissionJson(originalWakeupPlan)
+      ) {
+        throw new Error('MISSION_WAKEUP_PLAN_DRIFT');
+      }
 
       // Record original effective agent capability provenance in the SAME
       // epoch-scoped Redis write as the immutable plan, before models/tools
       // begin. The digest is not a grant or replay receipt. In particular,
       // delegation, code/file tools and host evidence paths must still acquire
       // real effect receipts before a recovered provider can execute them.
+      // Only the signed execution members are nodes in the native MissionPlan.
+      // Other reachable specialists may be available for a future mission,
+      // but cannot execute or acquire effects in THIS graph. Fingerprinting
+      // them would make a 2-specialist cold run irreconstructible when the
+      // Worker has 5 authorized choices. The Worker's original delegation
+      // capability remains in the fingerprint; the current ACL for both
+      // selected agents is checked separately. Keep duplicate snapshots for
+      // signed members: conflicting capabilities must still demand receipts.
+      const signedNativeAgentIds = new Set([
+        primaryAgentId, ...orchestratorPlan.tasks.map((task) => task.agentId),
+      ]);
       const nativeMissionCapabilityAttestation = createNativeMissionCapabilityAttestation({
         plan: orchestratorPlan,
-        agents: reachableAgents,
+        agents: reachableAgents.filter((agent) => signedNativeAgentIds.has(agent.id)),
         subagentTasks: client.options.subagentTasks,
         hostEffectPathsPresent: (orchestratorMission?.evidenceDeclarations?.length ?? 0) > 0,
+        ciTraceStage: 'WARM',
       });
+      if (
+        originalWakeupCapabilities != null &&
+        canonicalMissionJson(nativeMissionCapabilityAttestation) !==
+          canonicalMissionJson(originalWakeupCapabilities)
+      ) {
+        throw new Error('MISSION_WAKEUP_CAPABILITY_DRIFT');
+      }
       await GenerationJobManager.updateMetadata(
         streamId,
         { orchestratorPlan, nativeMissionCapabilityAttestation },
@@ -1910,7 +1992,55 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       ) {
         throw new Error('Orchestrator plan persistence verification failed');
       }
+      // Persist the *original* mission before any model/tool effect. A later
+      // wakeup replaces the Redis conversation slot, but sibling completions
+      // must still resolve this same mission from a separate immutable record.
+      if (originalWakeupPlan == null) {
+        await saveNativeMissionWakeupOrigin({
+          userId,
+          tenantId,
+          conversationId,
+          parentResponseMessageId: preallocatedResponseMessageId,
+          agentId: primaryAgentId,
+          createdAt: jobCreatedAt,
+          checkpointNamespace: job.metadata?.checkpointNamespace,
+          hasAttachments: Array.isArray(req.body.files) && req.body.files.length > 0,
+          botMode: botModeSettings,
+          orchestratorMission,
+          plan: persistedPlanJob.metadata.orchestratorPlan,
+          capabilityAttestation: persistedPlanJob.metadata.nativeMissionCapabilityAttestation,
+        });
+      }
       client.orchestratorPlan = persistedPlanJob.metadata.orchestratorPlan;
+      // Only the trusted Express host may opt in, and only after immutable
+      // mission origin + signed capability classification are saved. Never
+      // accept a provider transport address or operation grant from req.body.
+      bindNativeMissionOriginalChildBrokerForAcceptedMission({
+        client,
+        brokerHost: req.app?.locals?.nativeMissionOriginalChildBrokerHost,
+        originalPlan: client.orchestratorPlan,
+        capabilityAttestation: persistedPlanJob.metadata.nativeMissionCapabilityAttestation,
+      });
+      if (req.app?.locals?.nativeMissionOriginalGraphBrokerHost != null) {
+        // Only the original Mongo admission, re-read with its integrity
+        // fingerprint, can authorize the direct native graph model transport.
+        // A changed wakeup, missing original, or partial broker host aborts
+        // BEFORE graph execution: never fall back to provider HTTP.
+        const original = await getNativeMissionWakeupOrigin({
+          userId,
+          tenantId,
+          conversationId,
+          parentResponseMessageId: preallocatedResponseMessageId,
+          agentId: primaryAgentId,
+        });
+        bindNativeMissionOriginalGraphBrokerForAcceptedMission({
+          client,
+          brokerHost: req.app.locals.nativeMissionOriginalGraphBrokerHost,
+          original,
+          plan: client.orchestratorPlan,
+          capabilityAttestation: persistedPlanJob.metadata.nativeMissionCapabilityAttestation,
+        });
+      }
       client.publicationBarrier?.activate?.();
 
       const sourceTasks = orchestratorPlan.tasks

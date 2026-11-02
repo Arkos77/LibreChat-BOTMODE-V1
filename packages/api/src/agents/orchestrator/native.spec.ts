@@ -895,3 +895,99 @@ it('passes same-task observed sources into dependency-transition Oracle validati
     } as BaseGraphState),
   ).resolves.toBeUndefined();
 });
+
+
+describe('native mission direct graph broker compile seam', () => {
+  const plan = deterministicPlanner.planMission(
+    {
+      ...base,
+      validation: { criteria: [{ id: 'complete', field: 'complete', expected: true }] },
+    },
+    context,
+  );
+
+  it('binds the original saved specialist to its unique signed graph node', () => {
+    const agentId = plan.tasks[0].agentId;
+    const source = new Map(bindings);
+    source.set(agentId, {
+      ...bindings.get(agentId)!,
+      clientOptions: { model: 'ci-free' },
+    });
+    const approved = jest.fn(() => fetch);
+    const result = compileNativePlan(
+      plan, source, undefined, undefined, undefined, undefined, approved,
+    );
+    expect(result.graphConfig.agents[0].clientOptions).toHaveProperty('configuration.fetch', fetch);
+    expect(source.get(agentId)?.clientOptions).not.toHaveProperty('configuration.fetch');
+    expect(approved).toHaveBeenCalledWith({
+      agentId,
+      nodeId: plan.tasks[0].nodeId,
+      taskId: plan.tasks[0].taskId,
+      provider: source.get(agentId)?.provider,
+      model: 'ci-free',
+    });
+  });
+
+  it('keeps durable Research separate while protecting the later model-only Analyse node', () => {
+    const researchPlan = deterministicPlanner.planMission({
+      ...base,
+      researchExecutionVersion: 1,
+      objectives: [
+        {
+          key: 'research', objective: 'Research with web evidence',
+          requiredCapabilities: ['x'], dependsOn: [],
+          validation: {
+            criteria: [{ id: 'complete', field: 'complete', expected: true }],
+            outputContract: 'research-v1',
+          },
+        },
+        {
+          key: 'analysis', objective: 'Analyse persisted research result',
+          requiredCapabilities: ['basic'], dependsOn: ['research'],
+          validation: {
+            criteria: [{ id: 'complete', field: 'complete', expected: true }],
+          },
+        },
+      ],
+    }, context);
+    const source = new Map(bindings);
+    for (const task of researchPlan.tasks) {
+      source.set(task.agentId, {
+        ...bindings.get(task.agentId)!,
+        clientOptions: { model: 'ci-free' },
+        ...(task.key === 'research' ? { toolDefinitions: [{ name: 'web_search' }] } : {}),
+      });
+    }
+    const approved = jest.fn(() => fetch);
+    const native = compileNativePlan(researchPlan, source,
+      undefined, undefined, undefined, undefined, approved);
+    const analysisTask = researchPlan.tasks.find((task) => task.key === 'analysis')!;
+    const analysis = native.graphConfig.agents.find((agent) => agent.agentId === analysisTask.nodeId)!;
+    expect(analysis.clientOptions).toHaveProperty('configuration.fetch', fetch);
+    expect(approved).toHaveBeenCalledTimes(1);
+    expect(approved).toHaveBeenCalledWith(expect.objectContaining({
+      nodeId: analysisTask.nodeId, taskId: analysisTask.taskId,
+    }));
+    const researchNodes = native.graphConfig.agents.filter((agent) =>
+      agent.agentId !== analysisTask.nodeId);
+    expect(researchNodes.length).toBeGreaterThan(0);
+    for (const research of researchNodes) {
+      expect(research.clientOptions).not.toHaveProperty('configuration.fetch');
+    }
+  });
+
+  it('denies graph tool effects and cannot silently fall through to provider', () => {
+    const agentId = plan.tasks[0].agentId;
+    const source = new Map(bindings);
+    source.set(agentId, {
+      ...bindings.get(agentId)!,
+      clientOptions: { model: 'ci-free' },
+      toolDefinitions: [{ name: 'web_search' }],
+    });
+    const approved = jest.fn(() => fetch);
+    expect(() => compileNativePlan(
+      plan, source, undefined, undefined, undefined, undefined, approved,
+    )).toThrow('NATIVE_GRAPH_BROKER_EFFECTS_UNSUPPORTED');
+    expect(approved).not.toHaveBeenCalled();
+  });
+});

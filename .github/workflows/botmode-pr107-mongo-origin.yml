@@ -1,0 +1,70 @@
+name: BOTMODE PR107 Real Mongo Mission Origin Qualification
+
+on:
+  pull_request:
+    paths:
+      - 'api/server/services/Endpoints/agents/nativeMissionWakeupOriginStore.js'
+      - '.github/scripts/botmode-pr107-mongo-origin.cjs'
+      - '.github/scripts/botmode-pr107-wakeup-resolver.cjs'
+      - '.github/workflows/botmode-pr107-mongo-origin.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  durable-origin:
+    name: Mongo 4.4 restart, cross-process origin and ACL
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 107
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mongo:
+        image: mongo:4.4.29
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongo --quiet --eval 'db.adminCommand({ping:1}).ok' | grep 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Build exact HEAD API packages for real resolver qualification
+        run: |
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:api
+      - name: Persist original Oracle mission in real Mongo
+        run: node .github/scripts/botmode-pr107-mongo-origin.cjs seed
+      - name: Restart only the disposable Mongo service to prove disk durability
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t mongo_containers < <(docker ps -q --filter ancestor=mongo:4.4.29)
+          test "${#mongo_containers[@]}" -eq 1
+          docker restart "${mongo_containers[0]}" >/dev/null
+          ready=0
+          for attempt in $(seq 1 30); do
+            if docker exec "${mongo_containers[0]}" mongo --quiet --eval 'db.adminCommand({ping:1}).ok' | grep -qx 1; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" -eq 1
+          echo 'BOTMODE_REAL_MONGO_SERVICE_RESTART=PASS'
+      - name: Resolve two distinct child wakeups against durable original plan
+        run: node .github/scripts/botmode-pr107-wakeup-resolver.cjs
+      - name: Reopen original mission in a new API process, verify ACL and clean up
+        run: node .github/scripts/botmode-pr107-mongo-origin.cjs resume
+      - name: Qualification scope
+        run: |
+          echo 'SCOPE=Real MongoDB 4.4, database container restart, two separate Node processes, two sibling reads, tenant and agent ACL, immutability, tamper detection, cleanup.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'NOT_COVERED=Live two-turn Worker/model execution, Oracle VERIFIED, P6 unique. Child receipts are synthetic, mission origin and resolver are real.' >> "$GITHUB_STEP_SUMMARY"

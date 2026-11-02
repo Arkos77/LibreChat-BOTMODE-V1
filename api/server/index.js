@@ -186,8 +186,7 @@ const configureGenerationStreams = () => {
     const {
       createNativeMissionModelOnlyRecoveryHandler,
     } = require('./services/Endpoints/agents/nativeMissionModelOnlyRecoveryHandler');
-    GenerationJobManager.setNativeMissionRecoveryHandler(
-      createNativeMissionModelOnlyRecoveryHandler({
+    const modelOnlyRecoveryHandler = createNativeMissionModelOnlyRecoveryHandler({
         manager: GenerationJobManager,
         getUserById: agentEventMethods.getUserById,
         isSubagentOwnerAdmissible: agentEventMethods.isSubagentOwnerAdmissible,
@@ -205,8 +204,9 @@ const configureGenerationStreams = () => {
         sanitizeMessage: sanitizeMessageForTransmit,
         emitDone: GenerationJobManager.emitDone.bind(GenerationJobManager),
         log: logger,
-      }),
-    );
+      });
+    app.locals.nativeMissionModelOnlyRecoveryHandler = modelOnlyRecoveryHandler;
+    GenerationJobManager.setNativeMissionRecoveryHandler(modelOnlyRecoveryHandler);
   }
   GenerationJobManager.initialize();
   // Stop active generations and close their SSE streams while the HTTP server drains.
@@ -222,6 +222,85 @@ const configureGenerationStreams = () => {
   registerShutdownTask('generation job manager', () => GenerationJobManager.destroy(), {
     priority: 100,
   });
+};
+
+/**
+ * The original broker is initialized after Mongo connects, but the Redis
+ * generation manager is configured only in configureGenerationStreams().
+ * Register receipt recovery AFTER both host authorities exist; registering
+ * during broker construction silently skips the handler.
+ */
+const configureOriginalGraphRecoveryAfterStreams = () => {
+  const graphHost = app.locals.nativeMissionOriginalGraphBrokerHost;
+  const requestIntents = app.locals.nativeMissionOriginalGraphRequestIntentStore;
+  if (!graphHost || !requestIntents) return;
+  // Only after stream configuration is the Redis manager and model-only
+  // dispatch available. Unknown modes continue to fail closed.
+  if (GenerationJobManager.isRedis &&
+      !isEnabled(process.env.BOTMODE_DISABLE_NATIVE_MISSION_RECOVERY) &&
+      app.locals.nativeMissionModelOnlyRecoveryHandler &&
+      process.env.BOTMODE_NATIVE_RECOVERY_READONLY_AUDIT !== 'true' &&
+      process.env.BOTMODE_NATIVE_RECOVERY_CLAIM_AUDIT !== 'true') {
+    const mongoose = require('mongoose');
+    const {
+      createNativeMissionReceiptsRequiredRecoveryHandler,
+    } = require('./services/Endpoints/agents/nativeMissionReceiptsRequiredRecoveryHandler');
+    const {
+      createNativeMissionProviderCallReceiptStore,
+    } = require('./services/Endpoints/agents/nativeMissionProviderCallReceiptStore');
+    const {
+      getNativeMissionWakeupOrigin,
+    } = require('./services/Endpoints/agents/nativeMissionWakeupOriginStore');
+    const { initializeClientFromDocuments } =
+      require('./services/Endpoints/agents/initialize');
+    const {
+      createRun,
+      validateMissionTask,
+      normalizeMissionOracleState,
+      areMissionOracleResultsEquivalent,
+      qualifyAndExecuteRecoveredMissionSegment,
+      continueColdNativeMissionGraph,
+      sanitizeMessageForTransmit,
+    } = require('@librechat/api');
+    const receiptsHandler = createNativeMissionReceiptsRequiredRecoveryHandler({
+      manager: GenerationJobManager,
+      brokerHost: graphHost,
+      getOriginal: getNativeMissionWakeupOrigin,
+      intentStore: requestIntents,
+      providerReceiptStore: createNativeMissionProviderCallReceiptStore({
+        collection: mongoose.connection.db.collection('native_mission_provider_calls'),
+      }),
+      getUserById: agentEventMethods.getUserById,
+      isSubagentOwnerAdmissible: agentEventMethods.isSubagentOwnerAdmissible,
+      getConvo: agentEventMethods.getConvo,
+      getAgent: agentEventMethods.getAgent,
+      getMessage: agentEventMethods.getMessage,
+      saveMessage: agentEventMethods.saveMessage,
+      initializeClientFromDocuments,
+      createRun,
+      validateMissionTask,
+      normalizeMissionOracleState,
+      areMissionOracleResultsEquivalent,
+      qualifyAndExecuteRecoveredMissionSegment,
+      continueColdNativeMissionGraph,
+      sanitizeMessage: sanitizeMessageForTransmit,
+      emitDone: GenerationJobManager.emitDone.bind(GenerationJobManager),
+      log: logger,
+    });
+    const modelOnlyHandler = app.locals.nativeMissionModelOnlyRecoveryHandler;
+    GenerationJobManager.setNativeMissionRecoveryHandler(async (candidate) => {
+      const job = await GenerationJobManager.getJobStore()?.getJob(candidate.streamId);
+      if (job?.createdAt !== candidate.createdAt) return false;
+      if (job.nativeMissionCapabilityAttestation?.mode === 'receipts_required') {
+        return receiptsHandler(candidate);
+      }
+      if (job.nativeMissionCapabilityAttestation?.mode === 'model_only') {
+        return modelOnlyHandler(candidate);
+      }
+      return false;
+    });
+    logger.info('[NativeMission] Strict two-node broker receipt recovery host registered');
+  }
 };
 
 const startServer = async () => {
@@ -286,6 +365,94 @@ const startServer = async () => {
     logger.error('[sweepOrphanedPreviews] Background sweep failed:', err);
   });
   const appConfig = await getAppConfig({ baseOnly: true });
+  // Original-child brokerage is an explicit operator-controlled integration.
+  // The detached provider-effect owner is a SEPARATE process. Never create
+  // a provider transport from client request content, and never silently
+  // activate a half-configured host on ordinary LibreChat installations.
+  if (process.env.BOTMODE_NATIVE_ORIGINAL_BROKER_ENABLED === 'true') {
+    const mongoose = require('mongoose');
+    const {
+      getAgentCheckpointer,
+      getDetachedSubagentExecutionScope,
+      getDetachedSubagentModelCheckpointReference,
+    } = require('@librechat/api');
+    const { checkPermission } = require('./services/PermissionService');
+    const {
+      createNativeMissionOriginalChildBrokerBootstrap,
+    } = require('./services/Endpoints/agents/nativeMissionOriginalChildBrokerBootstrap');
+    let bindingCatalog;
+    try {
+      bindingCatalog = JSON.parse(process.env.BOTMODE_NATIVE_ORIGINAL_BROKER_BINDINGS ?? '');
+    } catch {
+      throw new Error('NATIVE_ORIGINAL_BROKER_MODEL_CATALOG_INVALID');
+    }
+    const host = createNativeMissionOriginalChildBrokerBootstrap({
+      enabled: true,
+      bindingCatalog,
+      brokerUrl: process.env.BOTMODE_NATIVE_ORIGINAL_BROKER_URL,
+      secret: process.env.BOTMODE_NATIVE_ORIGINAL_BROKER_SECRET,
+      collection: mongoose.connection.db?.collection('native_mission_provider_calls'),
+      getUserById: agentEventMethods.getUserById,
+      isSubagentOwnerAdmissible: agentEventMethods.isSubagentOwnerAdmissible,
+      getConvo: agentEventMethods.getConvo,
+      getAgent: agentEventMethods.getAgent,
+      getMessage: agentEventMethods.getMessage,
+      listActiveSubagentThreadLeases: agentEventMethods.listActiveSubagentThreadLeases,
+      getCheckpointer: () => getAgentCheckpointer(appConfig?.endpoints?.agents?.checkpointer),
+      getExecutionScope: getDetachedSubagentExecutionScope,
+      getOriginalCheckpointReference: getDetachedSubagentModelCheckpointReference,
+      checkPermission,
+    });
+    const probeUrl = new URL('status', process.env.BOTMODE_NATIVE_ORIGINAL_BROKER_URL);
+    const probe = await fetch(probeUrl, { method: 'POST', signal: AbortSignal.timeout(3000) });
+    if (probe.status !== 401) throw new Error('NATIVE_ORIGINAL_BROKER_NOT_AUTHENTICATED');
+    app.locals.nativeMissionOriginalChildBrokerHost = host;
+    logger.info(
+      '[NativeMission] Original-child broker host enabled after independent broker check',
+    );
+    // Direct graph brokerage is separately opt-in. A healthy detached-child
+    // broker does NOT prove it can authorize/read a native graph receipt.
+    // Demand the graph route BEFORE registering any graph model transport.
+    if (process.env.BOTMODE_NATIVE_ORIGINAL_GRAPH_BROKER_ENABLED === 'true') {
+      const graphProbe = new URL('status-native-graph', process.env.BOTMODE_NATIVE_ORIGINAL_BROKER_URL);
+      const graphResponse = await fetch(graphProbe, {
+        method: 'POST',
+        signal: AbortSignal.timeout(3000),
+      });
+      if (graphResponse.status !== 401) {
+        throw new Error('NATIVE_GRAPH_BROKER_INDEPENDENT_AUTHORITY_NOT_READY');
+      }
+      const {
+        createNativeMissionLiveGraphCheckpointReader,
+      } = require('./services/Endpoints/agents/nativeMissionOriginalGraphBrokerCheckpointReader');
+      const {
+        createNativeMissionOriginalGraphBrokerHost,
+      } = require('./services/Endpoints/agents/nativeMissionOriginalGraphBrokerHost');
+      const catalog = new Map(bindingCatalog.map((entry) =>
+        [[entry.agentId, entry.provider, entry.model].join('\\0'), Object.freeze({ ...entry })]));
+      const {
+        createNativeMissionOriginalGraphRequestIntentStore,
+      } = require('./services/Endpoints/agents/nativeMissionOriginalGraphRequestIntentStore');
+      const requestIntents = createNativeMissionOriginalGraphRequestIntentStore({
+        collection: mongoose.connection.db.collection('native_mission_graph_request_intents'),
+      });
+      const graphHost = createNativeMissionOriginalGraphBrokerHost({
+        readOriginalGraphCheckpoint: createNativeMissionLiveGraphCheckpointReader(),
+        recordOriginalModelRequest: requestIntents.register,
+        resolveModelBinding: (binding) =>
+          catalog.get([binding.agentId, binding.provider, binding.model].join('\\0')),
+        brokerUrl: process.env.BOTMODE_NATIVE_ORIGINAL_BROKER_URL,
+        secret: process.env.BOTMODE_NATIVE_ORIGINAL_BROKER_SECRET,
+      });
+      app.locals.nativeMissionOriginalGraphBrokerHost = graphHost;
+      // Broker construction precedes stream initialization. Retain the
+      // original intent reader until the configured Redis manager is ready.
+      app.locals.nativeMissionOriginalGraphRequestIntentStore = requestIntents;
+      logger.info('[NativeMission] Original native graph broker host enabled with independent authority');
+    }
+  } else if (process.env.BOTMODE_NATIVE_ORIGINAL_GRAPH_BROKER_ENABLED === 'true') {
+    throw new Error('NATIVE_GRAPH_BROKER_PARENT_HOST_NOT_ENABLED');
+  }
   configureAgentEventRuntime(appConfig?.endpoints?.agents?.eventDriven);
   initializeFileStorage(appConfig);
   const projectRoot = path.resolve(__dirname, '../..');
@@ -506,6 +673,7 @@ const startServer = async () => {
   app.use(ErrorController);
 
   configureGenerationStreams();
+  configureOriginalGraphRecoveryAfterStreams();
 
   const server = app.listen(port, host, async (err) => {
     if (err) {

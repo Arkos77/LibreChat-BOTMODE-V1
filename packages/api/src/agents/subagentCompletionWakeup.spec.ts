@@ -1401,6 +1401,177 @@ describe('createSubagentCompletionWakeupResolver', () => {
     ).resolves.toMatchObject({ status: 'ready' });
   });
 
+  it('restores the original mission despite replacement of the active Redis job', async () => {
+    const { methods } = resolverMethods();
+    const mission = { missionId: 'mission-1', taskId: 'mission-task-1' };
+    const original = {
+      userId: 'user-1',
+      tenantId: 'tenant-1',
+      conversationId: 'conversation-1',
+      parentResponseMessageId: 'response-1',
+      agentId: 'agent_parent_1',
+      planId: 'plan-1',
+      plan: { planId: 'plan-1', mission },
+      orchestratorMission: { mission },
+    };
+    const getGenerationJob = jest.fn(async () => ({
+      status: 'complete',
+      metadata: { responseMessageId: 'later-wakeup-response' },
+    }));
+    const originalGetConvo = methods.getConvo.getMockImplementation()!;
+    methods.getConvo.mockImplementation(async (userId, conversationId) => {
+      if (conversationId !== 'thread-2') return originalGetConvo(userId, conversationId);
+      return {
+        conversationId,
+        tenantId: 'tenant-1',
+        subagentThread: {
+          parentConversationId: 'conversation-1',
+          parentMessageId: 'response-1',
+          parentAgentId: 'agent_parent_1',
+          subagentType: 'analyst',
+        },
+      };
+    });
+    const originalGetMessages = methods.getMessages.getMockImplementation()!;
+    const siblingTerminal = {
+      messageId: 'task-2:assistant',
+      conversationId: 'thread-2',
+      parentMessageId: 'task-2:user',
+      sender: 'analyst',
+      text: 'Second child result',
+      isCreatedByUser: false,
+      createdAt: new Date(NOW),
+      updatedAt: new Date(NOW),
+      subagentTask: {
+        attemptKey: 'attempt-2',
+        parentRunId: 'response-1',
+        status: 'completed' as const,
+      },
+    };
+    methods.getMessages.mockImplementation(async (filter: TestMessageFilter) =>
+      filter.conversationId === 'thread-2'
+        ? [
+            { messageId: 'task-2:user', conversationId: 'thread-2', isCreatedByUser: true },
+            siblingTerminal,
+          ]
+        : originalGetMessages(filter as { conversationId: string }),
+    );
+    const firstClaim = methods.claimSubagentTaskResult.getMockImplementation()!;
+    methods.claimSubagentTaskResult.mockImplementation((async (input: {
+      conversationId: string;
+    }) =>
+      input.conversationId === 'thread-2'
+        ? { status: 'acquired', message: siblingTerminal }
+        : firstClaim()) as never);
+    const getMissionOrigin = jest.fn(async () => original);
+    const resolve = createSubagentCompletionWakeupResolver({
+      methods: methods as never,
+      getGenerationJob: getGenerationJob as never,
+      getMissionOrigin,
+    });
+    const firstEnvelope = wakeupEnvelope();
+    const siblingEnvelope = createAgentTriggerEnvelope({
+      mode: 'continue',
+      requestId: 'request-2',
+      deliveryId: 'task-2',
+      receivedAt: NOW,
+      principal: { id: 'user-1', tenantId: 'tenant-1' },
+      event: {
+        id: 'task-2',
+        type: 'subagent.completion',
+        occurredAt: NOW,
+        source: { id: 'subagent-completion', type: 'internal' },
+        payload: { taskId: 'task-2', threadId: 'thread-2', subagentType: 'analyst' },
+      },
+      target: {
+        agentId: 'agent_parent_1',
+        conversationId: 'conversation-1',
+        parentMessageId: 'response-1',
+      },
+      input: 'pending',
+    });
+    for (const [envelope, idempotencyKey] of [
+      [firstEnvelope, 'first-child-wakeup'],
+      [siblingEnvelope, 'second-sibling-wakeup'],
+    ] as const) {
+      const prepared = await resolve(
+        envelope as AgentContinueTriggerEnvelope,
+        { idempotencyKey } as never,
+      );
+      expect(prepared).toMatchObject({
+        status: 'ready',
+        missionContext: {
+          orchestratorMission: { mission },
+          originalPlanId: 'plan-1',
+          originalResponseMessageId: 'response-1',
+        },
+      });
+    }
+    expect(getMissionOrigin).toHaveBeenCalledTimes(2);
+    expect(methods.claimSubagentTaskResult).toHaveBeenCalledTimes(2);
+  });
+
+  it('accepts Mongo-reordered BOT MODE settings but rejects changed mission settings', async () => {
+    const { methods } = resolverMethods();
+    const getConvo = methods.getConvo.getMockImplementation()!;
+    const botMode = { version: 1, mode: 'analyze', workerAgentId: 'agent_parent_1' };
+    methods.getConvo.mockImplementation(async (userId, conversationId) => {
+      const conversation = await getConvo(userId, conversationId);
+      return conversationId === 'conversation-1' ? { ...conversation, botMode } : conversation;
+    });
+    const mission = { missionId: 'mission-1', taskId: 'mission-task-1' };
+    const original = {
+      userId: 'user-1',
+      tenantId: 'tenant-1',
+      conversationId: 'conversation-1',
+      parentResponseMessageId: 'response-1',
+      agentId: 'agent_parent_1',
+      planId: 'plan-1',
+      plan: { planId: 'plan-1', mission },
+      orchestratorMission: { mission },
+      botMode: { workerAgentId: 'agent_parent_1', mode: 'analyze', version: 1 },
+    };
+    const getMissionOrigin = jest
+      .fn()
+      .mockResolvedValueOnce(original)
+      .mockResolvedValueOnce({ ...original, botMode: { ...original.botMode, mode: 'fast' } });
+    const resolve = createSubagentCompletionWakeupResolver({
+      methods: methods as never,
+      getGenerationJob: async () => null,
+      getMissionOrigin,
+    });
+    await expect(
+      resolve(wakeupEnvelope(), { idempotencyKey: 'accepted' } as never),
+    ).resolves.toMatchObject({ status: 'ready', missionContext: { originalPlanId: 'plan-1' } });
+    await expect(
+      resolve(wakeupEnvelope(), { idempotencyKey: 'rejected' } as never),
+    ).rejects.toMatchObject({ code: 'MISSION_WAKEUP_ORIGIN_MISMATCH' });
+    expect(methods.claimSubagentTaskResult).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not claim a child result when the immutable mission belongs to another parent', async () => {
+    const { methods } = resolverMethods();
+    const mission = { missionId: 'mission-1', taskId: 'mission-task-1' };
+    const resolve = createSubagentCompletionWakeupResolver({
+      methods: methods as never,
+      getGenerationJob: async () => ({ status: 'complete' }),
+      getMissionOrigin: async () => ({
+        userId: 'user-1',
+        tenantId: 'tenant-1',
+        conversationId: 'conversation-1',
+        parentResponseMessageId: 'different-parent-response',
+        agentId: 'agent_parent_1',
+        planId: 'plan-1',
+        plan: { planId: 'plan-1', mission },
+        orchestratorMission: { mission },
+      }),
+    });
+    await expect(
+      resolve(wakeupEnvelope(), { idempotencyKey: 'trigger_claim_1' } as never),
+    ).rejects.toMatchObject({ code: 'MISSION_WAKEUP_ORIGIN_MISMATCH' });
+    expect(methods.claimSubagentTaskResult).not.toHaveBeenCalled();
+  });
+
   it('claims the durable result and chains onto the latest assistant descendant', async () => {
     const { methods } = resolverMethods();
     const resolve = createSubagentCompletionWakeupResolver({

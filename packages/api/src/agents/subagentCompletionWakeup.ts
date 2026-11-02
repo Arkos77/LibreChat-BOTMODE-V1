@@ -49,6 +49,18 @@ interface GenerationState {
   };
 }
 
+interface StoredMissionOrigin {
+  userId: string;
+  tenantId?: string;
+  conversationId: string;
+  parentResponseMessageId: string;
+  agentId: string;
+  planId: string;
+  orchestratorMission: unknown;
+  plan: unknown;
+  botMode?: unknown;
+}
+
 type SubagentTaskStatus = NonNullable<IMessage['subagentTask']>['status'];
 
 interface OrchestrationTaskCandidate {
@@ -80,6 +92,14 @@ interface OrchestrationSnapshotResolution {
 export interface SubagentCompletionWakeupResolverDeps {
   methods: WakeupMethods;
   getGenerationJob: (conversationId: string) => Promise<GenerationState | null>;
+  /** Private, tenant-scoped immutable original parent receipt (not the current Redis slot). */
+  getMissionOrigin?: (scope: {
+    userId: string;
+    tenantId?: string;
+    conversationId: string;
+    parentResponseMessageId: string;
+    agentId: string;
+  }) => Promise<StoredMissionOrigin | null>;
   now?: () => number;
 }
 
@@ -141,6 +161,94 @@ function isParentActive(job: GenerationState | null): boolean {
 
 function sameTenant(actual: string | undefined, expected: string | undefined): boolean {
   return actual === expected;
+}
+
+/** The original mission and saved conversation may have different BSON key
+ * ordering. Compare complete content canonically; keep arrays in their order. */
+function canonicalMissionJson(value: unknown): string | undefined {
+  return JSON.stringify(value, (_key, field: unknown) => {
+    if (
+      field == null ||
+      typeof field !== 'object' ||
+      Array.isArray(field) ||
+      Object.prototype.toString.call(field) !== '[object Object]'
+    ) {
+      return field;
+    }
+    const entries = Object.entries(field as Record<string, unknown>);
+    return Object.fromEntries(entries.sort(([a], [b]) => a.localeCompare(b)));
+  });
+}
+
+/** Only an immutable mission record verified in Mongo may authorize a
+ * mission wakeup. The volatile Redis conversation slot can be replaced by the
+ * first sibling completion and is never used as mission provenance. */
+async function missionContextForWakeup(
+  getMissionOrigin: SubagentCompletionWakeupResolverDeps['getMissionOrigin'],
+  savedBotMode: unknown,
+  envelope: AgentContinueTriggerEnvelope,
+): Promise<Extract<AgentTriggerContinuePreparation, { status: 'ready' }>['missionContext']> {
+  const record = (value: unknown): value is Record<string, unknown> =>
+    value != null && typeof value === 'object' && !Array.isArray(value);
+  const botModeRequired = record(savedBotMode) && savedBotMode.mode !== 'fast';
+  let original: StoredMissionOrigin | null = null;
+  try {
+    original =
+      (await getMissionOrigin?.({
+        userId: envelope.principal.userId,
+        tenantId: envelope.principal.tenantId,
+        conversationId: envelope.target.conversationId,
+        parentResponseMessageId: envelope.target.parentMessageId,
+        agentId: envelope.target.agentId,
+      })) ?? null;
+  } catch {
+    throw executionError('The original mission record cannot be verified.', {
+      code: 'MISSION_WAKEUP_ORIGIN_UNAVAILABLE',
+      retryable: true,
+      status: 409,
+    });
+  }
+  if (original == null) {
+    if (!botModeRequired) {
+      return undefined;
+    }
+    throw executionError('Original BOT MODE mission context is unavailable.', {
+      code: 'MISSION_WAKEUP_CONTEXT_UNAVAILABLE',
+      retryable: true,
+      status: 409,
+    });
+  }
+  const plan = original.plan;
+  const source = original.orchestratorMission;
+  if (
+    !record(plan) ||
+    !record(plan.mission) ||
+    !record(source) ||
+    !record(source.mission) ||
+    original.planId !== plan.planId ||
+    original.userId !== envelope.principal.userId ||
+    original.tenantId !== (envelope.principal.tenantId ?? '') ||
+    original.conversationId !== envelope.target.conversationId ||
+    original.parentResponseMessageId !== envelope.target.parentMessageId ||
+    original.agentId !== envelope.target.agentId ||
+    plan.mission.missionId !== source.mission.missionId ||
+    plan.mission.taskId !== source.mission.taskId ||
+    plan.mission.objective !== source.mission.objective ||
+    (record(savedBotMode) &&
+      canonicalMissionJson(savedBotMode) !== canonicalMissionJson(original.botMode))
+  ) {
+    throw executionError('Stored mission does not match the originating parent.', {
+      code: 'MISSION_WAKEUP_ORIGIN_MISMATCH',
+      retryable: false,
+      status: 409,
+    });
+  }
+  return {
+    ...(original.botMode == null ? {} : { botMode: structuredClone(original.botMode) }),
+    orchestratorMission: structuredClone(source),
+    originalPlanId: original.planId,
+    originalResponseMessageId: envelope.target.parentMessageId,
+  };
 }
 
 function timestamp(message: Pick<IMessage, 'createdAt'>): number {
@@ -578,6 +686,7 @@ function renderWakeupInput(
 export function createSubagentCompletionWakeupResolver({
   methods,
   getGenerationJob,
+  getMissionOrigin,
   now = Date.now,
 }: SubagentCompletionWakeupResolverDeps): NonNullable<
   AgentTriggerExecutionHostDeps['prepareContinue']
@@ -724,6 +833,12 @@ export function createSubagentCompletionWakeupResolver({
       { sort: { createdAt: 1, _id: 1 } },
     );
 
+    const missionContext = await missionContextForWakeup(
+      getMissionOrigin,
+      parent.botMode,
+      envelope,
+    );
+
     const parentMessageId = latestAssistantDescendant(
       parentMessages,
       envelope.target.parentMessageId,
@@ -779,6 +894,7 @@ export function createSubagentCompletionWakeupResolver({
       status: 'ready',
       parentMessageId,
       input: renderWakeupInput(registration, resultTaskId, claim.message, orchestrationSnapshot),
+      ...(missionContext == null ? {} : { missionContext }),
       releaseOnDefiniteFailure: async () => {
         await methods.releaseSubagentTaskResultClaim({
           userId,

@@ -1,4 +1,7 @@
-const { createNativeMissionColdGraphBuilder } = require('./nativeMissionColdGraphBuilder');
+const {
+  createNativeMissionColdGraphBuilder,
+  proveDeferredNativeMissionColdReplayFences,
+} = require('./nativeMissionColdGraphBuilder');
 const { bindNativeMissionRecoveredClient } = require('./nativeMissionRecoveredClientBinding');
 
 /** Construct the coordinator's cold runtime solely from a host-initialized client.
@@ -18,7 +21,17 @@ function createNativeMissionColdRuntimeHost({
   effectFences,
   oracle,
   publication,
+  proveColdGraphReceipt,
+  installRecoveryTransport,
 }) {
+  if (installRecoveryTransport != null &&
+      (typeof installRecoveryTransport !== 'function' ||
+       typeof proveColdGraphReceipt !== 'function')) {
+    throw new Error('NATIVE_COLD_RUNTIME_TRANSPORT_INSTALLER_INVALID');
+  }
+  if (proveColdGraphReceipt != null && typeof proveColdGraphReceipt !== 'function') {
+    throw new Error('NATIVE_COLD_RUNTIME_RECEIPT_PROOF_INVALID');
+  }
   const buildGraph =
     reconstructGraph ??
     (typeof createRun === 'function'
@@ -75,10 +88,60 @@ function createNativeMissionColdRuntimeHost({
       }
       client.options.nativeMissionRecoverySignal = signal;
     }
+    // The authenticated host installs its ORIGINAL read-only broker binding
+    // before graph compilation. No transport is invented from a Redis claim.
+    let transportBinding;
+    if (installRecoveryTransport != null) {
+      await assertAuthorized();
+      transportBinding = await installRecoveryTransport({
+        client, job: initialized.job, candidate, claim, assertAuthorized,
+      });
+      if (!transportBinding ||
+          typeof transportBinding.bindGraph !== 'function') {
+        throw new Error('NATIVE_COLD_RUNTIME_TRANSPORT_INSTALL_DENIED');
+      }
+      await assertAuthorized();
+    }
+    // A receipts-required graph must never silently compile a direct provider
+    // transport when the cold broker binding has not been installed.
+    if (proveColdGraphReceipt != null &&
+        typeof client.options?.nativeGraphModelFetchFactory !== 'function') {
+      throw new Error('NATIVE_COLD_GRAPH_RECOVERY_ONLY_TRANSPORT_MISSING');
+    }
     await assertAuthorized();
     const graph = await buildGraph({ client, candidate, claim, assertAuthorized });
     if (!graph || typeof graph.invoke !== 'function' || typeof graph.getState !== 'function') {
       throw new Error('NATIVE_COLD_RUNTIME_HOST_GRAPH_UNAVAILABLE');
+    }
+    if (transportBinding != null) {
+      await assertAuthorized();
+      if ((await transportBinding.bindGraph(graph)) !== true) {
+        throw new Error('NATIVE_COLD_RUNTIME_TRANSPORT_GRAPH_BIND_DENIED');
+      }
+      await assertAuthorized();
+    }
+    // Optional receipts-required path: authorize the *reconstructed* graph
+    // and original committed broker operation before any replay or promotion.
+    // No callback, no receipts-required authorization is inferred here.
+    if (proveColdGraphReceipt != null) {
+      await assertAuthorized();
+      if ((await proveColdGraphReceipt({
+        client, graph, candidate, claim, assertAuthorized,
+      })) !== true) {
+        throw new Error('NATIVE_COLD_RUNTIME_RECEIPT_PROOF_DENIED');
+      }
+      await assertAuthorized();
+    }
+    // The original graph and model receipt are now authenticated. Only at
+    // this point can the receipts-required replay-fence proof inspect the
+    // reconstructed original checkpoint; prior to this it is unavailable.
+    if (client.options?.nativeMissionRecoveryRequiresReceipts === true) {
+      if (proveColdGraphReceipt == null || installRecoveryTransport == null) {
+        throw new Error('NATIVE_COLD_RUNTIME_RECEIPTS_HOST_PROOFS_MISSING');
+      }
+      await assertAuthorized();
+      await proveDeferredNativeMissionColdReplayFences({ graph, candidate, claim });
+      await assertAuthorized();
     }
     // The callbacks are host-owned. Carry the current document authorization
     // closure rather than letting Oracle/publication invent an HTTP principal.

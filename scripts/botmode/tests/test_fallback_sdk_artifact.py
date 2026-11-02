@@ -33,7 +33,7 @@ class FallbackSDKArtifactTests(unittest.TestCase):
         manifest = json.loads(files['package/package.json'])
         self.assertEqual(manifest['version'], '3.7.17')
         self.assertEqual(manifest['botmodePatch']['baseSha256'], MODULE.BASE_SHA)
-        self.assertEqual(manifest['botmodePatch']['id'], 'fallback-context-v1')
+        self.assertEqual(manifest['botmodePatch']['id'], 'fallback-context-cold-child-v2')
         for module in ['graphs/Graph', 'llm/invoke']:
             self.assertIn(b'prepareTools', files['package/src/' + module + '.ts'])
             self.assertIn(b'prepareModel', files['package/src/' + module + '.ts'])
@@ -44,6 +44,16 @@ class FallbackSDKArtifactTests(unittest.TestCase):
                 self.assertNotIn(b'sourceMappingURL', files[name])
                 self.assertNotIn(name + '.map', files)
         self.assertIn(b'clientOptions?: t.ClientOptions', files['package/dist/types/llm/invoke.d.ts'])
+        for name in ['package/src/tools/subagent/SubagentExecutor.ts',
+                     'package/dist/cjs/tools/subagent/SubagentExecutor.cjs',
+                     'package/dist/esm/tools/subagent/SubagentExecutor.mjs']:
+            self.assertIn(b'nativeMissionColdChild', files[name])
+            self.assertIn(b'__librechat_mission_sync', files[name])
+            self.assertIn(b'__librechat_checkpoint_ns', files[name])
+            self.assertIn(b'durability:', files[name])
+            if '/dist/' in name:
+                self.assertNotIn(b'sourceMappingURL', files[name])
+                self.assertNotIn(name + '.map', files)
 
     def test_regeneration_matches_the_committed_archive_without_unrelated_byte_changes(self):
         try:
@@ -58,8 +68,9 @@ class FallbackSDKArtifactTests(unittest.TestCase):
         with tarfile.open(fileobj=io.BytesIO(expected), mode='r:gz') as archive:
             after = {m.name: archive.extractfile(m).read() for m in archive.getmembers() if m.isfile()}
         allowed = {'package/package.json', 'package/src/graphs/Graph.ts', 'package/src/llm/invoke.ts', 'package/dist/types/llm/invoke.d.ts'}
+        allowed.add('package/src/tools/subagent/SubagentExecutor.ts')
         for fmt, extension in [('cjs', '.cjs'), ('esm', '.mjs')]:
-            for module in ['graphs/Graph', 'llm/invoke']:
+            for module in ['graphs/Graph', 'llm/invoke', 'tools/subagent/SubagentExecutor']:
                 allowed.update({'package/dist/' + fmt + '/' + module + extension, 'package/dist/' + fmt + '/' + module + extension + '.map'})
         changed = {name for name in before.keys() | after.keys() if before.get(name) != after.get(name)}
         self.assertEqual(changed, allowed)

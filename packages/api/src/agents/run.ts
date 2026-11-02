@@ -85,6 +85,10 @@ import {
   isSteerTerminalContinuationSupported,
 } from '~/agents/steering/runtime';
 import {
+  attachNativeDetachedBrokerModelFetch,
+  type NativeDetachedModelFetchFactory,
+} from './nativeBrokerModelFetchBinding';
+import {
   resolveToolApprovalPolicy,
   healToolApprovalPolicy,
   exemptAskUserQuestionFromApproval,
@@ -113,6 +117,7 @@ import { getOpenAIConfig } from '~/endpoints/openai/config';
 import { createStepBudgetHook } from '~/agents/stepBudget';
 import { buildHITLRunWiring } from '~/agents/hitl/runtime';
 import { compileNativePlan } from './orchestrator/native';
+import type { NativeGraphModelFetchFactory } from './nativeGraphModelFetchBinding';
 import { buildLangfuseConfig } from '~/langfuse/config';
 import { applyTestRunHook } from '~/agents/testHook';
 import { attachRunOracle } from '~/agents/oracle';
@@ -1467,6 +1472,8 @@ export async function createRun({
   initialSummary,
   modelCallbacks,
   modelCallbackFactory,
+  nativeDetachedModelFetchFactory,
+  nativeGraphModelFetchFactory,
   calibrationRatio,
   fadingTier,
   fadingTiers,
@@ -1528,6 +1535,13 @@ export async function createRun({
   modelCallbacks?: readonly ModelBoundChatModelCallback[];
   /** Binding-specific callbacks keyed by exact host-known model identity. */
   modelCallbackFactory?: ModelBindingCallbackFactory;
+  /** Optional host-fenced fetch transport for ORIGINAL detached child requests.
+   * Never supplied by default; requires a separately authorized operation
+   * resolver before any provider dispatch and is ignored by root models. */
+  nativeDetachedModelFetchFactory?: NativeDetachedModelFetchFactory;
+  /** Optional original-task- and checkpoint-fenced native graph broker.
+   * Only the authenticated host can provide this capability. */
+  nativeGraphModelFetchFactory?: NativeGraphModelFetchFactory;
   /** Calibration ratio from previous run's contextMeta, seeds the pruner EMA */
   calibrationRatio?: number;
   /**
@@ -1780,6 +1794,18 @@ export async function createRun({
       body: requestBody,
     });
 
+    if (isSubagent && nativeDetachedModelFetchFactory != null) {
+      attachNativeDetachedBrokerModelFetch({
+        clientOptions: llmConfig,
+        // Broker authority uses the original saved agent provider, not the
+        // SDK's normalized transport provider (e.g. OpenRouter -> openAI).
+        // The host independently verifies this exact agent/model pairing.
+        binding: { agentId: agent.id, provider: String(agent.provider), model: selfModel ?? '' },
+        modelFetchFactory: nativeDetachedModelFetchFactory,
+        originalMissionHasDelegation: orchestratorPlan != null && subagentTasks != null,
+      });
+    }
+
     /** Resolves issues with new OpenAI usage field */
     if (
       customProviders.has(agent.provider) ||
@@ -1977,7 +2003,15 @@ export async function createRun({
       /** Seed the SDK countdown that bounds nested delegation across isolated child graphs. */
       agentInput.maxSubagentDepth = MAX_SUBAGENT_DEPTH;
     }
-    if (subagentTasks != null) {
+    // A signed native MissionPlan owns task ordering through graph edges,
+    // not through the Worker subagent queue or check_background_task. The
+    // queue may be available on the authenticated Worker, but injecting its
+    // poll tool into EVERY native node would give the tool-free Analyse node
+    // an unplanned effect and correctly trip the broker's fail-closed gate.
+    // Preserve all saved/authorized tool definitions unchanged: the native
+    // broker still rejects an actual tool on Analyse. Ordinary detached
+    // subagent runs retain their background poll tool without change.
+    if (subagentTasks != null && orchestratorPlan == null) {
       agentInput.toolDefinitions = registerBackgroundTaskTool({
         toolRegistry: agentInput.toolRegistry,
         toolDefinitions: agentInput.toolDefinitions,
@@ -2020,6 +2054,7 @@ export async function createRun({
       resolveMissionOracleEvidence,
       persistMissionOracleResult,
       resolveMissionOracleSources,
+      nativeGraphModelFetchFactory,
     );
     // Preserve the cancellation signal on the native SDK graph configuration.
     graphConfig = Object.assign(nativePlan.graphConfig, { signal });

@@ -40,6 +40,9 @@ const { storage, importFileFilter } = require('~/server/routes/files/multer');
 const requireJwtAuth = require('~/server/middleware/requireJwtAuth');
 const { importConversations } = require('~/server/utils/import');
 const subagentThreadTaskStore = require('~/server/services/Endpoints/agents/subagentThreadStore');
+const {
+  deleteNativeMissionWakeupOrigins,
+} = require('~/server/services/Endpoints/agents/nativeMissionWakeupOriginStore');
 const getLogStores = require('~/cache/getLogStores');
 const db = require('~/models');
 
@@ -367,6 +370,7 @@ async function drainDeletedAgentGenerations(userId, conversationIds, leaseTaskId
   await confirmAgentGenerationsDrained(userId, conversationIds, leaseTaskIds, tenantId);
   await db.deleteConvos(userId, { conversationId: { $in: conversationIds } }, { allowEmpty: true });
   await db.deleteMessages({ user: userId, conversationId: { $in: conversationIds } });
+  await deleteNativeMissionWakeupOrigins({ userId, tenantId, conversationIds });
 }
 
 /** Orders every owner-scoped agent execution against a delete-all persistence
@@ -402,6 +406,7 @@ async function deleteOwnerConversationPersistence(userId, filter, tenantId, chec
   /** Consume the deletion receipt before the fallible message sweep. A retry after
    * conversations are gone cannot reconstruct these checkpoint identities. */
   await deleteAgentCheckpoints(result.conversationIds ?? [], checkpointer);
+  await deleteNativeMissionWakeupOrigins({ userId, tenantId });
   /** Always runs, including an empty conversation retry, so an interrupted writer
    * that persisted messages first cannot make its cleanup permanently unreachable. */
   await db.deleteMessages({ user: userId });

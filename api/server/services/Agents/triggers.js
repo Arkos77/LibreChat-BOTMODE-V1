@@ -11,6 +11,9 @@ const {
   GenerationJobManager,
 } = require('@librechat/api');
 const methods = require('~/models');
+const {
+  getNativeMissionWakeupOrigin,
+} = require('~/server/services/Endpoints/agents/nativeMissionWakeupOriginStore');
 
 const getGenerationAdmissionEvidence = (userId, clientRequestId, streamId, conversationId) =>
   GenerationJobManager.getGenerationAdmissionEvidence(
@@ -23,6 +26,7 @@ const getGenerationAdmissionEvidence = (userId, clientRequestId, streamId, conve
 const subagentCompletionAdapter = createSubagentCompletionWakeupResolver({
   methods,
   getGenerationJob: (conversationId) => GenerationJobManager.getJob(conversationId),
+  getMissionOrigin: getNativeMissionWakeupOrigin,
 });
 const backgroundToolCompletionAdapter = createBackgroundToolCompletionWakeupResolver({
   methods,

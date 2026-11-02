@@ -17,6 +17,10 @@ import {
 import { assertMissionTaskVerified, validateMissionTask } from './missionOracle';
 import { getTaskLevels, nodeIdentity } from './planner';
 import { structuredTaskOptions } from './schema';
+import {
+  attachNativeGraphBrokerModelFetch,
+  type NativeGraphModelFetchFactory,
+} from '../nativeGraphModelFetchBinding';
 
 export interface NativeMissionPlan {
   planId: string;
@@ -121,7 +125,15 @@ function requirePredecessorOutputs(
   resolveMissionOracleSources?: MissionOracleSourcesResolver,
 ) {
   const sourceNodeIds = sourceTasks.map((task) => task.nodeId);
+  // Diagnostic only: staged markers distinguish blocked Oracle persistence
+  // from a stalled Analyse graph turn. No outputs, identities or prompts.
+  const ciStage = (stage: string) => {
+    if (process.env.BOTMODE_CI_ORIGINAL_MISSION_DIAGNOSTICS === '1') {
+      process.stderr.write('CI_NATIVE_4C_TRANSITION_STAGE=' + stage + '\n');
+    }
+  };
   return async (state: BaseGraphState): Promise<void> => {
+    ciStage('ENTER');
     const missing = sourceNodeIds.filter((nodeId) => state.agentOutputs?.[nodeId] == null);
     if (missing.length > 0) {
       throw new Error(
@@ -133,6 +145,7 @@ function requirePredecessorOutputs(
       if (task.validation.length === 0) {
         continue;
       }
+      ciStage('BEFORE_VALIDATION');
       const result = await validateMissionTask({
         taskId: task.taskId,
         nodeId: task.nodeId,
@@ -146,9 +159,12 @@ function requirePredecessorOutputs(
             ? []
             : await resolveMissionOracleEvidence(task.taskId),
       });
+      ciStage('BEFORE_PERSISTENCE');
       await persistMissionOracleResult?.(result);
+      ciStage('AFTER_PERSISTENCE');
       assertMissionTaskVerified(result);
     }
+    ciStage('COMPLETE');
   };
 }
 
@@ -164,6 +180,7 @@ export function compileNativePlan(
   resolveMissionOracleEvidence?: MissionOracleEvidenceResolver,
   persistMissionOracleResult?: MissionOracleResultPersister,
   resolveMissionOracleSources?: MissionOracleSourcesResolver,
+  nativeGraphModelFetchFactory?: NativeGraphModelFetchFactory,
 ): NativeMissionPlan {
   getTaskLevels(plan.tasks);
   if (plan.tasks.some(isResearchTask) && plan.mission.researchExecutionVersion !== 1) {
@@ -215,6 +232,46 @@ export function compileNativePlan(
         .filter(Boolean)
         .join('\n'),
     };
+    // Research can have web_search effects. In 4C its original completed
+    // result is already durable before the crash; it must NOT be re-executed
+    // by the receipts-only cold recovery path. Install the broker transport
+    // solely on the pending, tool-free Analyse node. The cold pending-node
+    // admission is responsible for rejecting any unfinished research phase.
+    if (nativeGraphModelFetchFactory != null && !isResearchTask(task)) {
+      if (
+        binding.tools?.length ||
+        binding.graphTools?.length ||
+        binding.toolDefinitions?.length ||
+        binding.subagentConfigs?.length
+      ) {
+        // Disposable CI only: identify the forbidden execution surface without
+        // logging user content, model prompts, tool names or agent identities.
+        if (process.env.BOTMODE_CI_ORIGINAL_MISSION_DIAGNOSTICS === '1') {
+          const first = plan.tasks[0]?.nodeId === task.nodeId;
+          process.stderr.write(
+            'CI_NATIVE_GRAPH_EFFECTS_REJECTED_NODE=' + (first ? 'FIRST' : 'LATER') + '\n' +
+            'CI_NATIVE_GRAPH_EFFECTS_REJECTED_TOOLS=' + Boolean(binding.tools?.length) + '\n' +
+            'CI_NATIVE_GRAPH_EFFECTS_REJECTED_GRAPH_TOOLS=' + Boolean(binding.graphTools?.length) + '\n' +
+            'CI_NATIVE_GRAPH_EFFECTS_REJECTED_DEFINITIONS=' + Boolean(binding.toolDefinitions?.length) + '\n' +
+            'CI_NATIVE_GRAPH_EFFECTS_REJECTED_DELEGATION=' + Boolean(binding.subagentConfigs?.length) + '\n',
+          );
+        }
+        throw new Error('NATIVE_GRAPH_BROKER_EFFECTS_UNSUPPORTED');
+      }
+      result.clientOptions = attachNativeGraphBrokerModelFetch({
+        clientOptions: result.clientOptions as Parameters<
+          typeof attachNativeGraphBrokerModelFetch
+        >[0]['clientOptions'],
+        binding: {
+          agentId: task.agentId,
+          nodeId: task.nodeId,
+          taskId: task.taskId,
+          provider: binding.provider,
+          model: String(result.clientOptions?.model ?? ''),
+        },
+        factory: nativeGraphModelFetchFactory,
+      }) as AgentInputs['clientOptions'];
+    }
     if (!isResearchTask(task)) return [result];
     const observationId = researchObservationNodeId(task.nodeId);
     if (plan.tasks.some((other) => other.nodeId === observationId)) {

@@ -1,0 +1,239 @@
+'use strict';
+
+const http = require('node:http');
+const { createHash, createHmac, timingSafeEqual } = require('node:crypto');
+
+const MAX_BODY_BYTES = 256 * 1024;
+const CLOCK_SKEW_MS = 60_000;
+
+function requestDigest(payload) {
+  const canonical = (value) => {
+    if (Array.isArray(value)) return value.map(canonical);
+    if (value == null || typeof value !== 'object') return value;
+    if (Object.prototype.toString.call(value) !== '[object Object]') {
+      throw new Error('NATIVE_BROKER_REQUEST_SHAPE_INVALID');
+    }
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((k) => [k, canonical(value[k])]),
+    );
+  };
+  return createHash('sha256')
+    .update(JSON.stringify(canonical(payload)))
+    .digest('hex');
+}
+
+function authenticate({ secret, timestamp, signature, body, now }) {
+  if (
+    typeof timestamp !== 'string' ||
+    !/^\d{13}$/.test(timestamp) ||
+    Math.abs(now() - Number(timestamp)) > CLOCK_SKEW_MS ||
+    typeof signature !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(signature)
+  )
+    return false;
+  const expected = createHmac('sha256', secret)
+    .update(timestamp + '.' + body)
+    .digest();
+  return timingSafeEqual(expected, Buffer.from(signature, 'hex'));
+}
+
+function createNativeMissionProviderBrokerHttpServer({
+  store,
+  broker,
+  secret,
+  provider,
+  authorizeScope,
+  // Opt-in only: the host must independently prove the original native
+  // plan, user/tenant ACL, provider binding and saved graph checkpoint.
+  authorizeOriginalNativeGraph,
+  now = Date.now,
+}) {
+  if (
+    !store ||
+    typeof store.read !== 'function' ||
+    !broker ||
+    typeof broker.execute !== 'function' ||
+    typeof secret !== 'string' ||
+    Buffer.byteLength(secret) < 32 ||
+    typeof provider !== 'string' ||
+    !provider ||
+    typeof authorizeScope !== 'function' ||
+    typeof now !== 'function'
+  ) {
+    throw new Error('NATIVE_BROKER_HTTP_DEPENDENCIES_MISSING');
+  }
+  return http.createServer(async (req, res) => {
+    const respond = (status, value) => {
+      if (res.destroyed) return;
+      res.writeHead(status, {
+        'content-type': 'application/json',
+        'cache-control': 'no-store',
+      });
+      res.end(JSON.stringify(value));
+    };
+    const directGraphRoute = req.url === '/execute-native-graph';
+    const originalGraphReadRoute = req.url === '/status-native-graph';
+    if (
+      req.method !== 'POST' ||
+      (req.url !== '/execute' && req.url !== '/status' &&
+        !directGraphRoute && !originalGraphReadRoute) ||
+      (directGraphRoute && (
+        typeof authorizeOriginalNativeGraph !== 'function' ||
+        typeof broker.executeOriginalNativeGraph !== 'function')) ||
+      (originalGraphReadRoute && (
+        typeof authorizeOriginalNativeGraph !== 'function' ||
+        typeof store.readOriginalNativeGraph !== 'function'))
+    ) {
+      return respond(404, { error: 'not_found' });
+    }
+    try {
+      const buffers = [];
+      let length = 0;
+      for await (const piece of req) {
+        length += piece.length;
+        if (length > MAX_BODY_BYTES) throw new Error('REQUEST_TOO_LARGE');
+        buffers.push(piece);
+      }
+      const raw = Buffer.concat(buffers).toString('utf8');
+      if (
+        !authenticate({
+          secret,
+          timestamp: req.headers['x-botmode-broker-ts'],
+          signature: req.headers['x-botmode-broker-hmac'],
+          body: raw,
+          now,
+        })
+      ) {
+        return respond(401, { error: 'unauthorized' });
+      }
+      const payload = JSON.parse(raw);
+      const identity = payload?.identity;
+      const digest = payload?.requestDigest;
+      if (identity?.provider !== provider || typeof digest !== 'string') {
+        return respond(403, { error: 'forbidden' });
+      }
+      // Reading a committed receipt after SIGKILL is not permission to
+      // create another provider effect. The independent authority decides
+      // whether an active lease is required for this specific operation.
+      const operation = originalGraphReadRoute
+        ? 'read_native_graph'
+        : (req.url === '/status'
+          ? 'read'
+          : (directGraphRoute ? 'reserve_native_graph' : 'execute'));
+      if ((await authorizeScope({
+        identity,
+        requestDigest: digest,
+        operation,
+        ...(directGraphRoute && { authorizedRequest: payload.authorizedRequest }),
+      })) !== true) {
+        return respond(403, { error: 'forbidden' });
+      }
+      if (req.url === '/status') {
+        const result = await store.read({ identity, requestDigest: digest });
+        return respond(200, result);
+      }
+      if (originalGraphReadRoute) {
+        // A recovered API may only read the original committed receipt.
+        // A status probe cannot allocate an operation or dispatch a provider.
+        if (identity.mode !== 'native_graph' ||
+            Object.prototype.hasOwnProperty.call(identity, 'operationKey') ||
+            (await authorizeOriginalNativeGraph({
+              identity, requestDigest: digest, operation: 'read_native_graph',
+            })) !== true) {
+          return respond(403, { error: 'forbidden' });
+        }
+        return respond(200, await store.readOriginalNativeGraph({
+          identity, requestDigest: digest,
+        }));
+      }
+      const authorizedRequest = payload.authorizedRequest;
+      if (
+        !authorizedRequest ||
+        authorizedRequest.model !== identity.model ||
+        authorizedRequest.stream !== false ||
+        !Array.isArray(authorizedRequest.messages) ||
+        requestDigest(authorizedRequest) !== digest
+      ) {
+        return respond(403, { error: 'request_mismatch' });
+      }
+      if (directGraphRoute) {
+        if (identity.mode !== 'native_graph' ||
+            Object.prototype.hasOwnProperty.call(identity, 'operationKey') ||
+            (await authorizeOriginalNativeGraph({
+              identity, requestDigest: digest, authorizedRequest,
+              operation: 'reserve_native_graph',
+            })) !== true) {
+          return respond(403, { error: 'forbidden' });
+        }
+        const result = await broker.executeOriginalNativeGraph({
+          identity, requestDigest: digest, authorizedRequest,
+        });
+        return respond(200, result);
+      }
+      const result = await broker.execute({ identity, requestDigest: digest, authorizedRequest });
+      return respond(200, result);
+    } catch (error) {
+      // A disposable CI run may classify hidden broker exceptions by stable
+      // fingerprint. Never log the message, arguments, bodies, IDs or stack.
+      if (process.env.BOTMODE_CI_ORIGINAL_BROKER === '1' &&
+          process.env.COMPOSE_PROJECT_NAME?.startsWith('botmode-pr107-head-')) {
+        const message = typeof error?.message === 'string' ? error.message : '';
+        const hash = createHash('sha256').update(message.toLowerCase()).digest('hex').slice(0, 12);
+        const category = ['TypeError','ReferenceError','SyntaxError','RangeError',
+          'MongoServerError','ValidationError','Error'].includes(error?.name)
+          ? error.name : 'OTHER';
+        process.stderr.write(
+          'CI_NATIVE_4C_BROKER_EXCEPTION_CLASS=' + category + '\n' +
+          'CI_NATIVE_4C_BROKER_EXCEPTION_HASH=' + hash + '\n' +
+          'CI_NATIVE_4C_BROKER_EXCEPTION_LENGTH=' + message.length + '\n');
+      }
+      // Never log payloads, provider credentials, responses, or stack traces.
+      return respond(503, { error: 'unavailable' });
+    }
+  });
+}
+
+/** Fixture-only upstream: a caller can never select a URL to fetch. */
+function createFixedLocalProviderSender({ url, fetchImpl = fetch, allowCiDockerHost = false }) {
+  const destination = new URL(url);
+  if (
+    destination.protocol !== 'http:' ||
+    !(
+      ['localhost', '127.0.0.1'].includes(destination.hostname) ||
+      (allowCiDockerHost === true && destination.hostname === 'host.docker.internal')
+    ) ||
+    destination.pathname !== '/v1/chat/completions' ||
+    destination.username ||
+    destination.password ||
+    destination.search ||
+    destination.hash ||
+    typeof fetchImpl !== 'function'
+  ) {
+    throw new Error('NATIVE_BROKER_FIXTURE_ENDPOINT_DENIED');
+  }
+  return async (body) => {
+    const response = await fetchImpl(destination, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      redirect: 'error',
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!response.ok || response.status !== 200) {
+      throw new Error('NATIVE_BROKER_FIXTURE_REQUEST_FAILED');
+    }
+    const json = await response.json();
+    if (!json || typeof json !== 'object') {
+      throw new Error('NATIVE_BROKER_FIXTURE_RESULT_INVALID');
+    }
+    return json;
+  };
+}
+
+module.exports = {
+  requestDigest,
+  createNativeMissionProviderBrokerHttpServer,
+  createFixedLocalProviderSender,
+};

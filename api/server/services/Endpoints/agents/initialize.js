@@ -96,6 +96,10 @@ const {
 const {
   assertNativeMissionCapabilityAttestation,
 } = require('./nativeMissionCapabilityAttestation');
+const {
+  committedResearchRecoveryShape,
+  assertColdResearchCapabilityBaseline,
+} = require('./nativeMissionColdCommittedResearchAdmission');
 const { processAddedConvo } = require('./addedConvo');
 const subagentThreadTaskStore = require('./subagentThreadStore');
 const {
@@ -2137,6 +2141,11 @@ async function initializeClientFromDocuments({ candidate, claim, job, context, a
   )
     throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_AUTHORITY_DENIED');
 
+  // Receipts recovery can reconstruct the descriptor of an ALREADY
+  // checkpointed web_search node. It cannot execute that tool; the separate
+  // original checkpoint and committed broker receipt are mandatory before
+  // any graph continuation. Never enable this path for model-only missions.
+  const committedResearch = committedResearchRecoveryShape({ job, documents });
   // For an incomplete host integration these paths must not silently lose
   // tools, skill permissions or uploaded files during graph reconstruction.
   const containsUnsupportedResources =
@@ -2144,14 +2153,17 @@ async function initializeClientFromDocuments({ candidate, claim, job, context, a
     (conversation.attachments?.length ?? 0) > 0 ||
     documents.some(
       (agent) =>
-        (agent.tools?.length ?? 0) > 0 ||
+        ((agent.tools?.length ?? 0) > 0 &&
+          !(committedResearch?.historicalWebToolAgentIds.includes(agent.id) &&
+            agent.tools.length === 1 && agent.tools[0] === 'web_search')) ||
         Object.keys(agent.tool_options ?? {}).length > 0 ||
         // Delegation is an implicit SDK tool, even when `tools` is empty.
         // The request-free cold initializer has no durable child-run binding
         // or original grant receipt; silently reconstituting an agent without
         // those capabilities would change the checkpoint's execution graph.
-        agent.subagents?.enabled === true ||
-        (agent.subagents?.agent_ids?.length ?? 0) > 0 ||
+        ((agent.subagents?.enabled === true ||
+          (agent.subagents?.agent_ids?.length ?? 0) > 0) &&
+          !(committedResearch && agent.id === job.agent_id)) ||
         (agent.subagentAgentConfigs?.length ?? 0) > 0 ||
         (agent.lazySubagentConfigs?.length ?? 0) > 0 ||
         (agent.subagentGraphConfigs?.length ?? 0) > 0 ||
@@ -2162,6 +2174,56 @@ async function initializeClientFromDocuments({ candidate, claim, job, context, a
         Object.keys(agent.tool_resources ?? {}).length > 0,
     );
   if (containsUnsupportedResources) {
+    // CI-only, bounded classification of a denied cold agent document.
+    // No IDs, tool names, private fields, prompts or values are emitted.
+    if (process.env.BOTMODE_CI_ORIGINAL_MISSION_DIAGNOSTICS === '1') {
+      const role = (agent) => agent.id === job.agent_id ? 'WORKER' :
+        agent.id === job.orchestratorPlan.tasks[0]?.agentId ? 'RESEARCH' :
+          agent.id === job.orchestratorPlan.tasks[1]?.agentId ? 'ANALYSIS' : 'OTHER';
+      const offending = documents.map((agent) => {
+        const explicitTools = (agent.tools?.length ?? 0) > 0 &&
+          !(committedResearch && agent.id === committedResearch.researchAgentId &&
+            agent.tools.length === 1 && agent.tools[0] === 'web_search');
+        const delegation = (agent.subagents?.enabled === true ||
+          (agent.subagents?.agent_ids?.length ?? 0) > 0) &&
+          !(committedResearch && agent.id === job.agent_id);
+        const otherSurfaces = [
+          ['TOOL_OPTIONS', Object.keys(agent.tool_options ?? {}).length > 0],
+          ['GRAPH_CONFIGS', (agent.subagentAgentConfigs?.length ?? 0) > 0 ||
+            (agent.lazySubagentConfigs?.length ?? 0) > 0 ||
+            (agent.subagentGraphConfigs?.length ?? 0) > 0],
+          ['SKILLS', (agent.skills?.length ?? 0) > 0 || agent.skills_enabled === true],
+          ['FILES', (agent.attachments?.length ?? 0) > 0 || (agent.files?.length ?? 0) > 0],
+          ['TOOL_RESOURCES', Object.keys(agent.tool_resources ?? {}).length > 0],
+        ];
+        const reason = explicitTools ? 'EXPLICIT_TOOLS' :
+          delegation ? 'DELEGATION' :
+            otherSurfaces.find(([, present]) => present)?.[0];
+        return reason ? role(agent) + '_' + reason : null;
+      }).filter(Boolean);
+      const plan = job.orchestratorPlan;
+      const research = plan.tasks[0];
+      const analysis = plan.tasks[1];
+      const shape = committedResearch ? 'ADMITTED' :
+        job.nativeMissionCapabilityAttestation?.mode !== 'receipts_required' ? 'MODE' :
+        plan.mission?.researchExecutionVersion !== 1 ? 'RESEARCH_VERSION' :
+        (plan.tasks.length !== 2 || research?.key !== 'research' ||
+          analysis?.key !== 'analysis') ? 'PLAN' :
+        (!Array.isArray(research?.dependsOn) || research.dependsOn.length !== 0 ||
+          !Array.isArray(analysis?.dependsOn) || analysis.dependsOn.length !== 1) ? 'DEPENDENCIES' :
+        !research?.requiredCapabilities?.includes('web_search') ? 'CAPABILITY' :
+        !research.validation?.some((v) => v.outputContract === 'research-v1') ? 'CONTRACT' :
+        (documents.length !== 3 ||
+          !documents.find((a) => a.id === research.agentId) ||
+          !documents.find((a) => a.id === analysis.agentId)) ? 'DOCUMENTS' :
+        'DOCUMENT_EFFECT_SURFACE';
+      process.stderr.write(
+        'CI_NATIVE_4C_COLD_RESEARCH_SHAPE=' + shape + '\n' +
+        'CI_NATIVE_4C_COLD_RESOURCE_DENIAL=' +
+          (offending.join(',') || (conversation.files?.length ||
+            conversation.attachments?.length ? 'CONVERSATION_FILES' : 'OTHER')) + '\n'
+      );
+    }
     throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_TOOL_RUNTIME_UNAVAILABLE');
   }
   await assertAuthorized();
@@ -2212,15 +2274,32 @@ async function initializeClientFromDocuments({ candidate, claim, job, context, a
         endpointOption: { endpoint: EModelEndpoint.agents },
         isInitialAgent: definition.id === job.agent_id,
         loadTools: async ({ tools }) => {
+          if (committedResearch?.historicalWebToolAgentIds.includes(definition.id) &&
+              tools.length === 1 && tools[0] === 'web_search') {
+            // This is an INERT historical graph descriptor, never a runnable
+            // web tool. If a crash recovery ever attempts to revisit Research,
+            // the checkpoint/replay fences must reject before invoking the
+            // SDK graph. No search service, credential or network client is
+            // created here, and there is no toolExecution grant.
+            return { toolDefinitions: [{
+              name: 'web_search',
+              description: 'Historical committed Research; cold execution prohibited',
+              schema: { type: 'object', properties: {}, additionalProperties: false },
+            }], tools: [] };
+          }
           if (tools.length) throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_TOOLS_DENIED');
           return { toolDefinitions: [], tools: [] };
         },
       },
       { ...db, filterFilesByAgentAccess },
     );
+    const historicalResearchDefinition =
+      committedResearch?.historicalWebToolAgentIds.includes(definition.id) &&
+      config?.toolDefinitions?.length === 1 &&
+      config.toolDefinitions[0]?.name === 'web_search';
     if (
       config?.id !== definition.id ||
-      (config.toolDefinitions?.length ?? 0) > 0 ||
+      ((config.toolDefinitions?.length ?? 0) > 0 && !historicalResearchDefinition) ||
       (config.tools?.length ?? 0) > 0 ||
       (config.toolRegistry?.size ?? 0) > 0
     ) {
@@ -2242,17 +2321,30 @@ async function initializeClientFromDocuments({ candidate, claim, job, context, a
       throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_EXTERNAL_EFFECTS_DENIED');
     },
   });
+  if (committedResearch) {
+    // The runtime has no executable historical tools, but the signed
+    // fingerprint must still include their NAMES when replay is admitted.
+    client.options.nativeMissionColdHistoricalWebToolAgentIds =
+      committedResearch.historicalWebToolAgentIds;
+  }
   // This is the EXACT original admission fingerprint persisted alongside the
   // durable plan, not a current-configuration guess. Older jobs without it are
   // intentionally ineligible for automatic cold execution. Matching the digest
   // still grants no tool replay permission or publication authority.
-  const originalCapabilityAttestation = assertNativeMissionCapabilityAttestation({
-    recorded: job.nativeMissionCapabilityAttestation,
-    plan: job.orchestratorPlan,
-    agents: client.getReachableMissionAgents(),
-    subagentTasks: client.options.subagentTasks,
-  });
-  if (originalCapabilityAttestation.mode !== 'model_only') {
+  const originalCapabilityAttestation = committedResearch
+    ? assertColdResearchCapabilityBaseline({
+        recorded: job.nativeMissionCapabilityAttestation,
+        plan: job.orchestratorPlan,
+        agents: client.getReachableMissionAgents(),
+        historicalWebToolAgentIds: committedResearch.historicalWebToolAgentIds,
+      })
+    : assertNativeMissionCapabilityAttestation({
+        recorded: job.nativeMissionCapabilityAttestation,
+        plan: job.orchestratorPlan,
+        agents: client.getReachableMissionAgents(),
+        subagentTasks: client.options.subagentTasks,
+      });
+  if (!committedResearch && originalCapabilityAttestation.mode !== 'model_only') {
     throw new Error('NATIVE_COLD_DOCUMENT_CLIENT_EFFECT_RECEIPTS_REQUIRED');
   }
   client.user = userId;

@@ -169,10 +169,15 @@ interface PreparedThread {
 interface HostSubagentTaskStartRequest extends SubagentTaskStartRequest {
   completionDelivery?: typeof SUBAGENT_COMPLETION_DELIVERY;
   verifyDurableRecovery?: (candidate: {
+    userId: string;
+    tenantId: string;
     parentConversationId: string;
     parentRunId: string;
     parentToolCallId: string;
     childThreadId: string;
+    taskId: string;
+    attemptKey: string;
+    agentId?: string;
   }) => Promise<boolean>;
 }
 
@@ -1470,6 +1475,21 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
                 detachedUsage,
                 () => request.run(activityRuntime, preparedThread.initialMessages),
                 runtime.taskId,
+                request.subagentKind === 'agent' && childAgentId(request) != null
+                  ? {
+                      userId: scope.userId,
+                      ...(scope.tenantId == null ? {} : { tenantId: scope.tenantId }),
+                      parentConversationId: scope.parentConversationId,
+                      parentRunId: request.parentRunId,
+                      parentToolCallId: request.parentToolCallId,
+                      childThreadId: preparedThread.conversation.conversationId,
+                      attemptKey: preparedThread.attemptKey,
+                      agentId: childAgentId(request)!,
+                      ...(preparedThread.recoveryOnly === true
+                        ? { recoveryOnly: true as const }
+                        : {}),
+                    }
+                  : undefined,
               );
               if (runtime.signal.aborted) {
                 throw runtime.signal.reason ?? new Error('Subagent task was cancelled.');
@@ -3096,32 +3116,38 @@ export class SubagentThreadTaskStore extends InMemorySubagentTaskStore {
           lineage?.parentMessageId === durableParentRunId;
         if (request.verifyDurableRecovery != null && durableLineageMatches) {
           try {
+            // Verify the exact original task + attempt BEFORE asking the host
+            // to authorize a checkpoint. Parent/thread coordinates alone do
+            // not distinguish concurrent or abandoned model operations.
+            const canonicalStart = priorAttempt[0];
+            const canonicalTaskId = canonicalStart.messageId.endsWith(':user')
+              ? canonicalStart.messageId.slice(0, -':user'.length)
+              : '';
+            const durableStatus = [...priorAttempt]
+              .reverse()
+              .map((message) => message.subagentTask?.status)
+              .find(
+                (status) =>
+                  status === 'running' || status === 'pause_requested' || status === 'paused',
+              );
+            if (canonicalTaskId === '' || durableStatus == null) {
+              throw new Error('The recoverable subagent attempt has invalid durable task state.');
+            }
+            if (canonicalTaskId !== taskId) {
+              throw new Error('The recoverable subagent attempt has a conflicting task identity.');
+            }
             const recoverable = await request.verifyDurableRecovery({
+              userId: scope.userId,
+              tenantId: scope.tenantId ?? '',
               parentConversationId: scope.parentConversationId,
               parentRunId: durableParentRunId,
               parentToolCallId: durableParentToolCallId,
               childThreadId: threadId,
+              taskId: canonicalTaskId,
+              attemptKey,
+              ...(childAgentId(request) == null ? {} : { agentId: childAgentId(request) }),
             });
             if (recoverable) {
-              const canonicalStart = priorAttempt[0];
-              const canonicalTaskId = canonicalStart.messageId.endsWith(':user')
-                ? canonicalStart.messageId.slice(0, -':user'.length)
-                : '';
-              const durableStatus = [...priorAttempt]
-                .reverse()
-                .map((message) => message.subagentTask?.status)
-                .find(
-                  (status) =>
-                    status === 'running' || status === 'pause_requested' || status === 'paused',
-                );
-              if (canonicalTaskId === '' || durableStatus == null) {
-                throw new Error('The recoverable subagent attempt has invalid durable task state.');
-              }
-              if (canonicalTaskId !== taskId) {
-                throw new Error(
-                  'The recoverable subagent attempt has a conflicting task identity.',
-                );
-              }
               return {
                 conversation,
                 initialMessages: [],

@@ -1,0 +1,375 @@
+'use strict';
+
+const { createHash, randomUUID, randomBytes } = require('node:crypto');
+
+/** Private, durable model-call journal for an independent execution owner.
+ * No component here sends model requests or grants permission to replay them.
+ * This code is intentionally not registered in the API runtime yet.
+ */
+const ID_FIELDS = [
+  'userId',
+  'tenantId',
+  'parentConversationId',
+  'parentRunId',
+  'childThreadId',
+  'taskId',
+  'attemptKey',
+  'agentId',
+  'provider',
+  'model',
+  'operationKey',
+];
+// The original detached child and a native graph node are DIFFERENT durable
+// execution identities. A direct graph operation must carry its original
+// generation and graph checkpoint. It must never masquerade as a child thread.
+const DIRECT_GRAPH_ID_FIELDS = [
+  'mode', 'userId', 'tenantId', 'streamId', 'responseMessageId',
+  'generationCreatedAt', 'checkpointNamespace', 'graphCheckpointId',
+  'nodeId', 'taskId', 'agentId', 'provider', 'model', 'operationKey',
+];
+const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const HEX_DIGEST = /^[a-f0-9]{64}$/;
+
+function refuse(code) {
+  const error = new Error(code);
+  error.code = code;
+  throw error;
+}
+
+function fingerprint(value) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function identify(input) {
+  const direct = input?.mode === 'native_graph';
+  const fields = direct ? DIRECT_GRAPH_ID_FIELDS : ID_FIELDS;
+  if (
+    !input ||
+    (input.mode != null && !direct) ||
+    (direct && (
+      !Number.isSafeInteger(input.generationCreatedAt) ||
+      input.generationCreatedAt <= 0 ||
+      // Only detached-child-only keys are forbidden. taskId is part of
+      // BOTH canonical identities and must remain mandatory.
+      ['parentConversationId', 'parentRunId', 'childThreadId', 'attemptKey']
+        .some((key) => input[key] != null)
+    )) ||
+    fields.some(
+      (key) =>
+        key !== 'generationCreatedAt' && (
+          typeof input[key] !== 'string' ||
+          (key !== 'tenantId' && input[key].length === 0) ||
+          input[key].length > 256
+        ),
+    ) ||
+    !HEX_DIGEST.test(input.operationKey)
+  ) {
+    refuse('NATIVE_PROVIDER_CALL_IDENTITY_INVALID');
+  }
+  const identity = Object.fromEntries(fields.map((key) => [key, input[key]]));
+  return { identity, callKey: fingerprint(JSON.stringify(identity)) };
+}
+
+function requireDigest(digest) {
+  if (typeof digest !== 'string' || !HEX_DIGEST.test(digest)) {
+    refuse('NATIVE_PROVIDER_CALL_DIGEST_INVALID');
+  }
+}
+
+function publicStatus(record) {
+  return Object.freeze({
+    status: record.status,
+    callKey: record.callKey,
+    dispatched: record.dispatchedAt != null,
+    resultAvailable: record.status === 'result_committed',
+    // No credentials, prompts, outputs or owner tokens escape status reads.
+  });
+}
+
+function createNativeMissionProviderCallReceiptStore({
+  collection,
+  makeToken = randomUUID,
+  makeOperationKey = () => randomBytes(32).toString('hex'),
+}) {
+  if (
+    !collection ||
+    ['createIndex', 'insertOne', 'findOne', 'findOneAndUpdate'].some(
+      (name) => typeof collection[name] !== 'function',
+    ) ||
+    typeof makeToken !== 'function' ||
+    typeof makeOperationKey !== 'function'
+  ) {
+    refuse('NATIVE_PROVIDER_CALL_STORE_UNAVAILABLE');
+  }
+  let indexPromise;
+  const ensureIndex = () => {
+    if (!indexPromise) {
+      indexPromise = collection
+        .createIndex({ callKey: 1 }, { unique: true, name: 'native_provider_call_unique' })
+        .catch((error) => {
+          indexPromise = undefined;
+          throw error;
+        });
+    }
+    return indexPromise;
+  };
+  const match = (identity, requestDigest) => {
+    requireDigest(requestDigest);
+    const { callKey, identity: original } = identify(identity);
+    // One irreversible provider effect per ORIGINAL graph node per generation.
+    // A different checkpoint_id must NOT open a second provider slot for the
+    // same node. The original checkpoint is still checked on every lookup.
+    const nativeGraphSlotKey = original.mode === 'native_graph'
+      ? fingerprint(JSON.stringify(Object.fromEntries(
+          DIRECT_GRAPH_ID_FIELDS.filter((field) =>
+            !['operationKey', 'agentId', 'provider', 'model', 'graphCheckpointId'].includes(field))
+            .map((field) => [field, original[field]]),
+        )))
+      : undefined;
+    return { callKey, identity: original, requestDigest,
+      ...(nativeGraphSlotKey && { nativeGraphSlotKey }) };
+  };
+  const assertSame = (doc, expected) => {
+    if (
+      !doc ||
+      doc.callKey !== expected.callKey ||
+      doc.requestDigest !== expected.requestDigest ||
+      JSON.stringify(doc.identity) !== JSON.stringify(expected.identity)
+    ) {
+      refuse('NATIVE_PROVIDER_CALL_IMMUTABLE_CONFLICT');
+    }
+    return doc;
+  };
+  const readOriginal = async (expected) => {
+    const record = await collection.findOne({ callKey: expected.callKey });
+    return assertSame(record, expected);
+  };
+
+  const ensureNativeGraphSlotIndex = () =>
+    collection.createIndex(
+      { nativeGraphSlotKey: 1 },
+      {
+        unique: true,
+        name: 'native_direct_graph_original_slot_unique',
+        partialFilterExpression: { nativeGraphSlotKey: { $type: 'string' } },
+      },
+    );
+
+  /** Reserve the ORIGINAL provider operation before any network dispatch.
+   * The trusted host must first verify the live ACL, signed task, original
+   * generation and persisted LangGraph checkpoint. A caller may not choose
+   * the opaque operation key; Mongo's unique graph-step index wins races.
+   * Retries read that exact original key, never allocate another dispatch.
+   */
+  const reserveNativeGraph = async ({ identity, requestDigest }) => {
+    if (!identity || identity.mode !== 'native_graph' ||
+        Object.prototype.hasOwnProperty.call(identity, 'operationKey')) {
+      refuse('NATIVE_GRAPH_RESERVATION_IDENTITY_INVALID');
+    }
+    const operationKey = makeOperationKey();
+    if (!HEX_DIGEST.test(operationKey)) {
+      refuse('NATIVE_GRAPH_RESERVATION_OPERATION_KEY_INVALID');
+    }
+    const proposed = match({ ...identity, operationKey }, requestDigest);
+    await ensureIndex();
+    await ensureNativeGraphSlotIndex();
+    try {
+      await collection.insertOne({
+        ...proposed,
+        status: 'prepared',
+        createdAt: new Date(),
+      });
+    } catch (error) {
+      if (error?.code !== 11000) throw error;
+    }
+    const saved = await collection.findOne({ nativeGraphSlotKey: proposed.nativeGraphSlotKey });
+    if (!saved || !HEX_DIGEST.test(saved?.identity?.operationKey)) {
+      refuse('NATIVE_GRAPH_RESERVATION_MISSING');
+    }
+    // The slot key excludes model/agent and request bytes. They must still
+    // match the original record or we refuse a changed model/prompt after crash.
+    const original = match(saved.identity, requestDigest);
+    if (original.nativeGraphSlotKey !== proposed.nativeGraphSlotKey ||
+        saved.requestDigest !== requestDigest ||
+        saved.identity.agentId !== identity.agentId ||
+        saved.identity.provider !== identity.provider ||
+        saved.identity.model !== identity.model ||
+        saved.identity.graphCheckpointId !== identity.graphCheckpointId) {
+      refuse('NATIVE_PROVIDER_CALL_IMMUTABLE_CONFLICT');
+    }
+    assertSame(saved, original);
+    return Object.freeze({
+      identity: Object.freeze({ ...original.identity }),
+      requestDigest,
+      callKey: original.callKey,
+      status: saved.status,
+    });
+  };
+
+  /** Read ONLY the exact original graph-step receipt, never reserve/replay.
+   * A recovered API no longer knows the opaque operation key. It must obtain
+   * the same signed task + checkpoint identity from the authenticated host,
+   * then the broker resolves the key exclusively from durable MongoDB.
+   */
+  const readOriginalNativeGraph = async ({ identity, requestDigest }) => {
+    if (!identity || identity.mode !== 'native_graph' ||
+        Object.prototype.hasOwnProperty.call(identity, 'operationKey')) {
+      refuse('NATIVE_GRAPH_ORIGINAL_READ_IDENTITY_INVALID');
+    }
+    // The placeholder is for computing a canonical unique slot only. It is
+    // never used to address, create or execute a provider operation.
+    const expected = match({ ...identity, operationKey: '0'.repeat(64) }, requestDigest);
+    const saved = await collection.findOne({ nativeGraphSlotKey: expected.nativeGraphSlotKey });
+    if (!saved || typeof saved !== 'object' ||
+        !HEX_DIGEST.test(saved.identity?.operationKey) ||
+        saved.nativeGraphSlotKey !== expected.nativeGraphSlotKey ||
+        saved.requestDigest !== requestDigest ||
+        saved.identity.agentId !== identity.agentId ||
+        saved.identity.provider !== identity.provider ||
+        saved.identity.model !== identity.model ||
+        saved.identity.graphCheckpointId !== identity.graphCheckpointId) {
+      refuse('NATIVE_GRAPH_ORIGINAL_READ_PROOF_MISSING');
+    }
+    const resolved = match(saved.identity, requestDigest);
+    assertSame(saved, resolved);
+    return read({ identity: resolved.identity, requestDigest });
+  };
+
+  const prepare = async ({ identity, requestDigest }) => {
+    const original = match(identity, requestDigest);
+    await ensureIndex();
+    if (original.nativeGraphSlotKey) {
+      await ensureNativeGraphSlotIndex();
+    }
+    try {
+      await collection.insertOne({
+        ...original,
+        status: 'prepared',
+        createdAt: new Date(),
+      });
+    } catch (error) {
+      if (error?.code !== 11000) throw error;
+    }
+    return publicStatus(await readOriginal(original));
+  };
+
+  const claim = async ({ identity, requestDigest }) => {
+    const original = match(identity, requestDigest);
+    await ensureIndex();
+    await readOriginal(original);
+    const ownerToken = makeToken();
+    if (typeof ownerToken !== 'string' || ownerToken.length < 16) {
+      refuse('NATIVE_PROVIDER_CALL_OWNER_INVALID');
+    }
+    const changed = await collection.findOneAndUpdate(
+      { callKey: original.callKey, status: 'prepared', requestDigest },
+      { $set: { status: 'claimed', ownerToken, claimedAt: new Date() } },
+      { returnDocument: 'after' },
+    );
+    if (!changed) {
+      return { accepted: false, ...publicStatus(await readOriginal(original)) };
+    }
+    assertSame(changed, original);
+    return { accepted: true, ownerToken, ...publicStatus(changed) };
+  };
+
+  const transition = async ({ identity, requestDigest, ownerToken, from, to, data }) => {
+    const original = match(identity, requestDigest);
+    if (typeof ownerToken !== 'string' || ownerToken.length < 16) {
+      refuse('NATIVE_PROVIDER_CALL_OWNER_INVALID');
+    }
+    const updated = await collection.findOneAndUpdate(
+      { callKey: original.callKey, requestDigest, status: from, ownerToken },
+      { $set: { status: to, ...data } },
+      { returnDocument: 'after' },
+    );
+    if (!updated) refuse('NATIVE_PROVIDER_CALL_STALE_OWNER_OR_PHASE');
+    assertSame(updated, original);
+    return publicStatus(updated);
+  };
+
+  const dispatch = async ({ identity, requestDigest, ownerToken }) =>
+    transition({
+      identity,
+      requestDigest,
+      ownerToken,
+      from: 'claimed',
+      to: 'dispatched',
+      data: { dispatchedAt: new Date() },
+    });
+
+  const markUnknown = async ({ identity, requestDigest, ownerToken }) =>
+    transition({
+      identity,
+      requestDigest,
+      ownerToken,
+      from: 'dispatched',
+      to: 'outcome_unknown',
+      data: { outcomeUnknownAt: new Date() },
+    });
+
+  const commit = async ({ identity, requestDigest, ownerToken, response }) => {
+    const responseJson = JSON.stringify(response);
+    if (
+      typeof responseJson !== 'string' ||
+      Buffer.byteLength(responseJson, 'utf8') > MAX_RESPONSE_BYTES
+    ) {
+      refuse('NATIVE_PROVIDER_CALL_RESULT_INVALID');
+    }
+    const digest = fingerprint(responseJson);
+    const original = match(identity, requestDigest);
+    if (typeof ownerToken !== 'string' || ownerToken.length < 16) {
+      refuse('NATIVE_PROVIDER_CALL_OWNER_INVALID');
+    }
+    // A late result from the exact original owner may resolve an ambiguous
+    // dispatch; a different owner can neither re-dispatch nor forge a result.
+    const updated = await collection.findOneAndUpdate(
+      {
+        callKey: original.callKey,
+        requestDigest,
+        status: { $in: ['dispatched', 'outcome_unknown'] },
+        ownerToken,
+      },
+      {
+        $set: {
+          status: 'result_committed',
+          responseJson,
+          resultDigest: digest,
+          committedAt: new Date(),
+        },
+      },
+      { returnDocument: 'after' },
+    );
+    if (!updated) refuse('NATIVE_PROVIDER_CALL_STALE_OWNER_OR_PHASE');
+    assertSame(updated, original);
+    return publicStatus(updated);
+  };
+
+  const read = async ({ identity, requestDigest }) => {
+    const original = match(identity, requestDigest);
+    const doc = await readOriginal(original);
+    if (doc.status !== 'result_committed') {
+      return { ...publicStatus(doc), response: null };
+    }
+    if (
+      typeof doc.responseJson !== 'string' ||
+      typeof doc.resultDigest !== 'string' ||
+      fingerprint(doc.responseJson) !== doc.resultDigest
+    ) {
+      refuse('NATIVE_PROVIDER_CALL_RESULT_INTEGRITY_FAILED');
+    }
+    let response;
+    try {
+      response = JSON.parse(doc.responseJson);
+    } catch {
+      refuse('NATIVE_PROVIDER_CALL_RESULT_INTEGRITY_FAILED');
+    }
+    return { ...publicStatus(doc), response };
+  };
+
+  return Object.freeze({
+    reserveNativeGraph, readOriginalNativeGraph, prepare, claim, dispatch, markUnknown, commit, read,
+  });
+}
+
+module.exports = { createNativeMissionProviderCallReceiptStore };

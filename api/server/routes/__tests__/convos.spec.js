@@ -34,6 +34,10 @@ jest.mock('@librechat/api', () =>
     isContentFilterError: jest.fn((error) => error?.code === 'content_filter_block'),
   }),
 );
+jest.mock('~/server/services/Endpoints/agents/nativeMissionWakeupOriginStore', () => ({
+  deleteNativeMissionWakeupOrigins: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock('@librechat/data-schemas', () => require(MOCKS).dataSchemas());
 jest.mock('librechat-data-provider', () => require(MOCKS).dataProvider());
 jest.mock('~/models', () => require(MOCKS).sharedModels());

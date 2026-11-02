@@ -1480,10 +1480,15 @@ describe('SubagentThreadTaskStore', () => {
     await waitForSettled(store, config.scopeId, retry);
 
     expect(verifyDurableRecovery).toHaveBeenCalledWith({
+      userId,
+      tenantId: '',
       parentConversationId,
       parentRunId: 'parent-run',
       parentToolCallId: 'parent-tool',
       childThreadId: threadId,
+      taskId: recoverableTaskId,
+      attemptKey: createSubagentAttemptKey(config.scopeId, 'recoverable-attempt'),
+      agentId: 'researcher-agent',
     });
     expect(run).toHaveBeenCalledTimes(1);
     expect(store.claim(config.scopeId, requireAccepted(retry).task.taskId)).toMatchObject({
@@ -1595,10 +1600,15 @@ describe('SubagentThreadTaskStore', () => {
       task: { taskId, threadId },
     });
     expect(verifyDurableRecovery).toHaveBeenCalledWith({
+      userId,
+      tenantId: '',
       parentConversationId,
       parentRunId: 'paused-parent-run',
       parentToolCallId: 'paused-parent-tool',
       childThreadId: threadId,
+      taskId,
+      attemptKey: createSubagentAttemptKey(config.scopeId, idempotencyKey),
+      agentId: 'researcher-agent',
     });
 
     const messages = await methods.getMessages(

@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 BASE = 'vendor/librechat-agents/librechat-agents-3.7.17-145865e.tgz'
 BASE_SHA = '5937a2be89c761b7ccb9749e2ed9f15343dae887b5f1d84debc55307b691ac2b'
-OUTPUT = 'vendor/librechat-agents/librechat-agents-3.7.17-botmode-fallback-context-v1.tgz'
+OUTPUT = 'vendor/librechat-agents/librechat-agents-3.7.17-botmode-fallback-context-cold-child-v2.tgz'
 
 
 def replace_once(text, before, after):
@@ -82,6 +82,42 @@ def patch_runtime(files):
         files.pop(invoke + '.map', None)
 
 
+
+def patch_cold_detached_child_checkpoint(files):
+    """Persist native mission background child supersteps before network effects.
+
+    Opt-in requires the host's durable mission marker and private generation
+    namespace. Ordinary detached children and HITL keep existing behavior.
+    """
+    source = 'package/src/tools/subagent/SubagentExecutor.ts'
+    src = files[source].decode()
+    src = replace_once(src,
+        '      const childInvokeConfig = {\n',
+        """      const nativeMissionColdChild =
+        params.taskRuntime != null &&
+        this.checkpointDurable &&
+        childConfigurable.__librechat_mission_sync === true &&
+        typeof childConfigurable.__librechat_checkpoint_ns === 'string' &&
+        childConfigurable.__librechat_checkpoint_ns.length > 0;
+      const childInvokeConfig = {
+""")
+    src = replace_once(src,
+        "...(this.checkpointDurable ? { durability: 'exit' as const } : {}),",
+        """...(this.checkpointDurable
+          ? { durability: nativeMissionColdChild ? 'sync' as const : 'exit' as const }
+          : {}),""")
+    files[source] = src.encode()
+    for fmt, ext in (('cjs', '.cjs'), ('esm', '.mjs')):
+        name = 'package/dist/' + fmt + '/tools/subagent/SubagentExecutor' + ext
+        js = files[name].decode()
+        js = replace_once(js, '\t\t\tconst childInvokeConfig = {\n',
+            '\t\t\tconst nativeMissionColdChild = params.taskRuntime != null && this.checkpointDurable && childConfigurable.__librechat_mission_sync === true && typeof childConfigurable.__librechat_checkpoint_ns === "string" && childConfigurable.__librechat_checkpoint_ns.length > 0;\n\t\t\tconst childInvokeConfig = {\n')
+        js = replace_once(js,
+            '...this.checkpointDurable ? { durability: "exit" } : {},',
+            '...this.checkpointDurable ? { durability: nativeMissionColdChild ? "sync" : "exit" } : {},')
+        files[name] = re.sub(r'^//# sourceMappingURL=.*$', '', js, flags=re.MULTILINE).encode()
+        files.pop(name+'.map', None)
+
 def build(base):
     if hashlib.sha256(base).hexdigest() != BASE_SHA:
         raise RuntimeError('SDK_BASE_SHA_MISMATCH')
@@ -90,8 +126,9 @@ def build(base):
         modes = {m.name: m.mode for m in archive.getmembers() if m.isfile()}
     patch_sources(files)
     patch_runtime(files)
+    patch_cold_detached_child_checkpoint(files)
     manifest = json.loads(files['package/package.json'])
-    manifest['botmodePatch'] = {'id': 'fallback-context-v1', 'baseSha256': BASE_SHA, 'distribution': 'mirrored source/CJS/ESM patch; modified-module source maps omitted'}
+    manifest['botmodePatch'] = {'id': 'fallback-context-cold-child-v2', 'baseSha256': BASE_SHA, 'distribution': 'mirrored source/CJS/ESM patch; modified-module source maps omitted'}
     files['package/package.json'] = (json.dumps(manifest, indent=2) + '\n').encode()
     raw = io.BytesIO()
     with tarfile.open(fileobj=raw, mode='w', format=tarfile.USTAR_FORMAT) as archive:

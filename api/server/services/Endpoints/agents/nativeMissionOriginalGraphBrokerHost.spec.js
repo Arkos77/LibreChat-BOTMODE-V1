@@ -1,0 +1,210 @@
+'use strict';
+
+const {
+  createNativeMissionOriginalGraphBrokerHost,
+  bindNativeMissionOriginalGraphBrokerForAcceptedMission,
+} = require('./nativeMissionOriginalGraphBrokerHost');
+
+const tasks = [
+  { key: 'research', nodeId: 'research-node', taskId: 'research-task', agentId: 'researcher' },
+  { key: 'analysis', nodeId: 'analysis-node', taskId: 'analysis-task', agentId: 'analyst' },
+];
+const plan = { planId: 'p1', tasks };
+const capabilityAttestation = { planId: 'p1', mode: 'receipts_required' };
+const original = {
+  userId: 'owner',
+  tenantId: 'tenant',
+  conversationId: 'conversation',
+  parentResponseMessageId: 'response',
+  originalCreatedAt: 1700000000000,
+  checkpointNamespace: 'generation',
+  agentId: 'worker',
+  planId: 'p1',
+  plan,
+  capabilityAttestation,
+  fingerprint: 'a'.repeat(64),
+};
+const binding = {
+  agentId: 'analyst',
+  nodeId: 'analysis-node',
+  taskId: 'analysis-task',
+  provider: 'OpenRouter',
+  model: 'ci-free',
+};
+const reader = jest.fn(async (scope) => ({
+  threadId: scope.streamId,
+  checkpointId: 'original-analysis-checkpoint',
+  checkpointNamespace: scope.checkpointNamespace,
+  pendingNodes: ['analysis-node'],
+}));
+function setup(changes = {}) {
+  const readOriginalGraphCheckpoint = jest.fn(async ({ scope }) => reader(scope));
+  const recordOriginalModelRequest = jest.fn(async () => true);
+  const resolveModelBinding = jest.fn(() => ({
+    agentId: 'analyst',
+    provider: 'openrouter',
+    model: 'ci-free',
+    endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+  }));
+  const fetchImpl = jest.fn(async () => new Response(JSON.stringify({
+    status: 'result_committed',
+    resultAvailable: true,
+    response: {
+      choices: [{
+        index: 0, finish_reason: 'stop',
+        message: { role: 'assistant', content: 'original result' },
+      }],
+    },
+  }), { status: 200 }));
+  const host = createNativeMissionOriginalGraphBrokerHost({
+    readOriginalGraphCheckpoint,
+    recordOriginalModelRequest,
+    resolveModelBinding,
+    brokerUrl: 'http://ci-original-provider-broker:8096/',
+    secret: 'ci-original-native-graph-transport-secret-32-plus-chars',
+    fetchImpl,
+    ...changes,
+  });
+  return { host, readOriginalGraphCheckpoint, resolveModelBinding, fetchImpl };
+}
+const newClient = () => ({
+  user: 'owner',
+  conversationId: 'conversation',
+  responseMessageId: 'response',
+  jobCreatedAt: 1700000000000,
+  checkpointNamespace: 'generation',
+  orchestratorPlan: plan,
+  options: { agent: { id: 'worker' } },
+});
+describe('original native graph host binding (opt-in only)', () => {
+  it('binds saved original mission once, not an SDK model-supplied node or epoch', async () => {
+    const { host, fetchImpl, readOriginalGraphCheckpoint } = setup();
+    const client = newClient();
+    expect(bindNativeMissionOriginalGraphBrokerForAcceptedMission({
+      client, brokerHost: host, original, plan, capabilityAttestation,
+    })).toBe(true);
+    expect(typeof client.options.nativeGraphModelFetchFactory).toBe('function');
+    const fetch = client.options.nativeGraphModelFetchFactory(binding);
+    const result = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      body: JSON.stringify({
+        model: 'ci-free', stream: false, messages: [{ role: 'user', content: 'original' }],
+      }),
+    });
+    expect(result.status).toBe(200);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(readOriginalGraphCheckpoint).toHaveBeenCalledWith({
+      scope: {
+      userId: 'owner', tenantId: 'tenant', streamId: 'conversation',
+      responseMessageId: 'response', generationCreatedAt: 1700000000000,
+      checkpointNamespace: 'generation', nodeId: 'analysis-node',
+      taskId: 'analysis-task', agentId: 'analyst',
+      },
+      plan,
+      client,
+    });
+    const payload = JSON.parse(fetchImpl.mock.calls[0][1].body);
+    expect(payload.identity).toMatchObject({
+      mode: 'native_graph', streamId: 'conversation',
+      responseMessageId: 'response', nodeId: 'analysis-node',
+      graphCheckpointId: 'original-analysis-checkpoint',
+      agentId: 'analyst',
+    });
+    expect(payload.identity).not.toHaveProperty('operationKey');
+  });
+
+  it('denies foreign tasks, revised model and a replacement mission', () => {
+    const { host } = setup();
+    const factory = host.makeMissionFetchFactory({ original, plan, capabilityAttestation, client: newClient() });
+    expect(() => factory({ ...binding, nodeId: 'foreign-node' }))
+      .toThrow('NATIVE_GRAPH_BROKER_ORIGINAL_ACTOR_NOT_SELECTED');
+    expect(() => factory({ ...binding, agentId: 'worker' }))
+      .toThrow('NATIVE_GRAPH_BROKER_ORIGINAL_ACTOR_NOT_SELECTED');
+    expect(() => factory({ ...binding, model: 'other-model' }))
+      .toThrow('NATIVE_GRAPH_FETCH_FACTORY_MODEL_UNAUTHORIZED');
+    for (const modified of [
+      { ...original, fingerprint: 'forged' },
+      { ...original, planId: 'another-plan' },
+      { ...original, plan: { ...plan, tasks: [tasks[0]] } },
+    ]) {
+      expect(() => host.makeMissionFetchFactory({
+        original: modified, plan, capabilityAttestation, client: newClient(),
+      })).toThrow('NATIVE_GRAPH_BROKER_ORIGINAL_MISSION_UNVERIFIED');
+    }
+    for (const modified of [
+      { ...original, checkpointNamespace: 'another-generation' },
+      { ...original, originalCreatedAt: 1700000000001 },
+    ]) {
+      const client = newClient();
+      expect(() => bindNativeMissionOriginalGraphBrokerForAcceptedMission({
+        client, brokerHost: host, original: modified, plan, capabilityAttestation,
+      })).toThrow('NATIVE_GRAPH_BROKER_CLIENT_ORIGINAL_MISSION_MISMATCH');
+    }
+  });
+
+  it('accepts an authenticated ORIGINAL client before BaseClient.setMessageOptions', () => {
+    const { host } = setup();
+    const beforeMessageOptions = newClient();
+    delete beforeMessageOptions.user;
+    delete beforeMessageOptions.conversationId;
+    beforeMessageOptions.options.req = {
+      user: { id: original.userId },
+      body: { conversationId: original.conversationId },
+    };
+    expect(bindNativeMissionOriginalGraphBrokerForAcceptedMission({
+      client: beforeMessageOptions, brokerHost: host, original, plan, capabilityAttestation,
+    })).toBe(true);
+    expect(beforeMessageOptions.user).toBeUndefined();
+    expect(beforeMessageOptions.conversationId).toBeUndefined();
+    expect(typeof beforeMessageOptions.options.nativeGraphModelFetchFactory).toBe('function');
+  });
+
+  it('refuses forged or drifted request identities before and after message initialization', () => {
+    const { host } = setup();
+    for (const request of [
+      { user: { id: 'other-owner' }, body: { conversationId: original.conversationId } },
+      { user: { id: original.userId }, body: { conversationId: 'other-conversation' } },
+      { user: { id: original.userId }, body: {} },
+    ]) {
+      const beforeMessageOptions = newClient();
+      delete beforeMessageOptions.user;
+      delete beforeMessageOptions.conversationId;
+      beforeMessageOptions.options.req = request;
+      expect(() => bindNativeMissionOriginalGraphBrokerForAcceptedMission({
+        client: beforeMessageOptions, brokerHost: host, original, plan, capabilityAttestation,
+      })).toThrow('NATIVE_GRAPH_BROKER_CLIENT_ORIGINAL_MISSION_MISMATCH');
+      expect(beforeMessageOptions.options.nativeGraphModelFetchFactory).toBeUndefined();
+    }
+    const afterMessageOptions = newClient();
+    afterMessageOptions.options.req = {
+      user: { id: original.userId },
+      body: { conversationId: 'other-conversation' },
+    };
+    expect(() => bindNativeMissionOriginalGraphBrokerForAcceptedMission({
+      client: afterMessageOptions, brokerHost: host, original, plan, capabilityAttestation,
+    })).toThrow('NATIVE_GRAPH_BROKER_CLIENT_ORIGINAL_MISSION_MISMATCH');
+  });
+
+  it('leaves the client unchanged when no host is configured or admission is denied', () => {
+    const client = newClient();
+    expect(bindNativeMissionOriginalGraphBrokerForAcceptedMission({
+      client, brokerHost: undefined, original, plan, capabilityAttestation,
+    })).toBe(false);
+    expect(client.options.nativeGraphModelFetchFactory).toBeUndefined();
+    const { host } = setup();
+    for (const partial of [
+      { ...client, user: 'foreign-owner' },
+      { ...client, jobCreatedAt: 1700000000002 },
+      { ...client, checkpointNamespace: 'replaced' },
+      { ...client, orchestratorPlan: { ...plan, tasks: [tasks[0]] } },
+    ]) {
+      expect(() => bindNativeMissionOriginalGraphBrokerForAcceptedMission({
+        client: partial, brokerHost: host, original, plan, capabilityAttestation,
+      })).toThrow('NATIVE_GRAPH_BROKER_CLIENT_ORIGINAL_MISSION_MISMATCH');
+      expect(partial.options.nativeGraphModelFetchFactory).toBeUndefined();
+    }
+    expect(() => createNativeMissionOriginalGraphBrokerHost({
+      resolveModelBinding: () => null,
+    })).toThrow('NATIVE_GRAPH_BROKER_HOST_DEPENDENCIES_MISSING');
+  });
+});

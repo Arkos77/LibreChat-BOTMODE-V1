@@ -3,6 +3,24 @@
  * host and passed through createRunOptions. This adapter NEVER starts a turn,
  * supplies messages, resumes a HITL command or runs a tool.
  */
+// The immutable proof callback must survive construction, but can only run
+// AFTER the reconstructed graph is bound to its original read-only broker and
+// the authenticated checkpoint/receipt is verified. Never expose this via
+// graph properties or untrusted checkpoint data.
+const deferredReceiptProofs = new WeakMap();
+
+async function proveDeferredNativeMissionColdReplayFences({ graph, candidate, claim }) {
+  const proof = graph && deferredReceiptProofs.get(graph);
+  if (!proof) throw new Error('NATIVE_COLD_GRAPH_DEFERRED_REPLAY_PROOF_MISSING');
+  // A proof is one-shot. Failed admissions must never be retried against
+  // mutable graph state without a new, authenticated reconstruction.
+  deferredReceiptProofs.delete(graph);
+  if ((await proof({ candidate, claim })) !== true) {
+    throw new Error('NATIVE_COLD_GRAPH_DEFERRED_REPLAY_PROOF_DENIED');
+  }
+  return true;
+}
+
 function createNativeMissionColdGraphBuilder({ createRun }) {
   if (typeof createRun !== 'function') {
     throw new Error('NATIVE_COLD_GRAPH_BUILDER_UNAVAILABLE');
@@ -61,6 +79,15 @@ function createNativeMissionColdGraphBuilder({ createRun }) {
     ) {
       throw new Error('NATIVE_COLD_GRAPH_REPLAY_PROOFS_MISSING');
     }
+    // Receipts-required recovery must never compile an SDK graph with a
+    // direct-provider fallback. An arbitrary proof callback alone cannot
+    // guarantee that the original model operation is status-only.
+    if (client.options?.nativeMissionRecoveryRequiresReceipts === true &&
+        (typeof options.nativeGraphModelFetchFactory !== 'function' ||
+         options.nativeGraphModelFetchFactory !==
+           client.options.nativeGraphModelFetchFactory)) {
+      throw new Error('NATIVE_COLD_GRAPH_RECEIPTS_TRANSPORT_UNVERIFIED');
+    }
     // The authenticated host must rebuild every originally planned specialist
     // and the primary agent. Missing configs would silently route checkpointed
     // nodes through a different model/tool authority after a cold restart.
@@ -93,8 +120,9 @@ function createNativeMissionColdGraphBuilder({ createRun }) {
     await assertAuthorized();
     // The check must execute against the original durable claim. A truthy
     // feature flag cannot attest tool-effect receipts or Redis ownership.
-    const proof = await options.assertNativeMissionReplayFences({ candidate, claim });
-    if (proof !== true) {
+    const deferProof = client.options?.nativeMissionRecoveryRequiresReceipts === true;
+    if (!deferProof &&
+        (await options.assertNativeMissionReplayFences({ candidate, claim })) !== true) {
       throw new Error('NATIVE_COLD_GRAPH_REPLAY_PROOFS_MISSING');
     }
     await assertAuthorized();
@@ -105,7 +133,21 @@ function createNativeMissionColdGraphBuilder({ createRun }) {
       throw new Error('NATIVE_COLD_GRAPH_RECONSTRUCTION_FAILED');
     }
     await assertAuthorized();
+    if (deferProof) {
+      deferredReceiptProofs.set(graph, async (ids) => {
+        await assertAuthorized();
+        if (ids.candidate !== candidate || ids.claim !== claim) {
+          throw new Error('NATIVE_COLD_GRAPH_DEFERRED_REPLAY_OWNER_MISMATCH');
+        }
+        const verified = await options.assertNativeMissionReplayFences(ids);
+        await assertAuthorized();
+        return verified;
+      });
+    }
     return graph;
   };
 }
-module.exports = { createNativeMissionColdGraphBuilder };
+module.exports = {
+  createNativeMissionColdGraphBuilder,
+  proveDeferredNativeMissionColdReplayFences,
+};
