@@ -831,6 +831,61 @@ describe('LazyMongoSaver (lazy persistence — mongodb-memory-server)', () => {
     expect(secondCalls).toBe(2);
   });
 
+  it('B3 safety: a checkpoint head cannot distinguish pending from already-started provider execution', async () => {
+    const { StateGraph, Annotation, START, END } = await import('@langchain/langgraph');
+    const saver = await getAgentCheckpointer(MONGO_CFG);
+    const threadId = `b3-boundary-${new mongoose.Types.ObjectId().toString()}`;
+    const generationScope = `generation-${new mongoose.Types.ObjectId().toString()}`;
+    const config = {
+      configurable: {
+        thread_id: threadId,
+        [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: generationScope,
+        [LIBRECHAT_MISSION_SYNC_KEY]: true,
+      },
+      durability: 'sync' as const,
+    };
+    const State = Annotation.Root({ value: Annotation<number> });
+    let enteredSecond!: () => void;
+    let rejectSecond!: (error: Error) => void;
+    const secondEntered = new Promise<void>((resolve) => { enteredSecond = resolve; });
+    const secondBlocked = new Promise<never>((_resolve, reject) => { rejectSecond = reject; });
+    let firstCalls = 0;
+    let secondCalls = 0;
+    const graph = new StateGraph(State)
+      .addNode('first', () => { firstCalls++; return { value: 7 }; })
+      .addNode('second', async () => {
+        secondCalls++;
+        enteredSecond();
+        return await secondBlocked;
+      })
+      .addEdge(START, 'first')
+      .addEdge('first', 'second')
+      .addEdge('second', END)
+      .compile({ checkpointer: saver as never });
+    const invocation = graph.invoke({ value: 0 }, config);
+    await secondEntered;
+    const during = await graph.getState(config);
+    expect(firstCalls).toBe(1);
+    expect(secondCalls).toBe(1); // The provider-like node is ALREADY in progress.
+    expect(during.next).toContain('second');
+    expect(during.values.value).toBe(7);
+    const checkpointId = during.config.configurable?.checkpoint_id;
+    expect(typeof checkpointId).toBe('string');
+    rejectSecond(new Error('simulated mid-provider interruption'));
+    await expect(invocation).rejects.toThrow('simulated mid-provider interruption');
+    const after = await graph.getState(config);
+    expect(after.config.configurable?.checkpoint_id).toBe(checkpointId);
+    expect(after.next).toEqual(during.next);
+    expect(after.values.value).toBe(during.values.value);
+    // The existing readonly inspector also reports the same checkpoint ID.
+    // Its empty pendingNodes list MUST NOT be treated as proof a node never ran.
+    await expect(
+      inspectDurableNativeMissionCheckpoint(threadId, generationScope, MONGO_CFG),
+    ).resolves.toEqual({ checkpointId, pendingNodes: [] });
+    console.log('BOTMODE_B3_MONGO_CHECKPOINT_HEAD_CANNOT_PROVE_NOT_STARTED=PASS');
+    // Never graph.invoke(null): it would execute the uncertain second node again.
+  });
+
   it('characterizes SDK null-input recovery without executing a provider', async () => {
     const saver = await getAgentCheckpointer(MONGO_CFG);
     const threadId = `sdk-probe-${new mongoose.Types.ObjectId()}`;

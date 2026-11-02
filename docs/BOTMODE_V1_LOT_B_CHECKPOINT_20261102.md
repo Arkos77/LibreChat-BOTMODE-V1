@@ -41,3 +41,15 @@ La V1 exploite ses protections existantes : identification de génération, name
 - Les tests Jest du client vérifient l'affichage localisé et la confirmation acceptée/refusée. Le workflow ciblé de la branche compile toujours les packages et lance ces tests, sans outil nouveau ni autre workflow.
 - Cette confirmation est une protection d'interface, pas une autorisation serveur de rejouer un appel incertain. Une soumission explicite nouvelle passe par les contrôles normaux LibreChat ; aucun mécanisme ne reprend la même exécution.
 - La rétention Redis existante limite la durée de disponibilité de la preuve `OUTCOME_UNKNOWN` ; il ne faut pas annoncer une conservation permanente de cet état. Les essais de SIGKILL intégrés Mongo+Redis et la reprise automatique aux frontières certaines restent hors de ce sous-lot.
+
+## B3 — Frontière durable : vérification de sécurité avant toute reprise
+
+L'analyse du runtime existant confirme la distinction suivante : le dernier état Mongo peut préserver la sortie de l'étape A et indiquer B dans `snapshot.next`, **même si B avait déjà commencé et échoué lors d'un appel externe**. La présence du même `checkpoint_id` et de B dans `next` n'établit pas que B n'avait pas commencé. Une invocation `graph.invoke(null, ...)` peut réexécuter B depuis le début (comportement LangGraph documenté et déjà observé dans `checkpointer.integration.spec.ts`).
+
+La vérification `B3 safety: a checkpoint head cannot distinguish pending from already-started provider execution` exécute A puis bloque B après son entrée ; elle compare l'état Mongo pendant B et après son échec, puis vérifie le préflight read-only. **Ce test ne lance aucune continuation** et ne crée aucun appel fournisseur externe.
+
+**Décision de sécurité pour B3 :** en l'absence de reçu distinct prouvant que l'étape suivante n'a jamais commencé, l'état du checkpoint **ne suffit pas** pour autoriser une reprise automatique. La branche V1 conserve la politique B1 : `OUTCOME_UNKNOWN` après constat d'abandon, aucune continuation automatique ni publication. Le checkpoint et les sorties des étapes achevées restent préservés par Mongo, mais cela ne prouve pas une reprise automatique complète.
+
+Il faut choisir pour la suite entre : (a) clôturer V1 avec reprise manuelle explicite sur nouvelles générations, sans garantie de continuation automatique des étapes restantes ; ou (b) ajouter un mécanisme durable d'admission de chaque étape avant l'appel externe. **La variante (b) ajoute de la complexité et ne doit pas être engagée sans décision utilisateur.**
+
+**Verdict B3 :** test Mongo en qualification ; reprise autonome de la prochaine étape = NON CONCLUANT / non autorisée sur cette architecture. Aucun changement du moteur de production dans ce sous-lot.

@@ -53,6 +53,12 @@ jobs:
           node scripts/botmode/native-no-auto-cold-provider-replay-regression.cjs
           node scripts/botmode/native-outcome-unknown-regression.cjs
           node scripts/botmode/native-outcome-unknown-redis-regression.cjs
+      - name: Prove durable Mongo boundary cannot authorize replay alone
+        working-directory: packages/api
+        run: |
+          npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            src/agents/checkpointer.integration.spec.ts \
+            --testNamePattern='B3 safety: a checkpoint head cannot distinguish pending from already-started provider execution'
       - name: Confirm uncertain outcome warning in LibreChat UI
         working-directory: client
         run: |
