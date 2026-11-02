@@ -43,7 +43,12 @@ jobs:
           go mod tidy
           go mod verify
           go test ./...
-          test -z "$(git status --porcelain -- go.mod go.sum)"
+          if ! git diff --quiet -- go.mod go.sum; then
+            echo 'BOTMODE_GO_LOCK_TIDY_DIFF_BEGIN'
+            git diff -- go.mod go.sum
+            echo 'BOTMODE_GO_LOCK_TIDY_DIFF_END'
+            exit 1
+          fi
           echo 'BOTMODE_GO_GRPC_1_83_2_PATCHED_AND_TESTED=PASS'
   compose-auth:
     if: ${{ !inputs.go_security_only }}
