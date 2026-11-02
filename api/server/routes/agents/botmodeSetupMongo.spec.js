@@ -172,7 +172,7 @@ test('setup route commits six distinct agents, owner ACL and stable second initi
   });
 });
 
-test('free-only self-spawn flag is durable in real Mongo and does not bypass agent ACLs', async () => {
+test('free provider cannot silently enable self-spawn in persistent native Mongo graph', async () => {
   const { loadModels } = require('~/server/controllers/ModelController');
   loadModels.mockResolvedValueOnce({ openrouter: ['openrouter/free'] });
   const free = req();
@@ -183,7 +183,7 @@ test('free-only self-spawn flag is durable in real Mongo and does not bypass age
   expect(result.payload.created).toHaveLength(6);
   const worker = await Agent.findOne({ author: ownerId, name: 'BOT MODE Worker' }).lean();
   expect(worker.subagents.enabled).toBe(true);
-  expect(worker.subagents.allowSelf).toBe(true);
+  expect(worker.subagents.allowSelf).toBe(false);
   expect(worker.subagents.agent_ids).toHaveLength(5);
   const permittedAgents = await Agent.find({ author: ownerId }).lean();
   const grants = await Acl.find({ principalId: String(ownerId) }).lean();

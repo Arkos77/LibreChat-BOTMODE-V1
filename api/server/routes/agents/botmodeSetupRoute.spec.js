@@ -153,6 +153,11 @@ test('creates six agents and delegates to five, then reuses identical ids', asyn
   expect(state.payload.permissionsComplete).toBe(true);
   expect(state.payload.delegationConfigured).toBe(true);
   expect(state.payload.configurationComplete).toBe(true);
+  worker.subagents.enabled = false;
+  const noDelegation = response();
+  await inspect(request(), noDelegation);
+  expect(noDelegation.payload.delegationConfigured).toBe(false);
+  expect(noDelegation.payload.configurationComplete).toBe(false);
 });
 
 test('read-only status and repeat onboarding flag placeholder roles and excess Worker tools without overwriting them', async () => {
@@ -184,7 +189,7 @@ test('read-only status and repeat onboarding flag placeholder roles and excess W
   expect(mockUpdateAgent).toHaveBeenCalledTimes(1); // only first-run delegation
 });
 
-test('free OpenRouter onboarding allows isolated ephemeral self children only for configured free pool', async () => {
+test('free OpenRouter onboarding retains only the five authorized specialist targets', async () => {
   const { loadModels } = require('~/server/controllers/ModelController');
   loadModels.mockResolvedValueOnce({ openrouter: ['openrouter/free'] });
   const free = request();
@@ -196,7 +201,7 @@ test('free OpenRouter onboarding allows isolated ephemeral self children only fo
   const worker = mockAgents.find((agent) => agent.name === 'BOT MODE Worker');
   expect(worker.subagents).toMatchObject({
     enabled: true,
-    allowSelf: true,
+    allowSelf: false,
   });
   expect(worker.subagents.agent_ids).toHaveLength(5);
   expect(mockAgents.every((agent) => mockPermissions.has(agent._id))).toBe(true);

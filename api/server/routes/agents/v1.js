@@ -219,6 +219,7 @@ router.get('/botmode/setup-status', checkAgentAccess, async (req, res) => {
       delegationConfigured,
       configurationComplete:
         missing.length === 0 && duplicates.length === 0 &&
+        missingOwnerAccess.length === 0 && delegationConfigured &&
         unconfiguredInstructions.length === 0 &&
         unexpectedCapabilities.length === 0 && missingCapabilities.length === 0,
       unconfiguredInstructions,
@@ -317,13 +318,9 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
 
     // Requested tools are only proposals: createAgent filters them against
     // the authenticated user's actual tool and MCP permissions.
-    const freeSelfDelegation =
-      provider.trim().toLowerCase() === 'openrouter' && model.trim() === 'openrouter/free';
-    // Native self-spawn creates short-lived focused child contexts; it never
-    // provisions a new saved agent or grants a new tool/MCP permission. Only
-    // the explicitly selected free OpenRouter pool enables it automatically.
-    // Other (possibly paid) providers retain explicit five-specialist delegation
-    // until the host has a durable approval/budget contract for extra calls.
+    // V1 has exactly the five user-owned specialist targets. Never enable
+    // implicit self-spawn based on a provider/model name: it would add an
+    // unreviewed delegation mode even when the selected model is free.
     const requestedTools = Object.fromEntries(
       names.map((name) => [name, botModeRoleProfiles[name].tools]),
     );
@@ -421,7 +418,7 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
           body: {
             subagents: {
               enabled: true,
-              allowSelf: freeSelfDelegation,
+              allowSelf: false,
               agent_ids: specialists.map((agent) => agent.id),
             },
           },
