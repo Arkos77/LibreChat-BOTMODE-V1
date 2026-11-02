@@ -2,6 +2,11 @@ name: BOTMODE V1 Exact HEAD Native Subagent Contract Gate
 
 on:
   workflow_dispatch:
+    inputs:
+      c2_only:
+        description: Run the C2 SIGKILL integration without repeating earlier PASS tests
+        type: boolean
+        default: false
   pull_request:
     paths:
       - '.github/workflows/botmode-v1-native-subagent-contract.yml'
@@ -48,11 +53,13 @@ jobs:
           npm run build:data-schemas
           npm run build:api
       - name: Execute native parent-subagent-parent model contract
+        if: ${{ !inputs.c2_only }}
         working-directory: packages/api
         run: |
           npx jest --ci --runInBand --coverage=false --runTestsByPath src/agents/__tests__/custom-endpoint-tenant.e2e.test.ts
           echo 'BOTMODE_NATIVE_PARENT_CHILD_PARENT_CONTRACT=PASS'
       - name: Verify simplified V1 direct, research-analysis, Oracle and P6 contracts
+        if: ${{ !inputs.c2_only }}
         working-directory: packages/api
         run: |
           npx jest --ci --runInBand --coverage=false --runTestsByPath \
@@ -63,11 +70,13 @@ jobs:
             src/agents/orchestrator/authorization.spec.ts
           echo 'BOTMODE_C1_OFFLINE_ORCHESTRATION_AND_PUBLICATION=PASS'
       - name: Reject uncertain provider replay after cold restart
+        if: ${{ !inputs.c2_only }}
         run: |
           node scripts/botmode/native-no-auto-cold-provider-replay-regression.cjs
           node scripts/botmode/native-outcome-unknown-regression.cjs
           node scripts/botmode/native-outcome-unknown-redis-regression.cjs
       - name: Prove durable Mongo boundary cannot authorize replay alone
+        if: ${{ !inputs.c2_only }}
         working-directory: packages/api
         run: |
           npx jest --ci --runInBand --coverage=false --runTestsByPath \
@@ -80,6 +89,7 @@ jobs:
         run: |
           node scripts/botmode/native-outcome-unknown-sigkill-integration.cjs
       - name: Confirm uncertain outcome warning in LibreChat UI
+        if: ${{ !inputs.c2_only }}
         working-directory: client
         run: |
           npx jest --ci --runInBand --coverage=false --runTestsByPath \

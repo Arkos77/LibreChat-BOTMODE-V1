@@ -56,6 +56,15 @@ async function seed() {
     },
   }, job.createdAt);
   assert.equal(await store.beginProviderExecution(streamId, job.createdAt, providerExecutionId), true);
+  const persisted = await store.getJob(streamId);
+  assert.equal(persisted.status, 'running');
+  assert.ok(persisted.checkpointNamespace, 'Redis must establish the durable generation scope');
+  const durableScope = persisted.checkpointNamespace;
+  const durableConfig = {
+    ...checkpointConfig,
+    configurable: { ...checkpointConfig.configurable, [LIBRECHAT_CHECKPOINT_NAMESPACE_KEY]: durableScope },
+  };
+  console.log('C2_DURABLE_NAMESPACE_ALIGNED=' + String(durableScope === checkpointNamespace));
   const saver = await getAgentCheckpointer();
   assert.ok(saver);
   const state = Annotation.Root({ value: Annotation() });
@@ -73,14 +82,14 @@ async function seed() {
     .addEdge('first', 'second')
     .addEdge('second', END)
     .compile({ checkpointer: saver });
-  void graph.invoke({ value: 0 }, checkpointConfig).catch((error) => {
+  void graph.invoke({ value: 0 }, durableConfig).catch((error) => {
     console.error('UNEXPECTED_SEED_GRAPH_ERROR', error);
     process.exitCode = 1;
   });
   await secondStarted;
-  const tuple = await inspectDurableNativeMissionCheckpoint(streamId, checkpointNamespace);
+  const tuple = await inspectDurableNativeMissionCheckpoint(streamId, durableScope);
   assert.ok(tuple?.checkpointId, 'real durable Mongo checkpoint required before SIGKILL');
-  const snapshot = await graph.getState(checkpointConfig);
+  const snapshot = await graph.getState(durableConfig);
   assert.deepEqual(snapshot.next, ['second']);
   assert.equal(snapshot.values.value, 7);
   assert.equal(await redis.get(`c2:${streamId}:second_entered`), '1');
@@ -91,9 +100,11 @@ async function seed() {
 async function recover() {
   const { redis, store } = await connections();
   try {
-    const cp = await inspectDurableNativeMissionCheckpoint(streamId, checkpointNamespace);
-    assert.ok(cp?.checkpointId, 'Mongo checkpoint must outlive the killed process');
     const prior = await store.getJob(streamId);
+    assert.ok(prior?.checkpointNamespace, 'Redis namespace must survive SIGKILL');
+    const durableScope = prior.checkpointNamespace;
+    const cp = await inspectDurableNativeMissionCheckpoint(streamId, durableScope);
+    assert.ok(cp?.checkpointId, 'Mongo checkpoint must outlive the killed process');
     assert.equal(prior.status, 'running');
     assert.equal(prior.providerExecutionId, providerExecutionId);
     assert.equal(await redis.get(`c2:${streamId}:second_entered`), '1');
@@ -107,12 +118,26 @@ async function recover() {
       if (settled?.error === 'OUTCOME_UNKNOWN') break;
       await sleep(1000);
     }
+    if (settled?.status !== 'error') {
+      const candidates = await manager.inspectOrphanedNativeMissions();
+      const eligible = await manager.inspectCheckpointedOrphanedNativeMissions();
+      const current = await store.getJob(streamId);
+      const raw = await redis.hmget(`stream:{${streamId}}:job`,
+        'lastActiveAt', '__missionProviderLeaseUntil', 'providerDrained',
+        'providerExecutionStartedId', 'checkpointNamespace');
+      console.log('C2_FAIL_CLOSED_DIAG=' + JSON.stringify({
+        candidates: candidates.length, eligible: eligible.length,
+        status: current?.status, providerDrained: current?.providerDrained,
+        sameScope: current?.checkpointNamespace === durableScope,
+        raw,
+      }));
+    }
     assert.equal(settled?.status, 'error', 'orphan must exit running');
     assert.equal(settled.error, 'OUTCOME_UNKNOWN');
     assert.equal(settled.providerExecutionId, providerExecutionId, 'no new provider');
     assert.equal(settled.finalEvent, undefined, 'no final P6');
     assert.equal(await redis.get(`c2:${streamId}:second_entered`), '1', 'uncertain node was not retried');
-    const cpAfter = await inspectDurableNativeMissionCheckpoint(streamId, checkpointNamespace);
+    const cpAfter = await inspectDurableNativeMissionCheckpoint(streamId, durableScope);
     assert.equal(cpAfter?.checkpointId, cp.checkpointId, 'saved completed stage retained');
     assert.equal(await store.transitionStatus(streamId, {
       from: 'running', to: 'error', expectCreatedAt: prior.createdAt,
