@@ -67,3 +67,9 @@ Suite au PASS E2E Oracle/P6/Projet/Idée à **zéro** spécialiste (#41391258105
 Le parcours Oracle/Projet/Idée précédemment PASS n'est **pas répété** en mode `one_child_only`. La fixture ne contacte aucun fournisseur externe. L'état de la mission parent est diagnostiqué séparément ; ce nouveau test ne prétend pas avoir validé Oracle/P6 sur une mission enfant avant preuve réelle. Le comportement des autres déclenchements du workflow est inchangé.
 
 **Verdict à venir :** NON CONCLUANT avant résultat de CI de la candidate exacte ; aucun GO ni fusion sur simple mise en place du test.
+
+### Premier essai « un enfant » — diagnostic et réduction du test
+
+Run `41393247614` à `16b22968...` : construction source exacte PASS, authentification et provisioning des six agents PASS, configuration de la fixture enfant PASS, **admission de la mission échouée avant toute exécution du modèle** (`HTTPError`). La première version du vérificateur ajoutait un plan `orchestratorMission` incomplet (`constraints` absent, pourtant obligatoire selon `Mission` et utilisé via `...mission.constraints` par `deterministicPlanner`). Ce défaut appartient à la **requête du test**, pas à une preuve d'échec de délégation.
+
+Correctif de portée : la nouvelle qualification vise uniquement l'outil natif **dans un tour Worker ordinaire**, comme le tour HTTP/SSE déjà PASS au précédent E2E, en retirant le plan Oracle inutile de ce vérificateur. Le précédent E2E Oracle/P6/Projet/Idée demeure la preuve distincte de la mission à zéro spécialiste. En cas d'un nouveau FAIL, enregistrer le statut HTTP et les métriques/états durables précis avant de retoucher un mécanisme quelconque.

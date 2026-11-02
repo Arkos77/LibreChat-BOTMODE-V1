@@ -87,29 +87,23 @@ def main():
         fail('INVALID_AGENT_IDENTITIES')
     before = metrics()
     parent = str(uuid.uuid4())
-    mission = 'ci-one-child-' + str(uuid.uuid4())
+    # Ordinary native Worker turn. Mission planner and Oracle were already
+    # qualified in the separate zero-specialist source-built E2E. Do not tie
+    # a child tool-call test to an unrelated planned mission schema.
     body = {
         'endpoint': 'agents', 'agent_id': WORKER, 'conversationId': parent,
         'messageId': str(uuid.uuid4()),
         'parentMessageId': '00000000-0000-0000-0000-000000000000',
         'isNewConvo': True,
         'text': 'Délègue une seule tâche à ton spécialiste autorisé. Attends son résultat et réponds en JSON {"ok":true}.',
-        'orchestratorMission': {
-            'mission': {'missionId': mission, 'taskId': mission,
-                        'objective': 'Délégation native unique vers un spécialiste autorisé.',
-                        'requiredCapabilities': ['basic'],
-                        'validation': {'criteria': [{'id': 'ci-ok', 'field': 'ok', 'expected': True}]}},
-            'plannerContext': {
-                'worker': {'id': 'ci-worker', 'agentId': WORKER, 'role': 'worker',
-                           'capabilities': ['basic'], 'constraints': []},
-                'specialists': [{'id': CHILD, 'agentId': CHILD, 'role': 'specialist',
-                                 'capabilities': ['basic'], 'constraints': []}],
-            },
-        },
     }
     try:
         status, raw = request('/api/agents/chat/agents', body, timeout=90)
-    except (OSError, HTTPError) as error:
+    except HTTPError as error:
+        # Never print the request, JWT, response body or identifiers.
+        print('CI_ONE_CHILD_HTTP_STATUS=' + str(error.code), flush=True)
+        fail('ADMISSION_REJECTED')
+    except OSError as error:
         print('CI_ONE_CHILD_HTTP_CLASS=' + type(error).__name__, flush=True)
         fail('ADMISSION_REQUEST_FAILED')
     if status != 200:
