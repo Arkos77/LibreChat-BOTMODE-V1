@@ -1,4 +1,4 @@
-"""Free-by-default static contract: no paid/unknown automatic host fallback."""
+"""Free-only host configuration regression: reject unsupported/potentially paid fallbacks."""
 import json
 import unittest
 from pathlib import Path
@@ -6,28 +6,27 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 
 
-class DefaultHostRoutingPolicyTests(unittest.TestCase):
-    def test_all_native_roles_are_free_only_and_bound_only_to_explicit_free_models(self):
-        config = json.loads((ROOT / 'librechat.yaml').read_text())
-        policies = config['endpoints']['agents']['hostModelRouting']
-        self.assertEqual(
-            {p['agentName'] for p in policies},
-            {'BOT MODE Worker', 'RECHERCHE', 'ANALYSE', 'CODE', 'DOCUMENTS', 'RÉDACTION'},
-        )
-        for policy in policies:
-            with self.subTest(agent=policy['agentName']):
-                self.assertEqual(policy['routingConstraints']['spendingPolicy'], 'free_only')
-                bindings = policy['bindings']
-                self.assertGreaterEqual(len(bindings), 2)
-                self.assertLessEqual(len(bindings), 4)
-                self.assertIn(policy['preferredBindingId'], {b['id'] for b in bindings})
-                for binding in bindings:
-                    self.assertEqual(binding['provider'], 'OpenRouter')
-                    self.assertEqual(binding['signals']['pricingTier'], 'free')
-                    self.assertTrue(
-                        binding['model'] == 'openrouter/free' or binding['model'].endswith(':free'),
-                        binding['model'],
-                    )
+class FreeOnlyNativeAgentRouteTests(unittest.TestCase):
+    def test_lite_routes_use_only_explicit_free_models_with_no_host_fallback(self):
+        config = json.loads((ROOT / 'librechat.yaml').read_text(encoding='utf-8'))
+        agents = config['endpoints']['agents']
+        self.assertNotIn('hostModelRouting', agents)
+        self.assertIn('subagents', agents.get('capabilities', []))
+
+        openrouter = [
+            endpoint for endpoint in config['endpoints']['custom']
+            if endpoint.get('name') == 'OpenRouter'
+        ]
+        self.assertEqual(len(openrouter), 1)
+        route = openrouter[0]
+        self.assertEqual(route['baseURL'].rstrip('/'), 'https://openrouter.ai/api/v1')
+        models = route['models']['default']
+        self.assertTrue(models)
+        self.assertEqual(len(models), len(set(models)))
+        for model in models:
+            with self.subTest(model=model):
+                self.assertTrue(model.endswith(':free'), model)
+                self.assertNotEqual(model, 'openrouter/free')
 
 
 if __name__ == '__main__':
