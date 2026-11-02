@@ -14,9 +14,41 @@ on:
         description: Verify patched grpc-go module only; skip Docker profiles already qualified
         type: boolean
         default: false
+      vite_security_only:
+        description: Qualify exact patched Vite 8.2.4 root lock and browser build
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
+  vite-patch-security:
+    if: ${{ inputs.vite_security_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate Vite patch metadata
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test "${{ github.ref_name }}" = simplify/botmode-v1-lot-a-20261102
+          node -e 'const p=require("./package-lock.json").packages; if(p["node_modules/vite"]?.version!=="8.2.4")process.exit(1)'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.16.0
+          cache: npm
+      - name: Install clean locked dependencies and compile client with patched Vite
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:client-package
+          npm run build:client
+          test -z "$(git status --porcelain -- package-lock.json client/package.json)"
+          echo 'BOTMODE_VITE_8_2_4_CLEAN_LOCK_FRONTEND_BUILD=PASS'
   go-grpc-security:
     if: ${{ inputs.go_security_only }}
     runs-on: ubuntu-latest
@@ -51,7 +83,7 @@ jobs:
           fi
           echo 'BOTMODE_GO_GRPC_1_83_2_PATCHED_AND_TESTED=PASS'
   compose-auth:
-    if: ${{ !inputs.go_security_only }}
+    if: ${{ !inputs.go_security_only && !inputs.vite_security_only }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
