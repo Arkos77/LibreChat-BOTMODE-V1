@@ -53,6 +53,12 @@ jobs:
           node scripts/botmode/native-no-auto-cold-provider-replay-regression.cjs
           node scripts/botmode/native-outcome-unknown-regression.cjs
           node scripts/botmode/native-outcome-unknown-redis-regression.cjs
+      - name: Confirm uncertain outcome warning in LibreChat UI
+        working-directory: client
+        run: |
+          npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            src/hooks/Messages/__tests__/unknownOutcomeRetry.spec.tsx \
+            src/components/Messages/Content/Error.outcomeUnknown.spec.tsx
       - name: Evidence boundary
         if: always()
         run: |

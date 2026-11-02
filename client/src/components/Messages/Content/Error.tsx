@@ -156,6 +156,9 @@ const errorMessages = {
 
 const Error = ({ text }: { text: string }) => {
   const localize = useLocalize();
+  if (text.trim() === 'OUTCOME_UNKNOWN') {
+    return localize('com_ui_outcome_unknown_message');
+  }
   const jsonString = extractJson(text);
   const providerText = stripLangChainTroubleshootingUrl(text);
   const errorMessage =

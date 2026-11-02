@@ -1305,6 +1305,8 @@
   "com_ui_reference_saved_memories_description": "Autoriser l'assistant à accéder aux index des données mémorisées enregistrées et à les utiliser pour répondre",
   "com_ui_refresh": "Rafraichir",
   "com_ui_refresh_page": "Rafraichir la page",
+  "com_ui_outcome_unknown_message": "Mission interrompue : le résultat de l'appel fournisseur est inconnu. Les étapes déjà enregistrées sont conservées. Aucun appel n'a été relancé automatiquement. Une nouvelle tentative peut consommer un quota, entraîner un coût ou répéter des effets externes.",
+  "com_ui_outcome_unknown_retry_confirm": "L'issue de l'appel précédent est inconnue. Régénérer peut consommer un quota, entraîner un coût ou répéter des actions. Voulez-vous vraiment lancer une nouvelle tentative ?",
   "com_ui_regenerate": "Régénérer",
   "com_ui_regenerate_backup": "Régénérer les codes de sauvegarde",
   "com_ui_regenerating": "Régénération en cours...",

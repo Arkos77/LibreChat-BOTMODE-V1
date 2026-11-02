@@ -33,3 +33,11 @@ La V1 exploite ses protections existantes : identification de génération, name
 5. Les protections Oracle/P6, identité utilisateur/tenant/agent et le checkpointer existant ne sont pas modifiés par ce sous-lot.
 
 **Verdict :** sous-lot B1 en qualification ; lot B global = NON CONCLUANT avant essais intégrés. La release `v1.0.1` reste inchangée.
+
+## B2 — Retour utilisateur et consentement avant une nouvelle tentative (candidate)
+
+- L'erreur SSE persistée `OUTCOME_UNKNOWN` est interprétée par le composant de message d'erreur existant. Le libellé localisé en français/anglais informe que l'appel précédent peut avoir abouti et qu'une relance peut consommer du quota, entraîner des coûts ou répéter des effets externes.
+- Les deux chemins existants d'actions sur les messages (optimisé et historique) interceptent `Régénérer` **uniquement** pour les messages d'erreur ayant exactement le code `OUTCOME_UNKNOWN` ; une confirmation explicite est exigée. Les autres erreurs ne changent pas de comportement.
+- Les tests Jest du client vérifient l'affichage localisé et la confirmation acceptée/refusée. Le workflow ciblé de la branche compile toujours les packages et lance ces tests, sans outil nouveau ni autre workflow.
+- Cette confirmation est une protection d'interface, pas une autorisation serveur de rejouer un appel incertain. Une soumission explicite nouvelle passe par les contrôles normaux LibreChat ; aucun mécanisme ne reprend la même exécution.
+- La rétention Redis existante limite la durée de disponibilité de la preuve `OUTCOME_UNKNOWN` ; il ne faut pas annoncer une conservation permanente de cet état. Les essais de SIGKILL intégrés Mongo+Redis et la reprise automatique aux frontières certaines restent hors de ce sous-lot.

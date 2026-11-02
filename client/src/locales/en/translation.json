@@ -1868,6 +1868,8 @@
   "com_ui_referenced_quotes": "Referenced quotes",
   "com_ui_refresh": "Refresh",
   "com_ui_refresh_page": "Refresh page",
+  "com_ui_outcome_unknown_message": "Mission interrupted: the provider call outcome is unknown. Previously saved steps remain recorded. No call was retried automatically. Another attempt may consume quota, incur charges, or repeat external effects.",
+  "com_ui_outcome_unknown_retry_confirm": "The previous provider call outcome is unknown. Regenerating may consume quota, incur charges, or repeat actions. Do you want to start a new attempt?",
   "com_ui_regenerate": "Regenerate",
   "com_ui_regenerate_backup": "Regenerate Backup Codes",
   "com_ui_regenerating": "Regenerating...",

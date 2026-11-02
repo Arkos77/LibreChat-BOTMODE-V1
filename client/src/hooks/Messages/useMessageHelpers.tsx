@@ -5,9 +5,11 @@ import type { TMessageProps } from '~/common';
 import { useMessagesViewContext, useAssistantsMapContext, useAgentsMapContext } from '~/Providers';
 import useCopyToClipboard, { hasCopyableText } from './useCopyToClipboard';
 import { useGetAddedConvo } from '~/hooks/Chat';
+import { useLocalize } from '~/hooks';
 import { logger } from '~/utils';
 
 export default function useMessageHelpers(props: TMessageProps) {
+  const localize = useLocalize();
   const { message, currentEditId, setCurrentEditId } = props;
 
   const {
@@ -75,6 +77,14 @@ export default function useMessageHelpers(props: TMessageProps) {
 
   const regenerateMessage = () => {
     if ((isSubmitting && isCreatedByUser === true) || !message) {
+      return;
+    }
+
+    if (
+      message.error === true &&
+      message.text?.trim() === 'OUTCOME_UNKNOWN' &&
+      !window.confirm(localize('com_ui_outcome_unknown_retry_confirm'))
+    ) {
       return;
     }
 
