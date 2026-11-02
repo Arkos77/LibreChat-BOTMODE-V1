@@ -51,7 +51,7 @@ Le bootstrap :
 5. résout le commit Git courant et tire par défaut `ghcr.io/arkos77/librechat-botmode-v1:sha-<commit>` ;
 6. démarre la stack.
 
-Le profil Lite est sélectionné automatiquement sous 4 GiB de RAM ou sur x86_64 sans AVX. L'absence d'AVX n'est pas appliquée aux architectures ARM, où cette exigence MongoDB x86_64 n'a pas de sens. Il utilise MongoDB 4.4.29 et désactive les services locaux lourds (RAG, pgvector, Meilisearch, admin panel). Il affirme aussi le mode scheduler mono-processus.
+Le profil Lite est sélectionné automatiquement sous 4 GiB de RAM ou sur x86_64 sans AVX. L'absence d'AVX n'est pas appliquée aux architectures ARM, où cette exigence MongoDB x86_64 n'a pas de sens. Il utilise MongoDB 4.4.29 et désactive les services locaux lourds (RAG, pgvector, Meilisearch, admin panel). Il affirme aussi le mode scheduler mono-processus. Pour garantir la persistance des missions et de la publication Oracle/P6, le profil Lite simplifié ajoute **un Redis 7 interne léger (160 Mio maximum), sans port exposé, avec un volume AOF persistant** : trois services au total (API, MongoDB, Redis), sans nouveau moteur d'orchestration. En cas de migration depuis une ancienne installation Lite à deux services, sauvegarder les données et qualifier la capacité de la machine avant de démarrer la nouvelle candidate. La configuration seule ne prouve pas la bonne exécution sur le Chromebook.
 
 Forcer Lite :
 
