@@ -48,6 +48,16 @@ jobs:
         run: |
           npx jest --ci --runInBand --coverage=false --runTestsByPath src/agents/__tests__/custom-endpoint-tenant.e2e.test.ts
           echo 'BOTMODE_NATIVE_PARENT_CHILD_PARENT_CONTRACT=PASS'
+      - name: Verify simplified V1 direct, research-analysis, Oracle and P6 contracts
+        working-directory: packages/api
+        run: |
+          npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            src/agents/orchestrator/native.spec.ts \
+            src/agents/orchestrator/research.spec.ts \
+            src/agents/orchestrator/publication.spec.ts \
+            src/agents/orchestrator/synthesisReadiness.integration.spec.ts \
+            src/agents/orchestrator/authorization.spec.ts
+          echo 'BOTMODE_C1_OFFLINE_ORCHESTRATION_AND_PUBLICATION=PASS'
       - name: Reject uncertain provider replay after cold restart
         run: |
           node scripts/botmode/native-no-auto-cold-provider-replay-regression.cjs

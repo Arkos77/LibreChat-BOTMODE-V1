@@ -53,3 +53,18 @@ La vérification `B3 safety: a checkpoint head cannot distinguish pending from a
 Il faut choisir pour la suite entre : (a) clôturer V1 avec reprise manuelle explicite sur nouvelles générations, sans garantie de continuation automatique des étapes restantes ; ou (b) ajouter un mécanisme durable d'admission de chaque étape avant l'appel externe. **La variante (b) ajoute de la complexité et ne doit pas être engagée sans décision utilisateur.**
 
 **Verdict B3 :** test Mongo en qualification ; reprise autonome de la prochaine étape = NON CONCLUANT / non autorisée sur cette architecture. Aucun changement du moteur de production dans ce sous-lot.
+
+## Décision utilisateur confirmée — périmètre V1 figé (2 novembre 2026)
+
+Le compromis B3 a été explicitement accepté : **conserver les résultats déjà checkpointés, ne pas reprendre automatiquement une étape dont l'appel fournisseur a une issue incertaine, et exiger une nouvelle demande explicite avec avertissement**. Le contrat V1 **ne comprend plus** la continuation automatique de la prochaine étape du graphe après SIGKILL, même quand les résultats antérieurs sont persistés. En conséquence, ce comportement ne doit plus être traité comme un test FAIL de la V1 simplifiée ; la sûreté de l'arrêt doit cependant être qualifiée.
+
+**Preuves B3 :** commit `3f07bc50b9f3141e81069f00d23587a3df20c1fd`, run GitHub `41380463373` SUCCESS. Test MongoDB réel (en mémoire) montrant qu'une étape B déjà entrée et interrompue partage le même checkpoint que B en attente : PASS (1 test ; les 42 autres tests du fichier ne furent pas relancés). Redis de B1, garde d'absence de replay, délégation native, affichage B2 : PASS sur ce HEAD.
+
+**Verdict corrigé pour le lot B :** contrat minimal B1/B2 et caractérisation B3 PASS dans les scénarios vérifiés ; le **lot B intégré demeure NON CONCLUANT** tant que le redémarrage effectif API + Redis/Mongo et le message visible après reconnexion ne sont pas démontrés. La conservation des sorties Mongo n'implique pas automatiquement une reprise à l'étape suivante. Ne pas affirmer une reprise fiable de B après crash.
+
+## Passage au lot C — critères maintenus
+
+- C1 (hors fournisseur, ciblé) : mission directe 0 spécialiste, plan et permissions 1 spécialiste, Recherche → Analyse, preuves Oracle et publication P6 validées ou refusées. Test natif et suites offline sur le HEAD exact.
+- C2 : une qualification intégrée avec MongoDB et Redis, en conservant les données de l'installation actuelle intactes. Crash du service pendant appel externe → aucun rejeu, aucune publication, issue incertaine visible après reconnexion ; étape persistée A reste accessible.
+- C3 : parcours LibreChat Idées → Projets → Chat, sélection 0/1/N, Oracle VERIFIED et publication P6 unique sur succès et zéro sur échec ; si un cas n'est pas testé réellement, verdict NON CONCLUANT.
+- Les tests de replay automatique d'appel en plein vol 4C sont exclus. Aucune fusion/release avant autorisation explicite. Aucun appel payant.
