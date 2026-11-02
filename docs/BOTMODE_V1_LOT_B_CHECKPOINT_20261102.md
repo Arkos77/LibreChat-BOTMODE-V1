@@ -74,3 +74,17 @@ Le compromis B3 a été explicitement accepté : **conserver les résultats déj
 Un unique test supplémentaire est ajouté au workflow source-built existant : `native-outcome-unknown-sigkill-integration.cjs`. Il utilise un Redis et un Mongo éphémères de GitHub Actions, `RedisJobStore`, `GenerationJobManagerClass`, `getAgentCheckpointer`, `inspectDurableNativeMissionCheckpoint` et un graphe LangGraph minimal A → B. L'étape A est persistée, l'étape B entre réellement avant de se bloquer, puis son processus reçoit `SIGKILL`. Un nouveau processus charge les mêmes données et le gestionnaire intact, sans handler de replay, et vérifie la transition `running -> error / OUTCOME_UNKNOWN`, le checkpoint A conservé, aucun nouveau fournisseur/effet ni message FINAL, et l'unicité de la transition CAS.
 
 **Limitation explicite** : c'est une qualification intégrée *du gestionnaire et de ses stores* avec graphe factice. Elle ne démarre pas le serveur HTTP/API LibreChat, ne teste pas sa reconnexion SSE dans un navigateur, n'appelle aucun modèle, et n'atteste pas Oracle VERIFIED/P6 sur une mission utilisateur. En cas de FAIL du test, examiner la preuve exacte avant tout correctif. Aucune installation locale n'est touchée.
+
+## Lot C2 — Verdict sur source built, Mongo/Redis isolés et vrai SIGKILL (02/11/2026)
+
+**PASS ciblé** au HEAD `566306a54a289224bfb1759a888184c6ddd896d6`, GitHub Actions run `41386087533` (SUCCESS). La CI compile les packages puis exécute exclusivement le scénario C2 : les contrôles C1/B1/B2/B3, déjà réussis sans changement de code concerné, ne sont pas répétés.
+
+Le processus « seed » crée une génération réelle avec `RedisJobStore`, persiste l'étape A via le vrai `getAgentCheckpointer` (MongoDBSaver) et entre dans l'étape B bloquée, puis reçoit réellement `SIGKILL`. Dans un nouveau processus, `GenerationJobManagerClass.initialize()` reprend la découverte de mission sans handler de replay ; après expiration **réelle** du bail et la quarantaine de l'activité, il passe la génération à `error / OUTCOME_UNKNOWN`. Les assertions confirment un seul démarrage de B, une transition CAS finale unique, aucune nouvelle identité fournisseur, aucun `finalEvent` P6 et le même checkpoint Mongo A.
+
+Éléments de preuve : `BOTMODE_C2_REAL_SIGKILL=PASS`, `BOTMODE_C2_REAL_SIGKILL_MONGO_REDIS_UNKNOWN_NO_REPLAY=PASS`, `BOTMODE_C2_COMPLETED_STAGE_CHECKPOINT_PRESERVED=PASS`.
+
+La première qualification, run `41385685186`, était FAIL **du test de montage** : le script créait un namespace indépendant du namespace de génération effectivement persisté par Redis. Le second test a lu le namespace réel depuis `getJob`; la trace `C2_DURABLE_NAMESPACE_ALIGNED=false` confirme la différence initiale. Aucun correctif de logique de production n'a été nécessaire. Éviter toute nouvelle sonde du même cas sans régression.
+
+**Limites :** graphe factice A → B sans modèle externe, processus d'exécution et gestionnaire redémarrés, mais **pas** d'API LibreChat HTTP démarrée, pas de SSE navigateur, pas de validation Oracle VERIFIED ni de publication P6 d'une vraie mission utilisateur. La preuve `finalEvent` absent concerne ce job isolé. Ces points restent pour la qualification C3/D ; ne pas transformer le PASS C2 en GO V1.
+
+La release `v1.0.1`, `main`, les volumes Mongo/Redis de l'installation, `.env`, clés, ports et services existants n'ont pas été modifiés. La surveillance de sécurité D-02 (#37) reste active et la revue des autres vulnérabilités GitHub n'est pas clôturée.
