@@ -825,6 +825,33 @@ const mongoose=require('mongoose');(async()=>{
         print('CI_PR107_COLD_MULTI_POSTCRASH_ATTEMPT_ERROR='+
               str('Host native mission recovery attempt failed' in api_logs),
               flush=True)
+        # Compare only allowlisted fingerprint categories, never the actual
+        # agent descriptions, names, identifiers or model/tool contents.
+        seen={}
+        for stage,role,raw in re.findall(
+            r'CI_NATIVE_4C_CAPABILITY_(WARM|COLD)_(WORKER|RESEARCH|ANALYSIS)=(\{[^\n]{1,512}\})',
+            api_logs,
+        ):
+            try:
+                item=json.loads(raw)
+                fields=('tools','definitions','registry','options','resources',
+                        'graphBinding','skills','files','delegation','dynamic',
+                        'modelOnly','binding','background')
+                if all(k in item for k in fields):
+                    seen[(stage,role)]={k:item[k] for k in fields}
+            except (ValueError,TypeError):
+                continue
+        for role in ('WORKER','RESEARCH','ANALYSIS'):
+            warm=seen.get(('WARM',role))
+            cold=seen.get(('COLD',role))
+            print('CI_PR107_COLD_MULTI_CAPABILITY_'+role+'_WARM_SEEN='+
+                  str(warm is not None),flush=True)
+            print('CI_PR107_COLD_MULTI_CAPABILITY_'+role+'_COLD_SEEN='+
+                  str(cold is not None),flush=True)
+            if warm and cold:
+                different=sorted(k.upper() for k in warm if warm[k]!=cold[k])
+                print('CI_PR107_COLD_MULTI_CAPABILITY_'+role+'_DIFF='+
+                      (','.join(different) or 'NONE'),flush=True)
         shape_codes=re.findall(
             r'CI_NATIVE_4C_COLD_RESEARCH_SHAPE=(ADMITTED|MODE|RESEARCH_VERSION|PLAN|DEPENDENCIES|CAPABILITY|CONTRACT|DOCUMENTS|DOCUMENT_EFFECT_SURFACE)',
             api_logs)

@@ -84,6 +84,7 @@ function assertColdResearchCapabilityBaseline({
     const observed = createNativeMissionCapabilityAttestation({
       plan, agents: baselineAgents, subagentTasks: tasks,
       hostEffectPathsPresent: recorded.hostEffectPathsPresent === true,
+      ciTraceStage: 'COLD',
     });
     return JSON.stringify(recorded) === JSON.stringify(observed);
   });

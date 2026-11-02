@@ -15,6 +15,7 @@ function createNativeMissionCapabilityAttestation({
   agents,
   subagentTasks,
   hostEffectPathsPresent = false,
+  ciTraceStage,
 }) {
   if (
     !plan ||
@@ -143,6 +144,39 @@ function createNativeMissionCapabilityAttestation({
     (entry, index) =>
       index === 0 || JSON.stringify(entry) !== JSON.stringify(fingerprints[index - 1]),
   );
+  // Disposable CI-only diagnosis of the original vs cold reconstructed
+  // capability SHAPES. Emits counts, booleans and truncated fingerprints,
+  // never names, identities, model strings, messages or credentials.
+  if (
+    process.env.BOTMODE_CI_ORIGINAL_MISSION_DIAGNOSTICS === '1' &&
+    (ciTraceStage === 'WARM' || ciTraceStage === 'COLD') &&
+    plan.tasks.length === 2
+  ) {
+    for (const entry of canonical) {
+      const role = entry.id === plan.tasks[0]?.agentId ? 'RESEARCH' :
+        entry.id === plan.tasks[1]?.agentId ? 'ANALYSIS' : 'WORKER';
+      const cap = entry.capability;
+      const fingerprint = (data) => createHash('sha256')
+        .update(JSON.stringify(data)).digest('hex').slice(0, 12);
+      const summary = {
+        tools: fingerprint(cap.tools),
+        definitions: fingerprint(cap.toolDefinitions),
+        registry: fingerprint(cap.toolRegistry),
+        options: fingerprint(cap.toolOptions),
+        resources: fingerprint(cap.toolResources),
+        graphBinding: fingerprint(cap.graphBindingAgentIds),
+        skills: fingerprint(cap.skills),
+        files: Number(cap.files),
+        delegation: Number(cap.delegation),
+        dynamic: Number(cap.dynamicTools),
+        modelOnly: Number(entry.modelOnly),
+        binding: fingerprint([entry.provider, entry.model]),
+        background: Number(subagentTasks != null),
+      };
+      process.stderr.write('CI_NATIVE_4C_CAPABILITY_' + ciTraceStage + '_' +
+        role + '=' + JSON.stringify(summary) + '\n');
+    }
+  }
   const ids = [...new Set(canonical.map((item) => item.id))].sort();
   const duplicateBindings = canonical.length !== ids.length;
   const expected = new Set(plan.tasks.map((task) => task?.agentId));

@@ -1967,6 +1967,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         agents: reachableAgents.filter((agent) => signedNativeAgentIds.has(agent.id)),
         subagentTasks: client.options.subagentTasks,
         hostEffectPathsPresent: (orchestratorMission?.evidenceDeclarations?.length ?? 0) > 0,
+        ciTraceStage: 'WARM',
       });
       if (
         originalWakeupCapabilities != null &&
