@@ -3,6 +3,7 @@ const {
   inspectAgentInventory,
   validateWorkerDelegation,
   inspectMissingCapabilities,
+  inspectRoleReadiness,
 } = require('./botmodeSetupValidation');
 
 describe('BOT MODE onboarding validation', () => {
@@ -71,6 +72,20 @@ describe('BOT MODE onboarding validation', () => {
         required,
       ),
     ).toEqual([]);
+  });
+
+  test('recognizes legacy generic prompts and tools outside a role without changing saved agents', () => {
+    const profiles = { 'BOT MODE Worker': { tools: [] }, ANALYSE: { tools: [] } };
+    const agents = [
+      { name: 'BOT MODE Worker', instructions: 'Tu es le Worker principal BOT MODE. Délègue uniquement selon les autorisations.', tools: ['web_search'] },
+      { name: 'ANALYSE', instructions: 'Tu es le spécialiste ANALYSE de BOT MODE. Réponds en français.', tools: [] },
+    ];
+    const original = structuredClone(agents);
+    expect(inspectRoleReadiness(agents, profiles)).toEqual({
+      unconfiguredInstructions: ['BOT MODE Worker', 'ANALYSE'],
+      unexpectedCapabilities: [{ name: 'BOT MODE Worker', unexpectedTools: ['web_search'] }],
+    });
+    expect(agents).toEqual(original);
   });
 
   test('detects missing and duplicate agents without changing the inventory', () => {

@@ -116,6 +116,23 @@ test('creates six agents and delegates to five, then reuses identical ids', asyn
   expect(mockAgents).toHaveLength(6);
   const ids = mockAgents.map((agent) => agent.id);
   const worker = mockAgents.find((agent) => agent.name === 'BOT MODE Worker');
+  // V1 must not provision empty specialist shells or direct Worker tools.
+  const expectedTools = {
+    'BOT MODE Worker': [], RECHERCHE: ['web_search'], ANALYSE: [],
+    CODE: ['execute_code'], DOCUMENTS: ['file_search'], 'RÉDACTION': [],
+  };
+  for (const agent of mockAgents) {
+    expect(agent.tools).toEqual(expectedTools[agent.name]);
+    expect(agent.instructions.length).toBeGreaterThan(300);
+    expect(agent.description.length).toBeGreaterThan(30);
+  }
+  expect(worker.instructions).toMatch(/zéro, un ou plusieurs spécialistes/);
+  expect(mockAgents.find((a) => a.name === 'CODE').instructions).toMatch(/tests exécutés/);
+  expect(mockAgents.find((a) => a.name === 'RECHERCHE').instructions).toMatch(/source consultée/);
+  expect(mockAgents.find((a) => a.name === 'DOCUMENTS').instructions).toMatch(/pages ou sections/);
+  expect(first.payload.capabilitiesComplete).toBe(true);
+  expect(first.payload.unexpectedCapabilities).toEqual([]);
+  expect(first.payload.unconfiguredInstructions).toEqual([]);
   expect(worker.subagents.enabled).toBe(true);
   expect(worker.subagents.allowSelf).toBe(false); // no implicit paid child executions
   expect(worker.subagents.agent_ids).toHaveLength(5);
@@ -135,6 +152,36 @@ test('creates six agents and delegates to five, then reuses identical ids', asyn
   expect(state.payload.inventoryComplete).toBe(true);
   expect(state.payload.permissionsComplete).toBe(true);
   expect(state.payload.delegationConfigured).toBe(true);
+  expect(state.payload.configurationComplete).toBe(true);
+});
+
+test('read-only status and repeat onboarding flag placeholder roles and excess Worker tools without overwriting them', async () => {
+  const first = response();
+  await setup(request(), first);
+  expect(first.code).toBe(200);
+  const worker = mockAgents.find((a) => a.name === 'BOT MODE Worker');
+  const analyst = mockAgents.find((a) => a.name === 'ANALYSE');
+  worker.instructions = 'Tu es le Worker principal BOT MODE. Délègue uniquement selon les autorisations.';
+  worker.tools = ['web_search'];
+  analyst.instructions = 'Tu es le spécialiste ANALYSE de BOT MODE. Réponds en français.';
+  const original = structuredClone(mockAgents);
+
+  const status = response();
+  await inspect(request(), status);
+  expect(status.code).toBe(200);
+  expect(status.payload.configurationComplete).toBe(false);
+  expect(status.payload.unconfiguredInstructions).toEqual(['BOT MODE Worker', 'ANALYSE']);
+  expect(status.payload.unexpectedCapabilities).toEqual([
+    { name: 'BOT MODE Worker', unexpectedTools: ['web_search'] },
+  ]);
+
+  const again = response();
+  await setup(request(), again);
+  expect(again.code).toBe(200);
+  expect(again.payload.capabilitiesComplete).toBe(false);
+  expect(again.payload.created).toEqual([]);
+  expect(mockAgents).toEqual(original); // no silent migration of user-owned agents
+  expect(mockUpdateAgent).toHaveBeenCalledTimes(1); // only first-run delegation
 });
 
 test('free OpenRouter onboarding allows isolated ephemeral self children only for configured free pool', async () => {

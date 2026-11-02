@@ -19,6 +19,10 @@ on:
         description: One provider-hosted zero-price model tool-call smoke, without builds or paid fallback
         type: boolean
         default: false
+      specialist_onboarding_only:
+        description: Validate six true specialist prompts, tool boundaries, Mongo and HTTP ACL without E2E reruns
+        type: boolean
+        default: false
   pull_request:
     paths:
       - '.github/workflows/botmode-v1-native-subagent-contract.yml'
@@ -27,6 +31,46 @@ permissions:
   contents: read
 
 jobs:
+  specialist-onboarding:
+    if: ${{ inputs.specialist_onboarding_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_ENV: test
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Assert exact candidate source
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test "${{ github.ref_name }}" = simplify/botmode-v1-lot-a-20261102
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.16.0
+          cache: npm
+      - name: Install clean locked dependencies and build native backend libraries
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:api
+      - name: Test six role prompts, exact tool ACL, legacy agent detection and Mongo persistence
+        working-directory: api
+        run: |
+          set -euo pipefail
+          npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            server/routes/agents/botmodeSetupValidation.spec.js \
+            server/routes/agents/botmodeSetupRoute.spec.js \
+            server/routes/agents/botmodeSetupMongo.spec.js
+          echo 'BOTMODE_V1_SPECIALIST_PROMPTS_AND_ZERO_TOOL_WORKER=PASS'
+      - name: Verify lockfile and source remain unchanged
+        run: |
+          test -z "$(git status --porcelain -- package-lock.json api/server/routes/agents/v1.js)"
+          echo 'BOTMODE_V1_ROLE_SOURCE_REPRODUCIBLE=PASS'
   free-hosted-compatibility:
     if: ${{ inputs.free_hosted_only }}
     runs-on: ubuntu-latest
@@ -45,7 +89,7 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: python3 -B scripts/botmode/ci-hosted-free-model-tool-smoke.py
   native-subagent-contract:
-    if: ${{ !inputs.free_hosted_only }}
+    if: ${{ !inputs.free_hosted_only && !inputs.specialist_onboarding_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:

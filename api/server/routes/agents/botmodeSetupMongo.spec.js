@@ -130,6 +130,14 @@ test('setup route commits six distinct agents, owner ACL and stable second initi
   const initial = await Agent.find({ author: ownerId }).lean();
   expect(initial).toHaveLength(6);
   expect(new Set(initial.map((a) => a.name)).size).toBe(6);
+  const toolsByRole = {
+    'BOT MODE Worker': [], RECHERCHE: ['web_search'], ANALYSE: [],
+    CODE: ['execute_code'], DOCUMENTS: ['file_search'], 'RÉDACTION': [],
+  };
+  for (const agent of initial) {
+    expect(agent.tools).toEqual(toolsByRole[agent.name]);
+    expect(agent.instructions.length).toBeGreaterThan(300);
+  }
   const grants = await Acl.find({ principalId: String(ownerId) }).lean();
   expect(grants).toHaveLength(6);
   expect(
@@ -158,6 +166,9 @@ test('setup route commits six distinct agents, owner ACL and stable second initi
     inventoryComplete: true,
     permissionsComplete: true,
     delegationConfigured: true,
+    configurationComplete: true,
+    unconfiguredInstructions: [],
+    unexpectedCapabilities: [],
   });
 });
 
@@ -220,5 +231,8 @@ test('HTTP POST and GET travel through Express with a test-authenticated owner',
     inventoryComplete: true,
     permissionsComplete: true,
     delegationConfigured: true,
+    configurationComplete: true,
+    unconfiguredInstructions: [],
+    unexpectedCapabilities: [],
   });
 });
