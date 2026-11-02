@@ -19,3 +19,7 @@ Réutiliser le workflow source-built existant avec l'entrée `c3_only`, sans rel
 Ces suites utilisent React/Jest, des modèles, routes et données partiellement simulés ; elles ne lancent ni navigateur avec API LibreChat réelle, ni fournisseur. Un PASS prouve les contrats de surface testés, **pas** un parcours E2E complet. Un FAIL exige d'examiner les logs et de corriger uniquement le défaut démontré. Un test hors service réel ne doit pas être déclaré GO V1.
 
 C3 ne pourra être déclaré globalement PASS qu'après des preuves cohérentes du parcours utilisateur réel et d'un verdict Oracle et P6 sur la même mission source exacte. En attendant, verdict : **NON CONCLUANT**. La release `v1.0.1` et l'installation utilisateur restent inchangées.
+
+## Premier résultat de qualification C3
+
+Run `41386621665` sur le commit `565df960557601dc00abd66a4b19719e6b95ecce` : **API PASS, 5 suites / 22 tests** (permissions, projection, initialisation, contrôles agent). Les quatre suites React ont échoué **avant d'exécuter le moindre test** : le workflow ne construisait pas `@librechat/client`, dépendance déjà définie dans le dépôt (`npm run build:client-package`). Verdict client : **NON CONCLUANT**, il ne s'agit pas d'un défaut produit. Correctif limité à la préparation du package client ; prochain run `c3_ui_only` pour ne pas répéter les 22 tests API déjà acquis. Aucun code produit modifié.
