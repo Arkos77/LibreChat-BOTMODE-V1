@@ -10,10 +10,6 @@ on:
       - 'e2e/playwright.config.oracle-restart.ts'
       - 'e2e/specs/qualification/mission-oracle-runtime.spec.ts'
       - 'api/server/index.js'
-      - 'api/server/services/Endpoints/agents/nativeMissionModelOnlyRecoveryHandler.js'
-      - 'api/server/services/Endpoints/agents/nativeMissionOriginalModelOnlyReplay.js'
-      - 'scripts/botmode/native-model-only-handler-assembly-regression.cjs'
-      - 'scripts/botmode/native-original-model-only-replay-regression.cjs'
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js'
 
 permissions:

@@ -135,49 +135,9 @@ const configureGenerationStreams = () => {
       resumeDetachedAction: resumeAgentEventDetachedAction,
     }),
   );
-  if (
-    GenerationJobManager.isRedis &&
-    !isEnabled(process.env.BOTMODE_DISABLE_NATIVE_MISSION_RECOVERY)
-  ) {
-    // Strict production recovery is limited to missions whose ORIGINAL
-    // generation proved a model-only execution surface. The normal SDK graph,
-    // current user/agent ACL, Redis owner CAS, Oracle and terminal barrier
-    // remain in force; tool/delegated jobs cannot be replayed without receipts.
-    const {
-      createRun,
-      validateMissionTask,
-      normalizeMissionOracleState,
-      areMissionOracleResultsEquivalent,
-      qualifyAndExecuteRecoveredMissionSegment,
-      continueColdNativeMissionGraph,
-      sanitizeMessageForTransmit,
-    } = require('@librechat/api');
-    const { initializeClientFromDocuments } = require('./services/Endpoints/agents/initialize');
-    const {
-      createNativeMissionModelOnlyRecoveryHandler,
-    } = require('./services/Endpoints/agents/nativeMissionModelOnlyRecoveryHandler');
-    GenerationJobManager.setNativeMissionRecoveryHandler(
-      createNativeMissionModelOnlyRecoveryHandler({
-        manager: GenerationJobManager,
-        getUserById: agentEventMethods.getUserById,
-        isSubagentOwnerAdmissible: agentEventMethods.isSubagentOwnerAdmissible,
-        getConvo: agentEventMethods.getConvo,
-        getAgent: agentEventMethods.getAgent,
-        getMessage: agentEventMethods.getMessage,
-        saveMessage: agentEventMethods.saveMessage,
-        initializeClientFromDocuments,
-        createRun,
-        validateMissionTask,
-        normalizeMissionOracleState,
-        areMissionOracleResultsEquivalent,
-        qualifyAndExecuteRecoveredMissionSegment,
-        continueColdNativeMissionGraph,
-        sanitizeMessage: sanitizeMessageForTransmit,
-        emitDone: GenerationJobManager.emitDone.bind(GenerationJobManager),
-        log: logger,
-      }),
-    );
-  }
+  // BOT MODE V1: no automatic cold replay of an uncertain provider call.
+  // Durable-step continuation is qualified separately; leaving the handler
+  // unset is fail-closed until its checkpoint/authorization boundary is proven.
   GenerationJobManager.initialize();
   // Stop active generations and close their SSE streams while the HTTP server drains.
   registerShutdownTask(
