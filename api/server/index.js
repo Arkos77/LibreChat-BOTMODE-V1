@@ -135,37 +135,7 @@ const configureGenerationStreams = () => {
       resumeDetachedAction: resumeAgentEventDetachedAction,
     }),
   );
-  // Explicit CI-only read-only diagnostics. These modes deliberately suppress
-  // the production handler so a diagnostic never executes recovered work.
-  const auditHost = process.env.BOTMODE_NATIVE_RECOVERY_READONLY_AUDIT === 'true';
-  const auditClaim = process.env.BOTMODE_NATIVE_RECOVERY_CLAIM_AUDIT === 'true';
-  if (auditHost || auditClaim) {
-    const {
-      createNativeMissionRecoveryHostProbe,
-    } = require('./services/Endpoints/agents/nativeMissionRecoveryHostProbe');
-    const hostProbe = createNativeMissionRecoveryHostProbe({
-      manager: GenerationJobManager,
-      getUserById: agentEventMethods.getUserById,
-      isSubagentOwnerAdmissible: agentEventMethods.isSubagentOwnerAdmissible,
-      getConvo: agentEventMethods.getConvo,
-      getAgent: agentEventMethods.getAgent,
-    });
-    if (auditClaim) {
-      const { logger } = require('@librechat/data-schemas');
-      const {
-        createNativeMissionRecoveryClaimProbe,
-      } = require('./services/Endpoints/agents/nativeMissionRecoveryClaimProbe');
-      GenerationJobManager.setNativeMissionRecoveryHandler(
-        createNativeMissionRecoveryClaimProbe({
-          manager: GenerationJobManager,
-          authorizeCandidate: ({ candidate }) => hostProbe(candidate),
-          log: logger,
-        }),
-      );
-    } else {
-      GenerationJobManager.setNativeMissionRecoveryHandler(hostProbe);
-    }
-  } else if (
+  if (
     GenerationJobManager.isRedis &&
     !isEnabled(process.env.BOTMODE_DISABLE_NATIVE_MISSION_RECOVERY)
   ) {

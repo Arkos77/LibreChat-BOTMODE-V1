@@ -18,9 +18,6 @@ on:
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js'
       - 'scripts/botmode/native-recovery-host-authorization-regression.cjs'
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveryHostAuthorization.js'
-      - 'api/server/services/Endpoints/agents/nativeMissionRecoveryHostProbe.js'
-      - 'scripts/botmode/native-recovery-host-probe-regression.cjs'
-      - 'api/server/services/Endpoints/agents/nativeMissionRecoveryClaimProbe.js'
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveryCoordinator.js'
       - 'api/server/services/Endpoints/agents/nativeMissionRecoveryHandlerFactory.js'
       - 'api/server/services/Endpoints/agents/nativeMissionAuthenticatedRecoveryContext.js'
@@ -70,7 +67,6 @@ on:
       - 'api/server/services/Endpoints/agents/initialize.spec.js'
       - 'packages/api/src/stream/jobStoreCapabilities.ts'
       - 'packages/api/src/types/stream.ts'
-      - 'scripts/botmode/native-mission-claim-probe-regression.cjs'
       - 'scripts/botmode/redis-late-native-plan-lease-regression.cjs'
       - 'scripts/botmode/run-redis-late-native-plan-lease-regression.sh'
       - 'api/server/index.js'
@@ -187,24 +183,6 @@ jobs:
         run: node scripts/botmode/native-recovered-terminal-publisher-regression.cjs
       - name: Verify recovered terminal CAS and publication reconciliation on real Redis
         run: python3 scripts/botmode/redis-recovered-terminal-persistence-regression.py
-      - name: Verify host read-only audit never claims or executes
-        env:
-          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
-        run: |
-          docker run --rm --network none --memory 720m --cpus 1 --read-only \
-            --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveryAuthorization.js,readonly" \
-            --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveryHostAuthorization.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveryHostAuthorization.js,readonly" \
-            --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveryHostProbe.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveryHostProbe.js,readonly" \
-            --mount "type=bind,src=$PWD/scripts/botmode/native-recovery-host-probe-regression.cjs,dst=/app/native-recovery-host-probe-regression.cjs,readonly" \
-            --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-recovery-host-probe-regression.cjs
-      - name: Verify host claim admission and exact-generation release are fail-closed
-        env:
-          BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d
-        run: |
-          docker run --rm --network none --memory 720m --cpus 1 --read-only \
-            --mount "type=bind,src=$PWD/api/server/services/Endpoints/agents/nativeMissionRecoveryClaimProbe.js,dst=/work/api/server/services/Endpoints/agents/nativeMissionRecoveryClaimProbe.js,readonly" \
-            --mount "type=bind,src=$PWD/scripts/botmode/native-mission-claim-probe-regression.cjs,dst=/app/native-mission-claim-probe-regression.cjs,readonly" \
-            --entrypoint node "$BOTMODE_TEST_SDK_IMAGE" /app/native-mission-claim-probe-regression.cjs
       - name: Verify late native plan initializes only a fenced Redis provider lease
         env:
           BOTMODE_TEST_SDK_IMAGE: ghcr.io/arkos77/librechat-botmode-v1@sha256:81339472d84f22188a28c71d69e12c45d26a942197009cc4badb34adca3f434d

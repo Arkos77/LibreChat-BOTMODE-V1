@@ -25,7 +25,6 @@ const callbacks = [];
 let now = 1700000000000;
 let checkpointBarrier = null;
 const warnings = [];
-const audits = [];
 const moduleBox = { exports: null };
 const src = ts.transpileModule('class Harness {' + methods.join('\n') +
   '}\nmodule.exports=Harness;', {
@@ -33,7 +32,6 @@ const src = ts.transpileModule('class Harness {' + methods.join('\n') +
 }).outputText;
 vm.runInNewContext(src, {
   module: moduleBox,
-  process: { env: { BOTMODE_NATIVE_RECOVERY_READONLY_AUDIT: 'true' } },
   Date: { now: () => now },
   setInterval: (cb, period) => {
     const timer = { cb, period, unref() {} };
@@ -43,7 +41,6 @@ vm.runInNewContext(src, {
   logger: {
     debug() {},
     warn: (...args) => warnings.push(args),
-    info: (...args) => audits.push(args),
   },
   inspectDurableNativeMissionCheckpoint: async () => {
     if (checkpointBarrier) return checkpointBarrier;
@@ -173,15 +170,5 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
   const result = await filtered.inspectOrphanedNativeMissions();
   assert.equal(result.length, 1);
   assert.equal(result[0].streamId, 'eligible');
-  const counts = audits.find((a) => String(a[0]).includes('recovery filter counts'));
-  assert.ok(counts);
-  const scanCounts = JSON.parse(String(counts[0]).split('counts ')[1]);
-  assert.equal(scanCounts.running, 2);
-  assert.equal(scanCounts.orphaned, 1);
-  assert.equal(Object.keys(scanCounts).length, 6);
-  const checkpointCounts = audits.find((a) => String(a[0]).includes('checkpoint preflight counts'));
-  assert.ok(checkpointCounts);
-  const preflightCounts = JSON.parse(String(checkpointCounts[0]).split('counts ')[1]);
-  assert.equal(preflightCounts.checkpointEligible, 1);
-  console.log('BOTMODE_NATIVE_PREFLIGHT_CI_AGGREGATES=PASS');
+  console.log('BOTMODE_NATIVE_PREFLIGHT_FILTERING=PASS');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
