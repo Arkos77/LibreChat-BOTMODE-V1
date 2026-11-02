@@ -106,3 +106,23 @@ Nouvelle entrée **optionnelle** `one_child_oracle=true` dans le workflow déjà
 **Conditions exigées sur le même `streamId`, `missionId`, `taskId` et `conversationId` :** 1 appel `subagent` parent, 1 réponse du modèle enfant, 1 conversation enfant durable avec exactement un résultat `completed` et aucun `error`, Oracle `VERIFIED` dans la ligne Redis du même job, job `complete`, `responseMessageId` renseigné, aucune publication en attente, **exactement une trame SSE `final`**, message final parent enregistré dans MongoDB. Les compteurs modèles ne sont jamais assimilés à des finales P6. Aucun modèle hébergé ni secret réel n'est transmis.
 
 Ce test ne reprend **aucun** ancien replay 4C, ne réutilise aucune mission incertaine, ne déploie aucune release et ne fusionne rien. **Verdict avant exécution : NON CONCLUANT.** Un éventuel FAIL devra être classé précisément (admission, délégation, Oracle, P6, persistance), sans considérer les sous-tests précédemment PASS comme annulés.
+
+## C3 — JOINTURE FINALE un spécialiste → Oracle VERIFIED → P6 : PASS (02/11/2026)
+
+**Run GitHub:** [#41428380079](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/41428380079) = **SUCCESS**, commit exact testé `987c0fc28f13986fbb9ded58794419cfd1e09bfe`. Image candidate construite uniquement sur runner GitHub et supprimée après test, fixture OpenAI-compatible locale `ci-openai-subagent-fixture.py`, Mongo et Redis jetables, aucun modèle distant/payant.
+
+La vérification `one_child_oracle=true` a exécuté **une seule mission** avec son `missionId`, `taskId`, `streamId` et conversation parent persistants. Les marqueurs suivants proviennent tous du **même run et de la même mission** :
+
+- `CI_ONE_CHILD_PARENT_TOOL_REQUESTS_DELTA=1` : le modèle parent a réellement demandé l'outil natif `subagent`.
+- `CI_ONE_CHILD_CHILD_RESPONSES_DELTA=1` : LibreChat a réellement exécuté un appel de modèle enfant.
+- `CI_ONE_CHILD_MISSING_TOOL_DELTA=0`, `CI_ONE_CHILD_MONGO_CHILD_COUNT=1`, `CI_ONE_CHILD_MONGO_COMPLETE=1`, `CI_ONE_CHILD_MONGO_ERRORS=0`, `CI_ONE_CHILD_MONGO_MESSAGES=2`, `CI_ONE_CHILD_MONGO_LINKED=True` : exactement un spécialiste autorisé exécuté et son résultat terminé durablement lié au parent.
+- `CI_ONE_CHILD_INITIAL_SSE_FINAL_COUNT=1` : une et une seule finale SSE dans la mission.
+- `CI_ONE_CHILD_ORACLE_JOB_STATUS=complete`, `CI_ONE_CHILD_ORACLE_VERIFIED=TRUE` : verdict **Oracle VERIFIED** durable sur le plan et le taskId de la même génération Redis.
+- `CI_ONE_CHILD_P6_PARENT_MONGO_COMMITTED=TRUE` : identifiant `responseMessageId` de P6 correspondant au message final du parent réellement enregistré dans MongoDB.
+- `BOTMODE_C3_ONE_CHILD_ORACLE_VERIFIED_P6_ONCE=PASS`, workflow GitHub SUCCESS.
+
+**Verdict : PASS de la chaîne de bout en bout pour 1 spécialiste, validation Oracle et publication unique P6, en environnement conteneurisé éphémère avec fournisseur simulé local.** Complète les PASS précédents du parcours **0 spécialiste** avec projet, idée, Chromium, accès multi-utilisateurs et les tests C1/C2 de sécurité/récupération.
+
+**Ne pas extrapoler :** ce test n'établit pas 2/5 spécialistes sur la même mission, ni le retour Projet/Idée dans **cette** mission enfant (validé précédemment sur une mission différente à 0 spécialiste). Aucun modèle hébergé gratuit en direct n'a été sollicité. Le profil réel Chromebook Lite et la revue des alertes de sécurité avant release restent NON CONCLUANTS. La source candidate est isolée ; `main` et la release officielle `v1.0.1` demeurent inchangés. Aucun merge ni GO stable accordé.
+
+Les **règles définitives** restent : pas de replay automatique d'un appel fournisseur incertain ; `OUTCOME_UNKNOWN` et reprise sur nouvelle demande explicite, sans nouveau broker ni ancien 4C. Les preuves C2 SIGKILL sont maintenues sans rerun.
