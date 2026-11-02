@@ -18,6 +18,10 @@ on:
         description: One authorized real native child with local tool-call fixture and Mongo receipt
         type: boolean
         default: false
+      one_child_oracle:
+        description: Same one-child mission must also pass Oracle VERIFIED and one P6 publication
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -51,7 +55,7 @@ jobs:
           test -e scripts/botmode/ci-real-idea-runner.sh
           test -e scripts/botmode/ci-oracle-publication-project-gate.py
           test -e scripts/botmode/ci-idea-browser-e2e.cjs
-          if test "${{ inputs.one_child_only }}" = true; then
+          if test "${{ inputs.one_child_only }}" = true || test "${{ inputs.one_child_oracle }}" = true; then
             test "${{ inputs.simplified_v1 }}" = true
             test -e scripts/botmode/ci-openai-subagent-fixture.py
             test -e scripts/botmode/ci-source-built-one-child-gate.py
@@ -82,7 +86,8 @@ jobs:
       - name: Boot isolated runtime and qualify Oracle → Project API → Idea browser
         env:
           OPENROUTER_API_KEY: ci-local-fixture-no-real-key
-          CI_ONE_CHILD_ONLY: ${{ inputs.one_child_only && inputs.simplified_v1 && '1' || '0' }}
+          CI_ONE_CHILD_ONLY: ${{ (inputs.one_child_only || inputs.one_child_oracle) && inputs.simplified_v1 && '1' || '0' }}
+          CI_ONE_CHILD_ORACLE: ${{ inputs.one_child_oracle && inputs.simplified_v1 && '1' || '0' }}
         shell: bash
         run: bash scripts/botmode/ci-real-idea-runner.sh
       - name: Always destroy disposable stack

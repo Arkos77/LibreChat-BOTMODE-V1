@@ -98,3 +98,11 @@ Preuves directement relevées dans le run :
 Les précédents runs de la sous-qualification enfant #41393247614 et #41394080821 échouaient **avant tout appel de modèle** à cause, respectivement, d'une requête de test `orchestratorMission` mal formée (`constraints` absent) et d'une absence de gestion du code 503 pendant l'initialisation native. Aucun correctif de production n'a été requis : le correctif final a isolé un tour Worker ordinaire et repris la gestion existante du 503 uniquement avant admission.
 
 Aucun nouveau cycle CI n'est nécessaire pour répéter ces preuves en l'absence de régression.
+
+## C3 — Jointure finale enfant + Oracle + P6 (candidate en qualification)
+
+Nouvelle entrée **optionnelle** `one_child_oracle=true` dans le workflow déjà validé, toujours avec `simplified_v1=true` et image source exacte jetable. Le runner réutilise le Worker, le spécialiste autorisé et la fixture `subagent` existante, et l'unique mission du vérificateur `ci-source-built-one-child-gate.py` dispose cette fois d'un `orchestratorMission` complet avec `constraints` explicites (contrat identique au test Oracle déjà validé).
+
+**Conditions exigées sur le même `streamId`, `missionId`, `taskId` et `conversationId` :** 1 appel `subagent` parent, 1 réponse du modèle enfant, 1 conversation enfant durable avec exactement un résultat `completed` et aucun `error`, Oracle `VERIFIED` dans la ligne Redis du même job, job `complete`, `responseMessageId` renseigné, aucune publication en attente, **exactement une trame SSE `final`**, message final parent enregistré dans MongoDB. Les compteurs modèles ne sont jamais assimilés à des finales P6. Aucun modèle hébergé ni secret réel n'est transmis.
+
+Ce test ne reprend **aucun** ancien replay 4C, ne réutilise aucune mission incertaine, ne déploie aucune release et ne fusionne rien. **Verdict avant exécution : NON CONCLUANT.** Un éventuel FAIL devra être classé précisément (admission, délégation, Oracle, P6, persistance), sans considérer les sous-tests précédemment PASS comme annulés.

@@ -6,6 +6,7 @@ received a model request and left a durable, completed transcript in MongoDB.
 Never print IDs, prompts, tokens or model content. One POST, subsequent reads only.
 """
 import json
+import os
 import subprocess
 import time
 import uuid
@@ -19,6 +20,7 @@ COMPOSE = ['docker', 'compose', '-f', 'docker-compose.botmode.yml', '-f', 'docke
 TOKEN = Path('/tmp/botmode-e2e-test-token').read_text().strip()
 WORKER = Path('/tmp/botmode-ci-worker-id').read_text().strip()
 CHILD = Path('/tmp/botmode-ci-child-id').read_text().strip()
+ORACLE = os.environ.get('CI_ONE_CHILD_ORACLE') == '1'
 
 
 def fail(code):
@@ -82,6 +84,74 @@ const mongoose=require('mongoose');
         return None
 
 
+def verify_oracle_p6(stream_id, mission_id, task_id, parent, final_count):
+    # Require Oracle and exactly one P6 final on the SAME child mission.
+    physical = '::stream:{' + stream_id + '}:job'
+    names = ('status', 'orchestratorPlan', 'missionOracleState',
+             'responseMessageId', 'terminalPersistencePending', 'error')
+    state = {}
+    for iteration in range(20):
+        command = COMPOSE + ['exec', '-T', 'redis', 'redis-cli', '--raw',
+                             'HMGET', physical, *names]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=20)
+        if result.returncode:
+            fail('REDIS_MISSION_READ_FAILED')
+        fields = result.stdout.splitlines()
+        if len(fields) >= len(names):
+            state = dict(zip(names, fields))
+            if state.get('missionOracleState') and state.get('status') != 'running':
+                break
+        time.sleep(1)
+    print('CI_ONE_CHILD_ORACLE_JOB_STATUS=' + state.get('status', 'absent'), flush=True)
+    if final_count != 1:
+        fail('P6_SINGLE_FINAL_NOT_OBSERVED')
+    if (state.get('status') != 'complete' or not state.get('responseMessageId') or
+            state.get('terminalPersistencePending') not in ('0', 'false', 'False', '')):
+        fail('ORACLE_P6_COMMIT_MISSING')
+    try:
+        plan = json.loads(state.get('orchestratorPlan') or '')
+        oracle = json.loads(state.get('missionOracleState') or '')
+        task = (oracle.get('results') or {}).get(task_id) or {}
+        verdicts = task.get('verdicts') or []
+        valid = (plan.get('mission', {}).get('missionId') == mission_id and
+                 len(plan.get('tasks') or []) == 1 and
+                 plan['tasks'][0].get('agentId') == WORKER and
+                 len(verdicts) == 1 and verdicts[0].get('status') == 'VERIFIED')
+    except (ValueError, TypeError, KeyError, IndexError):
+        valid = False
+    print('CI_ONE_CHILD_ORACLE_VERIFIED=' + str(valid).upper(), flush=True)
+    if not valid:
+        fail('ORACLE_VERDICT_NOT_VERIFIED_FOR_CHILD_MISSION')
+    code = r'''
+const mongoose=require('mongoose');
+(async()=>{
+  await mongoose.connect(process.env.MONGO_URI);
+  const doc=await mongoose.connection.db.collection('messages').findOne({
+    conversationId:process.env.CI_PARENT_ID,
+    messageId:process.env.CI_P6_RESPONSE_ID,
+    isCreatedByUser:false
+  },{projection:{messageId:1,unfinished:1,content:1,text:1}});
+  const ok=Boolean(doc && doc.unfinished!==true &&
+    ((typeof doc.text==='string'&&doc.text.trim()) ||
+     (Array.isArray(doc.content)&&doc.content.some(p=>p.type==='text'&&
+       typeof p.text==='string'&&p.text.trim()))));
+  console.log('CI_ONE_CHILD_P6_PARENT_MONGO_COMMITTED='+String(ok).toUpperCase());
+  await mongoose.disconnect();
+  if(!ok)process.exitCode=2;
+})().catch(e=>{console.error('CI_P6_DB_ERROR_CLASS='+e.name);process.exitCode=2});
+'''
+    proc = subprocess.run(COMPOSE + ['exec', '-T', '-e', 'CI_PARENT_ID=' + parent,
+                                    '-e', 'CI_P6_RESPONSE_ID=' + state['responseMessageId'],
+                                    'api', 'node', '-e', code],
+                          capture_output=True, text=True, timeout=30)
+    for line in proc.stdout.splitlines():
+        if line.startswith('CI_ONE_CHILD_P6_'):
+            print(line, flush=True)
+    if proc.returncode:
+        fail('P6_PARENT_MONGO_READBACK_FAILED')
+    print('BOTMODE_C3_ONE_CHILD_ORACLE_VERIFIED_P6_ONCE=PASS', flush=True)
+
+
 def main():
     if not WORKER or not CHILD or CHILD == WORKER:
         fail('INVALID_AGENT_IDENTITIES')
@@ -97,6 +167,28 @@ def main():
         'isNewConvo': True,
         'text': 'Délègue une seule tâche à ton spécialiste autorisé. Attends son résultat et réponds en JSON {"ok":true}.',
     }
+    mission_id = 'ci-child-oracle-' + str(uuid.uuid4())
+    task_id = mission_id + '/main'
+    if ORACLE:
+        body['orchestratorMission'] = {
+            'mission': {
+                'missionId': mission_id, 'taskId': mission_id,
+                'objective': 'Déléguer à un spécialiste autorisé et restituer le résultat certifié.',
+                'constraints': ['Utiliser le résultat enfant avant la synthèse.',
+                                'Répondre avec un JSON strict, sans Markdown.'],
+                'requiredCapabilities': ['basic'],
+                'validation': {'criteria': [
+                    {'id': 'ci-ok', 'field': 'ok', 'expected': True}
+                ]},
+            },
+            'plannerContext': {
+                'worker': {'id': 'ci-worker', 'agentId': WORKER,
+                           'role': 'worker', 'capabilities': ['basic'], 'constraints': []},
+                'specialists': [{'id': CHILD, 'agentId': CHILD,
+                                 'role': 'specialist', 'capabilities': ['basic'],
+                                 'constraints': []}],
+            },
+        }
     # /api/config readiness precedes native-generation readiness in LibreChat.
     # Only a confirmed startup 503 is retryable; it creates no job and has no
     # external side effect. The request body and IDs remain exactly the same.
@@ -133,6 +225,7 @@ def main():
         fail('BAD_ADMISSION_ENVELOPE')
     print('CI_ONE_CHILD_REAL_API_ADMITTED=PASS', flush=True)
     # The request was submitted ONCE. SSE GET and Mongo readback cannot relaunch it.
+    finals = 0
     try:
         status, raw = request('/api/agents/chat/stream/' + stream_id + '?resume=true', timeout=110)
         finals = 0
@@ -174,6 +267,8 @@ def main():
             child.get('errors') != 0 or child.get('messages', 0) < 2 or child.get('linked') is not True):
         fail('DURABLE_CHILD_LINEAGE_OR_RECEIPT_UNPROVEN')
     print('BOTMODE_C3_ONE_NATIVE_CHILD_DURABLY_COMPLETED=PASS', flush=True)
+    if ORACLE:
+        verify_oracle_p6(stream_id, mission_id, task_id, parent, finals)
 
 
 if __name__ == '__main__':
