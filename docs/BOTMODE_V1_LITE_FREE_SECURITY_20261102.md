@@ -52,3 +52,13 @@ Bilan sur la branche candidate : 4 alertes HIGH sur 6 disposent d un correctif v
 Go grpc-go : run #41437922901 PASS, go mod tidy reproductible, go mod verify et go test sur la version 1.83.2 et ses trois dependances transitives ajustées.
 
 Aucun nouveau deploiement Lite Chromebook, aucune fusion ou release. Verdict release stable : NO-GO.
+
+## Qualification HAPPY DOM 21.0.4 (candidate)
+
+Les alertes high GHSA-c8p4-j97h-3vg8 et GHSA-834v-8h66-3h79, ainsi que l alerte medium GHSA-5fpq-26gf-qwcr, concernent le package de test Jest happy-dom, installe auparavant en 20.8.9. La version officielle corrigee 21.0.4 a ete selectionnee, avec le wrapper @happy-dom/jest-environment dans la meme version. Manifest client, verrous npm et Bun sont synchronises sur les metadonnees et empreintes du registre npm. Nouvelle dependance transitive buffer-image-size 0.6.4 incluse dans le verrou npm, deja connue du verrou Bun.
+
+Changement majeur confine aux outils de test : Happy DOM 21 desactive par defaut les chargements CSS et iframe susceptibles de causer des SSRF ; ne pas reintroduire les anciens comportements non securises pour faire passer des tests.
+
+Le workflow Docker Security Distribution dispose maintenant de l option happy_dom_security_only : un seul job GitHub qui teste npm ci propre, les builds des packages requis, les six suites Jest avec directives @jest-environment Happy DOM, et le verrou Bun en mode frozen. La qualification ne vaut PASS que si ces tests reussissent ; aucun test API Oracle/P6 precedemment acquis n est relance.
+
+Verdict avant run : NON CONCLUANT. Branch candidate uniquement ; aucune installation personnelle, fusion, release ou modele payant touche.
