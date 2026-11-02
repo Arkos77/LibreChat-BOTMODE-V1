@@ -97,15 +97,30 @@ def main():
         'isNewConvo': True,
         'text': 'Délègue une seule tâche à ton spécialiste autorisé. Attends son résultat et réponds en JSON {"ok":true}.',
     }
-    try:
-        status, raw = request('/api/agents/chat/agents', body, timeout=90)
-    except HTTPError as error:
-        # Never print the request, JWT, response body or identifiers.
-        print('CI_ONE_CHILD_HTTP_STATUS=' + str(error.code), flush=True)
-        fail('ADMISSION_REJECTED')
-    except OSError as error:
-        print('CI_ONE_CHILD_HTTP_CLASS=' + type(error).__name__, flush=True)
-        fail('ADMISSION_REQUEST_FAILED')
+    # /api/config readiness precedes native-generation readiness in LibreChat.
+    # Only a confirmed startup 503 is retryable; it creates no job and has no
+    # external side effect. The request body and IDs remain exactly the same.
+    status = None
+    raw = ''
+    for attempt in range(10):
+        try:
+            status, raw = request('/api/agents/chat/agents', body, timeout=90)
+            break
+        except HTTPError as error:
+            reason = error.read(1024).decode('utf8', 'replace')
+            if (error.code == 503 and 'SERVER_NOT_READY' in reason and
+                    'Server is still starting' in reason):
+                print('CI_ONE_CHILD_STARTUP_RETRY=' + str(attempt + 1), flush=True)
+                time.sleep(12)
+                continue
+            # Never print the request, JWT, error body or identifiers.
+            print('CI_ONE_CHILD_HTTP_STATUS=' + str(error.code), flush=True)
+            fail('ADMISSION_REJECTED')
+        except OSError as error:
+            print('CI_ONE_CHILD_HTTP_CLASS=' + type(error).__name__, flush=True)
+            fail('ADMISSION_REQUEST_FAILED')
+    if status is None:
+        fail('NATIVE_STARTUP_UNAVAILABLE_AFTER_BOUNDED_RETRIES')
     if status != 200:
         print('CI_ONE_CHILD_ADMISSION_STATUS=' + str(status), flush=True)
         fail('ADMISSION_HTTP_NOT_200')
