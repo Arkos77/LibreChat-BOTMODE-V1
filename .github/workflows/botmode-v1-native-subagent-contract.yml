@@ -38,6 +38,10 @@ jobs:
         run: |
           npx jest --ci --runInBand --coverage=false --runTestsByPath src/agents/__tests__/custom-endpoint-tenant.e2e.test.ts
           echo 'BOTMODE_NATIVE_PARENT_CHILD_PARENT_CONTRACT=PASS'
+      - name: Reject uncertain provider replay after cold restart
+        run: |
+          node scripts/botmode/native-no-auto-cold-provider-replay-regression.cjs
+          node scripts/botmode/native-outcome-unknown-regression.cjs
       - name: Evidence boundary
         if: always()
         run: |

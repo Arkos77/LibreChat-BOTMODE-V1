@@ -905,10 +905,81 @@ class GenerationJobManagerClass {
     this.nativeMissionRecoveryHandler = handler;
   }
 
+  /** After the former provider lease has expired, record uncertainty using
+   * only the existing Redis claim and generation-fenced status CAS. The exact
+   * Mongo checkpoint stays intact, but MUST NOT authorize an automatic replay.
+   * No provider, tool, Oracle or terminal-publication callback is invoked.
+   * Manual retry, if requested later, must use a separately authorized run.
+   */
+  private async markOrphanedNativeMissionOutcomeUnknown(candidate: {
+    streamId: string;
+    createdAt: number;
+    checkpointNamespace: string;
+    checkpointId: string;
+  }): Promise<boolean> {
+    const store = this.jobStore;
+    if (!this._isRedis || this.shuttingDown || !store.releaseDrainedMissionRecovery) return false;
+    const claim = await this.claimCheckpointedOrphanForInspection(
+      candidate.streamId,
+      candidate.createdAt,
+    );
+    if (
+      !claim ||
+      claim.checkpointNamespace !== candidate.checkpointNamespace ||
+      claim.checkpointId !== candidate.checkpointId
+    ) {
+      // The inspection helper releases claims it rejected. A claim from an
+      // unexpected checkpoint must be released explicitly by this caller.
+      if (claim) {
+        await store.releaseDrainedMissionRecovery(
+          claim.streamId,
+          claim.createdAt,
+          claim.ownerToken,
+        );
+      }
+      return false;
+    }
+    try {
+      if (this.shuttingDown || this.jobStore !== store) return false;
+      const job = await store.getJob(candidate.streamId);
+      if (
+        job?.createdAt !== candidate.createdAt ||
+        job.status !== 'running' ||
+        job.checkpointNamespace !== candidate.checkpointNamespace ||
+        job.orchestratorPlan == null ||
+        job.providerDrained !== false ||
+        !job.providerExecutionId ||
+        job.providerExecutionStartedId !== job.providerExecutionId
+      ) {
+        return false;
+      }
+      // The original terminal owner may have completed in the meantime;
+      // transitionStatus fails closed if it already won the running CAS.
+      return await store.transitionStatus(candidate.streamId, {
+        from: 'running',
+        to: 'error',
+        expectCreatedAt: candidate.createdAt,
+        patch: { error: 'OUTCOME_UNKNOWN', completedAt: Date.now() },
+      });
+    } finally {
+      await store.releaseDrainedMissionRecovery(
+        candidate.streamId,
+        candidate.createdAt,
+        claim.ownerToken,
+      ).catch((error) => {
+        logger.warn('[GenerationJobManager] Unknown-outcome inspection claim release failed', error);
+      });
+    }
+  }
+
   /** Single-flight per stream+generation, across startup and heartbeat scans. */
   private async dispatchCheckpointedOrphanedNativeMissions(): Promise<void> {
     const handler = this.nativeMissionRecoveryHandler;
-    if (handler == null || !this._isRedis || this.shuttingDown) return;
+    if (
+      !this._isRedis ||
+      this.shuttingDown ||
+      (handler == null && !this.jobStore?.claimDrainedMissionRecovery)
+    ) return;
     const candidates = await this.inspectCheckpointedOrphanedNativeMissions();
     await Promise.all(
       candidates.map(async (candidate) => {
@@ -917,10 +988,15 @@ class GenerationJobManagerClass {
         if (this.nativeMissionRecoveryInFlight.has(key)) return;
         this.nativeMissionRecoveryInFlight.add(key);
         try {
-          // A discovered checkpoint alone NEVER grants replay authority.
-          await handler(Object.freeze({ ...candidate }));
+          if (handler == null) {
+            // V1 default: no replay executor is installed in server/index.js.
+            await this.markOrphanedNativeMissionOutcomeUnknown(candidate);
+          } else {
+            // Explicit test host; never installed in production V1.
+            await handler(Object.freeze({ ...candidate }));
+          }
         } catch (error) {
-          logger.warn('[GenerationJobManager] Host native mission recovery attempt failed', error);
+          logger.warn('[GenerationJobManager] Native mission recovery inspection failed', error);
         } finally {
           this.nativeMissionRecoveryInFlight.delete(key);
         }
