@@ -13,6 +13,16 @@ jobs:
   native-subagent-contract:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
       NODE_ENV: test
       NODE_OPTIONS: --max-old-space-size=6144
@@ -42,6 +52,7 @@ jobs:
         run: |
           node scripts/botmode/native-no-auto-cold-provider-replay-regression.cjs
           node scripts/botmode/native-outcome-unknown-regression.cjs
+          node scripts/botmode/native-outcome-unknown-redis-regression.cjs
       - name: Evidence boundary
         if: always()
         run: |
