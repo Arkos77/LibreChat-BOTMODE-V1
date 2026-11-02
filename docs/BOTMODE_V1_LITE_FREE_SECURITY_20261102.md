@@ -120,3 +120,20 @@ Un audit en lecture seule a confirmé que le **profil Lite distribué avant corr
 `verify-runtime-distribution.sh` exige ce profil, son absence de port exposé, son volume AOF et les variables natives. Compose du candidat : syntaxe et résolution des trois services **PASS en lecture seule avec identifiants fictifs** ; l'exécution de la candidate sur GitHub reste à revérifier après modification. Les quatre conteneurs et deux installations actuellement opérationnels sur Chromebook (`3080`, `3081` HTTP 200) sont **des versions anciennes**, et non une preuve d'installation de la candidate. Ressources actuelles : **2 747 Mio RAM totale, ~542 Mio disponibles, 0 swap, ~7,8 Gio libres**. **Aucune nouvelle pile ne sera démarrée sur cette machine sans libérer volontairement de ressources et sans approbation distincte pour changer les conteneurs existants.**
 
 Le risque LOW `deepmerge`/`elliptic` est accepté temporairement sur la seule candidate jusqu'au 16/11/2026 (issue #109) ; aucune fusion, publication ou GO de production n'a été autorisée.
+
+### Résultat vérifié — profil Lite distribué, Redis AOF et mission intégrée : PASS sur runner isolé
+
+Run GitHub [#41467068287](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/41467068287), source exacte `29d3aa5464ce1f12e4ce4d5549c69c395235c92e`, **SUCCESS** (construction OCI depuis le commit, pas de push GHCR, suppression de la pile CI en fin de test). Contrairement aux anciennes qualifications, **aucun Redis n'est injecté par le script E2E** : l'API, MongoDB 4.4.29 et Redis 7 avec AOF proviennent directement du Compose Lite de la candidate. Le fournisseur de modèle reste une fixture déterministe locale (aucun appel distant).
+
+Marqueurs du run :
+
+- `CI_REAL_IDEA_EXACT_EPHEMERAL_IMAGE=PASS` : conteneur API issu du commit exact.
+- `CI_ONE_CHILD_PARENT_TOOL_REQUESTS_DELTA=1`, `CI_ONE_CHILD_CHILD_RESPONSES_DELTA=1` : appel natif d'un spécialiste effectivement exécuté.
+- `CI_ONE_CHILD_MONGO_CHILD_COUNT=1`, `CI_ONE_CHILD_MONGO_COMPLETE=1`, `CI_ONE_CHILD_MONGO_ERRORS=0`, `CI_ONE_CHILD_MONGO_LINKED=True` : conversation enfant, résultat terminé et relation parent-enfant conservés en MongoDB.
+- `CI_ONE_CHILD_INITIAL_SSE_FINAL_COUNT=1`, `CI_ONE_CHILD_ORACLE_JOB_STATUS=complete`, `CI_ONE_CHILD_ORACLE_VERIFIED=TRUE`, `CI_ONE_CHILD_P6_PARENT_MONGO_COMMITTED=TRUE`, `BOTMODE_C3_ONE_CHILD_ORACLE_VERIFIED_P6_ONCE=PASS` : **sur une seule mission, Oracle VERIFIED et exactement une finale P6 persistée**, sous le profil Lite effectif.
+- `BOTMODE_LITE_REDIS_AOF_PERSISTS_AFTER_REAL_RESTART=PASS` : écriture d'une clé de test isolée, redémarrage **effectif** de Redis, lecture de la clé persistée puis nettoyage. La preuve porte sur la durabilité AOF d'une clé et non sur une mission encore en vol au moment du redémarrage ; ne pas extrapoler à une reprise automatique des appels fournisseurs incertains.
+- `BOTMODE_LITE_DURABLE_INTERNAL_REDIS=PASS` et `BOTMODE_RUNTIME_DISTRIBUTION=PASS` en vérifications locales non mutantes avec valeurs d'environnement factices : Redis sans port hôte, limite mémoire, volume persistant et API dépendant de sa santé.
+
+**Verdict : PASS de la distribution Lite source exacte et de sa mission Oracle/P6 avec 1 spécialiste sur runner GitHub.** Le compromis RAM/CPU est volontairement minimal : un Redis interne léger, pas de nouveau runtime. **NON CONCLUANT sur le matériel Chromebook** (RAM disponible ~542 Mio, zéro swap, deux API/Mongo antérieures en activité, aucun espace pour démarrer une troisième pile en sécurité). Ne pas qualifier la compatibilité CPU sans AVX ni l'empreinte mémoire réelle de cette nouvelle image par extrapolation depuis le runner ; aucun conteneur du Chromebook n'a été modifié. Le modèle gratuit hébergé n'a été qualifié que pour un appel d'outil isolé, pas dans ce run.
+
+L'acceptation temporaire des deux risques LOW `deepmerge` et `elliptic` reste limitée à la candidate jusqu'au 16 novembre 2026, issue GitHub #109. **La publication officielle et la migration de l'installation utilisateur restent interdites sans décision humaine distincte.**
