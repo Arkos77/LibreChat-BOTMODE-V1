@@ -14,7 +14,11 @@ import {
   researchPhaseBinding,
   requireResearchObservation,
 } from './research';
-import { assertMissionTaskVerified, validateMissionTask } from './missionOracle';
+import {
+  assertDistinctMissionTaskResults,
+  assertMissionTaskVerified,
+  validateMissionTask,
+} from './missionOracle';
 import { getTaskLevels, nodeIdentity } from './planner';
 import { structuredTaskOptions } from './schema';
 
@@ -115,6 +119,7 @@ export type MissionOracleSourcesResolver = (
   | Promise<NonNullable<MissionOracleTaskInput['observedSources']>>;
 
 function requirePredecessorOutputs(
+  plan: MissionPlan,
   sourceTasks: readonly PlannedTask[],
   resolveMissionOracleEvidence?: MissionOracleEvidenceResolver,
   persistMissionOracleResult?: MissionOracleResultPersister,
@@ -122,6 +127,7 @@ function requirePredecessorOutputs(
 ) {
   const sourceNodeIds = sourceTasks.map((task) => task.nodeId);
   return async (state: BaseGraphState): Promise<void> => {
+    assertDistinctMissionTaskResults(plan, state.agentOutputs ?? {});
     const missing = sourceNodeIds.filter((nodeId) => state.agentOutputs?.[nodeId] == null);
     if (missing.length > 0) {
       throw new Error(
@@ -199,6 +205,17 @@ export function compileNativePlan(
           requiredCapabilities: task.requiredCapabilities,
           ...(task.validation.length > 0 && { validation: task.validation }),
         }),
+        ...(task.dependsOn.length === 0
+          ? []
+          : [
+              'You are executing a NEW downstream task, not repeating the previous specialist report. Use upstream findings as input evidence, but produce your own task-specific result; copying the predecessor text is rejected by the host.',
+              ...(task.requiredCapabilities.includes('analysis')
+                ? ['Provide analysis of implications, risks, uncertainty and feasible scenarios grounded in upstream evidence. Distinguish conclusions from source facts.']
+                : []),
+              ...(task.requiredCapabilities.includes('writing')
+                ? ['Produce a new integrated synthesis of findings and analysis that answers the mission objective. Do not relabel or reproduce a Research report.']
+                : []),
+            ]),
         ...(task.validation.length === 0
           ? []
           : [
@@ -253,6 +270,7 @@ export function compileNativePlan(
         to: isResearchTask(task) ? researchObservationNodeId(task.nodeId) : task.nodeId,
         edgeType: 'direct',
         beforeTransition: requirePredecessorOutputs(
+          plan,
           sourceTasks,
           resolveMissionOracleEvidence,
           persistMissionOracleResult,
