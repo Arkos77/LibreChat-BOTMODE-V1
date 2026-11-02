@@ -13,7 +13,11 @@ cat >> docker-compose.botmode-lite.yml <<'YAML'
 YAML
 # Fixture is pinned to this commit, copied into the ephemeral checkout;
 # the source candidate and its lockfile remain immutable.
-cp scripts/botmode/ci-openai-compatible-mock.py /tmp/botmode-ci-model-fixture.py
+if [ "${CI_ONE_CHILD_ONLY:-0}" = 1 ]; then
+  cp scripts/botmode/ci-openai-subagent-fixture.py /tmp/botmode-ci-model-fixture.py
+else
+  cp scripts/botmode/ci-openai-compatible-mock.py /tmp/botmode-ci-model-fixture.py
+fi
 test -s /tmp/botmode-ci-model-fixture.py
 python3 /tmp/botmode-ci-model-fixture.py >/tmp/botmode-ci-fixture.log 2>&1 &
 fixture_pid=$!
@@ -223,6 +227,39 @@ const mongoose = require('mongoose');
 })().catch((e)=>{console.error('CI_WORKER_LOOKUP='+String(e.name));process.exit(1)});
 NODE
 test -s /tmp/botmode-ci-worker-id
+if [ "${CI_ONE_CHILD_ONLY:-0}" = 1 ]; then
+  docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE_CHILD' > /tmp/botmode-ci-child-id
+const mongoose=require('mongoose');
+(async()=>{
+  await mongoose.connect(process.env.MONGO_URI);
+  const worker=await mongoose.connection.db.collection('agents').findOne(
+    {name:'BOT MODE Worker'}, {projection:{subagents:1}});
+  const ids=worker?.subagents?.agent_ids;
+  if(!worker?.subagents?.enabled || !Array.isArray(ids) || ids.length!==5) {
+    throw Error('Exactly five configured authorized specialists required');
+  }
+  const child=await mongoose.connection.db.collection('agents').findOne({id:ids[0]});
+  if(!child || child.id===worker.id) throw Error('Selected specialist not persisted');
+  process.stdout.write(child.id);
+  await mongoose.disconnect();
+})().catch(e=>{console.error('CI_CHILD_LOOKUP_ERROR_CLASS='+e.name);process.exit(1)});
+NODE_CHILD
+  test -s /tmp/botmode-ci-child-id
+  python3 - <<'PY_CFG'
+import json
+from urllib.request import Request, urlopen
+child=open('/tmp/botmode-ci-child-id').read().strip()
+request=Request('http://127.0.0.1:8088/configure',
+    data=json.dumps({'childId':child}).encode(),
+    headers={'Content-Type':'application/json'},method='POST')
+with urlopen(request,timeout=5) as response:
+    assert json.load(response).get('ok') is True
+print('CI_ONE_CHILD_FIXTURE_AUTHORIZED_AGENT=PASS')
+PY_CFG
+  python3 scripts/botmode/ci-source-built-one-child-gate.py
+  echo 'BOTMODE_C3_SOURCE_BUILT_REAL_CHILD_RECORDED=PASS'
+  exit 0
+fi
 python3 - <<'PY'
 import json,uuid
 worker=open('/tmp/botmode-ci-worker-id').read().strip()

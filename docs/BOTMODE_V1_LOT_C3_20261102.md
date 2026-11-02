@@ -59,3 +59,11 @@ Run [41391258105](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/4
 **Verdict C3 : PASS pour parcours réel sans spécialiste Oracle/P6/Projet/Idée/Chromium et isolation multi-utilisateur, NON CONCLUANT pour délégation réelle 1/N dans ce même environnement et sélection automatique du modèle gratuit hors fixture.** L'absence d'appel fournisseur réel reste une limite assumée de la qualification gratuite. Une qualification Lite sur le Chromebook et la revue des vulnérabilités GH (17 alertes affichées au dernier push : 6 élevées, 7 modérées, 4 faibles sur branche par défaut) sont encore requises avant GO stable.
 
 Aucune fusion, aucune publication GHCR, aucune modification de `main`, de `v1.0.1`, de `.env`, des clés, des volumes et installations personnelles.
+
+## C3 — Sous-qualification de délégation native réelle (1 spécialiste)
+
+Suite au PASS E2E Oracle/P6/Projet/Idée à **zéro** spécialiste (#41391258105), le scénario texte fixe ne pouvait pas exercer l'outil `subagent`. Réutilisation de **la fixture source existante** `ci-openai-subagent-fixture.py`, plutôt qu'un deuxième moteur : le workflow E2E reçoit l'option `one_child_only`, qui démarre la même candidate Docker éphémère, provisionne le Worker et ses cinq spécialistes, puis configure la fixture avec **un seul** ID effectivement autorisé. Un nouveau petit vérificateur `ci-source-built-one-child-gate.py` soumet une seule mission à l'API HTTP réelle et exige : 1 appel d'outil parent réellement généré ; 1 appel modèle enfant ; 0 outil manquant ; 1 conversation enfant durable liée au parent avec `parentToolCallId` ; 1 résultat enfant persisté `subagentTask.status=completed`, sans erreur. Aucune preuve ne se réduit à un événement SSE ou au simple inventaire d'agents.
+
+Le parcours Oracle/Projet/Idée précédemment PASS n'est **pas répété** en mode `one_child_only`. La fixture ne contacte aucun fournisseur externe. L'état de la mission parent est diagnostiqué séparément ; ce nouveau test ne prétend pas avoir validé Oracle/P6 sur une mission enfant avant preuve réelle. Le comportement des autres déclenchements du workflow est inchangé.
+
+**Verdict à venir :** NON CONCLUANT avant résultat de CI de la candidate exacte ; aucun GO ni fusion sur simple mise en place du test.
