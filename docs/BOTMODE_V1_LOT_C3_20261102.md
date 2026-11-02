@@ -77,3 +77,24 @@ Correctif de portée : la nouvelle qualification vise uniquement l'outil natif *
 ### Deuxième essai « un enfant » — code de démarrage identifié
 
 Run `41394080821`, commit `68f6d5b5...` : source-built et provisionnement des six agents PASS, fixture correctement configurée, mais admission HTTP **503** à l'instant du démarrage du tour. Le scénario précédent gère déjà une fenêtre `503 SERVER_NOT_READY` distincte de la disponibilité `/api/config`. Ce n'est pas une preuve d'échec du sous-agent. Le vérificateur applique désormais la même tolérance strictement limitée aux 503 avec code `SERVER_NOT_READY` et message de démarrage attendu, sur **la même demande et les mêmes IDs**, sans nouvelle tentative si le tour a déjà été accepté.
+
+## Qualification native du spécialiste réellement exécuté — PASS (02/11/2026)
+
+Run GitHub source-built [#41394744130](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/41394744130) : **SUCCESS**, commit exactement qualifié `169ae110c9dec82465b9e919509251f112dbda52`. L'image LibreChat a été construite sur un runner jetable, sans push GHCR. Redis et MongoDB isolés ; modèle **simulé localement** par la fixture déjà versionnée `ci-openai-subagent-fixture.py` ; aucun jeton modèle réel ni dépense.
+
+La mission est un **tour Worker natif ordinaire** (distinct du plan Oracle déjà validé pour zéro spécialiste), à partir de l'API réellement démarrée. Le Worker et les cinq spécialistes ont été créés et persistés avec autorisations : PASS. La fixture a été liée à un seul ID enfant déjà autorisé. Une unique requête HTTP mission a été admise après une attente `503 SERVER_NOT_READY` strictement bornée, sans retry après création du job.
+
+Preuves directement relevées dans le run :
+
+- `CI_ONE_CHILD_PARENT_TOOL_REQUESTS_DELTA=1` : un appel de l'outil `subagent` demandé par le modèle parent (fixture).
+- `CI_ONE_CHILD_CHILD_RESPONSES_DELTA=1` : **un vrai appel au modèle enfant** exécuté par LibreChat.
+- `CI_ONE_CHILD_MISSING_TOOL_DELTA=0` : aucun fallback silencieux de l'outil.
+- `CI_ONE_CHILD_MONGO_CHILD_COUNT=1`, `CI_ONE_CHILD_MONGO_MESSAGES=2`, `CI_ONE_CHILD_MONGO_COMPLETE=1`, `CI_ONE_CHILD_MONGO_ERRORS=0`, `CI_ONE_CHILD_MONGO_LINKED=True` : exactement un enfant durable, ses messages, son reçu `subagentTask.status=completed` et la liaison au parent avec identités vérifiées.
+- `CI_ONE_CHILD_INITIAL_SSE_FINAL_COUNT=1` : une finale observée sur le tour parent. `CI_ONE_CHILD_PARENT_FINAL_DELTA=2` représente le nombre de réponses de **modèle parent** durant l'exécution, non le nombre de publications P6.
+- `BOTMODE_C3_SOURCE_BUILT_REAL_CHILD_RECORDED=PASS` et workflow SUCCESS.
+
+**Verdict C3 : PASS de la délégation native effective à 1 spécialiste sur API source-built et persistance du reçu enfant ; PASS séparé du parcours Oracle VERIFIED/P6/Projet/Idée/Chromium à zéro spécialiste (#41391258105).** Ces deux sous-parcours ne constituent **pas** encore une seule mission 1 spécialiste avec Oracle/P6 VERIFED : ne pas prétendre que cette jonction a été testée. Les parcours N=2 et 5 spécialistes en API E2E, l'intégration réelle sur Chromebook Lite, le fournisseur gratuit hébergé (non simulé) et les alertes de sécurité restent NON CONCLUANTS avant GO stable.
+
+Les précédents runs de la sous-qualification enfant #41393247614 et #41394080821 échouaient **avant tout appel de modèle** à cause, respectivement, d'une requête de test `orchestratorMission` mal formée (`constraints` absent) et d'une absence de gestion du code 503 pendant l'initialisation native. Aucun correctif de production n'a été requis : le correctif final a isolé un tour Worker ordinaire et repris la gestion existante du 503 uniquement avant admission.
+
+Aucun nouveau cycle CI n'est nécessaire pour répéter ces preuves en l'absence de régression.
