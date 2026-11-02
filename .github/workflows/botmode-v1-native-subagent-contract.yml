@@ -15,6 +15,10 @@ on:
         description: Requalify C3 React tests only after building the client package
         type: boolean
         default: false
+      free_hosted_only:
+        description: One provider-hosted zero-price model tool-call smoke, without builds or paid fallback
+        type: boolean
+        default: false
   pull_request:
     paths:
       - '.github/workflows/botmode-v1-native-subagent-contract.yml'
@@ -23,7 +27,25 @@ permissions:
   contents: read
 
 jobs:
+  free-hosted-compatibility:
+    if: ${{ inputs.free_hosted_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Assert exact candidate source
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test "${{ github.ref_name }}" = simplify/botmode-v1-lot-a-20261102
+      - name: One free hosted model tool-call without paid fallback
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: python3 -B scripts/botmode/ci-hosted-free-model-tool-smoke.py
   native-subagent-contract:
+    if: ${{ !inputs.free_hosted_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:
