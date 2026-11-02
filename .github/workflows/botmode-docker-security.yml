@@ -22,9 +22,69 @@ on:
         description: Verify Happy DOM 21.0.4 and six Jest suites on isolated runner
         type: boolean
         default: false
+      residual_npm_only:
+        description: Qualify corrected CSS parser and serialization package lock only
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
+  residual-npm-security:
+    if: ${{ inputs.residual_npm_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Assert exact source and corrected versions only
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test "${{ github.ref_name }}" = simplify/botmode-v1-lot-a-20261102
+          node - <<'JS'
+          const pkgs = require('./package-lock.json').packages;
+          let count6=0,count7=0;
+          for (const [path,entry] of Object.entries(pkgs)) {
+            if (!path.endsWith('/postcss-selector-parser')) continue;
+            if (entry.version==='6.1.5') count6++;
+            else if (entry.version==='7.1.6') count7++;
+            else throw new Error('Unpatched selector parser at '+path);
+          }
+          if(count6!==1||count7!==13||pkgs['node_modules/serialize-javascript']?.version!=='7.1.3') process.exit(1);
+          console.log('BOTMODE_RESIDUAL_NPM_LOCK_EXACT_PIN=PASS');
+          JS
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.16.0
+          cache: npm
+      - name: Clean npm install and frontend build with corrected lock
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:client-package
+          npm run build:client
+          node - <<'JS'
+          const fs=require('node:fs');
+          const selectors=['node_modules/postcss-selector-parser',
+            'node_modules/@csstools/postcss-cascade-layers/node_modules/postcss-selector-parser'];
+          for(const dir of selectors){
+            const {version}=JSON.parse(fs.readFileSync(dir+'/package.json','utf8'));
+            const parser=require(process.cwd()+'/'+dir);
+            if(parser().processSync('a:focus, .item#id')!=='a:focus, .item#id')process.exit(1);
+            if(version!=='6.1.5'&&version!=='7.1.6')process.exit(1);
+          }
+          const {version}=require('./node_modules/serialize-javascript/package.json');
+          if(version!=='7.1.3')process.exit(1);
+          const output=require('serialize-javascript')({a:'test'});
+          if(!output.includes('test'))process.exit(1);
+          console.log('BOTMODE_RESIDUAL_NPM_PACKAGE_SMOKE=PASS');
+          JS
+          test -z "$(git status --porcelain -- package-lock.json client/package.json)"
+          echo 'BOTMODE_RESIDUAL_NPM_PATCH_CLEAN_BUILD=PASS'
   happy-dom-patch-security:
     if: ${{ inputs.happy_dom_security_only }}
     runs-on: ubuntu-latest
@@ -141,7 +201,7 @@ jobs:
           fi
           echo 'BOTMODE_GO_GRPC_1_83_2_PATCHED_AND_TESTED=PASS'
   compose-auth:
-    if: ${{ !inputs.go_security_only && !inputs.vite_security_only && !inputs.happy_dom_security_only }}
+    if: ${{ !inputs.go_security_only && !inputs.vite_security_only && !inputs.happy_dom_security_only && !inputs.residual_npm_only }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
