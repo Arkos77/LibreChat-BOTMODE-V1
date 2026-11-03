@@ -97,6 +97,64 @@ describe('native research phases', () => {
     expect(native.validation).toHaveLength(1);
   });
 
+  it('v2 passes exactly the current host-observed URLs in a native finalization prompt', async () => {
+    const urls = [
+      'https://example.org/compare?arch=x86_64&ram=3',
+      'https://docs.example.net/rust%20versus%20python',
+    ];
+    const resolveSources = async () => [
+      { toolCallId: 'current-call', urls },
+      { toolCallId: 'stale-call', urls: ['https://untrusted.example/old'] },
+    ];
+    const native = compileNativePlan(
+      plan,
+      new Map([['saved', binding]]),
+      undefined,
+      undefined,
+      undefined,
+      resolveSources,
+    );
+    if (native.graphConfig.type !== 'multi-agent') throw new Error('Expected native graph');
+    const edge = native.graphConfig.edges.find((item) => item.to === task.nodeId);
+    expect(typeof edge?.prompt).toBe('function');
+    const checkpoint = state();
+    await expect(edge?.beforeTransition?.(checkpoint)).resolves.toBeUndefined();
+    if (typeof edge?.prompt !== 'function') throw new Error('Missing v2 prompt');
+    const prompt = await edge.prompt(checkpoint.messages, 0);
+    expect(prompt).toContain('FINAL RESEARCH TASK');
+    expect(prompt).toContain('A plan to continue researching');
+    expect(prompt).toContain(urls[0]);
+    expect(prompt).toContain(urls[1]);
+    expect(prompt).not.toContain('https://untrusted.example/old');
+    expect(prompt).toContain('exact observed URL');
+  });
+
+  it('keeps version 1 checkpoint topology and refuses unrelated source evidence', async () => {
+    const old = structuredClone(plan);
+    old.mission.researchExecutionVersion = 1;
+    const legacy = compileNativePlan(old, new Map([['saved', binding]]));
+    if (legacy.graphConfig.type !== 'multi-agent') throw new Error('Expected native graph');
+    const legacyEdge = legacy.graphConfig.edges.find((item) => item.to === task.nodeId);
+    expect(legacyEdge?.prompt).toBeUndefined();
+    const versioned = compileNativePlan(
+      plan,
+      new Map([['saved', binding]]),
+      undefined,
+      undefined,
+      undefined,
+      async () => [{ toolCallId: 'stale-call', urls: ['https://example.org/stale'] }],
+    );
+    if (versioned.graphConfig.type !== 'multi-agent') throw new Error('Expected native graph');
+    const edge = versioned.graphConfig.edges.find((item) => item.to === task.nodeId);
+    await expect(edge?.beforeTransition?.(state())).rejects.toThrow(
+      'BOTMODE_RESEARCH_SOURCES_REQUIRED',
+    );
+    if (typeof edge?.prompt !== 'function') throw new Error('Missing v2 prompt');
+    await expect(edge.prompt(state().messages, 0)).rejects.toThrow(
+      'BOTMODE_RESEARCH_SOURCES_REQUIRED',
+    );
+  });
+
   it('refuses unversioned research plans before compiling a different checkpoint topology', () => {
     const legacy = structuredClone(plan);
     delete legacy.mission.researchExecutionVersion;
@@ -109,7 +167,7 @@ describe('native research phases', () => {
   });
 
   it('stamps fresh host research missions with their execution-policy version', () => {
-    expect(plan.mission.researchExecutionVersion).toBe(1);
+    expect(plan.mission.researchExecutionVersion).toBe(2);
   });
 
   it.each(['observation', 'result'] as const)(
