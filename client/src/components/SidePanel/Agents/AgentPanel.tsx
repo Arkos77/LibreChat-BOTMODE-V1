@@ -732,7 +732,6 @@ export default function AgentPanel() {
           )}
           {canEditAgent && !agentQuery.isInitialLoading && activePanel === Panel.builder && (
             <>
-              <AgentConfig />
               {!agent_id && (
                 <BotModeSetupButton
                   models={models}
@@ -740,6 +739,7 @@ export default function AgentPanel() {
                   modelsError={modelsError}
                 />
               )}
+              <AgentConfig />
             </>
           )}
           {canEditAgent && !agentQuery.isInitialLoading && activePanel === Panel.advanced && (
