@@ -63,7 +63,7 @@ function phaseOptions(provider: string, original: Options | undefined, phase: Ph
       ...kwargs,
       ...(phase === 'result' && { response_format: jsonFormat }),
       tool_choice:
-        phase === 'observation' ? { type: 'function', function: { name: 'web_search' } } : 'none',
+        phase === 'observation' ? { type: 'function', function: { name: 'web_search' } } : 'auto',
     },
     ...(original?.fallbacks != null && {
       fallbacks: original.fallbacks.map((fallback) => ({
@@ -93,25 +93,19 @@ export function researchPhaseBinding(
   if (phase === 'result') {
     return {
       ...binding,
-      // The web observation has already completed. The result node must write
-      // a final report, never start a second search or delegate another agent.
+      // Preserve the SDK's authorized tool binding and routing contract.
+      // Research finalization is a model instruction, not another tool-policy runtime.
       instructions: [
         instructions,
-        'FINAL RESEARCH REPORT PHASE: web_search has already completed. Produce the final report now using the retrieved search results in the conversation, not a plan for later searches.',
-        'Return one JSON object with ok, result, and sources. result must contain substantive findings, trade-offs, uncertainty, and an answer to the mission objective; do not output internal status notes such as "search done internally" or "now need to research".',
-        'sources must contain at least one complete HTTP(S) URL copied verbatim from the preceding successful web_search tool response, one URL per line. Do not paraphrase, invent, shorten, or rewrite URLs.',
-        'If the observed results lack a full URL or do not establish the requested findings, report the limitation and set ok to false; never mark an unfinished report as complete.',
+        'FINAL RESEARCH REPORT PHASE: web_search observations have already been recorded. Provide the completed report now, not a status update or future research plan.',
+        'Return one JSON object with ok, result, and sources. result must contain substantive findings that address the mission objective, compare relevant evidence, and distinguish uncertainty from sourced facts.',
+        'sources must contain one or more complete HTTP(S) URLs copied verbatim from actual successful web_search results, each on its own line. Do not substitute summaries such as "search done internally", search terms, or altered URLs.',
+        'Do not make an extra web_search call unless you genuinely lack sufficient evidence for the objective. If the available results do not support a complete report, explain the gap and set ok to false.',
       ]
         .filter(Boolean)
         .join('\n'),
-      clientOptions,
       toolEnd: false,
-      tools: [],
-      graphTools: [],
-      toolDefinitions: [],
-      toolMap: new Map(),
-      toolRegistry: new Map(),
-      subagentConfigs: [],
+      clientOptions,
     };
   }
   const tools = binding.tools?.filter(isWebTool);
