@@ -40,7 +40,10 @@ function omitUnrequestedSearchDate<T extends { parameters?: unknown }>(tool: T):
     properties?: Record<string, unknown>;
     required?: string[];
   };
-  if (schema.properties == null || !Object.prototype.hasOwnProperty.call(schema.properties, 'date')) {
+  if (
+    schema.properties == null ||
+    !Object.prototype.hasOwnProperty.call(schema.properties, 'date')
+  ) {
     return tool;
   }
   const properties = Object.fromEntries(
