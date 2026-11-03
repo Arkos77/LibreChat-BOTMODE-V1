@@ -3269,6 +3269,36 @@ class AgentClient extends BaseClient {
             }))
           : [],
       };
+      // Persist only the task identities after the host has verified every
+      // Oracle requirement and built its private verified publication. This
+      // survives Redis job expiry and never exposes candidates or evidence.
+      const verifiedResults = this.missionOracleState?.results;
+      const verifiedTasks =
+        typeof this._botModeRenderedAnswer === 'string' &&
+        this._botModeRenderedAnswer.trim() !== '' &&
+        typeof plan.planId === 'string' &&
+        Array.isArray(plan.tasks) &&
+        plan.tasks.length > 0 &&
+        plan.tasks.length <= 256 &&
+        new Set(plan.tasks.map((task) => task.taskId)).size === plan.tasks.length &&
+        plan.tasks.every((task) => {
+          const result = verifiedResults?.[task.taskId];
+          return (
+            typeof task.taskId === 'string' &&
+            result?.taskId === task.taskId &&
+            result?.nodeId === task.nodeId &&
+            Array.isArray(task.validation) &&
+            task.validation.length > 0 &&
+            result.verdicts?.length === task.validation.length &&
+            result.verdicts.every((verdict) => verdict.status === 'VERIFIED')
+          );
+        });
+      if (verifiedTasks) {
+        metadata.botModeVerification = {
+          planId: plan.planId,
+          verifiedTaskIds: plan.tasks.map((task) => task.taskId),
+        };
+      }
     }
     const signatures = this.collectedThoughtSignatures;
     if (signatures && Object.keys(signatures).length > 0) {

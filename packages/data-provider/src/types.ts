@@ -482,6 +482,8 @@ export type TBotModeProjectPlan = {
 export type TBotModeProjectPlanEntry = {
   messageId?: string;
   plan: TBotModeProjectPlan;
+  /** Host-issued after every requirement passes and the final answer is persisted. */
+  verifiedTaskIds?: string[];
 };
 
 export type TBotModeProjectSource = {

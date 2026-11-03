@@ -98,6 +98,40 @@ describe('BOT MODE incremental progress sidebar', () => {
     expect(mockSubagentsQuery.mock.calls[0][1]).toMatchObject({ refetchInterval: 2000 });
   });
 
+  it('shows completed specialist tasks only from a saved host Oracle receipt', () => {
+    mockProjectQuery.mockReturnValue({
+      data: {
+        conversations: [
+          {
+            conversationId,
+            traces: [],
+            plans: [
+              {
+                plan: {
+                  planId: 'plan-verified',
+                  tasks: [
+                    { taskId: 'mission/research', objective: 'Research confirmed' },
+                    { taskId: 'mission/analysis', objective: 'Analysis confirmed' },
+                    { taskId: 'mission/synthesis', objective: 'Synthesis awaiting evidence' },
+                  ],
+                },
+                verifiedTaskIds: ['mission/research', 'mission/analysis'],
+              },
+            ],
+            results: [{ messageId: 'published', content: 'Public conclusion' }],
+            modelReceipts: [],
+          },
+        ],
+        sources: [],
+      },
+    });
+    render(<BotModeProgressPanel projectId="project-1" conversationId={conversationId} />);
+    expect(screen.getAllByText('com_ui_botmode_progress_task_verified')).toHaveLength(2);
+    expect(screen.getAllByText('com_ui_botmode_progress_task_planned')).toHaveLength(1);
+    expect(screen.getByText('com_ui_botmode_progress_oracle')).toBeTruthy();
+    expect(screen.getByText(/com_ui_botmode_progress_verified: 2/)).toBeTruthy();
+  });
+
   it('never marks missing mission phases as completed', () => {
     const state = getMissionProgress([
       { type: 'REQUESTED', source: 'orchestrator' },

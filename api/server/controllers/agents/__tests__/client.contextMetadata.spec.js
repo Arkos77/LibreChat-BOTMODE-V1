@@ -74,7 +74,15 @@ const orchestratorPlan = {
   reasons: [{ code: 'PARALLEL_OPPORTUNITY' }],
 };
 
-function buildMeta({ snap, latestUsageIndex, usageEvents, mtoTraceId, orchestratorPlan }) {
+function buildMeta({
+  snap,
+  latestUsageIndex,
+  usageEvents,
+  mtoTraceId,
+  orchestratorPlan,
+  renderedAnswer,
+  missionOracleState,
+}) {
   const self = {
     collectedThoughtSignatures: null,
     usageEmitSink: usageEvents,
@@ -86,6 +94,8 @@ function buildMeta({ snap, latestUsageIndex, usageEvents, mtoTraceId, orchestrat
       ...(mtoTraceId == null ? {} : { mtoTraceId }),
     },
     ...(orchestratorPlan == null ? {} : { orchestratorPlan }),
+    ...(renderedAnswer == null ? {} : { _botModeRenderedAnswer: renderedAnswer }),
+    ...(missionOracleState == null ? {} : { missionOracleState }),
   };
   return AgentClient.prototype.buildResponseMetadata.call(self);
 }
@@ -128,6 +138,61 @@ describe('AgentClient.buildResponseMetadata — snapshot persistence + summary m
       },
     });
     expect(JSON.stringify(meta)).not.toContain('private-');
+  });
+
+  it('records verified task IDs only after terminal host Oracle publication is prepared', () => {
+    const evidence = {
+      results: {
+        'root-a/research': {
+          taskId: 'root-a/research',
+          nodeId: 'private-node-id',
+          verdicts: [{ status: 'VERIFIED' }],
+        },
+      },
+    };
+    const validatedPlan = {
+      ...orchestratorPlan,
+      tasks: orchestratorPlan.tasks.map((task) => ({
+        ...task,
+        validation: [{ outputContract: 'result-v1' }],
+      })),
+    };
+    const base = {
+      snap: null,
+      latestUsageIndex: 0,
+      usageEvents: [],
+      orchestratorPlan: validatedPlan,
+    };
+    const meta = buildMeta({
+      ...base,
+      renderedAnswer: 'Verified public result',
+      missionOracleState: evidence,
+    });
+    expect(meta.botModeVerification).toEqual({
+      planId: 'plan-a',
+      verifiedTaskIds: ['root-a/research'],
+    });
+    expect(JSON.stringify(meta)).not.toContain('private-node-id');
+    expect(
+      buildMeta({ ...base, missionOracleState: evidence }).botModeVerification,
+    ).toBeUndefined();
+    expect(
+      buildMeta({ ...base, renderedAnswer: 'Verified public result' }).botModeVerification,
+    ).toBeUndefined();
+    expect(
+      buildMeta({
+        ...base,
+        renderedAnswer: 'Verified public result',
+        missionOracleState: {
+          results: {
+            'root-a/research': {
+              ...evidence.results['root-a/research'],
+              verdicts: [{ status: 'REJECTED' }],
+            },
+          },
+        },
+      }).botModeVerification,
+    ).toBeUndefined();
   });
 
   it('persists the snapshot when a primary usage follows it (normal turn)', () => {

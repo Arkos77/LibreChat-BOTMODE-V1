@@ -287,6 +287,76 @@ describe('createBotModeProjectProjection', () => {
     expect(JSON.stringify(projection)).not.toContain('private model reasoning');
   });
 
+  it('publishes only complete, plan-bound verified task IDs from a persisted public answer', async () => {
+    const deps = makeDeps();
+    const message = {
+      messageId: 'verified-final',
+      conversationId: 'conv-a',
+      isCreatedByUser: false,
+      content: [{ type: 'text', text: 'Verified published result.' }],
+      metadata: {
+        botModePlan: {
+          planId: 'verified-plan',
+          tasks: [
+            { taskId: 'mission/research', objective: 'Research' },
+            { taskId: 'mission/analysis', objective: 'Analyze' },
+            { taskId: 'mission/synthesis', objective: 'Write' },
+          ],
+        },
+        botModeVerification: {
+          planId: 'verified-plan',
+          verifiedTaskIds: ['mission/synthesis', 'mission/research', 'mission/analysis'],
+          rawOracleState: { privateEvidence: 'secret-data' },
+        },
+      },
+    };
+    deps.getMessages.mockResolvedValueOnce([message]);
+    const projection = await createBotModeProjectProjection({
+      userId: 'owner',
+      projectId: projectA,
+      deps,
+    });
+    expect(projection.conversations[0].plans[0].verifiedTaskIds).toEqual([
+      'mission/research',
+      'mission/analysis',
+      'mission/synthesis',
+    ]);
+    expect(JSON.stringify(projection)).not.toContain('secret-data');
+
+    for (const bad of [
+      {
+        planId: 'other-plan',
+        verifiedTaskIds: ['mission/research', 'mission/analysis', 'mission/synthesis'],
+      },
+      { planId: 'verified-plan', verifiedTaskIds: ['mission/research'] },
+      {
+        planId: 'verified-plan',
+        verifiedTaskIds: ['mission/research', 'mission/research', 'mission/synthesis'],
+      },
+      {
+        planId: 'verified-plan',
+        verifiedTaskIds: ['mission/research', 'mission/analysis', 'foreign/task'],
+      },
+    ]) {
+      deps.getMessages.mockResolvedValueOnce([
+        { ...message, metadata: { ...message.metadata, botModeVerification: bad } },
+      ]);
+      const denied = await createBotModeProjectProjection({
+        userId: 'owner',
+        projectId: projectA,
+        deps,
+      });
+      expect(denied.conversations[0].plans[0].verifiedTaskIds).toBeUndefined();
+    }
+    deps.getMessages.mockResolvedValueOnce([{ ...message, content: [] }]);
+    const empty = await createBotModeProjectProjection({
+      userId: 'owner',
+      projectId: projectA,
+      deps,
+    });
+    expect(empty.conversations[0].plans[0].verifiedTaskIds).toBeUndefined();
+  });
+
   it('projects only public text results and excludes internal reasoning/tool payloads', async () => {
     const deps = makeDeps();
     deps.getMessages.mockResolvedValueOnce([
