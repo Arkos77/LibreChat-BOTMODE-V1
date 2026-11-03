@@ -240,11 +240,11 @@ describe('native research phases', () => {
     const definition = {
       name: 'web_search',
       parameters: {
-        type: 'object',
-        properties: { query: { type: 'string' } },
+        type: 'object' as const,
+        properties: { query: { type: 'string' as const } },
         required: ['query'],
       },
-    } as const;
+    };
     const source: AgentInputs = {
       ...binding,
       toolDefinitions: [definition],
