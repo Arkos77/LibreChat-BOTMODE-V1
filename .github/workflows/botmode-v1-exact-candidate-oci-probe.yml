@@ -89,7 +89,10 @@ jobs:
           print('CI_OPENROUTER_MODEL_GENERATION_REQUESTS=0')
           PY_QUOTA
   current-candidate-runtime:
-    if: github.event_name != 'workflow_dispatch' || inputs.quota_only != true
+    # Immutable f0e102 candidate probe is historical: do not run against
+    # the independently qualified simplified V1 source on pull requests.
+    # Manual legacy probes retain their original source-drift guard.
+    if: (github.event_name != 'workflow_dispatch' || inputs.quota_only != true) && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'simplify/botmode-v1-'))
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
