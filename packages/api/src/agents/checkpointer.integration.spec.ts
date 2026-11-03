@@ -847,12 +847,19 @@ describe('LazyMongoSaver (lazy persistence — mongodb-memory-server)', () => {
     const State = Annotation.Root({ value: Annotation<number> });
     let enteredSecond!: () => void;
     let rejectSecond!: (error: Error) => void;
-    const secondEntered = new Promise<void>((resolve) => { enteredSecond = resolve; });
-    const secondBlocked = new Promise<never>((_resolve, reject) => { rejectSecond = reject; });
+    const secondEntered = new Promise<void>((resolve) => {
+      enteredSecond = resolve;
+    });
+    const secondBlocked = new Promise<never>((_resolve, reject) => {
+      rejectSecond = reject;
+    });
     let firstCalls = 0;
     let secondCalls = 0;
     const graph = new StateGraph(State)
-      .addNode('first', () => { firstCalls++; return { value: 7 }; })
+      .addNode('first', () => {
+        firstCalls++;
+        return { value: 7 };
+      })
       .addNode('second', async () => {
         secondCalls++;
         enteredSecond();

@@ -60,7 +60,8 @@ const inspectRoleReadiness = (agents, profiles) => {
     if (
       instructions.length < 160 ||
       /^Tu es le spécialiste .+ de BOT MODE\. Réponds en français\.$/u.test(instructions) ||
-      instructions === 'Tu es le Worker principal BOT MODE. Délègue uniquement selon les autorisations.'
+      instructions ===
+        'Tu es le Worker principal BOT MODE. Délègue uniquement selon les autorisations.'
     ) {
       unconfiguredInstructions.push(agent.name);
     }

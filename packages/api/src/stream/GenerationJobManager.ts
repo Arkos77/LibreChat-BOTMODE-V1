@@ -962,13 +962,14 @@ class GenerationJobManagerClass {
         patch: { error: 'OUTCOME_UNKNOWN', completedAt: Date.now() },
       });
     } finally {
-      await store.releaseDrainedMissionRecovery(
-        candidate.streamId,
-        candidate.createdAt,
-        claim.ownerToken,
-      ).catch((error) => {
-        logger.warn('[GenerationJobManager] Unknown-outcome inspection claim release failed', error);
-      });
+      await store
+        .releaseDrainedMissionRecovery(candidate.streamId, candidate.createdAt, claim.ownerToken)
+        .catch((error) => {
+          logger.warn(
+            '[GenerationJobManager] Unknown-outcome inspection claim release failed',
+            error,
+          );
+        });
     }
   }
 
@@ -979,7 +980,8 @@ class GenerationJobManagerClass {
       !this._isRedis ||
       this.shuttingDown ||
       (handler == null && !this.jobStore?.claimDrainedMissionRecovery)
-    ) return;
+    )
+      return;
     const candidates = await this.inspectCheckpointedOrphanedNativeMissions();
     await Promise.all(
       candidates.map(async (candidate) => {

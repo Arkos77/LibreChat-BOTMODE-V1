@@ -1,6 +1,9 @@
 import { AIMessage } from '@librechat/agents/langchain/messages';
 import type { MissionPlan } from './types';
-import { assertDistinctMissionTaskResults, assertTerminalMissionTasksVerified } from './missionOracle';
+import {
+  assertDistinctMissionTaskResults,
+  assertTerminalMissionTasksVerified,
+} from './missionOracle';
 
 const plan: MissionPlan = {
   planId: 'plan-lineage',
@@ -45,7 +48,9 @@ const plan: MissionPlan = {
   reasons: [],
 };
 
-const report = 'Evidence gathered from a completed research step, with confirmed sources. '.repeat(9);
+const report = 'Evidence gathered from a completed research step, with confirmed sources. '.repeat(
+  9,
+);
 const message = (result: string, sources?: string) =>
   new AIMessage(JSON.stringify({ result, ...(sources != null && { sources }) }));
 
@@ -59,9 +64,9 @@ describe('mission downstream result originality gate', () => {
       'BOTMODE_DUPLICATE_TASK_OUTPUT',
     );
     const persist = jest.fn();
-    await expect(assertTerminalMissionTasksVerified(plan, outputs, undefined, persist)).rejects.toThrow(
-      'BOTMODE_DUPLICATE_TASK_OUTPUT',
-    );
+    await expect(
+      assertTerminalMissionTasksVerified(plan, outputs, undefined, persist),
+    ).rejects.toThrow('BOTMODE_DUPLICATE_TASK_OUTPUT');
     expect(persist).not.toHaveBeenCalled();
   });
 
@@ -70,7 +75,9 @@ describe('mission downstream result originality gate', () => {
       assertDistinctMissionTaskResults(plan, {
         'node-research': message(report, 'https://example.org/source'),
         'node-analysis': message(
-          'Analysis: the evidence implies operational risks, a likely scenario and uncertainty. '.repeat(5),
+          'Analysis: the evidence implies operational risks, a likely scenario and uncertainty. '.repeat(
+            5,
+          ),
         ),
       }),
     ).not.toThrow();

@@ -131,8 +131,12 @@ test('setup route commits six distinct agents, owner ACL and stable second initi
   expect(initial).toHaveLength(6);
   expect(new Set(initial.map((a) => a.name)).size).toBe(6);
   const toolsByRole = {
-    'BOT MODE Worker': [], RECHERCHE: ['web_search'], ANALYSE: [],
-    CODE: ['execute_code'], DOCUMENTS: ['file_search'], 'RÉDACTION': [],
+    'BOT MODE Worker': [],
+    RECHERCHE: ['web_search'],
+    ANALYSE: [],
+    CODE: ['execute_code'],
+    DOCUMENTS: ['file_search'],
+    RÉDACTION: [],
   };
   for (const agent of initial) {
     expect(agent.tools).toEqual(toolsByRole[agent.name]);

@@ -118,8 +118,12 @@ test('creates six agents and delegates to five, then reuses identical ids', asyn
   const worker = mockAgents.find((agent) => agent.name === 'BOT MODE Worker');
   // V1 must not provision empty specialist shells or direct Worker tools.
   const expectedTools = {
-    'BOT MODE Worker': [], RECHERCHE: ['web_search'], ANALYSE: [],
-    CODE: ['execute_code'], DOCUMENTS: ['file_search'], 'RÉDACTION': [],
+    'BOT MODE Worker': [],
+    RECHERCHE: ['web_search'],
+    ANALYSE: [],
+    CODE: ['execute_code'],
+    DOCUMENTS: ['file_search'],
+    RÉDACTION: [],
   };
   for (const agent of mockAgents) {
     expect(agent.tools).toEqual(expectedTools[agent.name]);
@@ -166,7 +170,8 @@ test('read-only status and repeat onboarding flag placeholder roles and excess W
   expect(first.code).toBe(200);
   const worker = mockAgents.find((a) => a.name === 'BOT MODE Worker');
   const analyst = mockAgents.find((a) => a.name === 'ANALYSE');
-  worker.instructions = 'Tu es le Worker principal BOT MODE. Délègue uniquement selon les autorisations.';
+  worker.instructions =
+    'Tu es le Worker principal BOT MODE. Délègue uniquement selon les autorisations.';
   worker.tools = ['web_search'];
   analyst.instructions = 'Tu es le spécialiste ANALYSE de BOT MODE. Réponds en français.';
   const original = structuredClone(mockAgents);

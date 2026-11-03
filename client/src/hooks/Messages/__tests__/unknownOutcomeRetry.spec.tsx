@@ -1,4 +1,3 @@
-import React from 'react';
 import { act, renderHook } from '@testing-library/react';
 import useMessageActions from '../useMessageActions';
 
@@ -25,7 +24,12 @@ jest.mock('../useCopyToClipboard', () => ({
   hasCopyableText: () => false,
 }));
 
-const unknown = { messageId: 'assistant-1', isCreatedByUser: false, error: true, text: 'OUTCOME_UNKNOWN' };
+const unknown = {
+  messageId: 'assistant-1',
+  isCreatedByUser: false,
+  error: true,
+  text: 'OUTCOME_UNKNOWN',
+};
 const setup = (message: Record<string, unknown> = unknown) => {
   const regenerate = jest.fn();
   const chatContext = {
@@ -34,17 +38,21 @@ const setup = (message: Record<string, unknown> = unknown) => {
     conversation: { conversationId: 'c-1', endpoint: 'agents' },
     latestMessageId: 'assistant-1',
   };
-  const { result } = renderHook(() => useMessageActions({
-    message: message as any,
-    chatContext: chatContext as any,
-    currentEditId: -1,
-    setCurrentEditId: jest.fn(),
-  }));
+  const { result } = renderHook(() =>
+    useMessageActions({
+      message: message as any,
+      chatContext: chatContext as any,
+      currentEditId: -1,
+      setCurrentEditId: jest.fn(),
+    }),
+  );
   return { result, regenerate };
 };
 
 describe('BOT MODE unknown provider outcome retry', () => {
-  afterEach(() => { jest.restoreAllMocks(); });
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
 
   it('refuses regeneration when the user declines the quota/cost warning', () => {
     const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);

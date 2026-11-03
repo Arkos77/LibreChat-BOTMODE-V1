@@ -111,7 +111,7 @@ const botModeRoleProfiles = Object.freeze({
       'Remets au Worker les extraits pertinents, les conclusions sourcées et les limites du corpus.',
     ].join(' '),
   },
-  'RÉDACTION': {
+  RÉDACTION: {
     description: 'Rédaction et synthèse finale à partir des résultats vérifiés',
     tools: [],
     instructions: [
@@ -218,10 +218,13 @@ router.get('/botmode/setup-status', checkAgentAccess, async (req, res) => {
       permissionsComplete: missingOwnerAccess.length === 0,
       delegationConfigured,
       configurationComplete:
-        missing.length === 0 && duplicates.length === 0 &&
-        missingOwnerAccess.length === 0 && delegationConfigured &&
+        missing.length === 0 &&
+        duplicates.length === 0 &&
+        missingOwnerAccess.length === 0 &&
+        delegationConfigured &&
         unconfiguredInstructions.length === 0 &&
-        unexpectedCapabilities.length === 0 && missingCapabilities.length === 0,
+        unexpectedCapabilities.length === 0 &&
+        missingCapabilities.length === 0,
       unconfiguredInstructions,
       unexpectedCapabilities,
       missingCapabilities,
@@ -491,7 +494,8 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
       created,
       existing: existing.map((agent) => agent.name),
       capabilitiesComplete:
-        missingCapabilities.length === 0 && unconfiguredInstructions.length === 0 &&
+        missingCapabilities.length === 0 &&
+        unconfiguredInstructions.length === 0 &&
         unexpectedCapabilities.length === 0,
       missingCapabilities,
       unconfiguredInstructions,

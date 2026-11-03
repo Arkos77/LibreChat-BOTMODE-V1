@@ -395,19 +395,37 @@ describe('native plan compilation', () => {
       {
         ...base,
         objectives: [
-          { key: 'research', objective: 'Research', requiredCapabilities: ['basic'], dependsOn: [] },
-          { key: 'analysis', objective: 'Analyze', requiredCapabilities: ['x'], dependsOn: ['research'] },
-          { key: 'synthesis', objective: 'Synthesize', requiredCapabilities: ['y'], dependsOn: ['analysis'] },
+          {
+            key: 'research',
+            objective: 'Research',
+            requiredCapabilities: ['basic'],
+            dependsOn: [],
+          },
+          {
+            key: 'analysis',
+            objective: 'Analyze',
+            requiredCapabilities: ['x'],
+            dependsOn: ['research'],
+          },
+          {
+            key: 'synthesis',
+            objective: 'Synthesize',
+            requiredCapabilities: ['y'],
+            dependsOn: ['analysis'],
+          },
         ],
       },
       context,
     );
     const compiled = compileNativePlan(plan, bindings).graphConfig;
     if (compiled.type !== 'multi-agent') throw new Error('Expected multi-agent graph');
-    const before = compiled.edges?.find((edge) => edge.to === plan.tasks[2].nodeId)
-      ?.beforeTransition;
+    const before = compiled.edges?.find(
+      (edge) => edge.to === plan.tasks[2].nodeId,
+    )?.beforeTransition;
     expect(before).toEqual(expect.any(Function));
-    const report = 'Research findings from several sources and an independent fact-check. '.repeat(8);
+    const report = 'Research findings from several sources and an independent fact-check. '.repeat(
+      8,
+    );
     const state = {
       agentOutputs: {
         [plan.tasks[0].nodeId]: new AIMessage(JSON.stringify({ result: report })),
