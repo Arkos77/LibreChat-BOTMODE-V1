@@ -29,7 +29,7 @@ export interface Mission {
   planVersion?: number;
   supersedesPlanId?: string;
   /** Host-owned compiler policy; older checkpoint topologies are not reinterpreted. */
-  researchExecutionVersion?: 1;
+  researchExecutionVersion?: 1 | 2;
 }
 
 /** Capability declarations are selection hints, never execution permissions. */

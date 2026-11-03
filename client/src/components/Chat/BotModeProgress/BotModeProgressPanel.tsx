@@ -97,7 +97,10 @@ export default function BotModeProgressPanel({
     [current],
   );
   const progress = useMemo(() => getMissionProgress(observations), [observations]);
-  const tasks = current?.plans.at(-1)?.plan.tasks ?? [];
+  const latestPlan = current?.plans.at(-1);
+  const tasks = latestPlan?.plan.tasks ?? [];
+  const verifiedTaskIds = new Set(latestPlan?.verifiedTaskIds ?? []);
+  const verifiedCount = verifiedTaskIds.size > 0 ? verifiedTaskIds.size : progress.verified;
   const children = subagents?.children ?? [];
   const results = current?.results.filter((item) => Boolean(item.content.trim())) ?? [];
   const sources = project?.sources ?? [];
@@ -180,20 +183,34 @@ export default function BotModeProgressPanel({
                       <span className="text-text-secondary">{localize(PHASE_LABELS[phase])}</span>
                     </li>
                   ))}
-                  {tasks.map((task, index) => (
-                    <li key={task.taskId ?? index} className="flex items-start gap-2">
-                      <Circle
-                        className="mt-0.5 h-4 w-4 shrink-0 text-violet-500"
-                        aria-hidden="true"
-                      />
-                      <span className="min-w-0 flex-1 text-text-secondary">
-                        {task.objective || localize('com_ui_botmode_progress_untitled')}
-                        <span className="mt-0.5 block text-xs text-text-tertiary">
-                          {localize('com_ui_botmode_progress_task_planned')}
+                  {tasks.map((task, index) => {
+                    const verified = task.taskId != null && verifiedTaskIds.has(task.taskId);
+                    return (
+                      <li key={task.taskId ?? index} className="flex items-start gap-2">
+                        {verified ? (
+                          <CheckCircle2
+                            className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <Circle
+                            className="mt-0.5 h-4 w-4 shrink-0 text-violet-500"
+                            aria-hidden="true"
+                          />
+                        )}
+                        <span className="min-w-0 flex-1 text-text-secondary">
+                          {task.objective || localize('com_ui_botmode_progress_untitled')}
+                          <span className="mt-0.5 block text-xs text-text-tertiary">
+                            {localize(
+                              verified
+                                ? 'com_ui_botmode_progress_task_verified'
+                                : 'com_ui_botmode_progress_task_planned',
+                            )}
+                          </span>
                         </span>
-                      </span>
-                    </li>
-                  ))}
+                      </li>
+                    );
+                  })}
                   {children.map((child) => (
                     <li key={child.threadId} className="flex items-start gap-2">
                       <span
@@ -223,14 +240,14 @@ export default function BotModeProgressPanel({
               </section>
             )}
 
-            {(progress.verified > 0 || progress.rejected > 0) && (
+            {(verifiedCount > 0 || progress.rejected > 0) && (
               <section aria-label={localize('com_ui_botmode_progress_oracle')}>
                 <h3 className="mb-2 flex items-center gap-2 font-semibold">
                   <ShieldCheck className="h-4 w-4 text-emerald-500" aria-hidden="true" />
                   {localize('com_ui_botmode_progress_oracle')}
                 </h3>
                 <p className="text-xs text-text-secondary">
-                  {localize('com_ui_botmode_progress_verified')}: {progress.verified}
+                  {localize('com_ui_botmode_progress_verified')}: {verifiedCount}
                   {progress.rejected > 0
                     ? ' · ' +
                       localize('com_ui_botmode_progress_rejected') +

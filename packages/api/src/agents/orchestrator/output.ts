@@ -39,7 +39,7 @@ export function prepareBotModeMission(
     admitted.validation.outputContract === researchContract ||
     admitted.objectives?.some((task) => task.validation?.outputContract === researchContract)
   ) {
-    admitted.researchExecutionVersion = 1;
+    admitted.researchExecutionVersion = 2;
   }
   return admitted;
 }

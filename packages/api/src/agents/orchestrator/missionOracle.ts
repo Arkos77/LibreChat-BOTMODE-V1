@@ -394,12 +394,46 @@ function messageCandidate(output: BaseMessage | undefined): string | undefined {
     : undefined;
 }
 
+/** Fail closed when a downstream specialist merely copies its prerequisite's
+ * substantive result. Plan edges, not display labels, define the comparison.
+ * Short acknowledgements and unstructured responses are left to normal Oracle
+ * validation; only exact normalized long-form JSON results are rejected here. */
+export function assertDistinctMissionTaskResults(
+  plan: MissionPlan,
+  outputs: Record<string, BaseMessage>,
+): void {
+  const byKey = new Map(plan.tasks.map((task) => [task.key, task]));
+  const normalizedResult = (nodeId: string): string | undefined => {
+    const candidate = messageCandidate(outputs[nodeId]);
+    if (!candidate) return undefined;
+    try {
+      const result: unknown = JSON.parse(candidate)?.result;
+      if (typeof result !== 'string') return undefined;
+      const normalized = result.trim().replace(/\s+/g, ' ').toLowerCase();
+      return normalized.length >= 256 ? normalized : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  for (const task of plan.tasks) {
+    const result = normalizedResult(task.nodeId);
+    if (result == null) continue;
+    for (const dependency of task.dependsOn) {
+      const parent = byKey.get(dependency);
+      if (parent != null && normalizedResult(parent.nodeId) === result) {
+        throw new Error('BOTMODE_DUPLICATE_TASK_OUTPUT');
+      }
+    }
+  }
+}
+
 export async function assertTerminalMissionTasksVerified(
   plan: MissionPlan,
   outputs: Record<string, BaseMessage>,
   state?: MissionOracleState,
   persistMissionOracleResult?: MissionOracleResultPersister,
 ): Promise<void> {
+  assertDistinctMissionTaskResults(plan, outputs);
   const dependedOnKeys = new Set(plan.tasks.flatMap((task) => task.dependsOn));
   const terminalTasks = plan.tasks.filter((task) => !dependedOnKeys.has(task.key));
 

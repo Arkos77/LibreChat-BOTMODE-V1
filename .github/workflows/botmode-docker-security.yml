@@ -9,10 +9,199 @@ on:
       - 'docs/BOT_MODE_INSTALL.md'
       - '.github/workflows/botmode-docker-security.yml'
   workflow_dispatch:
+    inputs:
+      go_security_only:
+        description: Verify patched grpc-go module only; skip Docker profiles already qualified
+        type: boolean
+        default: false
+      vite_security_only:
+        description: Qualify exact patched Vite 8.2.4 root lock and browser build
+        type: boolean
+        default: false
+      happy_dom_security_only:
+        description: Verify Happy DOM 21.0.4 and six Jest suites on isolated runner
+        type: boolean
+        default: false
+      residual_npm_only:
+        description: Qualify corrected CSS parser and serialization package lock only
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
+  residual-npm-security:
+    if: ${{ inputs.residual_npm_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Assert exact source and corrected versions only
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test "${{ github.ref_name }}" = simplify/botmode-v1-lot-a-20261102
+          node - <<'JS'
+          const pkgs = require('./package-lock.json').packages;
+          let count6=0,count7=0;
+          for (const [path,entry] of Object.entries(pkgs)) {
+            if (!path.endsWith('/postcss-selector-parser')) continue;
+            if (entry.version==='6.1.5') count6++;
+            else if (entry.version==='7.1.6') count7++;
+            else throw new Error('Unpatched selector parser at '+path);
+          }
+          if(count6!==1||count7!==13||pkgs['node_modules/serialize-javascript']?.version!=='7.1.3') process.exit(1);
+          console.log('BOTMODE_RESIDUAL_NPM_LOCK_EXACT_PIN=PASS');
+          JS
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.16.0
+          cache: npm
+      - name: Clean npm install and frontend build with corrected lock
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:client-package
+          npm run build:client
+          node - <<'JS'
+          const fs=require('node:fs');
+          const selectors=['node_modules/postcss-selector-parser',
+            'node_modules/@csstools/postcss-cascade-layers/node_modules/postcss-selector-parser'];
+          for(const dir of selectors){
+            const {version}=JSON.parse(fs.readFileSync(dir+'/package.json','utf8'));
+            const parser=require(process.cwd()+'/'+dir);
+            if(parser().processSync('a:focus, .item#id')!=='a:focus, .item#id')process.exit(1);
+            if(version!=='6.1.5'&&version!=='7.1.6')process.exit(1);
+          }
+          const {version}=require('./node_modules/serialize-javascript/package.json');
+          if(version!=='7.1.3')process.exit(1);
+          const output=require('serialize-javascript')({a:'test'});
+          if(!output.includes('test'))process.exit(1);
+          console.log('BOTMODE_RESIDUAL_NPM_PACKAGE_SMOKE=PASS');
+          JS
+          test -z "$(git status --porcelain -- package-lock.json client/package.json)"
+          echo 'BOTMODE_RESIDUAL_NPM_PATCH_CLEAN_BUILD=PASS'
+  happy-dom-patch-security:
+    if: ${{ inputs.happy_dom_security_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate and patched Jest environment dependency
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test "${{ github.ref_name }}" = simplify/botmode-v1-lot-a-20261102
+          node - <<'JS'
+          const lock=require('./package-lock.json').packages;
+          const manifest=require('./client/package.json');
+          if (manifest.devDependencies['@happy-dom/jest-environment'] !== '^21.0.4' ||
+              lock['node_modules/@happy-dom/jest-environment']?.version !== '21.0.4' ||
+              lock['node_modules/happy-dom']?.version !== '21.0.4') process.exit(1);
+          console.log('BOTMODE_HAPPY_DOM_EXACT_LOCK=PASS');
+          JS
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.16.0
+          cache: npm
+      - name: Clean npm install, builds and actual Happy DOM Jest suites
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:client-package
+          (cd packages/data-provider && npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            specs/request-interceptor.spec.ts \
+            specs/request-interceptor-subdir.spec.ts)
+          (cd client && npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            src/components/Web/__tests__/SourcesErrorBoundary.test.tsx \
+            src/hooks/__tests__/AuthContext.spec.tsx \
+            src/hooks/__tests__/useFavorites.spec.tsx \
+            src/hooks/__tests__/useIsActiveItem.spec.tsx)
+          test -z "$(git status --porcelain -- client/package.json package-lock.json)"
+          echo 'BOTMODE_HAPPY_DOM_21_0_4_JEST_REGRESSION=PASS'
+      - name: Validate Happy DOM pins in the existing Bun lock (no global re-resolution)
+        run: |
+          set -euo pipefail
+          node - <<'JS'
+          const fs=require('node:fs');
+          const s=fs.readFileSync('bun.lock','utf8');
+          if (!s.includes('"@happy-dom/jest-environment@21.0.4"') ||
+              !s.includes('"happy-dom@21.0.4"') ||
+              !s.includes('"@happy-dom/jest-environment": "^21.0.4"')) process.exit(1);
+          console.log('BOTMODE_HAPPY_DOM_BUN_TARGETED_PINS=PASS');
+          JS
+  vite-patch-security:
+    if: ${{ inputs.vite_security_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate Vite patch metadata
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test "${{ github.ref_name }}" = simplify/botmode-v1-lot-a-20261102
+          node -e 'const p=require("./package-lock.json").packages; if(p["node_modules/vite"]?.version!=="8.2.4")process.exit(1)'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.16.0
+          cache: npm
+      - name: Install clean locked dependencies and compile client with patched Vite
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build:data-provider
+          npm run build:data-schemas
+          npm run build:client-package
+          npm run build:client
+          test -z "$(git status --porcelain -- package-lock.json client/package.json)"
+          echo 'BOTMODE_VITE_8_2_4_CLEAN_LOCK_FRONTEND_BUILD=PASS'
+  go-grpc-security:
+    if: ${{ inputs.go_security_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate and official patched grpc-go pin
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test "${{ github.ref_name }}" = simplify/botmode-v1-lot-a-20261102
+          grep -q 'google.golang.org/grpc v1.83.2' otel/langfuse-fanout/go.mod
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: otel/langfuse-fanout/go.mod
+          cache-dependency-path: otel/langfuse-fanout/go.sum
+      - name: Verify Go module and compile/tests (no Docker or production services)
+        working-directory: otel/langfuse-fanout
+        run: |
+          set -euo pipefail
+          go mod download
+          go mod tidy
+          go mod verify
+          go test ./...
+          if ! git diff --quiet -- go.mod go.sum; then
+            echo 'BOTMODE_GO_LOCK_TIDY_DIFF_BEGIN'
+            git diff -- go.mod go.sum
+            echo 'BOTMODE_GO_LOCK_TIDY_DIFF_END'
+            exit 1
+          fi
+          echo 'BOTMODE_GO_GRPC_1_83_2_PATCHED_AND_TESTED=PASS'
   compose-auth:
+    if: ${{ !inputs.go_security_only && !inputs.vite_security_only && !inputs.happy_dom_security_only && !inputs.residual_npm_only }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

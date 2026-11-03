@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cp .env.example .env
-# CI-only disposable Redis: durable Mission Oracle result readback.
-# Modify the ephemeral checkout, never the tested source.
-sed -i '/      - SCHEDULES_SINGLE_PROCESS=true/a\      - USE_REDIS=true\n      - USE_REDIS_STREAMS=true\n      - REDIS_URI=redis://redis:6379\n      - STREAM_KEEP_COMPLETED_JOBS=true' docker-compose.botmode-lite.yml
-# Append a true service under the existing services: map.
-# Avoid a second 'services.depends_on' key, which Compose rejects.
-cat >> docker-compose.botmode-lite.yml <<'YAML'
-  redis:
-    image: redis:7-alpine
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
-YAML
+# The actual Lite distribution now includes an internal persistent Redis.
+# No CI-only service injection: exercise the real shipped Compose profile.
+grep -q '      - USE_REDIS_STREAMS=true' docker-compose.botmode-lite.yml
+grep -q '^  redis:$' docker-compose.botmode-lite.yml
 # Fixture is pinned to this commit, copied into the ephemeral checkout;
 # the source candidate and its lockfile remain immutable.
-cp scripts/botmode/ci-openai-compatible-mock.py /tmp/botmode-ci-model-fixture.py
+if [ "${CI_ONE_CHILD_ONLY:-0}" = 1 ]; then
+  cp scripts/botmode/ci-openai-subagent-fixture.py /tmp/botmode-ci-model-fixture.py
+else
+  cp scripts/botmode/ci-openai-compatible-mock.py /tmp/botmode-ci-model-fixture.py
+fi
 test -s /tmp/botmode-ci-model-fixture.py
 python3 /tmp/botmode-ci-model-fixture.py >/tmp/botmode-ci-fixture.log 2>&1 &
 fixture_pid=$!
@@ -223,6 +221,54 @@ const mongoose = require('mongoose');
 })().catch((e)=>{console.error('CI_WORKER_LOOKUP='+String(e.name));process.exit(1)});
 NODE
 test -s /tmp/botmode-ci-worker-id
+if [ "${CI_ONE_CHILD_ONLY:-0}" = 1 ]; then
+  docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE_CHILD' > /tmp/botmode-ci-child-id
+const mongoose=require('mongoose');
+(async()=>{
+  await mongoose.connect(process.env.MONGO_URI);
+  const worker=await mongoose.connection.db.collection('agents').findOne(
+    {name:'BOT MODE Worker'}, {projection:{subagents:1}});
+  const ids=worker?.subagents?.agent_ids;
+  if(!worker?.subagents?.enabled || !Array.isArray(ids) || ids.length!==5) {
+    throw Error('Exactly five configured authorized specialists required');
+  }
+  const child=await mongoose.connection.db.collection('agents').findOne({id:ids[0]});
+  if(!child || child.id===worker.id) throw Error('Selected specialist not persisted');
+  process.stdout.write(child.id);
+  await mongoose.disconnect();
+})().catch(e=>{console.error('CI_CHILD_LOOKUP_ERROR_CLASS='+e.name);process.exit(1)});
+NODE_CHILD
+  test -s /tmp/botmode-ci-child-id
+  python3 - <<'PY_CFG'
+import json
+from urllib.request import Request, urlopen
+child=open('/tmp/botmode-ci-child-id').read().strip()
+request=Request('http://127.0.0.1:8088/configure',
+    data=json.dumps({'childId':child}).encode(),
+    headers={'Content-Type':'application/json'},method='POST')
+with urlopen(request,timeout=5) as response:
+    assert json.load(response).get('ok') is True
+print('CI_ONE_CHILD_FIXTURE_AUTHORIZED_AGENT=PASS')
+PY_CFG
+  python3 scripts/botmode/ci-source-built-one-child-gate.py
+  echo 'BOTMODE_C3_SOURCE_BUILT_REAL_CHILD_RECORDED=PASS'
+  if [ "${CI_ONE_CHILD_ORACLE:-0}" = 1 ]; then
+    # Validate the shipped Lite Redis AOF survives a real process restart.
+    # This test key is isolated from mission data; never replay provider calls.
+    compose=(docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)
+    test "$("${compose[@]}" exec -T redis redis-cli --raw SET ci:lite:aof:probe 1 | tr -d '\r')" = OK
+    sleep 2
+    "${compose[@]}" restart redis >/dev/null
+    for redis_attempt in $(seq 1 20); do
+      if "${compose[@]}" exec -T redis redis-cli PING 2>/dev/null | grep -q PONG; then break; fi
+      sleep 1
+    done
+    test "$("${compose[@]}" exec -T redis redis-cli --raw GET ci:lite:aof:probe | tr -d '\r')" = 1
+    "${compose[@]}" exec -T redis redis-cli DEL ci:lite:aof:probe >/dev/null
+    echo 'BOTMODE_LITE_REDIS_AOF_PERSISTS_AFTER_REAL_RESTART=PASS'
+  fi
+  exit 0
+fi
 python3 - <<'PY'
 import json,uuid
 worker=open('/tmp/botmode-ci-worker-id').read().strip()

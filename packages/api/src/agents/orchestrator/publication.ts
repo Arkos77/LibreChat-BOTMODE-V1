@@ -16,7 +16,8 @@ export async function renderMissionPublication(
   const fail: () => never = () => {
     throw new Error('BOTMODE_VERIFIED_PRESENTATION_REQUIRED');
   };
-  if (plan.mission.researchExecutionVersion !== 1 || plan.tasks.length > 256) fail();
+  if (![1, 2].includes(plan.mission.researchExecutionVersion ?? 0) || plan.tasks.length > 256)
+    fail();
   const saved = normalizeMissionOracleState(state);
   if (
     Object.keys(saved.results).length !== plan.tasks.length ||

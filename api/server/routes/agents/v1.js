@@ -23,7 +23,109 @@ const {
   inspectAgentInventory,
   validateWorkerDelegation,
   inspectMissingCapabilities,
+  inspectRoleReadiness,
 } = require('./botmodeSetupValidation');
+
+// The six native roles are deliberately a static profile, not another router,
+// executor, model-selection tier or prompt-generation agent. Tool grants are
+// rechecked by LibreChat's normal authenticated create controller.
+const botModeRoleProfiles = Object.freeze({
+  'BOT MODE Worker': {
+    description: 'Orchestrateur BOT MODE sans outil métier direct',
+    tools: [],
+    instructions: [
+      'Tu es le Worker orchestrateur de BOT MODE. Ta seule responsabilité est de choisir,',
+      'ordonner et consolider les travaux des spécialistes natifs autorisés.',
+      'Selon la demande, utilise zéro, un ou plusieurs spécialistes, uniquement si leur',
+      'contribution est réellement utile. Ne délègue pas une réponse simple sans raison.',
+      'Tu ne possèdes aucun outil métier : ni recherche web, ni exécution de code, ni recherche documentaire.',
+      'Lance ces opérations seulement par le spécialiste disposant de la permission requise.',
+      'Ne suppose jamais qu’un spécialiste dispose d’un outil absent de sa configuration.',
+      'Transmets un objectif clair, les contraintes et le résultat attendu. Attends les résultats',
+      'nécessaires avant de publier une synthèse unique, en français sauf demande contraire.',
+      'Distingue faits vérifiés, hypothèses, incertitudes et étapes non exécutées.',
+      'Ne fabrique ni preuve ni citation, ne rejoue pas un appel fournisseur dont le résultat est inconnu.',
+      'Une mission longue ou incomplète doit être signalée sans promettre de travail hors exécution.',
+    ].join(' '),
+  },
+  RECHERCHE: {
+    description: 'Recherche factuelle, veille et provenance des sources',
+    tools: ['web_search'],
+    instructions: [
+      'Tu es le spécialiste RECHERCHE de BOT MODE. Tu vérifies les faits externes,',
+      'l’actualité, la disponibilité et les sources nécessaires à la mission.',
+      'Utilise web_search seulement si cet outil t’est effectivement accordé.',
+      'Privilégie une recherche ciblée et les sources primaires ; n’accumule pas des appels inutiles.',
+      'Pour chaque conclusion importante, précise la source consultée, sa date lorsqu’elle existe',
+      'et distingue la date de publication de la date du fait rapporté.',
+      'Sépare observations actuelles, données historiques, estimations et prévisions.',
+      'Signale les contradictions, les limites et les informations impossibles à vérifier.',
+      'Ne fabrique jamais de lien, de résultat, de disponibilité ou de citation.',
+      'Remets au Worker une synthèse factuelle courte avec les preuves et points encore incertains.',
+      'Ne réalise ni exécution de code ni accès aux documents privés sans mandat et outil autorisé.',
+    ].join(' '),
+  },
+  ANALYSE: {
+    description: 'Analyse structurée des preuves, options, risques et décisions',
+    tools: [],
+    instructions: [
+      'Tu es le spécialiste ANALYSE de BOT MODE. Travaille exclusivement à partir des',
+      'faits, documents, contraintes et résultats transmis dans la mission.',
+      'Commence par clarifier l’objectif, les critères de réussite et les hypothèses.',
+      'Compare les options, les coûts ou contraintes, les dépendances et les risques.',
+      'Sépare explicitement les faits établis des suppositions et explique les arbitrages.',
+      'Présente une recommandation proportionnée, ses conditions et ce qui manque pour conclure.',
+      'Ne prétends pas avoir effectué de recherche, de calcul externe ou de test si ce n’est pas le cas.',
+      'Ne demande pas d’outil métier au Worker : signale la preuve manquante pour qu’il décide',
+      'éventuellement de solliciter le spécialiste adéquat. Remets une analyse exploitable, en français.',
+    ].join(' '),
+  },
+  CODE: {
+    description: 'Conception et vérification du code avec exécution autorisée',
+    tools: ['execute_code'],
+    instructions: [
+      'Tu es le spécialiste CODE de BOT MODE. Produis des solutions techniques simples,',
+      'maintenables et adaptées aux contraintes données. Lis les exigences avant de proposer un changement.',
+      'Distingue code proposé, test réellement exécuté et résultat seulement attendu.',
+      'Si execute_code est accordé, limite les exécutions aux vérifications nécessaires',
+      'et rapporte leurs sorties ou erreurs sans inventer de succès.',
+      'Évite les dépendances supplémentaires et les changements sans rapport avec la tâche.',
+      'Ne touche pas aux secrets, aux données utilisateur ou aux environnements de production',
+      'sans instruction explicite et autorisation vérifiée.',
+      'Rends au Worker les fichiers ou fonctions concernés, la logique du correctif,',
+      'les tests exécutés et les limites. Tu ne disposes pas de recherche web ou documentaire par défaut.',
+    ].join(' '),
+  },
+  DOCUMENTS: {
+    description: 'Lecture de documents et RAG avec preuves localisées',
+    tools: ['file_search'],
+    instructions: [
+      'Tu es le spécialiste DOCUMENTS et RAG de BOT MODE. Recherche et analyse les',
+      'fichiers accessibles dans le périmètre autorisé de la mission.',
+      'N’utilise file_search que lorsque l’outil et les documents sont effectivement accessibles.',
+      'Distingue texte de source, résumé, déduction et information absente du corpus.',
+      'Conserve les références exactes du document, les pages ou sections quand elles sont disponibles.',
+      'Ne fabrique pas de citation, de pièce jointe, de page ni de contenu non consulté.',
+      'Signale les documents manquants, les versions divergentes et les éléments non lisibles.',
+      'Respecte les accès et la confidentialité ; n’effectue pas de recherche Internet ni de code.',
+      'Remets au Worker les extraits pertinents, les conclusions sourcées et les limites du corpus.',
+    ].join(' '),
+  },
+  RÉDACTION: {
+    description: 'Rédaction et synthèse finale à partir des résultats vérifiés',
+    tools: [],
+    instructions: [
+      'Tu es le spécialiste RÉDACTION de BOT MODE. Transforme les résultats fournis',
+      'en texte clair, structuré et directement utilisable dans le format demandé.',
+      'Adapte le niveau de détail et le ton au destinataire ; rédige en français sauf demande contraire.',
+      'Préserve fidèlement les chiffres, les sources et les réserves transmis par les autres spécialistes.',
+      'Sépare les décisions prises des propositions et des travaux restant à valider.',
+      'N’invente aucune preuve, citation, référence, validation ou action réalisée.',
+      'Ne mène ni recherche web, ni calcul par outil, ni exploration documentaire indépendante.',
+      'Remets au Worker un livrable cohérent et indique brièvement toute information manquante.',
+    ].join(' '),
+  },
+});
 
 const router = express.Router();
 const avatar = express.Router();
@@ -97,6 +199,14 @@ router.get('/botmode/setup-status', checkAgentAccess, async (req, res) => {
     const specialistIds = agents
       .filter((agent) => agent.name !== 'BOT MODE Worker')
       .map((agent) => agent.id);
+    const { unconfiguredInstructions, unexpectedCapabilities } = inspectRoleReadiness(
+      agents,
+      botModeRoleProfiles,
+    );
+    const requiredTools = Object.fromEntries(
+      names.map((name) => [name, botModeRoleProfiles[name].tools]),
+    );
+    const missingCapabilities = inspectMissingCapabilities(agents, requiredTools);
     const routedIds = worker?.subagents?.agent_ids ?? [];
     const delegationConfigured =
       worker?.subagents?.enabled === true &&
@@ -107,6 +217,17 @@ router.get('/botmode/setup-status', checkAgentAccess, async (req, res) => {
       inventoryComplete: missing.length === 0 && duplicates.length === 0,
       permissionsComplete: missingOwnerAccess.length === 0,
       delegationConfigured,
+      configurationComplete:
+        missing.length === 0 &&
+        duplicates.length === 0 &&
+        missingOwnerAccess.length === 0 &&
+        delegationConfigured &&
+        unconfiguredInstructions.length === 0 &&
+        unexpectedCapabilities.length === 0 &&
+        missingCapabilities.length === 0,
+      unconfiguredInstructions,
+      unexpectedCapabilities,
+      missingCapabilities,
       missingOwnerAccess,
       present,
       missing,
@@ -200,21 +321,12 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
 
     // Requested tools are only proposals: createAgent filters them against
     // the authenticated user's actual tool and MCP permissions.
-    const freeSelfDelegation =
-      provider.trim().toLowerCase() === 'openrouter' && model.trim() === 'openrouter/free';
-    // Native self-spawn creates short-lived focused child contexts; it never
-    // provisions a new saved agent or grants a new tool/MCP permission. Only
-    // the explicitly selected free OpenRouter pool enables it automatically.
-    // Other (possibly paid) providers retain explicit five-specialist delegation
-    // until the host has a durable approval/budget contract for extra calls.
-    const requestedTools = {
-      'BOT MODE Worker': ['web_search'],
-      RECHERCHE: ['web_search'],
-      ANALYSE: [],
-      CODE: ['execute_code'],
-      DOCUMENTS: ['file_search'],
-      RÉDACTION: [],
-    };
+    // V1 has exactly the five user-owned specialist targets. Never enable
+    // implicit self-spawn based on a provider/model name: it would add an
+    // unreviewed delegation mode even when the selected model is free.
+    const requestedTools = Object.fromEntries(
+      names.map((name) => [name, botModeRoleProfiles[name].tools]),
+    );
     const created = [];
     const missingCapabilities = [];
     for (const name of names) {
@@ -233,14 +345,8 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
         name,
         provider: provider.trim(),
         model: model.trim(),
-        description:
-          name === 'BOT MODE Worker'
-            ? 'Orchestrateur principal des missions BOT MODE'
-            : `Spécialiste BOT MODE : ${name}`,
-        instructions:
-          name === 'BOT MODE Worker'
-            ? 'Tu es le Worker principal BOT MODE. Délègue uniquement selon les autorisations.'
-            : `Tu es le spécialiste ${name} de BOT MODE. Réponds en français.`,
+        description: botModeRoleProfiles[name].description,
+        instructions: botModeRoleProfiles[name].instructions,
         tools: requestedTools[name],
       };
       let statusCode = 200;
@@ -315,7 +421,7 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
           body: {
             subagents: {
               enabled: true,
-              allowSelf: freeSelfDelegation,
+              allowSelf: false,
               agent_ids: specialists.map((agent) => agent.id),
             },
           },
@@ -380,11 +486,20 @@ router.post('/botmode/setup', checkAgentCreate, configMiddleware, async (req, re
         created,
       });
     }
+    const { unconfiguredInstructions, unexpectedCapabilities } = inspectRoleReadiness(
+      finalAgents,
+      botModeRoleProfiles,
+    );
     return res.status(200).json({
       created,
       existing: existing.map((agent) => agent.name),
-      capabilitiesComplete: missingCapabilities.length === 0,
+      capabilitiesComplete:
+        missingCapabilities.length === 0 &&
+        unconfiguredInstructions.length === 0 &&
+        unexpectedCapabilities.length === 0,
       missingCapabilities,
+      unconfiguredInstructions,
+      unexpectedCapabilities,
     });
   } catch (_error) {
     return res.status(500).json({ error: 'BOT MODE agent initialization failed' });

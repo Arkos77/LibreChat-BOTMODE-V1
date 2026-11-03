@@ -119,8 +119,16 @@ export default function useMessageActions(props: TMessageActions) {
       return;
     }
 
+    if (
+      message.error === true &&
+      message.text?.trim() === 'OUTCOME_UNKNOWN' &&
+      !window.confirm(localize('com_ui_outcome_unknown_retry_confirm'))
+    ) {
+      return;
+    }
+
     regenerate(message, { addedConvo: getAddedConvo() });
-  }, [chatContext, isCreatedByUser, message, regenerate, getAddedConvo]);
+  }, [chatContext, isCreatedByUser, message, regenerate, getAddedConvo, localize]);
 
   const copyToClipboard = useCopyToClipboard({ text, content, searchResults });
 

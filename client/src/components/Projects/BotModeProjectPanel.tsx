@@ -139,6 +139,7 @@ export default function BotModeProjectPanel({
   const { data: agents } = useListAgentsQuery();
   const [agentMode, setAgentMode] = useState<'auto' | 'manual'>('auto');
   const [chosenAgentIds, setChosenAgentIds] = useState<string[]>([]);
+  const [missionObjective, setMissionObjective] = useState('');
   const {
     data: projection,
     isLoading: isProjectionLoading,
@@ -204,6 +205,8 @@ export default function BotModeProjectPanel({
     (agent) => agent.id && agent.id !== primaryAgent?.id && authorizedIds.has(agent.id),
   );
   const selectedSpecialists = specialists.filter((agent) => chosenAgentIds.includes(agent.id));
+  // Never spend a model request on a generic launch command without an objective.
+  const hasMissionObjective = missionObjective.trim().length >= 12;
 
   const initializeAgents = async () => {
     if (setupPending) return;
@@ -254,6 +257,7 @@ export default function BotModeProjectPanel({
   const launchMission = () => {
     if (
       !primaryAgent?.id ||
+      !hasMissionObjective ||
       !workerDetails?.subagents?.enabled ||
       (agentMode === 'manual' && selectedSpecialists.length === 0)
     ) {
@@ -262,7 +266,7 @@ export default function BotModeProjectPanel({
     const params = new URLSearchParams({
       projectId,
       agent_id: primaryAgent.id,
-      prompt: `Lance une mission BOT MODE et produis un résultat vérifiable. ${agentMode === 'auto' ? 'Choisis les spécialistes existants autorisés en fonction de la mission.' : `Privilégie uniquement ces spécialistes déclarés dans la configuration du Worker (nom et identifiant) : ${selectedSpecialists.map((agent) => `${agent.name} [${agent.id}]`).join(', ')}.`} Respecte toutes les autorisations de délégation ; ne contourne aucun refus.`,
+      prompt: missionObjective.trim(),
       submit: 'true',
       botmode: '1',
       botmode_mode: 'analyze',
@@ -327,11 +331,29 @@ export default function BotModeProjectPanel({
               </p>
             </div>
             <div className="flex flex-col items-end gap-2">
+              {primaryAgent?.id && (
+                <label
+                  className="w-full text-xs font-medium text-text-secondary"
+                  htmlFor={`botmode-objective-${projectId}`}
+                >
+                  {localize('com_ui_bot_mode_project_objective')}
+                  <textarea
+                    id={`botmode-objective-${projectId}`}
+                    className="mt-1 w-full resize-y rounded-md border border-border-light bg-surface-primary p-2 text-sm text-text-primary"
+                    rows={2}
+                    maxLength={2000}
+                    value={missionObjective}
+                    onChange={(event) => setMissionObjective(event.target.value)}
+                    placeholder={localize('com_ui_bot_mode_project_objective_placeholder')}
+                  />
+                </label>
+              )}
               {primaryAgent?.id ? (
                 <Button
                   type="button"
                   size="sm"
                   disabled={
+                    !hasMissionObjective ||
                     !workerDetails?.subagents?.enabled ||
                     (agentMode === 'manual' && selectedSpecialists.length === 0)
                   }

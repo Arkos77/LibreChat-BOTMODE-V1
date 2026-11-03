@@ -47,7 +47,7 @@ function projectHostModelUsage(decision, usageEvents, missionPlan) {
       if (nodeOwners.size !== 1 || !nodeOwners.has(agentId)) continue;
       actorIds.add(nodeId);
       if (
-        missionPlan.mission.researchExecutionVersion === 1 &&
+        [1, 2].includes(missionPlan.mission.researchExecutionVersion) &&
         tasks.some(
           (task) =>
             task?.nodeId === nodeId &&

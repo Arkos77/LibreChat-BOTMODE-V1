@@ -92,7 +92,7 @@ export function resolveNativeMissionToolAgentId(
   const task = plan.tasks.find(
     (candidate) =>
       candidate.nodeId === executionId ||
-      (plan.mission.researchExecutionVersion === 1 &&
+      ([1, 2].includes(plan.mission.researchExecutionVersion ?? 0) &&
         isResearchTask(candidate) &&
         researchObservationNodeId(candidate.nodeId) === executionId),
   );
@@ -120,7 +120,7 @@ export function assertNativeMissionPhaseTools(
     }
     return;
   }
-  if (plan?.mission.researchExecutionVersion !== 1) {
+  if (![1, 2].includes(plan?.mission.researchExecutionVersion ?? 0)) {
     throw new Error('BOTMODE_RESEARCH_PHASE_CONTEXT_REQUIRED');
   }
   resolveNativeMissionToolAgentId(plan, executionId);

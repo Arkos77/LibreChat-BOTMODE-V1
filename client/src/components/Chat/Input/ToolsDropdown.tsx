@@ -312,7 +312,7 @@ const ToolsDropdown = ({ disabled }: ToolsDropdownProps) => {
     });
   }
 
-  if (canRunCode && codeEnabled) {
+  if (canRunCode && codeEnabled && startupConfig?.interface?.runCode !== false) {
     dropdownItems.push({
       onClick: handleCodeInterpreterToggle,
       hideOnClick: false,

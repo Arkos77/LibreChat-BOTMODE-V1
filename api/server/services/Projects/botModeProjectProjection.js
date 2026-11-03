@@ -141,6 +141,34 @@ function publicPlan(value) {
   };
 }
 
+/** Accept only a complete, exact, plan-bound host verification receipt. Never
+ * infer task completion from chat text, plan presence, or generic trace events. */
+function publicVerifiedTaskIds(receipt, plan) {
+  if (
+    !receipt ||
+    typeof receipt !== 'object' ||
+    typeof plan?.planId !== 'string' ||
+    !plan.planId.trim() ||
+    receipt.planId !== plan.planId
+  )
+    return null;
+  const expected = plan.tasks?.map((task) => task.taskId);
+  const actual = receipt.verifiedTaskIds;
+  if (
+    !Array.isArray(expected) ||
+    expected.length === 0 ||
+    expected.length > 256 ||
+    !Array.isArray(actual) ||
+    actual.length !== expected.length ||
+    new Set(expected).size !== expected.length ||
+    new Set(actual).size !== actual.length ||
+    actual.some((id) => typeof id !== 'string' || !expected.includes(id))
+  ) {
+    return null;
+  }
+  return [...expected];
+}
+
 async function createBotModeProjectProjection({ userId, tenantId, projectId, deps }) {
   const project = await deps.getChatProject(userId, projectId);
   if (!project) {
@@ -224,13 +252,17 @@ async function createBotModeProjectProjection({ userId, tenantId, projectId, dep
       }
 
       const plan = publicPlan(message?.metadata?.botModePlan);
+      const resultContent = publicResultContent(message?.content);
       if (plan) {
+        const verifiedTaskIds = resultContent
+          ? publicVerifiedTaskIds(message?.metadata?.botModeVerification, plan)
+          : null;
         plans.push({
           messageId: message.messageId,
           plan,
+          ...(verifiedTaskIds ? { verifiedTaskIds } : {}),
         });
       }
-      const resultContent = publicResultContent(message?.content);
       if (resultContent) {
         results.push({
           messageId: message.messageId,

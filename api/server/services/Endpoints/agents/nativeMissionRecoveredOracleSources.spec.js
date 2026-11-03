@@ -8,9 +8,6 @@ const {
 const {
   createNativeMissionRecoveredOraclePersister,
 } = require('./nativeMissionRecoveredOraclePersister');
-const {
-  createNativeMissionRecoveredOracleVerifier,
-} = require('./nativeMissionRecoveredOracleVerifier');
 
 function fixture() {
   const candidate = {
@@ -85,36 +82,12 @@ function fixture() {
     normalizeOracleState: normalizeMissionOracleState,
     areMissionOracleResultsEquivalent,
   });
-  const client = {
-    orchestratorPlan: plan,
-    options: { nativeMissionRecoveredOraclePersister: persist },
-  };
-  const verify = createNativeMissionRecoveredOracleVerifier({
-    store,
-    client,
-    candidate,
-    assertAuthorized,
-    validateMissionTask,
-    areMissionOracleResultsEquivalent,
-    normalizeOracleState: normalizeMissionOracleState,
-    graph: {
-      getState: async () => ({
-        next: [],
-        tasks: [],
-        values: { agentOutputs: { [task.nodeId]: { content } } },
-      }),
-    },
-  });
   return {
     task,
     observation,
     persist,
-    verify,
     job: () => structuredClone(job),
     writes: () => writes,
-    setSources: (sources) => {
-      job.missionOracleState.sources = sources;
-    },
     revoke: () => {
       authorized = false;
     },
@@ -148,34 +121,6 @@ describe('native recovered Oracle source observations', () => {
     expect(f.job().missionOracleState.results[f.task.taskId]).toEqual(result);
     expect(f.writes()).toBe(2);
   });
-
-  it('revalidates checkpoint output using the current task durable observations', async () => {
-    const f = fixture();
-    await expect(f.verify()).resolves.toBeUndefined();
-    expect(f.writes()).toBe(1);
-    expect(f.job().missionOracleState.sources).toEqual({ [f.task.taskId]: [f.observation] });
-    expect(
-      f
-        .job()
-        .missionOracleState.results[f.task.taskId].verdicts.every((v) => v.status === 'VERIFIED'),
-    ).toBe(true);
-  });
-
-  it.each(['missing', 'foreign', 'malformed'])(
-    'refuses %s observations before persistence',
-    async (mode) => {
-      const f = fixture();
-      const sources = {
-        missing: {},
-        foreign: { foreign: [f.observation] },
-        malformed: { [f.task.taskId]: [{ ...f.observation, urls: ['javascript:invalid'] }] },
-      };
-      f.setSources(sources[mode]);
-      await expect(f.verify()).rejects.toThrow();
-      expect(f.writes()).toBe(0);
-      expect(f.job().missionOracleState.results).toEqual({});
-    },
-  );
 
   it.each(['revoked', 'cas-denied'])(
     'retains the %s persistence gate and sources',

@@ -42,6 +42,28 @@ if grep -Eq "mongod --noauth|POSTGRES_PASSWORD: mypassword" docker-compose.botmo
   exit 1
 fi
 grep -q 'SCHEDULES_SINGLE_PROCESS: "true"' <<< "$lite_config"
+grep -q 'USE_REDIS: "true"' <<< "$lite_config"
+grep -q 'USE_REDIS_STREAMS: "true"' <<< "$lite_config"
+grep -q 'REDIS_URI: redis://redis:6379' <<< "$lite_config"
+grep -q 'STREAM_KEEP_COMPLETED_JOBS: "true"' <<< "$lite_config"
+# Redis is internal-only and AOF-persistent; the Lite runtime must not
+# silently switch the validated durable mission store back to memory.
+python3 - <<'PY_LITE_REDIS'
+import json, subprocess
+result = subprocess.check_output([
+    'docker', 'compose', '-f', 'docker-compose.botmode.yml',
+    '-f', 'docker-compose.botmode-lite.yml', 'config', '--format', 'json'
+], text=True)
+services = json.loads(result)['services']
+redis = services['redis']
+assert len(redis.get('ports') or []) == 0, 'Redis must never expose a host port'
+assert int(redis.get('mem_limit')) == 167772160, 'Redis memory limit unexpectedly changed'
+assert 'yes' in redis.get('command', []) and '--appendonly' in redis.get('command', [])
+assert any(v.get('target') == '/data' and v.get('type') == 'volume'
+           for v in redis.get('volumes', [])), 'Redis AOF data volume missing'
+assert services['api']['depends_on']['redis']['condition'] == 'service_healthy'
+print('BOTMODE_LITE_DURABLE_INTERNAL_REDIS=PASS')
+PY_LITE_REDIS
 grep -q '/app/librechat.yaml' <<< "$lite_config"
 
 if grep -q 'registry.librechat.ai/danny-avila/librechat-dev:latest' docker-compose.botmode.yml; then

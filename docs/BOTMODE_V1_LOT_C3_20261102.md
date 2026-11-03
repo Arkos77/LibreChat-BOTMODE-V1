@@ -1,0 +1,128 @@
+# BOT MODE V1 simplifiée — Lot C3, qualification des parcours utilisateur
+
+Date : 2 novembre 2026. Branche isolée : `simplify/botmode-v1-lot-a-20261102`.
+
+## Prérequis acquis
+
+C1 : 85 tests offline orchestration, Recherche/Analyse, autorisation et contrats Oracle/P6 PASS au commit `95834293` (run `41381432629`). C2 : SIGKILL réel sur gestionnaire + Redis + Mongo, `OUTCOME_UNKNOWN`, sans rejeu ni publication, PASS au commit `566306a5` (run `41386087533`). Ni l'un ni l'autre ne démontre encore le parcours HTTP+SSE+UI d'une mission utilisateur sur la candidate.
+
+## C3 — Première qualification ciblée, sans fournisseur
+
+Réutiliser le workflow source-built existant avec l'entrée `c3_only`, sans relancer les tests déjà acquis et sans reconstruction d'image Docker. Sur le commit exact, exécuter les tests existants :
+
+- API : routes HTTP Projet, projection des messages/observations par propriétaire et tenant, validation/onboarding de 5 spécialistes, permissions et liaison effective de spécialistes au graphe du Worker.
+- Client : Idée → création Projet → lancement Chat avec Worker autorisé, refus de modèle payant/agent non autorisé, projection du résultat Oracle dans la fiche Idée, affichage Projet, choix auto/manuels des spécialistes et progression de mission.
+- Conservation de la barrière Oracle/P6 : les contrats offline C1 restent la preuve historique sur leur périmètre. Ne pas prétendre un succès d'une mission intégrée P6 sans nouveau test concret.
+
+## Frontière de preuve
+
+Ces suites utilisent React/Jest, des modèles, routes et données partiellement simulés ; elles ne lancent ni navigateur avec API LibreChat réelle, ni fournisseur. Un PASS prouve les contrats de surface testés, **pas** un parcours E2E complet. Un FAIL exige d'examiner les logs et de corriger uniquement le défaut démontré. Un test hors service réel ne doit pas être déclaré GO V1.
+
+C3 ne pourra être déclaré globalement PASS qu'après des preuves cohérentes du parcours utilisateur réel et d'un verdict Oracle et P6 sur la même mission source exacte. En attendant, verdict : **NON CONCLUANT**. La release `v1.0.1` et l'installation utilisateur restent inchangées.
+
+## Premier résultat de qualification C3
+
+Run `41386621665` sur le commit `565df960557601dc00abd66a4b19719e6b95ecce` : **API PASS, 5 suites / 22 tests** (permissions, projection, initialisation, contrôles agent). Les quatre suites React ont échoué **avant d'exécuter le moindre test** : le workflow ne construisait pas `@librechat/client`, dépendance déjà définie dans le dépôt (`npm run build:client-package`). Verdict client : **NON CONCLUANT**, il ne s'agit pas d'un défaut produit. Correctif limité à la préparation du package client ; prochain run `c3_ui_only` pour ne pas répéter les 22 tests API déjà acquis. Aucun code produit modifié.
+
+## Résultats C3 hors fournisseur — vérifiés sur GitHub Actions
+
+- Run API [41386621665](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/41386621665), commit `565df960557601dc00abd66a4b19719e6b95ecce` : **5 suites / 22 tests API PASS**, incluant l'inventaire des spécialistes, les contrôles d'identité et de permissions, les projections Projet et les routes HTTP simulées. Verdict du run global : FAIL, car les suites UI qui suivaient ne pouvaient pas démarrer sans le package interne client.
+- Run client [41386838354](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/41386838354), commit `5a9709d4dcc7966672048da7a9a74856eaca6515` : **4 suites / 23 tests React PASS**, après `npm run build:client-package`. Le workflow est SUCCESS. Teste notamment Idée → Projet → lancement Chat, choix du Worker autorisé, sélection auto/manuelle, résultats Oracle affichés, suivi d'exécution.
+- Total C3 sur les deux sous-périmètres : **45 tests PASS**. Pas de modification du code de production ; seule la CI et la documentation ont changé depuis C2.
+
+**Verdict : C3 contrats API/UI ciblés PASS, C3 parcours complet NON CONCLUANT.** Une authentique session utilisateur avec LibreChat API démarrée, propagation de l'état des spécialistes, appel fournisseur réel contrôlé, Oracle VERIFIED et publication P6 unique sur une même mission n'a pas été réalisée sur cette candidate. Aucune nouvelle qualification 4C ne doit être engagée pour compenser cette absence.
+
+**Point de sortie pour le prochain sous-lot** : produire une seule preuve E2E sur environnement isolé de la candidate source exacte, en réutilisant les briques déjà présentes ; ne pas basculer la release officielle, ne pas utiliser les secrets privés sans mandat, et ne pas relancer les 45 tests sans changement pertinent.
+
+## Qualifier une seule mission E2E dans l'API et le navigateur réels
+
+Le workflow existant `botmode-v1-real-oci-idea-projection-e2e.yml` a déjà qualifié une ancienne candidate, mais son contrôle D03 (`ci-release-composition-source-guard.py`) refuse par conception les modifications de runtime de notre simplification. Ajouter une entrée explicite `simplified_v1=true` pour autoriser exclusivement un **checkout propre au SHA exact de cette branche**, sans remplacer ni supprimer le garde D03 des autres exécutions. Construire l'image localement sur le runner (Buildx `push: false`, `load: true`), ne jamais utiliser l'image publiée `v1.0.1` ou GHCR et ne pas passer de véritable secret fournisseur.
+
+Le scénario existant `ci-real-idea-runner.sh` doit vérifier sur une même mission : création du Worker et des cinq spécialistes via API authentifiée, exécution SSE avec fixture de fournisseur local (aucun quota payant), Oracle VERIFIED, P6 finale unique, persistance des messages, projection vers un Projet et une Idée, puis lecture du vrai résultat dans un navigateur Chromium et refus d'accès à un second utilisateur. La fixture reste **une simulation des réponses du modèle**, mais l'orchestration, les stockages et les interfaces doivent provenir du runtime source-built réel.
+
+Ne conclure PASS global que si le workflow atteint tous ces marqueurs effectivement mesurés ; distinguer strictement mise en route, verdict Oracle, P6 et lecture navigateur. Ne pas réparer l'ancien replay 4C même si un diagnostic historique l'évoque.
+
+## C3 — E2E HTTP / Oracle / P6 / Projet / Idée / Chromium réussi sur la candidate (02/11/2026)
+
+Run [41391258105](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/41391258105) = **SUCCESS** sur le commit exact `3b8fc0067adf68acc76d622242f8390f9538c52f`. Image construite uniquement dans le runner GitHub et non publiée, modèle déterministe simulé localement (aucune clé personnelle ni API distante). Tests sur API LibreChat réelle, Redis/Mongo éphémères, navigateur Chromium réel et deux comptes CI isolés :
+
+- Buildx image depuis le HEAD propre et tag exact : PASS ; OpenRouter configuré vers la fixture locale, pas de frais modèle.
+- API authentifiée : refus sans JWT (401) et accès propriétaire 200 PASS, 6 agents persistés (Worker + cinq spécialistes), capacités/permissions et délégation configurées PASS.
+- Mission Worker via endpoint HTTP/SSE, HTTP 200, 7 événements SSE et **1 événement final** ; deux messages et une conversation persistés dans Mongo. Aucun événement d'erreur SSE.
+- Mission Oracle ACCEPT avec verdict **VERIFIED** persisté : **exactement 1** événement final et zéro erreur ; mission revue HUMAN_REVIEW : **zéro** événement final et candidat privé non publié. Ces deux scénarios sont distincts, et l'acceptation produit le contenu repris dans la projection de Projet/Idée.
+- Projet et Idée réels créés dans Mongo, conversation Oracle acceptée associée, résultat vérifié via HTTP puis affiché dans Chromium sous le compte propriétaire ; compte étranger refusé à l'API et résultat absent du navigateur : PASS.
+
+**Limite de preuve majeure confirmée par lecture du scénario :** `CI_SUBAGENT_UPDATE_COUNT=0`, `CI_SUBAGENT_UNIQUE_RUNS=0`, `CI_SUBAGENT_EVENT_ASSERTION_SCOPE=informational_only` pour la mission Worker de recherche. La fixture `scripts/botmode/ci-openai-compatible-mock.py` renvoie **toujours une réponse texte constante** (`{"ok":true}`) et **n'émet aucun appel d'outil `subagent`**, ni dans la voie streaming ni dans la voie non-streaming. La mission Worker du test ne peut donc pas établir une véritable délégation ; l'absence d'événements SSE n'est pas un défaut produit démontré. De plus, le flux peut être récupéré après achèvement. La mission Oracle acceptée utilise explicitement un plan sans spécialistes. Il ne faut PAS déclarer une mission 1/N spécialistes E2E démontrée sur ce run. Les tests SDK parent→enfant→parent précédemment PASS ne remplacent pas cette preuve serveur.
+
+**Suite minimale distincte, sans ancien 4C :** une seule qualification réellement déléguée 1 spécialiste, avec une fixture d'appel d'outil déterministe et un reçu enfant durable vérifié, devra être conçue sur le runtime courant avant GO. **Ne pas relancer** la fixture texte identique pour obtenir cette preuve ; elle ne peut pas l'apporter. Ne pas remplacer ce test par un nombre de sous-agents configurés ou des événements SSE seulement.
+
+**Verdict C3 : PASS pour parcours réel sans spécialiste Oracle/P6/Projet/Idée/Chromium et isolation multi-utilisateur, NON CONCLUANT pour délégation réelle 1/N dans ce même environnement et sélection automatique du modèle gratuit hors fixture.** L'absence d'appel fournisseur réel reste une limite assumée de la qualification gratuite. Une qualification Lite sur le Chromebook et la revue des vulnérabilités GH (17 alertes affichées au dernier push : 6 élevées, 7 modérées, 4 faibles sur branche par défaut) sont encore requises avant GO stable.
+
+Aucune fusion, aucune publication GHCR, aucune modification de `main`, de `v1.0.1`, de `.env`, des clés, des volumes et installations personnelles.
+
+## C3 — Sous-qualification de délégation native réelle (1 spécialiste)
+
+Suite au PASS E2E Oracle/P6/Projet/Idée à **zéro** spécialiste (#41391258105), le scénario texte fixe ne pouvait pas exercer l'outil `subagent`. Réutilisation de **la fixture source existante** `ci-openai-subagent-fixture.py`, plutôt qu'un deuxième moteur : le workflow E2E reçoit l'option `one_child_only`, qui démarre la même candidate Docker éphémère, provisionne le Worker et ses cinq spécialistes, puis configure la fixture avec **un seul** ID effectivement autorisé. Un nouveau petit vérificateur `ci-source-built-one-child-gate.py` soumet une seule mission à l'API HTTP réelle et exige : 1 appel d'outil parent réellement généré ; 1 appel modèle enfant ; 0 outil manquant ; 1 conversation enfant durable liée au parent avec `parentToolCallId` ; 1 résultat enfant persisté `subagentTask.status=completed`, sans erreur. Aucune preuve ne se réduit à un événement SSE ou au simple inventaire d'agents.
+
+Le parcours Oracle/Projet/Idée précédemment PASS n'est **pas répété** en mode `one_child_only`. La fixture ne contacte aucun fournisseur externe. L'état de la mission parent est diagnostiqué séparément ; ce nouveau test ne prétend pas avoir validé Oracle/P6 sur une mission enfant avant preuve réelle. Le comportement des autres déclenchements du workflow est inchangé.
+
+**Verdict à venir :** NON CONCLUANT avant résultat de CI de la candidate exacte ; aucun GO ni fusion sur simple mise en place du test.
+
+### Premier essai « un enfant » — diagnostic et réduction du test
+
+Run `41393247614` à `16b22968...` : construction source exacte PASS, authentification et provisioning des six agents PASS, configuration de la fixture enfant PASS, **admission de la mission échouée avant toute exécution du modèle** (`HTTPError`). La première version du vérificateur ajoutait un plan `orchestratorMission` incomplet (`constraints` absent, pourtant obligatoire selon `Mission` et utilisé via `...mission.constraints` par `deterministicPlanner`). Ce défaut appartient à la **requête du test**, pas à une preuve d'échec de délégation.
+
+Correctif de portée : la nouvelle qualification vise uniquement l'outil natif **dans un tour Worker ordinaire**, comme le tour HTTP/SSE déjà PASS au précédent E2E, en retirant le plan Oracle inutile de ce vérificateur. Le précédent E2E Oracle/P6/Projet/Idée demeure la preuve distincte de la mission à zéro spécialiste. En cas d'un nouveau FAIL, enregistrer le statut HTTP et les métriques/états durables précis avant de retoucher un mécanisme quelconque.
+
+### Deuxième essai « un enfant » — code de démarrage identifié
+
+Run `41394080821`, commit `68f6d5b5...` : source-built et provisionnement des six agents PASS, fixture correctement configurée, mais admission HTTP **503** à l'instant du démarrage du tour. Le scénario précédent gère déjà une fenêtre `503 SERVER_NOT_READY` distincte de la disponibilité `/api/config`. Ce n'est pas une preuve d'échec du sous-agent. Le vérificateur applique désormais la même tolérance strictement limitée aux 503 avec code `SERVER_NOT_READY` et message de démarrage attendu, sur **la même demande et les mêmes IDs**, sans nouvelle tentative si le tour a déjà été accepté.
+
+## Qualification native du spécialiste réellement exécuté — PASS (02/11/2026)
+
+Run GitHub source-built [#41394744130](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/41394744130) : **SUCCESS**, commit exactement qualifié `169ae110c9dec82465b9e919509251f112dbda52`. L'image LibreChat a été construite sur un runner jetable, sans push GHCR. Redis et MongoDB isolés ; modèle **simulé localement** par la fixture déjà versionnée `ci-openai-subagent-fixture.py` ; aucun jeton modèle réel ni dépense.
+
+La mission est un **tour Worker natif ordinaire** (distinct du plan Oracle déjà validé pour zéro spécialiste), à partir de l'API réellement démarrée. Le Worker et les cinq spécialistes ont été créés et persistés avec autorisations : PASS. La fixture a été liée à un seul ID enfant déjà autorisé. Une unique requête HTTP mission a été admise après une attente `503 SERVER_NOT_READY` strictement bornée, sans retry après création du job.
+
+Preuves directement relevées dans le run :
+
+- `CI_ONE_CHILD_PARENT_TOOL_REQUESTS_DELTA=1` : un appel de l'outil `subagent` demandé par le modèle parent (fixture).
+- `CI_ONE_CHILD_CHILD_RESPONSES_DELTA=1` : **un vrai appel au modèle enfant** exécuté par LibreChat.
+- `CI_ONE_CHILD_MISSING_TOOL_DELTA=0` : aucun fallback silencieux de l'outil.
+- `CI_ONE_CHILD_MONGO_CHILD_COUNT=1`, `CI_ONE_CHILD_MONGO_MESSAGES=2`, `CI_ONE_CHILD_MONGO_COMPLETE=1`, `CI_ONE_CHILD_MONGO_ERRORS=0`, `CI_ONE_CHILD_MONGO_LINKED=True` : exactement un enfant durable, ses messages, son reçu `subagentTask.status=completed` et la liaison au parent avec identités vérifiées.
+- `CI_ONE_CHILD_INITIAL_SSE_FINAL_COUNT=1` : une finale observée sur le tour parent. `CI_ONE_CHILD_PARENT_FINAL_DELTA=2` représente le nombre de réponses de **modèle parent** durant l'exécution, non le nombre de publications P6.
+- `BOTMODE_C3_SOURCE_BUILT_REAL_CHILD_RECORDED=PASS` et workflow SUCCESS.
+
+**Verdict C3 : PASS de la délégation native effective à 1 spécialiste sur API source-built et persistance du reçu enfant ; PASS séparé du parcours Oracle VERIFIED/P6/Projet/Idée/Chromium à zéro spécialiste (#41391258105).** Ces deux sous-parcours ne constituent **pas** encore une seule mission 1 spécialiste avec Oracle/P6 VERIFED : ne pas prétendre que cette jonction a été testée. Les parcours N=2 et 5 spécialistes en API E2E, l'intégration réelle sur Chromebook Lite, le fournisseur gratuit hébergé (non simulé) et les alertes de sécurité restent NON CONCLUANTS avant GO stable.
+
+Les précédents runs de la sous-qualification enfant #41393247614 et #41394080821 échouaient **avant tout appel de modèle** à cause, respectivement, d'une requête de test `orchestratorMission` mal formée (`constraints` absent) et d'une absence de gestion du code 503 pendant l'initialisation native. Aucun correctif de production n'a été requis : le correctif final a isolé un tour Worker ordinaire et repris la gestion existante du 503 uniquement avant admission.
+
+Aucun nouveau cycle CI n'est nécessaire pour répéter ces preuves en l'absence de régression.
+
+## C3 — Jointure finale enfant + Oracle + P6 (candidate en qualification)
+
+Nouvelle entrée **optionnelle** `one_child_oracle=true` dans le workflow déjà validé, toujours avec `simplified_v1=true` et image source exacte jetable. Le runner réutilise le Worker, le spécialiste autorisé et la fixture `subagent` existante, et l'unique mission du vérificateur `ci-source-built-one-child-gate.py` dispose cette fois d'un `orchestratorMission` complet avec `constraints` explicites (contrat identique au test Oracle déjà validé).
+
+**Conditions exigées sur le même `streamId`, `missionId`, `taskId` et `conversationId` :** 1 appel `subagent` parent, 1 réponse du modèle enfant, 1 conversation enfant durable avec exactement un résultat `completed` et aucun `error`, Oracle `VERIFIED` dans la ligne Redis du même job, job `complete`, `responseMessageId` renseigné, aucune publication en attente, **exactement une trame SSE `final`**, message final parent enregistré dans MongoDB. Les compteurs modèles ne sont jamais assimilés à des finales P6. Aucun modèle hébergé ni secret réel n'est transmis.
+
+Ce test ne reprend **aucun** ancien replay 4C, ne réutilise aucune mission incertaine, ne déploie aucune release et ne fusionne rien. **Verdict avant exécution : NON CONCLUANT.** Un éventuel FAIL devra être classé précisément (admission, délégation, Oracle, P6, persistance), sans considérer les sous-tests précédemment PASS comme annulés.
+
+## C3 — JOINTURE FINALE un spécialiste → Oracle VERIFIED → P6 : PASS (02/11/2026)
+
+**Run GitHub:** [#41428380079](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/41428380079) = **SUCCESS**, commit exact testé `987c0fc28f13986fbb9ded58794419cfd1e09bfe`. Image candidate construite uniquement sur runner GitHub et supprimée après test, fixture OpenAI-compatible locale `ci-openai-subagent-fixture.py`, Mongo et Redis jetables, aucun modèle distant/payant.
+
+La vérification `one_child_oracle=true` a exécuté **une seule mission** avec son `missionId`, `taskId`, `streamId` et conversation parent persistants. Les marqueurs suivants proviennent tous du **même run et de la même mission** :
+
+- `CI_ONE_CHILD_PARENT_TOOL_REQUESTS_DELTA=1` : le modèle parent a réellement demandé l'outil natif `subagent`.
+- `CI_ONE_CHILD_CHILD_RESPONSES_DELTA=1` : LibreChat a réellement exécuté un appel de modèle enfant.
+- `CI_ONE_CHILD_MISSING_TOOL_DELTA=0`, `CI_ONE_CHILD_MONGO_CHILD_COUNT=1`, `CI_ONE_CHILD_MONGO_COMPLETE=1`, `CI_ONE_CHILD_MONGO_ERRORS=0`, `CI_ONE_CHILD_MONGO_MESSAGES=2`, `CI_ONE_CHILD_MONGO_LINKED=True` : exactement un spécialiste autorisé exécuté et son résultat terminé durablement lié au parent.
+- `CI_ONE_CHILD_INITIAL_SSE_FINAL_COUNT=1` : une et une seule finale SSE dans la mission.
+- `CI_ONE_CHILD_ORACLE_JOB_STATUS=complete`, `CI_ONE_CHILD_ORACLE_VERIFIED=TRUE` : verdict **Oracle VERIFIED** durable sur le plan et le taskId de la même génération Redis.
+- `CI_ONE_CHILD_P6_PARENT_MONGO_COMMITTED=TRUE` : identifiant `responseMessageId` de P6 correspondant au message final du parent réellement enregistré dans MongoDB.
+- `BOTMODE_C3_ONE_CHILD_ORACLE_VERIFIED_P6_ONCE=PASS`, workflow GitHub SUCCESS.
+
+**Verdict : PASS de la chaîne de bout en bout pour 1 spécialiste, validation Oracle et publication unique P6, en environnement conteneurisé éphémère avec fournisseur simulé local.** Complète les PASS précédents du parcours **0 spécialiste** avec projet, idée, Chromium, accès multi-utilisateurs et les tests C1/C2 de sécurité/récupération.
+
+**Ne pas extrapoler :** ce test n'établit pas 2/5 spécialistes sur la même mission, ni le retour Projet/Idée dans **cette** mission enfant (validé précédemment sur une mission différente à 0 spécialiste). Aucun modèle hébergé gratuit en direct n'a été sollicité. Le profil réel Chromebook Lite et la revue des alertes de sécurité avant release restent NON CONCLUANTS. La source candidate est isolée ; `main` et la release officielle `v1.0.1` demeurent inchangés. Aucun merge ni GO stable accordé.
+
+Les **règles définitives** restent : pas de replay automatique d'un appel fournisseur incertain ; `OUTCOME_UNKNOWN` et reprise sur nouvelle demande explicite, sans nouveau broker ni ancien 4C. Les preuves C2 SIGKILL sont maintenues sans rerun.

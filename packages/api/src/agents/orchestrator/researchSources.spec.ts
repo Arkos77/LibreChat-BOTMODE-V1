@@ -112,6 +112,11 @@ function fixture(mode: Mode, beforeWrite?: () => Promise<void>) {
           });
         }
         resultCalls++;
+        // The SDK must actually pass the new host-grounded transition prompt to
+        // the result model, not merely keep it on the compiled graph edge.
+        const incoming = JSON.stringify(_messages.map((message) => message.content));
+        expect(incoming).toContain('FINAL RESEARCH TASK');
+        expect(incoming).toContain(observed.urls[0]);
         expect(saved.sources?.[task.taskId]).toEqual([observed]);
         if (mode === 'resume' && resultCalls === 1) throw new Error('controlled result failure');
         return new AIMessageChunk({
@@ -143,7 +148,9 @@ it('saves native tool observations before invoking the result model', async () =
   const f = fixture('success');
   const run = await f.create();
   await run.processStream(input(), config);
-  expect(f.counts()).toMatchObject({ effects: 1, resultCalls: 1, sourceReads: 1, sourceWrites: 1 });
+  // One read gates the transition, the second supplies the correlated URLs to
+  // the SDK's finalization prompt; the web effect and durable write remain single.
+  expect(f.counts()).toMatchObject({ effects: 1, resultCalls: 1, sourceReads: 2, sourceWrites: 1 });
   expect(f.saved().sources?.[f.task.taskId]).toEqual([f.observed]);
 });
 

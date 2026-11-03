@@ -90,7 +90,24 @@ export function researchPhaseBinding(
           }),
         )
       : binding.instructions;
-  if (phase === 'result') return { ...binding, instructions, toolEnd: false, clientOptions };
+  if (phase === 'result') {
+    return {
+      ...binding,
+      // Preserve the SDK's authorized tool binding and routing contract.
+      // Research finalization is a model instruction, not another tool-policy runtime.
+      instructions: [
+        instructions,
+        'FINAL RESEARCH REPORT PHASE: web_search observations have already been recorded. Provide the completed report now, not a status update or future research plan.',
+        'Return one JSON object with ok, result, and sources. result must contain substantive findings that address the mission objective, compare relevant evidence, and distinguish uncertainty from sourced facts.',
+        'sources must contain one or more complete HTTP(S) URLs copied verbatim from actual successful web_search results, each on its own line. Do not substitute summaries such as "search done internally", search terms, or altered URLs.',
+        'Do not make an extra web_search call unless you genuinely lack sufficient evidence for the objective. If the available results do not support a complete report, explain the gap and set ok to false.',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      toolEnd: false,
+      clientOptions,
+    };
+  }
   const tools = binding.tools?.filter(isWebTool);
   const graphTools = binding.graphTools?.filter((tool) => tool.name === 'web_search');
   const toolDefinitions = binding.toolDefinitions?.filter(

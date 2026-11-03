@@ -47,7 +47,35 @@ const inspectMissingCapabilities = (agents, requiredTools) =>
     return deniedTools.length > 0 ? [{ name: agent.name, deniedTools }] : [];
   });
 
+// Never treat legacy placeholder prompts, or unrestricted tool grants, as a
+// completed V1. User-edited prompts are not overwritten or fingerprinted:
+// the check only rejects known placeholders and effectively empty instructions.
+const inspectRoleReadiness = (agents, profiles) => {
+  const unconfiguredInstructions = [];
+  const unexpectedCapabilities = [];
+  for (const agent of agents) {
+    const profile = profiles[agent.name];
+    if (!profile) continue;
+    const instructions = typeof agent.instructions === 'string' ? agent.instructions.trim() : '';
+    if (
+      instructions.length < 160 ||
+      /^Tu es le spécialiste .+ de BOT MODE\. Réponds en français\.$/u.test(instructions) ||
+      instructions ===
+        'Tu es le Worker principal BOT MODE. Délègue uniquement selon les autorisations.'
+    ) {
+      unconfiguredInstructions.push(agent.name);
+    }
+    const granted = Array.isArray(agent.tools) ? agent.tools : [];
+    const unexpectedTools = granted.filter((tool) => !profile.tools.includes(tool));
+    if (unexpectedTools.length > 0) {
+      unexpectedCapabilities.push({ name: agent.name, unexpectedTools });
+    }
+  }
+  return { unconfiguredInstructions, unexpectedCapabilities };
+};
+
 module.exports = {
+  inspectRoleReadiness,
   validateModelSelection,
   inspectAgentInventory,
   validateWorkerDelegation,
