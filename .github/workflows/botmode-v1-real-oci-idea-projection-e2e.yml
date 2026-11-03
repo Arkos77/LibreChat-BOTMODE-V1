@@ -26,6 +26,10 @@ permissions:
   contents: read
 jobs:
   exact-candidate-runtime:
+    # Historical D03 source pin applies to legacy PRs only. The simplified V1
+    # source is qualified separately by workflow_dispatch(simplified_v1=true).
+    # Explicit manual runs keep the existing immutable-source guard intact.
+    if: ${{ github.event_name != 'pull_request' || !startsWith(github.head_ref, 'simplify/botmode-v1-') }}
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
