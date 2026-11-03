@@ -37,13 +37,13 @@ import { useSelectAgent, useLocalize, useAuthContext } from '~/hooks';
 import { useAgentPanelContext } from '~/Providers/AgentPanelContext';
 import { resolveCapabilityTools } from './Tools/items/capabilities';
 import AgentPanelSkeleton from './AgentPanelSkeleton';
+import BotModeSetupButton from './BotModeSetupButton';
 import AdvancedPanel from './Advanced/AdvancedPanel';
 import { Panel, isEphemeralAgent } from '~/common';
 import AgentConfig from './AgentConfig';
 import AgentSelect from './AgentSelect';
 import AgentFooter from './AgentFooter';
 import ModelPanel from './ModelPanel';
-import BotModeSetupButton from './BotModeSetupButton';
 
 /* Helpers */
 function getUpdateToastMessage(

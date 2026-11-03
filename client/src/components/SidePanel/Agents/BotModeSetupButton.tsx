@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, useToastContext } from '@librechat/client';
 import { useFormContext, useWatch } from 'react-hook-form';
+import { Button, useToastContext } from '@librechat/client';
 import { dataService, QueryKeys, resolveModelCatalogKey } from 'librechat-data-provider';
 import type { TModelsConfig } from 'librechat-data-provider';
 import type { AgentForm, StringOption } from '~/common';
@@ -93,9 +93,9 @@ export default function BotModeSetupButton({
         setIsMissing(false);
         showToast({ message: localize('com_ui_botmode_setup_success') });
       } else {
-        const missing = status.missing?.join(', ') || status.missingCapabilities
-          ?.map((capability) => capability.name)
-          .join(', ');
+        const missing =
+          status.missing?.join(', ') ||
+          status.missingCapabilities?.map((capability) => capability.name).join(', ');
         setResultText(
           `${localize('com_ui_botmode_setup_incomplete')}${missing ? ` : ${missing}` : ''}`,
         );
@@ -105,15 +105,7 @@ export default function BotModeSetupButton({
     } finally {
       setRunning(false);
     }
-  }, [
-    localize,
-    model,
-    provider,
-    queryClient,
-    running,
-    selectedModelAvailable,
-    showToast,
-  ]);
+  }, [localize, model, provider, queryClient, running, selectedModelAvailable, showToast]);
 
   if (checking || (!isMissing && !resultText)) {
     return null;
@@ -121,12 +113,12 @@ export default function BotModeSetupButton({
 
   return (
     <section
-      className="mt-3 rounded-lg border border-token-border-medium p-3"
+      className="border-token-border-medium mt-3 rounded-lg border p-3"
       aria-label="BOT MODE"
     >
       {isMissing && (
         <>
-          <p className="mb-2 text-sm text-token-text-secondary">
+          <p className="text-token-text-secondary mb-2 text-sm">
             {localize('com_ui_botmode_setup_description')}
           </p>
           <Button
@@ -141,14 +133,14 @@ export default function BotModeSetupButton({
               : localize('com_ui_botmode_setup_button')}
           </Button>
           {!selectedModelAvailable && (
-            <p className="mt-2 text-xs text-token-text-secondary">
+            <p className="text-token-text-secondary mt-2 text-xs">
               {localize('com_ui_botmode_setup_choose_model')}
             </p>
           )}
         </>
       )}
       {resultText && (
-        <p role="status" aria-live="polite" className="mt-2 text-sm text-token-text-secondary">
+        <p role="status" aria-live="polite" className="text-token-text-secondary mt-2 text-sm">
           {resultText}
         </p>
       )}

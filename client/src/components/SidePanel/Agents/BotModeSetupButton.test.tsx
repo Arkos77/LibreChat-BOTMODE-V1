@@ -2,10 +2,10 @@
  * @jest-environment jsdom
  */
 import * as React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { FormProvider, useForm } from 'react-hook-form';
 import { dataService } from 'librechat-data-provider';
+import { FormProvider, useForm } from 'react-hook-form';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { AgentForm } from '~/common';
 import BotModeSetupButton from './BotModeSetupButton';
 
