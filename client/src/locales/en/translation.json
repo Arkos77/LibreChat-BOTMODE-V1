@@ -2661,6 +2661,8 @@
   "com_ui_bot_mode_agents_manual": "Choose my agents",
   "com_ui_bot_mode_agents_advanced": "Advanced options",
   "com_ui_bot_mode_project_launch": "Launch BOT MODE mission",
+  "com_ui_bot_mode_project_objective": "Mission objective",
+  "com_ui_bot_mode_project_objective_placeholder": "Describe the topic, desired outcome, and constraints.",
   "com_ui_bot_mode_dashboard_open": "Open BOT MODE dashboard",
   "com_ui_bot_mode_dashboard_title": "BOT MODE Mission Center",
   "com_ui_bot_mode_dashboard_subtitle": "Follow the current mission",

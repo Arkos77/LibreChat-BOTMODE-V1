@@ -332,8 +332,11 @@ export default function BotModeProjectPanel({
             </div>
             <div className="flex flex-col items-end gap-2">
               {primaryAgent?.id && (
-                <label className="w-full text-xs font-medium text-text-secondary" htmlFor={`botmode-objective-${projectId}`}>
-                  Objectif de la mission
+                <label
+                  className="w-full text-xs font-medium text-text-secondary"
+                  htmlFor={`botmode-objective-${projectId}`}
+                >
+                  {localize('com_ui_bot_mode_project_objective')}
                   <textarea
                     id={`botmode-objective-${projectId}`}
                     className="mt-1 w-full resize-y rounded-md border border-border-light bg-surface-primary p-2 text-sm text-text-primary"
@@ -341,7 +344,7 @@ export default function BotModeProjectPanel({
                     maxLength={2000}
                     value={missionObjective}
                     onChange={(event) => setMissionObjective(event.target.value)}
-                    placeholder="Décrivez le sujet, le résultat attendu et les contraintes."
+                    placeholder={localize('com_ui_bot_mode_project_objective_placeholder')}
                   />
                 </label>
               )}

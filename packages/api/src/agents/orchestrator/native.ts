@@ -210,10 +210,14 @@ export function compileNativePlan(
           : [
               'You are executing a NEW downstream task, not repeating the previous specialist report. Use upstream findings as input evidence, but produce your own task-specific result; copying the predecessor text is rejected by the host.',
               ...(task.requiredCapabilities.includes('analysis')
-                ? ['Provide analysis of implications, risks, uncertainty and feasible scenarios grounded in upstream evidence. Distinguish conclusions from source facts.']
+                ? [
+                    'Provide analysis of implications, risks, uncertainty and feasible scenarios grounded in upstream evidence. Distinguish conclusions from source facts.',
+                  ]
                 : []),
               ...(task.requiredCapabilities.includes('writing')
-                ? ['Produce a new integrated synthesis of findings and analysis that answers the mission objective. Do not relabel or reproduce a Research report.']
+                ? [
+                    'Produce a new integrated synthesis of findings and analysis that answers the mission objective. Do not relabel or reproduce a Research report.',
+                  ]
                 : []),
             ]),
         ...(task.validation.length === 0

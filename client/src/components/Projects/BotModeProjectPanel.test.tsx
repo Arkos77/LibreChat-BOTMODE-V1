@@ -14,7 +14,7 @@ const mockInitialize = jest.fn();
 
 const missionObjective = 'Comparer Python et Rust pour une API sur Chromebook 3 Go avec preuves.';
 const launchMissionWithObjective = () => {
-  fireEvent.change(screen.getByLabelText('Objectif de la mission'), {
+  fireEvent.change(screen.getByLabelText('com_ui_bot_mode_project_objective'), {
     target: { value: missionObjective },
   });
   fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }));
@@ -249,12 +249,12 @@ describe('BotModeProjectPanel', () => {
     render(<BotModeProjectPanel projectId="project-a" conversations={[]} />);
     const launch = screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' });
     expect(launch).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Objectif de la mission'), {
+    fireEvent.change(screen.getByLabelText('com_ui_bot_mode_project_objective'), {
       target: { value: 'Mission' },
     });
     expect(launch).toBeDisabled();
     expect(mockNavigate).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText('Objectif de la mission'), {
+    fireEvent.change(screen.getByLabelText('com_ui_bot_mode_project_objective'), {
       target: { value: `  ${missionObjective}  ` },
     });
     expect(launch).toBeEnabled();
