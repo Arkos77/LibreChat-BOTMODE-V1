@@ -874,6 +874,9 @@ jobs:
                       except Exception:
                           admission_replies.append({'status':response.status})
               page.on('response',capture_reply)
+              # The project UI intentionally disables launch until an objective is provided.
+              panel.locator('textarea').fill('Analyse les informations du projet et produis une synthèse vérifiable.')
+              assert launch.is_enabled(), 'CI_BROWSER_AUTO_LAUNCH_DISABLED_AFTER_OBJECTIVE'
               launch.click()
               launched('auto')
               # Require an actual browser-originated backend admission, not
@@ -965,7 +968,9 @@ jobs:
               checkbox.wait_for(timeout=15000)
               manual_name=checkbox.locator('xpath=..').inner_text().strip()
               checkbox.check()
-              launch=page.locator('section').filter(has=selector).last.locator('button').first
+              manual_panel=page.locator('section').filter(has=selector).last
+              manual_panel.locator('textarea').fill('Analyse le projet avec le spécialiste choisi et produis une réponse vérifiable.')
+              launch=manual_panel.locator('button').first
               assert launch.is_enabled(), 'CI_BROWSER_MANUAL_LAUNCH_DISABLED'
               launch.click()
               launched('manual')
