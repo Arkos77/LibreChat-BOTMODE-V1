@@ -10,6 +10,7 @@ import type { AgentForm } from '~/common';
 import BotModeSetupButton from './BotModeSetupButton';
 
 const mockShowToast = jest.fn();
+const mockLocalize = (key: string) => key;
 
 jest.mock('@librechat/client', () => ({
   Button: ({ children, onClick, ...props }: React.ComponentProps<'button'>) => (
@@ -21,7 +22,7 @@ jest.mock('@librechat/client', () => ({
 }));
 
 jest.mock('~/hooks', () => ({
-  useLocalize: () => (key: string) => key,
+  useLocalize: () => mockLocalize,
 }));
 
 jest.mock('librechat-data-provider', () => {
@@ -121,7 +122,7 @@ describe('BotModeSetupButton', () => {
     const button = await screen.findByRole('button', {
       name: 'com_ui_botmode_setup_button',
     });
-    expect(button).toBeDisabled();
+    expect((button as HTMLButtonElement).disabled).toBe(true);
     expect(initialize).not.toHaveBeenCalled();
   });
 });
