@@ -63,7 +63,7 @@ function phaseOptions(provider: string, original: Options | undefined, phase: Ph
       ...kwargs,
       ...(phase === 'result' && { response_format: jsonFormat }),
       tool_choice:
-        phase === 'observation' ? { type: 'function', function: { name: 'web_search' } } : 'auto',
+        phase === 'observation' ? { type: 'function', function: { name: 'web_search' } } : 'none',
     },
     ...(original?.fallbacks != null && {
       fallbacks: original.fallbacks.map((fallback) => ({
@@ -90,7 +90,30 @@ export function researchPhaseBinding(
           }),
         )
       : binding.instructions;
-  if (phase === 'result') return { ...binding, instructions, toolEnd: false, clientOptions };
+  if (phase === 'result') {
+    return {
+      ...binding,
+      // The web observation has already completed. The result node must write
+      // a final report, never start a second search or delegate another agent.
+      instructions: [
+        instructions,
+        'FINAL RESEARCH REPORT PHASE: web_search has already completed. Produce the final report now using the retrieved search results in the conversation, not a plan for later searches.',
+        'Return one JSON object with ok, result, and sources. result must contain substantive findings, trade-offs, uncertainty, and an answer to the mission objective; do not output internal status notes such as "search done internally" or "now need to research".',
+        'sources must contain at least one complete HTTP(S) URL copied verbatim from the preceding successful web_search tool response, one URL per line. Do not paraphrase, invent, shorten, or rewrite URLs.',
+        'If the observed results lack a full URL or do not establish the requested findings, report the limitation and set ok to false; never mark an unfinished report as complete.',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      clientOptions,
+      toolEnd: false,
+      tools: [],
+      graphTools: [],
+      toolDefinitions: [],
+      toolMap: new Map(),
+      toolRegistry: new Map(),
+      subagentConfigs: [],
+    };
+  }
   const tools = binding.tools?.filter(isWebTool);
   const graphTools = binding.graphTools?.filter((tool) => tool.name === 'web_search');
   const toolDefinitions = binding.toolDefinitions?.filter(
