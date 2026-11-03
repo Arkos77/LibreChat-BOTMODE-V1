@@ -43,6 +43,7 @@ import AgentConfig from './AgentConfig';
 import AgentSelect from './AgentSelect';
 import AgentFooter from './AgentFooter';
 import ModelPanel from './ModelPanel';
+import BotModeSetupButton from './BotModeSetupButton';
 
 /* Helpers */
 function getUpdateToastMessage(
@@ -730,7 +731,16 @@ export default function AgentPanel() {
             />
           )}
           {canEditAgent && !agentQuery.isInitialLoading && activePanel === Panel.builder && (
-            <AgentConfig />
+            <>
+              <AgentConfig />
+              {!agent_id && (
+                <BotModeSetupButton
+                  models={models}
+                  modelsReady={modelsReady}
+                  modelsError={modelsError}
+                />
+              )}
+            </>
           )}
           {canEditAgent && !agentQuery.isInitialLoading && activePanel === Panel.advanced && (
             <AdvancedPanel />
