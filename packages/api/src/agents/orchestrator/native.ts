@@ -224,7 +224,7 @@ export function compileNativePlan(
                 : 'Required task output: return exactly one JSON object, without Markdown fences or surrounding prose. Use scalar fields only; put detailed findings and source citations in a result string.',
               'The validation criteria above are checks, not values to copy. Report completion honestly; never claim a criterion is met when the requested work or evidence is missing.',
               separateSources
-                ? 'For research-v2, include a sources string of newline-separated absolute HTTP(S) URLs returned by completed web_search calls. The host verifies and displays these sources separately from result. Invented URLs and search arguments are not source observations.'
+                ? 'For research-v2, include a sources string of newline-separated absolute HTTP(S) URLs copied verbatim from completed web_search results. Preserve the full original hostname, path, query, and fragments; do not shorten Reddit paths, replace youtu.be with youtube.com, remove query strings or change URL spelling. The host matches these URLs exactly to its independent observed evidence. Never invent sources or copy search arguments. If the actual goal or evidence is missing, explain the gap instead of claiming ok: true.'
                 : 'For research-v1, include a sources string of newline-separated absolute HTTP(S) URLs returned by completed web_search calls. Cite these same direct URLs in result. Invented URLs and search arguments are not source observations.',
               'Respect the mission deadline and other constraints. Distinguish sourced facts from estimates and unknowns. Do not invent amounts, payment delays or citations; state when a source does not establish a claim.',
             ]),

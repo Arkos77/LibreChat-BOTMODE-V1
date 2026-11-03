@@ -12,6 +12,14 @@ const mockNavigate = jest.fn();
 const mockGetModels = jest.fn();
 const mockInitialize = jest.fn();
 
+const missionObjective = 'Comparer Python et Rust pour une API sur Chromebook 3 Go avec preuves.';
+const launchMissionWithObjective = () => {
+  fireEvent.change(screen.getByLabelText('Objectif de la mission'), {
+    target: { value: missionObjective },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }));
+};
+
 jest.mock('librechat-data-provider', () => ({
   ...jest.requireActual('librechat-data-provider'),
   dataService: {
@@ -237,6 +245,27 @@ describe('BotModeProjectPanel', () => {
     expect(mockInitialize).not.toHaveBeenCalled();
   });
 
+  it('prevents generic automatic missions and submits only a concrete user objective', () => {
+    render(<BotModeProjectPanel projectId="project-a" conversations={[]} />);
+    const launch = screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' });
+    expect(launch).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Objectif de la mission'), {
+      target: { value: 'Mission' },
+    });
+    expect(launch).toBeDisabled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Objectif de la mission'), {
+      target: { value: `  ${missionObjective}  ` },
+    });
+    expect(launch).toBeEnabled();
+    fireEvent.click(launch);
+    const destination = new URL(mockNavigate.mock.calls.at(-1)?.[0], 'http://localhost');
+    expect(destination.searchParams.get('prompt')).toBe(missionObjective);
+    expect(destination.searchParams.get('submit')).toBe('true');
+    expect(destination.searchParams.get('botmode_mode')).toBe('analyze');
+    expect(destination.searchParams.get('botmode')).toBe('1');
+  });
+
   it('selects the BOT MODE Worker instead of the first listed agent', () => {
     mockUseListAgentsQuery.mockReturnValue({
       data: {
@@ -247,7 +276,7 @@ describe('BotModeProjectPanel', () => {
       },
     });
     render(<BotModeProjectPanel projectId="project-a" conversations={[]} />);
-    fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }));
+    launchMissionWithObjective();
     expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('agent_id=agent-worker'));
     const launched = mockNavigate.mock.calls.at(-1)?.[0] as string;
     const params = new URL(launched, 'http://localhost').searchParams;
@@ -269,7 +298,7 @@ describe('BotModeProjectPanel', () => {
       data: { subagents: { enabled: true, agent_ids: ['mongo-recherche-123'] } },
     });
     render(<BotModeProjectPanel projectId="project-a" conversations={[]} />);
-    fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }));
+    launchMissionWithObjective();
     const launched = mockNavigate.mock.calls.at(-1)?.[0] as string;
     const params = new URL(launched, 'http://localhost').searchParams;
     expect(params.get('botmode_agent_mode')).toBe('auto');
@@ -293,7 +322,7 @@ describe('BotModeProjectPanel', () => {
     expect(screen.getByText('RECHERCHE')).toBeInTheDocument();
     expect(screen.queryByText('AUTRE')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }));
+    launchMissionWithObjective();
     expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('agent-research'));
     expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('botmode_agent_bindings='));
   });
@@ -419,7 +448,7 @@ describe('BotModeProjectPanel', () => {
     expect(
       screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'com_ui_bot_mode_project_launch' }));
+    launchMissionWithObjective();
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.stringMatching(
         /\/c\/new\?projectId=project-a&agent_id=agent-worker&prompt=.*&submit=true&botmode=1&botmode_mode=analyze/,
