@@ -136,9 +136,10 @@ describe('native research phases', () => {
 
   it('preserves customized tool or owner instructions when the generated context is absent', () => {
     const instructions = 'Owner-specific source policy; do not rewrite this text.';
-    expect(researchPhaseBinding({ ...binding, instructions }, 'result').instructions).toBe(
-      instructions,
-    );
+    const result = researchPhaseBinding({ ...binding, instructions }, 'result');
+    expect(result.instructions).toContain(instructions);
+    expect(result.instructions).toContain('FINAL RESEARCH REPORT PHASE');
+    expect(result.instructions).toContain('copied verbatim');
   });
 
   it('forces only web_search without JSON on observation and restores final JSON', () => {
@@ -152,12 +153,46 @@ describe('native research phases', () => {
     );
     expect(first.toolDefinitions?.map((tool) => tool.name)).toEqual(['web_search']);
     expect(last.clientOptions).toMatchObject({
-      modelKwargs: { tool_choice: 'auto', response_format: { type: 'json_object' } },
+      modelKwargs: { tool_choice: 'none', response_format: { type: 'json_object' } },
     });
+    expect(last.toolDefinitions).toEqual([]);
+    expect(last.tools).toEqual([]);
+    expect(last.graphTools).toEqual([]);
+    expect(last.toolMap?.size).toBe(0);
+    expect(last.toolRegistry?.size).toBe(0);
+    expect(last.subagentConfigs).toEqual([]);
     expect(binding.toolDefinitions).toHaveLength(2);
     expect(binding.clientOptions).toMatchObject({
       modelKwargs: { response_format: { type: 'json_object' } },
     });
+  });
+
+  it('disables even owner-supplied executable tools in the result phase', () => {
+    const tool = new DynamicStructuredTool({
+      name: 'web_search',
+      description: 'Search',
+      schema: z.object({ query: z.string() }),
+      func: async () => 'retrieved',
+    });
+    const configured: AgentInputs = {
+      ...binding,
+      tools: [tool],
+      graphTools: [tool],
+      toolMap: new Map([['web_search', tool]]),
+      toolRegistry: new Map([['web_search', tool]]),
+      subagentConfigs: [],
+    };
+    const final = researchPhaseBinding(configured, 'result', true);
+    expect(final.clientOptions).toMatchObject({ modelKwargs: { tool_choice: 'none' } });
+    expect(final.instructions).toContain('final report now');
+    expect(final.tools).toEqual([]);
+    expect(final.graphTools).toEqual([]);
+    expect(final.toolDefinitions).toEqual([]);
+    expect(final.toolMap?.size).toBe(0);
+    expect(final.toolRegistry?.size).toBe(0);
+    expect(final.subagentConfigs).toEqual([]);
+    expect(configured.tools).toHaveLength(1);
+    expect(configured.toolDefinitions).toHaveLength(2);
   });
 
   it('preserves the authorized serialized web schema without exposing unrelated tools', () => {
@@ -239,7 +274,7 @@ describe('native research phases', () => {
       fallbacks: [
         {
           clientOptions: {
-            modelKwargs: { response_format: { type: 'json_object' }, tool_choice: 'auto' },
+            modelKwargs: { response_format: { type: 'json_object' }, tool_choice: 'none' },
           },
         },
       ],
