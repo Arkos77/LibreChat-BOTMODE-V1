@@ -244,7 +244,7 @@ describe('native research phases', () => {
         properties: { query: { type: 'string' } },
         required: ['query'],
       },
-    };
+    } as const;
     const source: AgentInputs = {
       ...binding,
       toolDefinitions: [definition],
