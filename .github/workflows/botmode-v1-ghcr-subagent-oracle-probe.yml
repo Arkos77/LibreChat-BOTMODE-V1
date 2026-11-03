@@ -1,9 +1,9 @@
 name: BOTMODE V1 Published OCI Digest Subagent Oracle Probe
 on:
-  # Historical immutable stable-digest qualification; the candidate PR has
-  # its own exact-source OCI gate and must not compare against an old digest.
-  push:
-    branches: [main]
+  # Historical immutable stable-digest qualification is manual-only.
+  # Do not automatically compare a new main HEAD with experimental image
+  # SHA 59598c2f: this invariant must remain fail-closed when invoked.
+  # Current simplified V1 has its separate exact-source candidate gates.
   workflow_dispatch:
     inputs:
       live_free_provider:

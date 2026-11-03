@@ -1,6 +1,8 @@
 name: BOTMODE V1 Exact Candidate OCI Subagent Oracle Probe
 on:
-  pull_request:
+  # Immutable candidate f0e102... qualification predates simplified V1.
+  # Retain the strict source-drift assertion on explicit manual runs only;
+  # do not apply this old digest check to unrelated modern pull requests.
   workflow_dispatch:
     inputs:
       live_free_provider:
