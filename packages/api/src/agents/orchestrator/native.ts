@@ -6,9 +6,9 @@ import type {
   StandardGraphConfig,
   FallbackConfig,
 } from '@librechat/agents';
+import type { BaseMessage } from '@librechat/agents/langchain/messages';
 import type { MissionOracleResultPersister, MissionOracleTaskInput } from './missionOracle';
 import type { MissionPlan, OracleRequirement, PlannedTask } from './types';
-import type { BaseMessage } from '@librechat/agents/langchain/messages';
 import {
   isResearchTask,
   researchObservationNodeId,
