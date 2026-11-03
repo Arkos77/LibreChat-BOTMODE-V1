@@ -133,7 +133,7 @@ jobs:
           cp .env.example .env
           # The Lite profile already defines its Redis service and durable settings.
           # Never append a duplicate Redis block after the top-level volumes map.
-          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml config --quiet
+          # Compose validation occurs after CI-only required environment variables are set.
           # Fixture comes from the exact same Git checkout as the runtime image.
           # No network-fetched harness can silently test a different revision.
           cp scripts/botmode/ci-openai-subagent-fixture.py /tmp/botmode-ci-model-fixture.py
