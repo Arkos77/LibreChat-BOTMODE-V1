@@ -22,6 +22,42 @@ export const researchObservationNodeId = (nodeId: string): string =>
 type Phase = 'observation' | 'result';
 type Options = OpenAIClientOptions & { fallbacks?: FallbackConfig[] };
 
+/**
+ * Native mission research must not inherit an LLM-invented freshness window.
+ * A date filter such as "last 24 hours" silently excludes evergreen reference
+ * material even when the user requested no recency restriction. Keep the tool
+ * itself and its provenance untouched; restrict only its model-facing schema.
+ *
+ * An explicit host-owned recency policy can restore this field in a later,
+ * separately validated feature; the LLM cannot grant one implicitly.
+ */
+function omitUnrequestedSearchDate<T extends { parameters?: unknown }>(tool: T): T {
+  const parameters = tool.parameters;
+  if (parameters == null || typeof parameters !== 'object' || Array.isArray(parameters)) {
+    return tool;
+  }
+  const schema = parameters as {
+    properties?: Record<string, unknown>;
+    required?: string[];
+  };
+  if (schema.properties == null || !Object.prototype.hasOwnProperty.call(schema.properties, 'date')) {
+    return tool;
+  }
+  const properties = Object.fromEntries(
+    Object.entries(schema.properties).filter(([name]) => name !== 'date'),
+  );
+  return {
+    ...tool,
+    parameters: {
+      ...parameters,
+      properties,
+      ...(Array.isArray(schema.required) && {
+        required: schema.required.filter((name) => name !== 'date'),
+      }),
+    },
+  };
+}
+
 function isWebTool(tool: unknown): boolean {
   if (tool == null || typeof tool !== 'object') return false;
   if ('name' in tool) return tool.name === 'web_search';
@@ -110,15 +146,20 @@ export function researchPhaseBinding(
   }
   const tools = binding.tools?.filter(isWebTool);
   const graphTools = binding.graphTools?.filter((tool) => tool.name === 'web_search');
-  const toolDefinitions = binding.toolDefinitions?.filter(
-    (tool) => tool.name === 'web_search' && tool.defer_loading !== true,
-  );
+  const toolDefinitions = binding.toolDefinitions
+    ?.filter((tool) => tool.name === 'web_search' && tool.defer_loading !== true)
+    .map(omitUnrequestedSearchDate);
   if (!tools?.length && !graphTools?.length && !toolDefinitions?.length) {
     throw new Error('BOTMODE_WEB_SEARCH_UNAVAILABLE');
   }
   return {
     ...binding,
-    instructions,
+    instructions: [
+      instructions,
+      'NATIVE RESEARCH SEARCH POLICY: Do not set the date parameter unless a future host-owned recency policy explicitly enables it. For reference documentation, search all publication dates. Do not silently restrict searches to the last 24 hours.',
+    ]
+      .filter(Boolean)
+      .join('\n'),
     clientOptions,
     toolEnd: true,
     tools,
