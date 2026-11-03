@@ -162,6 +162,12 @@ jest.mock('./AgentConfig', () => ({
   default: () => <div>{`Agent Config`}</div>,
 }));
 
+// BOT MODE onboarding has its own focused tests; keep general form tests isolated.
+jest.mock('./BotModeSetupButton', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+
 jest.mock('./AgentSelect', () => ({
   __esModule: true,
   default: () => <div>{`Agent Select`}</div>,

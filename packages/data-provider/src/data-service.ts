@@ -608,6 +608,17 @@ export const deleteAction = async ({
  * Agents
  */
 
+/** Owner-scoped, authenticated BOT MODE onboarding readiness preflight. */
+export const getBotModeSetupStatus = (): Promise<{
+  inventoryComplete: boolean;
+  permissionsComplete: boolean;
+  delegationConfigured: boolean;
+  configurationComplete: boolean;
+  present: string[];
+  missing: string[];
+  missingCapabilities: Array<{ name: string; deniedTools: string[] }>;
+}> => request.get(endpoints.agents({ path: 'botmode/setup-status' }));
+
 export const initializeBotModeAgents = (selection: {
   provider: string;
   model: string;

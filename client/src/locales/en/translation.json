@@ -1,4 +1,13 @@
 {
+  "com_ui_botmode_setup_button": "Initialize BOT MODE (6 agents)",
+  "com_ui_botmode_setup_description": "Automatically create the Worker and five specialists using the selected model. Your account's permissions are checked.",
+  "com_ui_botmode_setup_running": "Initializing agents…",
+  "com_ui_botmode_setup_choose_model": "First select an available provider and model.",
+  "com_ui_botmode_setup_confirm": "Initialize the six BOT MODE agents for this account using the selected model?",
+  "com_ui_botmode_setup_success": "BOT MODE: all six agents are initialized and authorized.",
+  "com_ui_botmode_setup_incomplete": "Setup requires further verification",
+  "com_ui_botmode_setup_failed": "Setup failed. Check your selected model and account permissions.",
+  "com_ui_botmode_setup_unavailable": "Could not check BOT MODE status for this session.",
   "com_ui_botmode_progress_show": "Show progress",
   "com_ui_botmode_progress_hide": "Hide progress",
   "com_ui_botmode_progress_live": "Live activity",

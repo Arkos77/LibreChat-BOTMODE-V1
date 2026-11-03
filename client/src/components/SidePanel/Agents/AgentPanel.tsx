@@ -37,6 +37,7 @@ import { useSelectAgent, useLocalize, useAuthContext } from '~/hooks';
 import { useAgentPanelContext } from '~/Providers/AgentPanelContext';
 import { resolveCapabilityTools } from './Tools/items/capabilities';
 import AgentPanelSkeleton from './AgentPanelSkeleton';
+import BotModeSetupButton from './BotModeSetupButton';
 import AdvancedPanel from './Advanced/AdvancedPanel';
 import { Panel, isEphemeralAgent } from '~/common';
 import AgentConfig from './AgentConfig';
@@ -730,7 +731,16 @@ export default function AgentPanel() {
             />
           )}
           {canEditAgent && !agentQuery.isInitialLoading && activePanel === Panel.builder && (
-            <AgentConfig />
+            <>
+              {!agent_id && (
+                <BotModeSetupButton
+                  models={models}
+                  modelsReady={modelsReady}
+                  modelsError={modelsError}
+                />
+              )}
+              <AgentConfig />
+            </>
           )}
           {canEditAgent && !agentQuery.isInitialLoading && activePanel === Panel.advanced && (
             <AdvancedPanel />
