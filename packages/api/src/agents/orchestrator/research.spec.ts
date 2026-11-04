@@ -88,6 +88,27 @@ describe('host-owned research comparison topic extraction', () => {
     );
     expect(queries).toEqual(['MDN Web Docs SpeechRecognition', 'MDN Web Docs SpeechSynthesis']);
   });
+  it('covers all three named speech technologies with specific and distinct searches', () => {
+    const queries = nativeResearchComparisonQueries(
+      'Mission BOT MODE V1 : comparer Web Speech API, Web VAD et Vosk sur Chromebook 2,7 Go RAM. RECHERCHE web avec 2 URL reelles.',
+    );
+    expect(queries).toEqual([
+      'MDN Web Speech API SpeechRecognition documentation',
+      'ricky0123 vad-web browser voice activity detection JavaScript documentation',
+      'Vosk Alphacep offline speech recognition documentation',
+    ]);
+    expect(new Set(queries).size).toBe(3);
+    expect(queries.every((query) => query.length <= 160)).toBe(true);
+  });
+
+  it('preserves two explicitly named speech subjects without generic VAD search', () => {
+    expect(nativeResearchComparisonQueries('Comparer Web VAD et Vosk sur ChromeOS')).toEqual([
+      'ricky0123 vad-web browser voice activity detection JavaScript documentation',
+      'Vosk Alphacep offline speech recognition documentation',
+    ]);
+    expect(nativeResearchComparisonQueries('Compare VAD and other unknown solutions')).toEqual([]);
+  });
+
   it('supports a simple versus pair, without searching generic or ambiguous prompts', () => {
     expect(nativeResearchComparisonQueries('Compare Python vs Rust for an API')).toEqual([
       'official documentation Python',
