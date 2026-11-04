@@ -140,7 +140,8 @@ describe('BOT MODE incremental progress sidebar', () => {
       data: [
         {
           sender: 'BOT MODE Worker',
-          text: 'Final response persisted after reload',
+          text: '',
+          content: [{ type: 'text', text: 'Final response persisted after reload' }],
           error: false,
           unfinished: false,
           metadata: {

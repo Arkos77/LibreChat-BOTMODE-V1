@@ -115,7 +115,12 @@ export function getSavedMissionReceipt(messages: TMessage[] | undefined) {
     return {
       tasks,
       verifiedTaskIds,
-      hasFinalOutput: typeof message.text === 'string' && message.text.trim().length > 0,
+      hasFinalOutput:
+        (typeof message.text === 'string' && message.text.trim().length > 0) ||
+        message.content?.some(
+          (part) =>
+            part.type === 'text' && typeof part.text === 'string' && part.text.trim().length > 0,
+        ) === true,
     };
   }
   return null;
