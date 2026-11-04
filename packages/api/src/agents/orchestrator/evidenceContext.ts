@@ -124,7 +124,7 @@ export function assertNativeMissionPhaseTools(
     throw new Error('BOTMODE_RESEARCH_PHASE_CONTEXT_REQUIRED');
   }
   resolveNativeMissionToolAgentId(plan, executionId);
-  if (toolNames.some((name) => name !== 'web_search')) {
+  if (toolNames.length > 3 || toolNames.some((name) => name !== 'web_search')) {
     throw new Error('BOTMODE_RESEARCH_TOOL_POLICY_CONFLICT');
   }
 }
