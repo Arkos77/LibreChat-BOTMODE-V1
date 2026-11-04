@@ -9,9 +9,13 @@
  * remains bound to the real, checkpointed outer toolCallId.
  */
 function createNativeResearchBatch(originalCallbacks, rawQueries) {
-  if (!Array.isArray(rawQueries) || rawQueries.length < 2 || rawQueries.length > 3 ||
-      rawQueries.some((query) => typeof query !== 'string' || query.length > 160 || !query.trim()) ||
-      new Set(rawQueries.map((query) => query.trim().toLowerCase())).size !== rawQueries.length) {
+  if (
+    !Array.isArray(rawQueries) ||
+    rawQueries.length < 2 ||
+    rawQueries.length > 3 ||
+    rawQueries.some((query) => typeof query !== 'string' || query.length > 160 || !query.trim()) ||
+    new Set(rawQueries.map((query) => query.trim().toLowerCase())).size !== rawQueries.length
+  ) {
     throw new Error('BOTMODE_RESEARCH_BATCH_POLICY_INVALID');
   }
   const queries = rawQueries.map((query) => query.trim());
@@ -45,12 +49,23 @@ function createNativeResearchBatch(originalCallbacks, rawQueries) {
         // Sequential, bounded calls: no extra permission, actor or graph node.
         for (const query of queries) {
           const value = await originalFunc(
-            { ...argumentsFromModel, query, date: undefined, images: false, videos: false, news: false },
+            {
+              ...argumentsFromModel,
+              query,
+              date: undefined,
+              images: false,
+              videos: false,
+              news: false,
+            },
             runManager,
             config,
           );
-          if (!Array.isArray(value) || value.length !== 2 ||
-              typeof value[0] !== 'string' || !value[1]?.web_search) {
+          if (
+            !Array.isArray(value) ||
+            value.length !== 2 ||
+            typeof value[0] !== 'string' ||
+            !value[1]?.web_search
+          ) {
             throw new Error('BOTMODE_RESEARCH_BATCH_RESULT_INVALID');
           }
           outputs.push(value);
@@ -69,7 +84,10 @@ function createNativeResearchBatch(originalCallbacks, rawQueries) {
           if (observed.success !== true || !sources.some((source) => source.link)) {
             throw new Error('BOTMODE_RESEARCH_SUBJECT_SOURCES_REQUIRED');
           }
-          for (const [name, target] of [['organic', organic], ['topStories', topStories]]) {
+          for (const [name, target] of [
+            ['organic', organic],
+            ['topStories', topStories],
+          ]) {
             for (const source of data?.[name] ?? []) {
               if (!source.link || seenSources.has(source.link)) continue;
               seenSources.add(source.link);
@@ -96,10 +114,12 @@ function createNativeResearchBatch(originalCallbacks, rawQueries) {
             }
           }
         }
-        const combinedText = outputs.map((item, i) => {
-          // Preserve space for both topics even on context-limited models.
-          return `Topic ${i + 1} / ${queries.length} (${queries[i]}):\n${item[0].slice(0, 11000)}`;
-        }).join('\n\n');
+        const combinedText = outputs
+          .map((item, i) => {
+            // Preserve space for both topics even on context-limited models.
+            return `Topic ${i + 1} / ${queries.length} (${queries[i]}):\n${item[0].slice(0, 11000)}`;
+          })
+          .join('\n\n');
         return [
           combinedText,
           {

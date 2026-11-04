@@ -23,10 +23,7 @@ describe('host-owned native web search batch', () => {
           { success: true, data: { organic, topStories: [] } },
           config,
         );
-        return [
-          params.query,
-          { web_search: { organic, topStories: [] }, outcome: 'Retrieved' },
-        ];
+        return [params.query, { web_search: { organic, topStories: [] }, outcome: 'Retrieved' }];
       },
     };
     batch.wrap([tool]);

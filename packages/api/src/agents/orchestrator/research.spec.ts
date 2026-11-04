@@ -16,16 +16,16 @@ import type {
   FallbackConfig,
 } from '@librechat/agents';
 import {
-  createMissionEvidenceContext,
-  resolveNativeMissionToolAgentId,
-  assertNativeMissionPhaseTools,
-} from './evidenceContext';
-import {
   researchObservationNodeId,
   nativeResearchComparisonQueries,
   researchPhaseBinding,
   requireResearchObservation,
 } from './research';
+import {
+  createMissionEvidenceContext,
+  resolveNativeMissionToolAgentId,
+  assertNativeMissionPhaseTools,
+} from './evidenceContext';
 import { buildWebSearchContext } from '~/tools/toolkits/web';
 import { createToolExecuteHandler } from '../handlers';
 import { buildHITLRunWiring } from '../hitl/runtime';
@@ -86,19 +86,14 @@ describe('host-owned research comparison topic extraction', () => {
     const queries = nativeResearchComparisonQueries(
       'MISSION DE RECEPTION PR117 : comparer les interfaces MDN SpeechRecognition (voix) et SpeechSynthesis (synthese). RECHERCHE : deux URL.',
     );
-    expect(queries).toEqual([
-      'MDN Web Docs SpeechRecognition',
-      'MDN Web Docs SpeechSynthesis',
-    ]);
+    expect(queries).toEqual(['MDN Web Docs SpeechRecognition', 'MDN Web Docs SpeechSynthesis']);
   });
   it('supports a simple versus pair, without searching generic or ambiguous prompts', () => {
     expect(nativeResearchComparisonQueries('Compare Python vs Rust for an API')).toEqual([
       'official documentation Python',
       'official documentation Rust',
     ]);
-    expect(nativeResearchComparisonQueries('Find MDN SpeechRecognition documentation')).toEqual(
-      [],
-    );
+    expect(nativeResearchComparisonQueries('Find MDN SpeechRecognition documentation')).toEqual([]);
     expect(nativeResearchComparisonQueries('Compare current options')).toEqual([]);
   });
 });

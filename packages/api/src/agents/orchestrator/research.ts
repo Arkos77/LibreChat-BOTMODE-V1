@@ -31,8 +31,7 @@ export function nativeResearchComparisonQueries(objective: string): string[] {
   if (!/\b(compar(?:e|er|aison)|versus|vs\.?|diff[eé]rence)\b/i.test(goal)) return [];
   const camel = [
     ...new Set(
-      [...goal.matchAll(/\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+\b/g)]
-        .map((match) => match[0]),
+      [...goal.matchAll(/\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+\b/g)].map((match) => match[0]),
     ),
   ];
   let subjects = camel.slice(0, 3);
@@ -42,7 +41,10 @@ export function nativeResearchComparisonQueries(objective: string): string[] {
     );
     subjects = pair == null ? [] : [pair[1], pair[2]];
   }
-  if (subjects.length < 2 || new Set(subjects.map((item) => item.toLowerCase())).size !== subjects.length) {
+  if (
+    subjects.length < 2 ||
+    new Set(subjects.map((item) => item.toLowerCase())).size !== subjects.length
+  ) {
     return [];
   }
   const prefix = /\bMDN\b/i.test(goal) ? 'MDN Web Docs' : 'official documentation';
