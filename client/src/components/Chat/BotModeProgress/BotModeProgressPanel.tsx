@@ -15,12 +15,12 @@ import {
   botModeToolsRightCountAtom,
   botModeToolsRightHostAtom,
 } from '~/components/Chat/BotModeTools/state';
-import { subagentStatusDotClass, subagentStatusLabelKey } from '~/components/Chat/Subagents/status';
 import {
   useBotModeProjectProjectionQuery,
   useGetMessagesByConvoId,
   useParentSubagentsQuery,
 } from '~/data-provider';
+import { subagentStatusDotClass, subagentStatusLabelKey } from '~/components/Chat/Subagents/status';
 import { useLocalize } from '~/hooks';
 
 export const MISSION_PHASES = [
