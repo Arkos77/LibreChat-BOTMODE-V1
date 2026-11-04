@@ -9,14 +9,18 @@ import {
   ShieldCheck,
   Wrench,
 } from 'lucide-react';
-import type { TBotModeProjectObservation } from 'librechat-data-provider';
+import type { TBotModeProjectObservation, TMessage } from 'librechat-data-provider';
 import {
   BOTMODE_TOOLS_RIGHT_HOST_ID,
   botModeToolsRightCountAtom,
   botModeToolsRightHostAtom,
 } from '~/components/Chat/BotModeTools/state';
+import {
+  useBotModeProjectProjectionQuery,
+  useGetMessagesByConvoId,
+  useParentSubagentsQuery,
+} from '~/data-provider';
 import { subagentStatusDotClass, subagentStatusLabelKey } from '~/components/Chat/Subagents/status';
-import { useBotModeProjectProjectionQuery, useParentSubagentsQuery } from '~/data-provider';
 import { useLocalize } from '~/hooks';
 
 export const MISSION_PHASES = [
@@ -64,6 +68,59 @@ export function getMissionProgress(observations: TBotModeProjectObservation[]) {
   };
 }
 
+/** Recover a completed, host-verified mission from its durable assistant message.
+ * Standalone BOT MODE conversations do not have a project projection; never
+ * treat natural-language "Oracle/P6" claims as a verification receipt.
+ */
+export function getSavedMissionReceipt(messages: TMessage[] | undefined) {
+  for (const message of [...(messages ?? [])].reverse()) {
+    if (message.isCreatedByUser || message.error === true || message.unfinished === true) {
+      continue;
+    }
+    const rawPlan = message.metadata?.botModePlan;
+    const rawVerification = message.metadata?.botModeVerification;
+    if (
+      rawPlan == null ||
+      typeof rawPlan !== 'object' ||
+      rawVerification == null ||
+      typeof rawVerification !== 'object'
+    ) {
+      continue;
+    }
+    const plan = rawPlan as Record<string, unknown>;
+    const verification = rawVerification as Record<string, unknown>;
+    if (
+      typeof plan.planId !== 'string' ||
+      plan.planId.length === 0 ||
+      verification.planId !== plan.planId ||
+      !Array.isArray(plan.tasks) ||
+      !Array.isArray(verification.verifiedTaskIds)
+    ) {
+      continue;
+    }
+    const tasks = plan.tasks.filter(
+      (task): task is { taskId: string; objective: string } =>
+        task != null &&
+        typeof task === 'object' &&
+        typeof task.taskId === 'string' &&
+        typeof task.objective === 'string',
+    );
+    const taskIds = new Set(tasks.map((task) => task.taskId));
+    const verifiedTaskIds = verification.verifiedTaskIds.filter(
+      (id): id is string => typeof id === 'string' && taskIds.has(id),
+    );
+    if (tasks.length === 0 || verifiedTaskIds.length === 0) {
+      continue;
+    }
+    return {
+      tasks,
+      verifiedTaskIds,
+      hasFinalOutput: typeof message.text === 'string' && message.text.trim().length > 0,
+    };
+  }
+  return null;
+}
+
 export default function BotModeProgressPanel({
   projectId,
   conversationId,
@@ -90,6 +147,15 @@ export default function BotModeProgressPanel({
     refetchInterval: isSubmitting ? 2_000 : 5_000,
     refetchIntervalInBackground: false,
   });
+  // The message query shares ChatView's cache and survives conversation
+  // navigation. Project projection alone cannot hydrate standalone missions.
+  const { data: savedMessages } = useGetMessagesByConvoId(conversationId, {
+    enabled: Boolean(conversationId) && conversationId !== 'new',
+  });
+  const savedMissionReceipt = useMemo(
+    () => (isSubmitting ? null : getSavedMissionReceipt(savedMessages)),
+    [isSubmitting, savedMessages],
+  );
 
   const current = project?.conversations.find((item) => item.conversationId === conversationId);
   const observations = useMemo(
@@ -98,11 +164,14 @@ export default function BotModeProgressPanel({
   );
   const progress = useMemo(() => getMissionProgress(observations), [observations]);
   const latestPlan = current?.plans.at(-1);
-  const tasks = latestPlan?.plan.tasks ?? [];
-  const verifiedTaskIds = new Set(latestPlan?.verifiedTaskIds ?? []);
+  const tasks = latestPlan?.plan.tasks ?? savedMissionReceipt?.tasks ?? [];
+  const verifiedTaskIds = new Set(
+    latestPlan?.verifiedTaskIds ?? savedMissionReceipt?.verifiedTaskIds ?? [],
+  );
   const verifiedCount = verifiedTaskIds.size > 0 ? verifiedTaskIds.size : progress.verified;
   const children = subagents?.children ?? [];
   const results = current?.results.filter((item) => Boolean(item.content.trim())) ?? [];
+  const resultsCount = results.length || (savedMissionReceipt?.hasFinalOutput ? 1 : 0);
   const sources = project?.sources ?? [];
   const receipts = current?.modelReceipts ?? [];
   const hasMissionStages =
@@ -113,7 +182,7 @@ export default function BotModeProgressPanel({
     progress.count > 0 ||
     tasks.length > 0 ||
     children.length > 0 ||
-    results.length > 0 ||
+    resultsCount > 0 ||
     sources.length > 0 ||
     receipts.length > 0;
 
@@ -258,14 +327,14 @@ export default function BotModeProgressPanel({
               </section>
             )}
 
-            {results.length > 0 && (
+            {resultsCount > 0 && (
               <section aria-label={localize('com_ui_botmode_progress_outputs')}>
                 <h3 className="mb-2 flex items-center gap-2 font-semibold">
                   <FileText className="h-4 w-4 text-violet-500" aria-hidden="true" />
                   {localize('com_ui_botmode_progress_outputs')}
                 </h3>
                 <p className="text-xs text-text-secondary">
-                  {localize('com_ui_botmode_progress_results', { count: results.length })}
+                  {localize('com_ui_botmode_progress_results', { count: resultsCount })}
                 </p>
               </section>
             )}
