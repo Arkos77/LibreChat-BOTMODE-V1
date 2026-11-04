@@ -3,6 +3,8 @@ const {
   createMissionEvidenceContext,
   resolveNativeMissionToolAgentId,
   assertNativeMissionPhaseTools,
+  researchObservationNodeId,
+  nativeResearchComparisonQueries,
   getDetachedSubagentTaskId,
   getDetachedSubagentProducerAgentId,
 } = require('@librechat/api');
@@ -515,6 +517,18 @@ const initializeClient = async ({
     executionGrantJobId: streamId,
     loadTools: async (toolNames, agentId, _configurable, callerCapabilityProjection) => {
       assertNativeMissionPhaseTools(initializedMissionClient?.orchestratorPlan, agentId, toolNames);
+      // Only a host-admitted research observation may receive deterministic
+      // follow-up queries. Request metadata and model arguments grant nothing.
+      const admittedPlan = initializedMissionClient?.orchestratorPlan;
+      const nativeResearchTask = admittedPlan?.tasks.find(
+        (task) =>
+          task.requiredCapabilities.includes('web_search') &&
+          researchObservationNodeId(task.nodeId) === agentId,
+      );
+      const nativeResearchQueries =
+        nativeResearchTask != null && toolNames.includes('web_search')
+          ? nativeResearchComparisonQueries(admittedPlan.mission.objective)
+          : undefined;
       const ctx = getAgentToolContext(agentId) ?? {};
       logger.debug(`[ON_TOOL_EXECUTE] ctx found: ${!!ctx.userMCPAuthMap}, agent: ${ctx.agent?.id}`);
       logger.debug(`[ON_TOOL_EXECUTE] toolRegistry size: ${ctx.toolRegistry?.size ?? 'undefined'}`);
@@ -527,6 +541,7 @@ const initializeClient = async ({
         conversationId,
         requestBody: runtimeRequestBody,
         toolNames,
+        nativeResearchQueries,
         agent: ctx.agent,
         toolRegistry: ctx.toolRegistry,
         callerCapabilityProjection,
