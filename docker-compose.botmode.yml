@@ -6,7 +6,8 @@ services:
     restart: always
     shm_size: "256m"
     ports:
-      - "${BOTMODE_HOST_PORT:-3080}:3080"
+      # Default remains unchanged; set BOTMODE_HOST_BIND_IP=127.0.0.1 to restrict host access.
+      - "${BOTMODE_HOST_BIND_IP:-0.0.0.0}:${BOTMODE_HOST_PORT:-3080}:3080"
     depends_on:
       mongodb:
         condition: service_started
