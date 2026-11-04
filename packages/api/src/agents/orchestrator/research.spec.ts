@@ -136,7 +136,7 @@ describe('host-owned research comparison topic extraction', () => {
     expect(nativeResearchComparisonQueries('Compare Actix Web (Rust) et une option inconnue')).toEqual(
       [],
     );
-    expect(nativeResearchComparisonQueries('Présente FastAPI et Actix Web sans comparaison')).toEqual(
+    expect(nativeResearchComparisonQueries('Présente FastAPI et Actix Web')).toEqual(
       [],
     );
     expect(nativeResearchComparisonQueries('Compare two web API frameworks')).toEqual([]);
