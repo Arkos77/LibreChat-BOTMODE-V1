@@ -229,6 +229,7 @@ describe('native research phases', () => {
       required: ['query'],
     });
     expect(observation.instructions).toContain('search all publication dates');
+    expect(observation.instructions).toContain('maximum THREE calls total');
     expect(observation.instructions).toContain('Owner instructions remain unchanged.');
     expect(source.toolDefinitions?.[0].parameters).toHaveProperty('properties.date');
     const final = researchPhaseBinding(source, 'result');
@@ -404,6 +405,88 @@ describe('native research phases', () => {
     expect(() => researchPhaseBinding({ ...binding, toolDefinitions: [] }, 'observation')).toThrow(
       'BOTMODE_WEB_SEARCH_UNAVAILABLE',
     );
+  });
+
+  it('accepts two distinct, fully completed web_search calls within one observation', async () => {
+    const checkpoint = state();
+    const ai = checkpoint.agentOutputs![researchObservationNodeId(task.nodeId)] as AIMessage;
+    ai.tool_calls!.push({
+      id: 'second-call',
+      name: 'web_search',
+      args: { query: 'MDN SpeechSynthesis documentation' },
+    });
+    checkpoint.messages.push(
+      new ToolMessage({
+        id: 'second-tool',
+        tool_call_id: 'second-call',
+        name: 'web_search',
+        content: 'MDN SpeechSynthesis result',
+        status: 'success',
+      }),
+    );
+    const onObserved = jest.fn(async () => undefined);
+    await expect(requireResearchObservation(task, onObserved)(checkpoint)).resolves.toBeUndefined();
+    expect(onObserved).toHaveBeenCalledWith(['current-call', 'second-call']);
+    expect(() =>
+      assertNativeMissionPhaseTools(plan, researchObservationNodeId(task.nodeId), [
+        'web_search',
+        'web_search',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('rejects duplicate queries and more than three checkpointed web searches', async () => {
+    const duplicated = state();
+    const duplicateAI = duplicated.agentOutputs![
+      researchObservationNodeId(task.nodeId)
+    ] as AIMessage;
+    duplicateAI.tool_calls!.push({
+      id: 'second-call',
+      name: 'web_search',
+      args: { query: 'source' },
+    });
+    duplicated.messages.push(
+      new ToolMessage({
+        id: 'second-tool',
+        tool_call_id: 'second-call',
+        name: 'web_search',
+        content: 'duplicate',
+        status: 'success',
+      }),
+    );
+    await expect(requireResearchObservation(task)(duplicated)).rejects.toThrow(
+      'BOTMODE_RESEARCH_OBSERVATION_REQUIRED',
+    );
+
+    const tooMany = state();
+    const manyAI = tooMany.agentOutputs![researchObservationNodeId(task.nodeId)] as AIMessage;
+    for (let i = 2; i <= 4; i++) {
+      manyAI.tool_calls!.push({
+        id: `call-${i}`,
+        name: 'web_search',
+        args: { query: `different subject ${i}` },
+      });
+      tooMany.messages.push(
+        new ToolMessage({
+          id: `tool-${i}`,
+          tool_call_id: `call-${i}`,
+          name: 'web_search',
+          content: 'observed',
+          status: 'success',
+        }),
+      );
+    }
+    await expect(requireResearchObservation(task)(tooMany)).rejects.toThrow(
+      'BOTMODE_RESEARCH_OBSERVATION_REQUIRED',
+    );
+    expect(() =>
+      assertNativeMissionPhaseTools(plan, researchObservationNodeId(task.nodeId), [
+        'web_search',
+        'web_search',
+        'web_search',
+        'web_search',
+      ]),
+    ).toThrow('BOTMODE_RESEARCH_TOOL_POLICY_CONFLICT');
   });
 
   it('accepts completed observations from checkpoint state with no local phase counter', async () => {
