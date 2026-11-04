@@ -33,7 +33,7 @@ function createNativeResearchBatch(originalCallbacks, rawQueries) {
       throw new Error('BOTMODE_RESEARCH_BATCH_TOOL_UNAVAILABLE');
     }
     const originalFunc = web.func.bind(web);
-    web.func = async (argumentsFromModel, config) => {
+    web.func = async (argumentsFromModel, runManager, config) => {
       const id = config?.toolCall?.id;
       if (typeof id !== 'string' || !id) {
         throw new Error('BOTMODE_RESEARCH_BATCH_IDENTITY_MISSING');
@@ -46,6 +46,7 @@ function createNativeResearchBatch(originalCallbacks, rawQueries) {
         for (const query of queries) {
           const value = await originalFunc(
             { ...argumentsFromModel, query, date: undefined, images: false, videos: false, news: false },
+            runManager,
             config,
           );
           if (!Array.isArray(value) || value.length !== 2 ||
