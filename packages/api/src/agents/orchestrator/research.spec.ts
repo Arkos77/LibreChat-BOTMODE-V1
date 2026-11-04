@@ -123,7 +123,9 @@ describe('host-owned research comparison topic extraction', () => {
   });
 
   it('preserves the named framework ordering and accepts hyphenated spelling', () => {
-    expect(nativeResearchComparisonQueries('Comparer Actix-Web (Rust) et FastAPI (Python)')).toEqual([
+    expect(
+      nativeResearchComparisonQueries('Comparer Actix-Web (Rust) et FastAPI (Python)'),
+    ).toEqual([
       'Actix Web Rust web framework official documentation actix.rs',
       'FastAPI Python web framework official documentation fastapi.tiangolo.com',
     ]);
@@ -133,12 +135,10 @@ describe('host-owned research comparison topic extraction', () => {
     expect(nativeResearchComparisonQueries('Compare FastAPI (Python) et un autre outil')).toEqual(
       [],
     );
-    expect(nativeResearchComparisonQueries('Compare Actix Web (Rust) et une option inconnue')).toEqual(
-      [],
-    );
-    expect(nativeResearchComparisonQueries('Présente FastAPI et Actix Web')).toEqual(
-      [],
-    );
+    expect(
+      nativeResearchComparisonQueries('Compare Actix Web (Rust) et une option inconnue'),
+    ).toEqual([]);
+    expect(nativeResearchComparisonQueries('Présente FastAPI et Actix Web')).toEqual([]);
     expect(nativeResearchComparisonQueries('Compare two web API frameworks')).toEqual([]);
   });
 
