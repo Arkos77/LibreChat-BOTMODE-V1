@@ -1975,6 +1975,7 @@ async function loadToolsForExecution({
   conversationId,
   actionsEnabled,
   accessibleMcpServerNames,
+  nativeResearchQueries,
 }) {
   const appConfig = req.config;
   const allLoadedTools = [];
@@ -2198,9 +2199,17 @@ async function loadToolsForExecution({
 
   if (regularToolNames.length > 0) {
     const includesWebSearch = regularToolNames.includes(Tools.web_search);
-    const webSearchCallbacks = includesWebSearch
+    const baseWebSearchCallbacks = includesWebSearch
       ? createOnSearchResults(res, streamId, jobCreatedAt)
       : undefined;
+    const nativeResearchBatch =
+      includesWebSearch && nativeResearchQueries?.length > 1
+        ? require('./nativeResearchWebSearch').createNativeResearchBatch(
+            baseWebSearchCallbacks,
+            nativeResearchQueries,
+          )
+        : undefined;
+    const webSearchCallbacks = nativeResearchBatch?.callbacks ?? baseWebSearchCallbacks;
 
     const { loadedTools } = await loadTools({
       agent,
@@ -2233,7 +2242,9 @@ async function loadToolsForExecution({
     });
 
     if (loadedTools) {
-      allLoadedTools.push(...loadedTools);
+      allLoadedTools.push(
+        ...(nativeResearchBatch == null ? loadedTools : nativeResearchBatch.wrap(loadedTools)),
+      );
     }
   }
 
