@@ -27,25 +27,25 @@ export const researchObservationNodeId = (nodeId: string): string =>
  */
 export function nativeResearchComparisonQueries(objective: string): string[] {
   if (typeof objective !== 'string' || objective.length > 12000) return [];
-  const goal = objective.split(/\\bRECHERCHE\\s*:/i)[0].slice(0, 700);
-  if (!/\\b(compar(?:e|er|aison)|versus|vs\\.?|diff[eé]rence)\\b/i.test(goal)) return [];
+  const goal = objective.split(/\bRECHERCHE\s*:/i)[0].slice(0, 700);
+  if (!/\b(compar(?:e|er|aison)|versus|vs\.?|diff[eé]rence)\b/i.test(goal)) return [];
   const camel = [
     ...new Set(
-      [...goal.matchAll(/\\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+\\b/g)]
+      [...goal.matchAll(/\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+\b/g)]
         .map((match) => match[0]),
     ),
   ];
   let subjects = camel.slice(0, 3);
   if (subjects.length < 2) {
     const pair = goal.match(
-      /\\b([A-Z][A-Za-z0-9_-]{2,})\\s+(?:vs\\.?|versus|contre|et)\\s+([A-Z][A-Za-z0-9_-]{2,})\\b/i,
+      /\b([A-Z][A-Za-z0-9_-]{2,})\s+(?:vs\.?|versus|contre|et)\s+([A-Z][A-Za-z0-9_-]{2,})\b/i,
     );
     subjects = pair == null ? [] : [pair[1], pair[2]];
   }
   if (subjects.length < 2 || new Set(subjects.map((item) => item.toLowerCase())).size !== subjects.length) {
     return [];
   }
-  const prefix = /\\bMDN\\b/i.test(goal) ? 'MDN Web Docs' : 'official documentation';
+  const prefix = /\bMDN\b/i.test(goal) ? 'MDN Web Docs' : 'official documentation';
   return subjects.map((subject) => `${prefix} ${subject}`);
 }
 
