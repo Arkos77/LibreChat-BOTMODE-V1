@@ -29,6 +29,32 @@ export function nativeResearchComparisonQueries(objective: string): string[] {
   if (typeof objective !== 'string' || objective.length > 12000) return [];
   const goal = objective.split(/\bRECHERCHE\s*:/i)[0].slice(0, 700);
   if (!/\b(compar(?:e|er|aison)|versus|vs\.?|diff[eé]rence)\b/i.test(goal)) return [];
+  // Recognize the explicit multiword speech technologies as indivisible
+  // subjects. A generic "VAD" query matches unrelated medical devices, and
+  // the CamelCase-only fallback misses "Web Speech API" completely.
+  // This policy remains bounded to user-named topics in the admitted goal;
+  // tool/model output cannot expand the list.
+  const namedSpeechSubjects = [
+    {
+      pattern: /\bweb[\s-]+speech(?:[\s-]+api)?\b/i,
+      query: 'MDN Web Speech API SpeechRecognition documentation',
+    },
+    {
+      pattern: /\bweb[\s-]+vad\b/i,
+      query: 'ricky0123 vad-web browser voice activity detection JavaScript documentation',
+    },
+    {
+      pattern: /\bvosk\b/i,
+      query: 'Vosk Alphacep offline speech recognition documentation',
+    },
+  ];
+  const matchingSpeechSubjects = namedSpeechSubjects
+    .map(({ pattern, query }) => ({ position: goal.search(pattern), query }))
+    .filter(({ position }) => position >= 0)
+    .sort((a, b) => a.position - b.position);
+  if (matchingSpeechSubjects.length >= 2) {
+    return matchingSpeechSubjects.map(({ query }) => query);
+  }
   const camel = [
     ...new Set(
       [...goal.matchAll(/\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+\b/g)].map((match) => match[0]),
