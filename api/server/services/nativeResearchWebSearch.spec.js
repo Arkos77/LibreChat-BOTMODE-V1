@@ -14,7 +14,7 @@ describe('host-owned native web search batch', () => {
     const tool = {
       name: 'web_search',
       responseFormat: 'content_and_artifact',
-      func: async (params, config) => {
+      func: async (params, _runManager, config) => {
         calls.push({ ...params });
         const noSource = missingSecond && params.query === topics[1];
         const link = `https://developer.mozilla.org/en-US/docs/Web/API/${params.query.split(' ').at(-1)}`;
@@ -37,6 +37,7 @@ describe('host-owned native web search batch', () => {
     const { tool, observed, calls } = setup();
     const [text, artifact] = await tool.func(
       { query: 'model-chosen-only-one-topic', date: 'd' },
+      undefined,
       { toolCall: { id: 'real-tool-call-1', name: 'web_search' } },
     );
     expect(calls.map((call) => call.query)).toEqual(topics);
@@ -52,7 +53,7 @@ describe('host-owned native web search batch', () => {
   test('fails closed if one subject has no observed source and emits no partial evidence', async () => {
     const { tool, observed } = setup({ missingSecond: true });
     await expect(
-      tool.func({ query: 'ignored' }, { toolCall: { id: 'missing-source' } }),
+      tool.func({ query: 'ignored' }, undefined, { toolCall: { id: 'missing-source' } }),
     ).rejects.toThrow('BOTMODE_RESEARCH_SUBJECT_SOURCES_REQUIRED');
     expect(observed).toHaveLength(0);
   });
@@ -72,8 +73,8 @@ describe('host-owned native web search batch', () => {
   test('preserves distinct concurrent tool call identities', async () => {
     const { tool, observed } = setup();
     await Promise.all([
-      tool.func({}, { toolCall: { id: 'outer-A' } }),
-      tool.func({}, { toolCall: { id: 'outer-B' } }),
+      tool.func({}, undefined, { toolCall: { id: 'outer-A' } }),
+      tool.func({}, undefined, { toolCall: { id: 'outer-B' } }),
     ]);
     expect(observed.map((item) => item.id).sort()).toEqual(['outer-A', 'outer-B']);
     expect(observed.every((item) => item.value.data.organic.length === 2)).toBe(true);
