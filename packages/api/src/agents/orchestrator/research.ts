@@ -160,6 +160,7 @@ export function researchPhaseBinding(
     instructions: [
       instructions,
       'NATIVE RESEARCH SEARCH POLICY: Do not set the date parameter unless a future host-owned recency policy explicitly enables it. For reference documentation, search all publication dates. Do not silently restrict searches to the last 24 hours.',
+      'COMPARATIVE COVERAGE: When the mission asks you to compare two or three distinct named subjects, make one separate web_search tool call per subject, in ONE assistant reply, with a short subject-specific query (maximum THREE calls total). This native mission explicitly authorizes up to three web_search calls together, overriding the generic once-per-reply suggestion. Do not repeat the same query or search only the first subject. For a single-subject mission, make just one call. If you cannot search each requested subject, report the missing evidence honestly in the final phase.',
     ]
       .filter(Boolean)
       .join('\n'),
@@ -195,8 +196,11 @@ export function requireResearchObservation(
     if (
       !ai?.id ||
       !calls.length ||
+      calls.length > 3 ||
       calls.some((call) => !call.id || call.name !== 'web_search') ||
-      new Set(calls.map((call) => call.id)).size !== calls.length
+      new Set(calls.map((call) => call.id)).size !== calls.length ||
+      calls.some((call) => typeof call.args?.query !== 'string' || !call.args.query.trim()) ||
+      new Set(calls.map((call) => call.args.query.trim().toLowerCase())).size !== calls.length
     )
       reject();
     const index = state.messages.findIndex(
