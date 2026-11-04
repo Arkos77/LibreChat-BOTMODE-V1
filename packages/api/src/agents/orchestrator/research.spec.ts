@@ -200,6 +200,59 @@ describe('native research phases', () => {
     expect(result.instructions).toContain('copied verbatim');
   });
 
+  it('does not expose a model-invented date filter in native observation tool schemas', () => {
+    const source: AgentInputs = {
+      ...binding,
+      instructions: 'Owner instructions remain unchanged.',
+      toolDefinitions: [
+        {
+          name: 'web_search',
+          parameters: {
+            type: 'object',
+            properties: {
+              query: { type: 'string' },
+              date: { type: 'string', enum: ['d', 'w', 'm'] },
+              country: { type: 'string' },
+            },
+            required: ['query', 'date'],
+          },
+        },
+      ],
+    };
+    const observation = researchPhaseBinding(source, 'observation');
+    expect(observation.toolDefinitions?.[0].parameters).toEqual({
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+        country: { type: 'string' },
+      },
+      required: ['query'],
+    });
+    expect(observation.instructions).toContain('search all publication dates');
+    expect(observation.instructions).toContain('Owner instructions remain unchanged.');
+    expect(source.toolDefinitions?.[0].parameters).toHaveProperty('properties.date');
+    const final = researchPhaseBinding(source, 'result');
+    expect(final.toolDefinitions).toBe(source.toolDefinitions);
+    expect(final.toolDefinitions?.[0].parameters).toHaveProperty('properties.date');
+  });
+
+  it('preserves search schemas that never offered a date filter', () => {
+    const definition = {
+      name: 'web_search',
+      parameters: {
+        type: 'object' as const,
+        properties: { query: { type: 'string' as const } },
+        required: ['query'],
+      },
+    };
+    const source: AgentInputs = {
+      ...binding,
+      toolDefinitions: [definition],
+    };
+    const observation = researchPhaseBinding(source, 'observation');
+    expect(observation.toolDefinitions?.[0]).toBe(definition);
+  });
+
   it('forces only web_search without JSON on observation and restores final JSON', () => {
     const first = researchPhaseBinding(binding, 'observation');
     const last = researchPhaseBinding(binding, 'result');
