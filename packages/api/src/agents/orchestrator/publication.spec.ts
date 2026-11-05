@@ -6,6 +6,7 @@ import { renderMissionPublication } from './publication';
 import { prepareBotModeMission } from './output';
 import { deterministicPlanner } from './planner';
 import { compileNativePlan } from './native';
+import { projectObservedResearchSources } from './researchSourceProjection';
 
 const url = 'https://ci-source.invalid/report';
 async function fixture() {
@@ -134,6 +135,68 @@ describe('verified research publication', () => {
     }
     await expect(renderMissionPublication(plan, state)).rejects.toThrow();
     expect(final.input.candidate).toBeDefined();
+  });
+
+  it('replays and publishes an explicitly audited source correction with only observed URLs', async () => {
+    const { plan, state } = await fixture();
+    const task = plan.tasks[0];
+    state.sources = {
+      [task.taskId]: [
+        {
+          toolCallId: 'current-web-search',
+          urls: [
+            'http://fastapi.tiangolo.com/',
+            'http://github.com/tiangolo/fastapi',
+            'https://docs.rs/actix-web',
+          ],
+        },
+      ],
+    };
+    const original = JSON.stringify({
+      ok: true,
+      result:
+        'FastAPI https://fastapi.tiangolo.com and unobserved code ' +
+        'https://github.com/fastapi/fastapi versus Actix Web https://docs.rs/actix-web.',
+      sources: [
+        'https://fastapi.tiangolo.com',
+        'https://github.com/fastapi/fastapi',
+        'https://docs.rs/actix-web',
+      ].join('\n'),
+    });
+    const projection = projectObservedResearchSources(original, state.sources[task.taskId]);
+    expect(projection.audit).toBeDefined();
+    const result = await validateMissionTask({
+      taskId: task.taskId,
+      nodeId: task.nodeId,
+      agentId: task.agentId,
+      requirements: task.validation,
+      candidate: projection.candidate,
+      observedSources: state.sources[task.taskId],
+    });
+    expect(result.verdicts.map((verdict) => verdict.status)).toEqual(['VERIFIED', 'VERIFIED']);
+    result.sourceProjection = projection.audit;
+    state.results[task.taskId] = result;
+    const normalized = normalizeMissionOracleState(state);
+    const rendered = await renderMissionPublication(plan, normalized);
+    expect(rendered).toContain('http://fastapi.tiangolo.com/');
+    expect(rendered).toContain('https://docs.rs/actix-web');
+    expect(rendered).not.toContain('github.com/fastapi/fastapi');
+    expect(await renderMissionPublication(plan, structuredClone(state))).toBe(rendered);
+    expect(normalized.results[task.taskId].sourceProjection?.originalCandidate).toBe(original);
+
+    const tampered = structuredClone(state);
+    tampered.results[task.taskId].sourceProjection!.removedUrls = [];
+    await expect(renderMissionPublication(plan, tampered)).rejects.toThrow();
+    const lostAudit = structuredClone(state);
+    delete lostAudit.results[task.taskId].sourceProjection;
+    await expect(renderMissionPublication(plan, lostAudit)).rejects.toThrow();
+    const forgedOriginal = structuredClone(state);
+    forgedOriginal.results[task.taskId].sourceProjection!.originalCandidate = JSON.stringify({
+      ok: true,
+      result: 'Forged https://attacker.invalid/source',
+      sources: 'https://attacker.invalid/source',
+    });
+    await expect(renderMissionPublication(plan, forgedOriginal)).rejects.toThrow();
   });
 
   it('does not reinterpret any historic v1 plan or candidate', async () => {
