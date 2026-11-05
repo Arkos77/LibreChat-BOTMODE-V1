@@ -99,6 +99,10 @@ jest.mock('~/strategies', () => ({
 jest.mock('~/server/middleware', () => ({
   logHeaders: jest.fn((req, res, next) => next()),
   loginLimiter: jest.fn((req, res, next) => next()),
+  markOAuthNavigation: jest.fn((req, _res, next) => {
+    req.isOAuthNavigation = true;
+    next();
+  }),
   checkBan: jest.fn((req, res, next) => next()),
   validateEmailLogin: jest.fn((req, res, next) => next()),
   requireLocalAuth: jest.fn((req, res, next) => next()),
@@ -518,6 +522,24 @@ describe('admin auth social route availability', () => {
     ['apple', 'Apple'],
   ];
 
+  it.each(['openid', ...startRoutes.map(([path]) => path)])(
+    'rejects excessive %s admin OAuth initiations before cache or provider work',
+    async (path) => {
+      middleware.loginLimiter.mockImplementationOnce((req, res) => {
+        expect(req.isOAuthNavigation).toBe(true);
+        res.status(429).json({ error: 'rate_limited' });
+      });
+
+      const response = await request(app).get(`/api/admin/oauth/${path}`);
+
+      expect(response.status).toBe(429);
+      expect(middleware.markOAuthNavigation).toHaveBeenCalledTimes(1);
+      expect(middleware.loginLimiter).toHaveBeenCalledTimes(1);
+      expect(storeAndStripChallenge).not.toHaveBeenCalled();
+      expect(passport.authenticate).not.toHaveBeenCalled();
+    },
+  );
+
   it.each(startRoutes)(
     'does not start %s admin login when the strategy is not registered',
     async (path, provider) => {
@@ -553,6 +575,15 @@ describe('admin auth social route availability', () => {
       (agent) => agent.post('/api/admin/oauth/apple/callback').send({ state: 'state' }),
     ],
   ];
+
+  it.each(callbackRoutes)(
+    'does not rate-limit the %s OAuth callback (provider verification stays intact)',
+    async (_path, _provider, makeRequest) => {
+      await makeRequest(request(app));
+      expect(middleware.loginLimiter).not.toHaveBeenCalled();
+      expect(middleware.markOAuthNavigation).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(callbackRoutes)(
     'does not run %s admin callback auth when the strategy is not registered',
