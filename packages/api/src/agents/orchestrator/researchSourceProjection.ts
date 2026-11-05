@@ -128,6 +128,7 @@ export function projectObservedResearchSources(
       'La sortie originale est conservée dans la preuve de correction.';
     const revised = JSON.stringify({
       ...candidate,
+      __botModeSourceProjection: 'observed-source-projection-v1',
       result: report + note,
       sources: selected.join('\n'),
     });
