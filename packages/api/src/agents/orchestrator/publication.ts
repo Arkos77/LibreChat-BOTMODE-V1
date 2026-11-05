@@ -40,6 +40,12 @@ export async function renderMissionPublication(
       result.verdicts.some((v) => v.status !== 'VERIFIED' || v.input.candidate !== candidate)
     )
       fail();
+    const candidateRecord = JSON.parse(candidate) as Record<string, unknown>;
+    if (
+      (candidateRecord.__botModeSourceProjection === 'observed-source-projection-v1') !==
+      (result.sourceProjection?.policy === 'observed-source-projection-v1')
+    )
+      fail();
     if (result.sourceProjection != null) {
       if (!task.validation.some((requirement) => requirement.outputContract === 'research-v2'))
         fail();
