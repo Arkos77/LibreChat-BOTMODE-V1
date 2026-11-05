@@ -36,6 +36,7 @@ const {
   findSession,
   createToken,
   deleteTokens,
+  deleteAllUserSessions,
   deleteSession,
   createSession,
   upsertSession,
@@ -514,6 +515,13 @@ const requestPasswordReset = async (req) => {
     };
   }
 
+  // A reset secret must reach the account owner through a verified side channel.
+  // Without configured mail delivery, never mint or return a link from this public endpoint.
+  if (!emailEnabled) {
+    logger.warn('[requestPasswordReset] Mail transport unavailable; reset link not issued');
+    return { message: 'If an account with that email exists, a password reset link has been sent to it.' };
+  }
+
   await Promise.all([
     deleteTokens({ userId: user._id, type: AuthTokenTypes.PASSWORD_RESET }),
     deleteTokens({ userId: user._id, email: null, identifier: null, type: null }),
@@ -531,31 +539,30 @@ const requestPasswordReset = async (req) => {
 
   const link = `${domains.client}/reset-password?token=${resetToken}&userId=${user._id}`;
 
-  if (emailEnabled) {
+  try {
     await sendEmail({
       email: user.email,
       subject: 'Password Reset Request',
       payload: {
         appName: process.env.APP_TITLE || 'LibreChat',
         name: user.name || user.username || user.email,
-        link: link,
+        link,
         year: new Date().getFullYear(),
       },
       template: 'requestPasswordReset.handlebars',
     });
-    logger.info(
-      `[requestPasswordReset] Link emailed. [Email: ${email}] [ID: ${user._id}] [IP: ${req.ip}]`,
-    );
-  } else {
-    logger.info(
-      `[requestPasswordReset] Link issued. [Email: ${email}] [ID: ${user._id}] [IP: ${req.ip}]`,
-    );
-    return { link };
+    logger.info('[requestPasswordReset] Reset instructions delivered through mail');
+  } catch {
+    // Do not keep an undelivered recovery token or disclose account existence.
+    await deleteTokens({
+      userId: user._id,
+      token: hash,
+      type: AuthTokenTypes.PASSWORD_RESET,
+    });
+    logger.warn('[requestPasswordReset] Mail delivery failed; undelivered token revoked');
   }
 
-  return {
-    message: 'If an account with that email exists, a password reset link has been sent to it.',
-  };
+  return { message: 'If an account with that email exists, a password reset link has been sent to it.' };
 };
 
 /**
@@ -568,35 +575,52 @@ const requestPasswordReset = async (req) => {
  */
 const resetPassword = async (userId, token, password) => {
   const passwordResetToken = await findPasswordResetToken(userId);
-
-  if (!passwordResetToken) {
-    return new Error('Invalid or expired password reset token');
+  const invalidToken = () => new Error('Invalid or expired password reset token');
+  const expiresAt = passwordResetToken?.expiresAt;
+  // MongoDB TTL cleanup is asynchronous. Reject an expired or malformed record
+  // at the point of use, even if it has not yet been deleted from the database.
+  if (!(expiresAt instanceof Date) || !Number.isFinite(expiresAt.getTime()) || expiresAt <= new Date()) {
+    return invalidToken();
   }
 
-  const isValid = bcrypt.compareSync(token, passwordResetToken.token);
+  if (!bcrypt.compareSync(token, passwordResetToken.token)) {
+    return invalidToken();
+  }
 
-  if (!isValid) {
-    return new Error('Invalid or expired password reset token');
+  // Atomically claim the one-time token before updating the credential.
+  // Concurrent attempts must never both succeed.
+  const consumed = await deleteTokens(getPasswordResetTokenDeleteQuery(passwordResetToken));
+  if (consumed?.deletedCount !== 1) {
+    return invalidToken();
   }
 
   const hash = bcrypt.hashSync(password, 10);
   const user = await updateUser(userId, { password: hash });
-
-  if (checkEmailConfig()) {
-    await sendEmail({
-      email: user.email,
-      subject: 'Password Reset Successfully',
-      payload: {
-        appName: process.env.APP_TITLE || 'LibreChat',
-        name: user.name || user.username || user.email,
-        year: new Date().getFullYear(),
-      },
-      template: 'passwordReset.handlebars',
-    });
+  if (!user) {
+    throw new Error('Password reset failed');
   }
 
-  await deleteTokens(getPasswordResetTokenDeleteQuery(passwordResetToken));
-  logger.info(`[resetPassword] Password reset successful. [Email: ${user.email}]`);
+  // Revocation is a required part of the reset, not dependent on email delivery.
+  await deleteAllUserSessions({ userId });
+
+  if (checkEmailConfig()) {
+    try {
+      await sendEmail({
+        email: user.email,
+        subject: 'Password Reset Successfully',
+        payload: {
+          appName: process.env.APP_TITLE || 'LibreChat',
+          name: user.name || user.username || user.email,
+          year: new Date().getFullYear(),
+        },
+        template: 'passwordReset.handlebars',
+      });
+    } catch {
+      logger.warn('[resetPassword] Confirmation email delivery failed');
+    }
+  }
+
+  logger.info('[resetPassword] Password reset successful');
   return { message: 'Password reset was successful' };
 };
 
