@@ -41,12 +41,12 @@ export async function getPluginAuthMap({
       authsByPlugin.set(auth.pluginKey, existing);
     }
 
-    const authMap: PluginAuthMap = {};
+    const authMap: PluginAuthMap = Object.create(null);
     const decryptionPromises: Promise<void>[] = [];
 
     /** Single loop through requested pluginKeys */
     for (const pluginKey of pluginKeys) {
-      authMap[pluginKey] = {};
+      authMap[pluginKey] = Object.create(null);
       const auths = authsByPlugin.get(pluginKey) || [];
 
       for (const auth of auths) {
@@ -82,10 +82,13 @@ export async function getPluginAuthMap({
     );
     if (!throwError) {
       /** Empty objects for each plugin key on error */
-      return pluginKeys.reduce((acc, key) => {
-        acc[key] = {};
-        return acc;
-      }, {} as PluginAuthMap);
+      return pluginKeys.reduce(
+        (acc, key) => {
+          acc[key] = Object.create(null);
+          return acc;
+        },
+        Object.create(null) as PluginAuthMap,
+      );
     }
     throw error;
   }
