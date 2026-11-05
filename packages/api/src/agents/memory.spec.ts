@@ -869,6 +869,75 @@ describe('buildInlineMemoryTool content filtering', () => {
   });
 });
 
+describe('buildInlineMemoryTool runtime identity and access gate', () => {
+  const makeRequest = (userId = 'user-1', memories = true) =>
+    ({
+      config: {
+        endpoints: {
+          [EModelEndpoint.agents]: { capabilities: [AgentCapabilities.memory] },
+        },
+        memory: { disabled: false },
+      },
+      user: {
+        id: userId,
+        personalization: { memories },
+      },
+    }) as ServerRequest;
+
+  const makeParams = (req: ServerRequest, userId: string) => ({
+    toolName: 'set_memory',
+    req,
+    agent: { tools: [AgentCapabilities.memory] },
+    userId,
+    memoryMethods: {
+      setMemory: jest.fn(),
+      deleteMemory: jest.fn(),
+      getFormattedMemories: jest.fn(),
+    },
+    getRoleByName: jest.fn(),
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.requireMock('~/middleware/access').checkAccess.mockResolvedValue(true);
+  });
+
+  it('refuses a delegated tool when supplied memory user differs from the authenticated user', async () => {
+    const req = makeRequest('owner-user');
+    const params = makeParams(req, 'foreign-user');
+    const result = await buildInlineMemoryTool(params);
+
+    expect(result).toBeNull();
+    expect(params.memoryMethods.setMemory).not.toHaveBeenCalled();
+    expect(jest.requireMock('~/middleware/access').checkAccess).not.toHaveBeenCalled();
+  });
+
+  it('permits the correctly bound user only after the runtime permission check', async () => {
+    const req = makeRequest('owner-user');
+    const params = makeParams(req, 'owner-user');
+    const result = await buildInlineMemoryTool(params);
+
+    expect(result).not.toBeNull();
+    expect(jest.requireMock('~/middleware/access').checkAccess).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed when memory use permission has been revoked since registration', async () => {
+    jest.requireMock('~/middleware/access').checkAccess.mockResolvedValueOnce(false);
+    const req = makeRequest('owner-user');
+    const result = await buildInlineMemoryTool(makeParams(req, 'owner-user'));
+
+    expect(result).toBeNull();
+  });
+
+  it('fails closed when the authenticated user opts out of memories', async () => {
+    const req = makeRequest('owner-user', false);
+    const result = await buildInlineMemoryTool(makeParams(req, 'owner-user'));
+
+    expect(result).toBeNull();
+    expect(jest.requireMock('~/middleware/access').checkAccess).not.toHaveBeenCalled();
+  });
+});
+
 describe('agentHasInlineMemoryTools', () => {
   it('returns false for a nullish agent', () => {
     expect(agentHasInlineMemoryTools(null)).toBe(false);

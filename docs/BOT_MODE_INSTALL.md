@@ -50,7 +50,7 @@ La commande `test` ne produit rien si la révision est bonne et échoue si elle 
 ## 3. Installer en mode Lite (Chromebook, petites machines, CPU-only)
 
 ```bash
-./install.sh --lite --image \
+BOTMODE_HOST_BIND_IP=127.0.0.1 ./install.sh --lite --image \
   ghcr.io/arkos77/librechat-botmode-v1@sha256:a09a07f21c2075b79ba132b831bb13d31a1f51b980000967a7e1191036811598
 ```
 
@@ -68,11 +68,13 @@ Le mode Lite réduit les services locaux, notamment sur les CPU x86_64 sans AVX.
 **Alternative pour un hôte compatible Full** (au moins 4 Gio de RAM, AVX sur x86_64) :
 
 ```bash
-./install.sh --full --image \
+BOTMODE_HOST_BIND_IP=127.0.0.1 ./install.sh --full --image \
   ghcr.io/arkos77/librechat-botmode-v1@sha256:a09a07f21c2075b79ba132b831bb13d31a1f51b980000967a7e1191036811598
 ```
 
 Le profil Full active d'autres services ; ses intégrations externes ne sont pas toutes qualifiées sur du matériel réel. Pour un petit ordinateur, commencer par **Lite**.
+
+**Réseau et sécurité :** sur la **v1.0.3 publiée**, la variable `BOTMODE_HOST_BIND_IP=127.0.0.1` protège l'API lors de la commande ci-dessus ; inscrivez-la ensuite dans `.env` avant tout redémarrage. Le panneau d'administration du profil Full sur la v1.0.3 reste publié sur le port 3000 sans réglage distinct de l'adresse hôte : ne l'exposez pas à Internet, utilisez un pare-feu/réseau privé. **Pour la prochaine candidate**, le Compose restreint par défaut les ports 3080 et 3000 à `127.0.0.1`. Un accès distant nécessite une décision explicite, TLS, authentification et configuration réseau adaptée.
 
 ## 4. Configurer le fournisseur et démarrer la mission
 
