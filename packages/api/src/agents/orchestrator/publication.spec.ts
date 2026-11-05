@@ -214,6 +214,7 @@ describe('verified research publication', () => {
       agentId: task.agentId,
       candidate: original,
       requirements: task.validation,
+      observedSources: state.sources?.[task.taskId] ?? [],
     });
     const before = structuredClone(state);
     const rendered = await renderMissionPublication(plan, state);
@@ -242,6 +243,7 @@ describe('verified research publication', () => {
       agentId: task.agentId,
       candidate: original,
       requirements: task.validation,
+      observedSources: state.sources?.[task.taskId] ?? [],
     });
     const rendered = await renderMissionPublication(plan, state);
     expect(rendered).toContain(independentCaveat);
