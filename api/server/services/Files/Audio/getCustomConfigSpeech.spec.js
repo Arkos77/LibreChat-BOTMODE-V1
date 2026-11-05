@@ -13,6 +13,70 @@ const createResponse = () => {
 };
 
 describe('getCustomConfigSpeech', () => {
+  it.each([true, false])(
+    'returns conversationMode=%s from speechTab without turning on recording',
+    async (conversationMode) => {
+      const req = {
+        config: {
+          speech: {
+            speechTab: {
+              conversationMode,
+              speechToText: {
+                engineSTT: 'browser',
+                languageSTT: 'fr-FR',
+                autoTranscribeAudio: true,
+                autoSendText: 3,
+              },
+              textToSpeech: {
+                engineTTS: 'browser',
+                languageTTS: 'fr',
+                automaticPlayback: true,
+              },
+            },
+          },
+        },
+      };
+      const res = createResponse();
+
+      await getCustomConfigSpeech(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.send).toHaveBeenCalledWith({
+        sttExternal: false,
+        ttsExternal: false,
+        conversationMode,
+        engineSTT: 'browser',
+        languageSTT: 'fr-FR',
+        autoTranscribeAudio: true,
+        autoSendText: 3,
+        engineTTS: 'browser',
+        languageTTS: 'fr',
+        automaticPlayback: true,
+      });
+    },
+  );
+
+  it('does not silently enable conversationMode when it is unset', async () => {
+    const req = {
+      config: {
+        speech: {
+          speechTab: { speechToText: true, textToSpeech: true },
+        },
+      },
+    };
+    const res = createResponse();
+
+    await getCustomConfigSpeech(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.send).toHaveBeenCalledWith({
+      sttExternal: false,
+      ttsExternal: false,
+      speechToText: true,
+      textToSpeech: true,
+    });
+  });
+
   it.each(['openai', 'azureOpenAI'])(
     'normalizes the legacy STT provider "%s" to the external engine',
     async (engineSTT) => {
