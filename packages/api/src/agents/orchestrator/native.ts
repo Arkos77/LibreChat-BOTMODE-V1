@@ -20,8 +20,8 @@ import {
   assertMissionTaskVerified,
   validateMissionTask,
 } from './missionOracle';
-import { getTaskLevels, nodeIdentity } from './planner';
 import { projectObservedResearchSources } from './researchSourceProjection';
+import { getTaskLevels, nodeIdentity } from './planner';
 import { structuredTaskOptions } from './schema';
 
 export interface NativeMissionPlan {

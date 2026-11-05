@@ -1,5 +1,5 @@
-import { supportsResearchResult } from '../oracle/sources';
 import { projectObservedResearchSources } from './researchSourceProjection';
+import { supportsResearchResult } from '../oracle/sources';
 
 const observations = [
   {

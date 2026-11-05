@@ -1,8 +1,8 @@
 import type { BaseMessage } from '@librechat/agents/langchain/messages';
 import type { OracleEvidence, OracleVerdict, OracleSourceObservation } from '../oracle';
 import type { TransientToolEvidenceObservation } from './transientEvidenceBuffer';
-import type { MissionPlan, OracleRequirement } from './types';
 import type { ResearchSourceProjectionAudit } from './researchSourceProjection';
+import type { MissionPlan, OracleRequirement } from './types';
 import { createNativeToolEvidence } from './toolEvidence';
 import { normalizeSourceUrls } from '../oracle/sources';
 import { deterministicOracle } from '../oracle';
