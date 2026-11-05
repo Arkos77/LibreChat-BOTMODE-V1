@@ -10,6 +10,15 @@ export interface GetPluginAuthMapParams {
 
 export type PluginAuthMap = Record<string, Record<string, string>>;
 
+/** Convert dynamic plugin/field names without invoking object property setters. */
+function toPluginAuthMap(entries: Map<string, Map<string, string>>): PluginAuthMap {
+  const safeEntries = Array.from(entries, ([pluginKey, fields]) => [
+    pluginKey,
+    Object.setPrototypeOf(Object.fromEntries(fields), null),
+  ]);
+  return Object.setPrototypeOf(Object.fromEntries(safeEntries), null) as PluginAuthMap;
+}
+
 /**
  * Retrieves and decrypts authentication values for multiple plugins
  * @returns A map where keys are pluginKeys and values are objects of authField:decryptedValue pairs
@@ -41,12 +50,13 @@ export async function getPluginAuthMap({
       authsByPlugin.set(auth.pluginKey, existing);
     }
 
-    const authMap: PluginAuthMap = {};
+    const authMap = new Map<string, Map<string, string>>();
     const decryptionPromises: Promise<void>[] = [];
 
     /** Single loop through requested pluginKeys */
     for (const pluginKey of pluginKeys) {
-      authMap[pluginKey] = {};
+      const authFields = new Map<string, string>();
+      authMap.set(pluginKey, authFields);
       const auths = authsByPlugin.get(pluginKey) || [];
 
       for (const auth of auths) {
@@ -54,7 +64,7 @@ export async function getPluginAuthMap({
           (async () => {
             try {
               const decryptedValue = await decrypt(auth.value);
-              authMap[pluginKey][auth.authField] = decryptedValue;
+              authFields.set(auth.authField, decryptedValue);
             } catch (error) {
               const message = error instanceof Error ? error.message : 'Unknown error';
               logger.error(
@@ -73,7 +83,7 @@ export async function getPluginAuthMap({
     }
 
     await Promise.all(decryptionPromises);
-    return authMap;
+    return toPluginAuthMap(authMap);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     const plugins = pluginKeys?.join(', ') ?? 'all requested';
@@ -82,10 +92,9 @@ export async function getPluginAuthMap({
     );
     if (!throwError) {
       /** Empty objects for each plugin key on error */
-      return pluginKeys.reduce((acc, key) => {
-        acc[key] = {};
-        return acc;
-      }, {} as PluginAuthMap);
+      return toPluginAuthMap(
+        new Map(pluginKeys.map((pluginKey) => [pluginKey, new Map<string, string>()])),
+      );
     }
     throw error;
   }
