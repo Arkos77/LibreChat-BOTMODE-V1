@@ -127,6 +127,15 @@ jest.mock('~/strategies/validators', () => ({
       },
     })),
   },
+  passwordSchema: {
+    safeParse: jest.fn((password) => ({
+      success:
+        typeof password === 'string' &&
+        password.length >= 8 &&
+        password.length <= 128 &&
+        password.trim().length > 0,
+    })),
+  },
 }));
 jest.mock('~/server/services/Config', () => ({ getAppConfig: jest.fn() }));
 jest.mock('~/server/utils', () => ({ sendEmail: jest.fn() }));
@@ -1086,6 +1095,26 @@ describe('resetPassword', () => {
     expect(deleteTokens).not.toHaveBeenCalled();
     expect(deleteAllUserSessions).not.toHaveBeenCalled();
   });
+
+  it.each(['short', '        ', 'x'.repeat(129)])(
+    'rejects a reset password that violates the registration policy',
+    async (weakPassword) => {
+      const resetHash = bcrypt.hashSync('reset-token', 10);
+      findToken.mockResolvedValue({
+        token: resetHash,
+        userId: 'user-reset',
+        type: 'password_reset',
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      });
+
+      const result = await resetPassword('user-reset', 'reset-token', weakPassword);
+
+      expect(result).toBeInstanceOf(Error);
+      expect(deleteTokens).not.toHaveBeenCalled();
+      expect(updateUser).not.toHaveBeenCalled();
+      expect(deleteAllUserSessions).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects a token when another request already consumed it', async () => {
     const resetHash = bcrypt.hashSync('reset-token', 10);
