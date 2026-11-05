@@ -30,15 +30,17 @@ const usernameSchema = z
     message: 'Potential injection attack detected',
   });
 
+const passwordSchema = z
+  .string()
+  .min(MIN_PASSWORD_LENGTH)
+  .max(128)
+  .refine((value) => value.trim().length > 0, {
+    message: 'Password cannot be only spaces',
+  });
+
 const loginSchema = z.object({
   email: z.string().email(),
-  password: z
-    .string()
-    .min(MIN_PASSWORD_LENGTH)
-    .max(128)
-    .refine((value) => value.trim().length > 0, {
-      message: 'Password cannot be only spaces',
-    }),
+  password: passwordSchema,
 });
 
 const registerSchema = z
@@ -50,20 +52,8 @@ const registerSchema = z
       .optional()
       .nullable(),
     email: z.string().email(),
-    password: z
-      .string()
-      .min(MIN_PASSWORD_LENGTH)
-      .max(128)
-      .refine((value) => value.trim().length > 0, {
-        message: 'Password cannot be only spaces',
-      }),
-    confirm_password: z
-      .string()
-      .min(MIN_PASSWORD_LENGTH)
-      .max(128)
-      .refine((value) => value.trim().length > 0, {
-        message: 'Password cannot be only spaces',
-      }),
+    password: passwordSchema,
+    confirm_password: passwordSchema,
   })
   .superRefine(({ confirm_password, password }, ctx) => {
     if (confirm_password !== password) {
@@ -77,4 +67,5 @@ const registerSchema = z
 module.exports = {
   loginSchema,
   registerSchema,
+  passwordSchema,
 };
