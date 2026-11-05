@@ -40,7 +40,9 @@ describe('bounded host-observed research-v2 source projection', () => {
       policy: 'observed-source-projection-v1',
       originalCandidate: original,
       removedUrls: ['https://github.com/fastapi/fastapi'],
-      substitutedUrls: [{ from: 'https://fastapi.tiangolo.com', to: 'http://fastapi.tiangolo.com/' }],
+      substitutedUrls: [
+        { from: 'https://fastapi.tiangolo.com', to: 'http://fastapi.tiangolo.com/' },
+      ],
     });
     const parsed = JSON.parse(projected.candidate ?? '{}');
     expect(parsed.ok).toBe(true);

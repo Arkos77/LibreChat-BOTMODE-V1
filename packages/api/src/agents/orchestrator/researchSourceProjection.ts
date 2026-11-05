@@ -40,7 +40,10 @@ function exactObservationForSchemeVariant(
   return matches.length === 1 ? matches[0] : undefined;
 }
 
-function splitCitation(value: string, observed: ReadonlySet<string>): { url: string; suffix: string } {
+function splitCitation(
+  value: string,
+  observed: ReadonlySet<string>,
+): { url: string; suffix: string } {
   let url = value;
   let suffix = '';
   // Preserve exact links first; only peel presentation punctuation on a mismatch.
@@ -83,7 +86,10 @@ export function projectObservedResearchSources(
     if (supportsResearchResult(candidate.result, candidate.sources, observations, 'research-v2'))
       return unchanged;
 
-    const declared = candidate.sources.split(/\r?\n/).map((url) => url.trim()).filter(Boolean);
+    const declared = candidate.sources
+      .split(/\r?\n/)
+      .map((url) => url.trim())
+      .filter(Boolean);
     if (!declared.length || declared.length > 16) return unchanged;
     const urls = normalizeSourceUrls(declared);
     // An entirely forged source list is never automatically repaired.

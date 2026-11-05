@@ -311,7 +311,10 @@ export function normalizeMissionOracleState(value: unknown): MissionOracleState 
     if (result.sourceProjection != null) {
       const audit = result.sourceProjection;
       requireDurableState(isPlainRecord(audit), 'source projection audit');
-      requireDurableState(audit.policy === 'observed-source-projection-v1', 'source projection policy');
+      requireDurableState(
+        audit.policy === 'observed-source-projection-v1',
+        'source projection policy',
+      );
       requireDurableState(
         typeof audit.originalCandidate === 'string' &&
           audit.originalCandidate.length > 0 &&
@@ -329,15 +332,14 @@ export function normalizeMissionOracleState(value: unknown): MissionOracleState 
           audit.substitutedUrls.length <= 4 &&
           audit.substitutedUrls.every(
             (item) =>
-              isPlainRecord(item) &&
-              typeof item.from === 'string' &&
-              typeof item.to === 'string',
+              isPlainRecord(item) && typeof item.from === 'string' && typeof item.to === 'string',
           ),
         'source projection substituted URLs',
       );
       requireDurableState(
         result.verdicts.some(
-          (verdict) => isPlainRecord(verdict.input) && verdict.input.outputContract === 'research-v2',
+          (verdict) =>
+            isPlainRecord(verdict.input) && verdict.input.outputContract === 'research-v2',
         ),
         'source projection requires research-v2',
       );
