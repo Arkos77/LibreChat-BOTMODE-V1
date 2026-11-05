@@ -19,7 +19,7 @@ const {
   setAuthTokens,
   registerUser,
 } = require('~/server/services/AuthService');
-const { deleteAllUserSessions, getUserById, findSession, updateUser } = require('~/models');
+const { getUserById, findSession, updateUser } = require('~/models');
 const { getGraphApiToken } = require('~/server/services/GraphTokenService');
 const { getRefreshTokenBridge } = require('~/server/services/RefreshTokenBridge');
 const {
@@ -310,10 +310,9 @@ const resetPasswordController = async (req, res) => {
     );
     if (resetPasswordService instanceof Error) {
       return res.status(400).json(resetPasswordService);
-    } else {
-      await deleteAllUserSessions({ userId: req.body.userId });
-      return res.status(200).json(resetPasswordService);
     }
+    // The service claims the token and revokes sessions before reporting success.
+    return res.status(200).json(resetPasswordService);
   } catch (e) {
     logger.error('[resetPasswordController]', e);
     return res.status(400).json({ message: e.message });
