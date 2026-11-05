@@ -45,7 +45,7 @@ describe('createAdminGroupsHandlers', () => {
   function createReqRes(
     overrides: {
       params?: Record<string, string>;
-      query?: Record<string, string>;
+      query?: Record<string, unknown>;
       body?: Record<string, unknown>;
     } = {},
   ) {
@@ -147,6 +147,40 @@ describe('createAdminGroupsHandlers', () => {
       await handlers.listGroups(req, res);
 
       expect(deps.listGroups).toHaveBeenCalledWith({ limit: 200, offset: 0 });
+    });
+
+    it.each([
+      ['repeated parameters', ['engineering', 'sales']],
+      ['nested parameter', { team: 'engineering' }],
+      ['null value', null],
+      ['numeric value', 10],
+    ])('rejects %s as a non-string search parameter', async (_description, search) => {
+      const deps = createDeps();
+      const handlers = createAdminGroupsHandlers(deps);
+      const { req, res, status, json } = createReqRes({ query: { search } });
+
+      await handlers.listGroups(req, res);
+
+      expect(status).toHaveBeenCalledWith(400);
+      expect(json).toHaveBeenCalledWith({ error: 'search must be a string' });
+      expect(deps.listGroups).not.toHaveBeenCalled();
+      expect(deps.countGroups).not.toHaveBeenCalled();
+    });
+
+    it('ignores repeated source parameters rather than accepting an array', async () => {
+      const deps = createDeps();
+      const handlers = createAdminGroupsHandlers(deps);
+      const { req, res } = createReqRes({
+        query: { source: ['local', 'entra'], search: 'engineering' },
+      });
+
+      await handlers.listGroups(req, res);
+
+      expect(deps.listGroups).toHaveBeenCalledWith({
+        search: 'engineering',
+        limit: 50,
+        offset: 0,
+      });
     });
 
     it('returns 400 when search exceeds max length', async () => {

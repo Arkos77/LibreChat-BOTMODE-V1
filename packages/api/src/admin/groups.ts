@@ -111,9 +111,13 @@ export function createAdminGroupsHandlers(deps: AdminGroupsDeps): {
 
   async function listGroupsHandler(req: ServerRequest, res: Response) {
     try {
-      const { search, source } = req.query as { search?: string; source?: string };
+      // Query parameters are untrusted: repeated or nested parameters may be arrays or objects.
+      const { search, source } = req.query;
+      if (search !== undefined && typeof search !== 'string') {
+        return res.status(400).json({ error: 'search must be a string' });
+      }
       const filter: GroupListFilter = {};
-      if (source && VALID_GROUP_SOURCES.has(source)) {
+      if (typeof source === 'string' && VALID_GROUP_SOURCES.has(source)) {
         filter.source = source as IGroup['source'];
       }
       if (search && search.length > MAX_SEARCH_LENGTH) {
