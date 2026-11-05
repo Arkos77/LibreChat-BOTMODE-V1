@@ -1,12 +1,12 @@
 import { Providers } from '@librechat/agents';
 import type { MissionOracleState } from './missionOracle';
 import { validateMissionTask, normalizeMissionOracleState } from './missionOracle';
+import { projectObservedResearchSources } from './researchSourceProjection';
 import { buildWebSearchContext } from '~/tools/toolkits/web';
 import { renderMissionPublication } from './publication';
 import { prepareBotModeMission } from './output';
 import { deterministicPlanner } from './planner';
 import { compileNativePlan } from './native';
-import { projectObservedResearchSources } from './researchSourceProjection';
 
 const url = 'https://ci-source.invalid/report';
 async function fixture() {
