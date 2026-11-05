@@ -908,6 +908,7 @@ describe('requestPasswordReset', () => {
       email: 'user@example.com',
       tenantId: 'tenant-x',
       role: 'USER',
+      provider: 'local',
     };
     findUser.mockResolvedValue(user);
 
@@ -918,7 +919,7 @@ describe('requestPasswordReset', () => {
   });
 
   it('should reuse baseConfig for non-tenant user without calling resolveAppConfigForUser', async () => {
-    findUser.mockResolvedValue({ _id: 'user-no-tenant', email: 'user@example.com' });
+    findUser.mockResolvedValue({ _id: 'user-no-tenant', email: 'user@example.com', provider: 'local' });
 
     const req = { body: { email: 'user@example.com' }, ip: '127.0.0.1' };
     await requestPasswordReset(req);
@@ -932,6 +933,7 @@ describe('requestPasswordReset', () => {
       email: 'user@example.com',
       tenantId: 'tenant-x',
       role: 'USER',
+      provider: 'local',
     };
     findUser.mockResolvedValue(user);
     isEmailDomainAllowed.mockReturnValueOnce(true).mockReturnValueOnce(false);
@@ -944,7 +946,7 @@ describe('requestPasswordReset', () => {
   });
 
   it('never issues a reset token or returns a recovery link without configured email', async () => {
-    findUser.mockResolvedValue({ _id: 'user-reset', email: 'user@example.com' });
+    findUser.mockResolvedValue({ _id: 'user-reset', email: 'user@example.com', provider: 'local' });
     checkEmailConfig.mockReturnValue(false);
 
     const result = await requestPasswordReset({
@@ -960,7 +962,7 @@ describe('requestPasswordReset', () => {
   });
 
   it('revokes undelivered reset tokens and returns an account-neutral response', async () => {
-    findUser.mockResolvedValue({ _id: 'user-reset', email: 'user@example.com' });
+    findUser.mockResolvedValue({ _id: 'user-reset', email: 'user@example.com', provider: 'local' });
     sendEmail.mockRejectedValueOnce(new Error('mail transport unavailable'));
 
     const result = await requestPasswordReset({
@@ -1008,6 +1010,7 @@ describe('resetPassword', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     checkEmailConfig.mockReturnValue(false);
+    getUserById.mockResolvedValue({ provider: 'local' });
     deleteTokens.mockResolvedValue({ acknowledged: true, deletedCount: 1 });
     deleteAllUserSessions.mockResolvedValue(undefined);
     sendEmail.mockResolvedValue(undefined);
