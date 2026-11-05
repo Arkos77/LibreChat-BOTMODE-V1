@@ -518,14 +518,18 @@ const requestPasswordReset = async (req) => {
   // SSO identities are recovered at their identity provider, not by adding
   // a password that could become an alternative local login credential.
   if (user.provider !== 'local') {
-    return { message: 'If an account with that email exists, a password reset link has been sent to it.' };
+    return {
+      message: 'If an account with that email exists, a password reset link has been sent to it.',
+    };
   }
 
   // A reset secret must reach the account owner through a verified side channel.
   // Without configured mail delivery, never mint or return a link from this public endpoint.
   if (!emailEnabled) {
     logger.warn('[requestPasswordReset] Mail transport unavailable; reset link not issued');
-    return { message: 'If an account with that email exists, a password reset link has been sent to it.' };
+    return {
+      message: 'If an account with that email exists, a password reset link has been sent to it.',
+    };
   }
 
   await Promise.all([
@@ -568,7 +572,9 @@ const requestPasswordReset = async (req) => {
     logger.warn('[requestPasswordReset] Mail delivery failed; undelivered token revoked');
   }
 
-  return { message: 'If an account with that email exists, a password reset link has been sent to it.' };
+  return {
+    message: 'If an account with that email exists, a password reset link has been sent to it.',
+  };
 };
 
 /**
@@ -585,7 +591,11 @@ const resetPassword = async (userId, token, password) => {
   const expiresAt = passwordResetToken?.expiresAt;
   // MongoDB TTL cleanup is asynchronous. Reject an expired or malformed record
   // at the point of use, even if it has not yet been deleted from the database.
-  if (!(expiresAt instanceof Date) || !Number.isFinite(expiresAt.getTime()) || expiresAt <= new Date()) {
+  if (
+    !(expiresAt instanceof Date) ||
+    !Number.isFinite(expiresAt.getTime()) ||
+    expiresAt <= new Date()
+  ) {
     return invalidToken();
   }
 
