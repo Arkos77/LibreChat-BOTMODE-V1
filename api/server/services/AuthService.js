@@ -486,7 +486,7 @@ const requestPasswordReset = async (req) => {
     return error;
   }
 
-  const user = await findUser({ email }, 'email _id role tenantId');
+  const user = await findUser({ email }, 'email _id role tenantId provider');
   let appConfig = baseConfig;
   if (user?.tenantId) {
     try {
@@ -513,6 +513,12 @@ const requestPasswordReset = async (req) => {
     return {
       message: 'If an account with that email exists, a password reset link has been sent to it.',
     };
+  }
+
+  // SSO identities are recovered at their identity provider, not by adding
+  // a password that could become an alternative local login credential.
+  if (user.provider !== 'local') {
+    return { message: 'If an account with that email exists, a password reset link has been sent to it.' };
   }
 
   // A reset secret must reach the account owner through a verified side channel.
@@ -584,6 +590,10 @@ const resetPassword = async (userId, token, password) => {
   }
 
   if (!bcrypt.compareSync(token, passwordResetToken.token)) {
+    return invalidToken();
+  }
+  const account = await getUserById(userId, 'provider');
+  if (!account || account.provider !== 'local') {
     return invalidToken();
   }
   if (!passwordSchema.safeParse(password).success) {
