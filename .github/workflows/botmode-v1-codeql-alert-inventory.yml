@@ -42,6 +42,7 @@ jobs:
             const counts = {};
             const surfaces = {};
             const rules = {};
+            const prioritized = {};
             const scope = (path = '') => {
               if (/(^|\/)(?:__tests__|tests?|e2e|fixtures)(\/|$)|\.(?:spec|test)\.[cm]?[jt]sx?$/.test(path)) return 'tests_or_fixtures';
               if (path.startsWith('vendor/')) return 'vendored';
@@ -80,6 +81,8 @@ jobs:
                 surfaces[category] ||= {};
                 surfaces[category][severity] = (surfaces[category][severity] || 0) + 1;
                 rules[rule] = (rules[rule] || 0) + 1;
+                const priorityKey = category + '/' + severity + '/' + rule;
+                prioritized[priorityKey] = (prioritized[priorityKey] || 0) + 1;
                 total++;
               }
               if (pageAlerts.length < 100) {
@@ -97,6 +100,11 @@ jobs:
             console.log('BOTMODE_CODEQL_OPEN_SEVERITY=' + JSON.stringify(counts));
             console.log('BOTMODE_CODEQL_OPEN_SURFACES=' + JSON.stringify(surfaces));
             console.log('BOTMODE_CODEQL_TOP_RULE_COUNTS=' + JSON.stringify(top));
+            const high = Object.entries(prioritized)
+              .filter(([key]) => /\/(high|critical)\//.test(key))
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 25);
+            console.log('BOTMODE_CODEQL_HIGH_PRIORITY_GROUPS=' + JSON.stringify(high));
             console.log('BOTMODE_CODEQL_INVENTORY=PASS');
             console.log('BOTMODE_CODEQL_RELEASE_GATE=' + (total ? 'MANUAL_TRIAGE_REQUIRED' : 'NO_OPEN_ALERTS_OBSERVED'));
           })().catch(() => {
