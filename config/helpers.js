@@ -4,6 +4,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { randomBytes } = require('node:crypto');
 const readline = require('readline');
 const { Writable } = require('stream');
 const { execSync } = require('child_process');
@@ -111,6 +112,9 @@ function deleteNodeModules(dir) {
   }
 }
 
+/** 18 cryptographically random bytes, encoded as 24 URL-safe password characters. */
+const generateSecurePassword = () => randomBytes(18).toString('base64url');
+
 const silentExit = (code = 0) => {
   console.log = () => {};
   process.exit(code);
@@ -129,6 +133,7 @@ coloredConsole.gray = (/** @type {string} */ msg) => console.log('\x1b[90m%s\x1b
 
 module.exports = {
   askQuestion,
+  generateSecurePassword,
   askSilentQuestion,
   askMultiLineQuestion,
   silentExit,
