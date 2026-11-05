@@ -47,6 +47,7 @@ jobs:
             // Categories are intentionally non-sensitive and no paths/alert IDs are logged.
             const functional = {};
             const functionalScope = (path = '') => {
+              path = typeof path === 'string' ? path : '';
               if (/(^|\/)(?:__tests__|tests?|e2e|fixtures)(\/|$)|\.(?:spec|test)\.[cm]?[jt]sx?$/.test(path)) return 'tests_or_fixtures';
               if (path.startsWith('vendor/')) return 'vendored';
               if (/^(?:api|packages)\//.test(path)) {
