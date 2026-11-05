@@ -43,6 +43,22 @@ jobs:
             const surfaces = {};
             const rules = {};
             const prioritized = {};
+            // Triage aid only: broad source-code surfaces, never an exploitability verdict.
+            // Categories are intentionally non-sensitive and no paths/alert IDs are logged.
+            const functional = {};
+            const functionalScope = (path = '') => {
+              if (/(^|\\/)(?:__tests__|tests?|e2e|fixtures)(\\/|$)|\\.(?:spec|test)\\.[cm]?[jt]sx?$/.test(path)) return 'tests_or_fixtures';
+              if (path.startsWith('vendor/')) return 'vendored';
+              if (/^(?:api|packages)\\//.test(path)) {
+                if (/(?:auth|login|oauth|session|password|admin|strateg)/i.test(path)) return 'backend_auth_admin';
+                if (/(?:upload|file|path|attachment|storage|rag|document)/i.test(path)) return 'backend_files_rag';
+                if (/(?:memory|agent|permission|access|role|tenant)/i.test(path)) return 'backend_agents_access';
+                return 'backend_other';
+              }
+              if (path.startsWith('client/')) return 'client';
+              if (path.startsWith('.github/') || path.startsWith('scripts/')) return 'automation';
+              return 'other_or_unclassified';
+            };
             const scope = (path = '') => {
               if (/(^|\/)(?:__tests__|tests?|e2e|fixtures)(\/|$)|\.(?:spec|test)\.[cm]?[jt]sx?$/.test(path)) return 'tests_or_fixtures';
               if (path.startsWith('vendor/')) return 'vendored';
@@ -77,6 +93,9 @@ jobs:
                 const severity = String(alert.rule?.security_severity_level ?? alert.rule?.severity ?? 'unknown').toLowerCase();
                 const category = scope(alert.most_recent_instance?.location?.path);
                 const rule = String(alert.rule?.id ?? 'unknown');
+                const area = functionalScope(alert.most_recent_instance?.location?.path);
+                const groupKey = area + '/' + severity + '/' + rule;
+                functional[groupKey] = (functional[groupKey] || 0) + 1;
                 counts[severity] = (counts[severity] || 0) + 1;
                 surfaces[category] ||= {};
                 surfaces[category][severity] = (surfaces[category][severity] || 0) + 1;
@@ -105,6 +124,12 @@ jobs:
               .sort((a, b) => b[1] - a[1])
               .slice(0, 25);
             console.log('BOTMODE_CODEQL_HIGH_PRIORITY_GROUPS=' + JSON.stringify(high));
+            // Sorted aggregate queue: counts and broad areas only, not vulnerable code.
+            const highByArea = Object.entries(functional)
+              .filter(([key]) => /\\/(high|critical)\\//.test(key))
+              .sort((a, b) => b[1] - a[1]);
+            console.log('BOTMODE_CODEQL_HIGH_TRIAGE_QUEUE=' + JSON.stringify(highByArea));
+            console.log('BOTMODE_CODEQL_TRIAGE_REQUIRES_INDIVIDUAL_REVIEW=true');
             console.log('BOTMODE_CODEQL_INVENTORY=PASS');
             console.log('BOTMODE_CODEQL_RELEASE_GATE=' + (total ? 'MANUAL_TRIAGE_REQUIRED' : 'NO_OPEN_ALERTS_OBSERVED'));
           })().catch(() => {
