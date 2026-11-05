@@ -2361,3 +2361,36 @@ describe('refreshController – LibreChat path', () => {
     });
   });
 });
+
+describe('password recovery controller confidentiality', () => {
+  const { resetPasswordRequestController, resetPasswordController } = require('./AuthController');
+  const { requestPasswordReset, resetPassword } = require('~/server/services/AuthService');
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns a generic response instead of exposing recovery backend errors', async () => {
+    requestPasswordReset.mockRejectedValueOnce(new Error('sensitive database detail'));
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+    await resetPasswordRequestController({ body: { email: 'user@example.com' } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      message: 'If an account with that email exists, a password reset link has been sent to it.',
+    });
+    expect(JSON.stringify(res.json.mock.calls)).not.toContain('sensitive database detail');
+  });
+
+  it('does not return internal service errors from a password reset submission', async () => {
+    resetPassword.mockRejectedValueOnce(new Error('sensitive database detail'));
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+    await resetPasswordController(
+      { body: { userId: 'test-user', token: 'unused', password: 'valid-password' } },
+      res,
+    );
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ message: 'Unable to reset password' });
+  });
+});
