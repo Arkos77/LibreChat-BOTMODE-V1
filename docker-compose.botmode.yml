@@ -6,8 +6,8 @@ services:
     restart: always
     shm_size: "256m"
     ports:
-      # Default remains unchanged; set BOTMODE_HOST_BIND_IP=127.0.0.1 to restrict host access.
-      - "${BOTMODE_HOST_BIND_IP:-0.0.0.0}:${BOTMODE_HOST_PORT:-3080}:3080"
+      # Bind locally by default. Set BOTMODE_HOST_BIND_IP explicitly for protected remote access.
+      - "${BOTMODE_HOST_BIND_IP:-127.0.0.1}:${BOTMODE_HOST_PORT:-3080}:3080"
     depends_on:
       mongodb:
         condition: service_started
@@ -46,7 +46,7 @@ services:
     image: registry.librechat.ai/clickhouse/librechat-admin-panel@sha256:a395465d1daa3c11495810a8c224df86675985d50de42e98e36eeedbd8aecb94
     restart: always
     ports:
-      - "${ADMIN_PANEL_PORT:-3000}:3000"
+      - "${BOTMODE_ADMIN_PANEL_BIND_IP:-127.0.0.1}:${ADMIN_PANEL_PORT:-3000}:3000"
     depends_on:
       - api
     environment:
