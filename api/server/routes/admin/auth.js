@@ -38,6 +38,8 @@ const { getAppConfig } = require('~/server/services/Config');
 const getLogStores = require('~/cache/getLogStores');
 const { getOpenIdConfig } = require('~/strategies');
 const middleware = require('~/server/middleware');
+// Import the constructed express-rate-limit instance directly: preserve the existing login budget.
+const adminOAuthLoginLimiter = require('~/server/middleware/limiters/loginLimiter');
 
 const requireAdminAccess = requireCapability(SystemCapabilities.ACCESS_ADMIN);
 
@@ -233,7 +235,7 @@ function retrievePkceChallenge(provider) {
 router.get(
   '/oauth/openid',
   middleware.markOAuthNavigation,
-  middleware.loginLimiter,
+  adminOAuthLoginLimiter,
   requireOpenIdConfig,
   async (req, res, next) => {
     const state = generateState();
@@ -279,7 +281,7 @@ router.get(
 router.get(
   '/oauth/saml',
   middleware.markOAuthNavigation,
-  middleware.loginLimiter,
+  adminOAuthLoginLimiter,
   requireAdminStrategy('samlAdmin', 'SAML'),
   async (req, res, next) => {
     const state = generateState();
@@ -325,7 +327,7 @@ router.post(
 router.get(
   '/oauth/google',
   middleware.markOAuthNavigation,
-  middleware.loginLimiter,
+  adminOAuthLoginLimiter,
   requireAdminStrategy('googleAdmin', 'Google'),
   async (req, res, next) => {
     const state = generateState();
@@ -374,7 +376,7 @@ router.get(
 router.get(
   '/oauth/github',
   middleware.markOAuthNavigation,
-  middleware.loginLimiter,
+  adminOAuthLoginLimiter,
   requireAdminStrategy('githubAdmin', 'GitHub'),
   async (req, res, next) => {
     const state = generateState();
@@ -421,7 +423,7 @@ router.get(
 router.get(
   '/oauth/discord',
   middleware.markOAuthNavigation,
-  middleware.loginLimiter,
+  adminOAuthLoginLimiter,
   requireAdminStrategy('discordAdmin', 'Discord'),
   async (req, res, next) => {
     const state = generateState();
@@ -468,7 +470,7 @@ router.get(
 router.get(
   '/oauth/facebook',
   middleware.markOAuthNavigation,
-  middleware.loginLimiter,
+  adminOAuthLoginLimiter,
   requireAdminStrategy('facebookAdmin', 'Facebook'),
   async (req, res, next) => {
     const state = generateState();
@@ -515,7 +517,7 @@ router.get(
 router.get(
   '/oauth/apple',
   middleware.markOAuthNavigation,
-  middleware.loginLimiter,
+  adminOAuthLoginLimiter,
   requireAdminStrategy('appleAdmin', 'Apple'),
   async (req, res, next) => {
     const state = generateState();

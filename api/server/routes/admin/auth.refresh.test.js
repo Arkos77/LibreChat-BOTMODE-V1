@@ -96,6 +96,8 @@ jest.mock('~/strategies', () => ({
   getOpenIdConfig: jest.fn(),
 }));
 
+jest.mock('~/server/middleware/limiters/loginLimiter', () => jest.fn((_req, _res, next) => next()));
+
 jest.mock('~/server/middleware', () => ({
   logHeaders: jest.fn((req, res, next) => next()),
   loginLimiter: jest.fn((req, res, next) => next()),
@@ -122,6 +124,7 @@ const {
 } = require('@librechat/api');
 const { getOpenIdConfig } = require('~/strategies');
 const middleware = require('~/server/middleware');
+const adminOAuthLoginLimiter = require('~/server/middleware/limiters/loginLimiter');
 const adminAuthRouter = require('./auth');
 
 const ORIGINAL_OPENID_SCOPE = process.env.OPENID_SCOPE;
@@ -525,7 +528,7 @@ describe('admin auth social route availability', () => {
   it.each(['openid', ...startRoutes.map(([path]) => path)])(
     'rejects excessive %s admin OAuth initiations before cache or provider work',
     async (path) => {
-      middleware.loginLimiter.mockImplementationOnce((req, res) => {
+      adminOAuthLoginLimiter.mockImplementationOnce((req, res) => {
         expect(req.isOAuthNavigation).toBe(true);
         res.status(429).json({ error: 'rate_limited' });
       });
@@ -534,7 +537,7 @@ describe('admin auth social route availability', () => {
 
       expect(response.status).toBe(429);
       expect(middleware.markOAuthNavigation).toHaveBeenCalledTimes(1);
-      expect(middleware.loginLimiter).toHaveBeenCalledTimes(1);
+      expect(adminOAuthLoginLimiter).toHaveBeenCalledTimes(1);
       expect(storeAndStripChallenge).not.toHaveBeenCalled();
       expect(passport.authenticate).not.toHaveBeenCalled();
     },
@@ -580,7 +583,7 @@ describe('admin auth social route availability', () => {
     'does not rate-limit the %s OAuth callback (provider verification stays intact)',
     async (_path, _provider, makeRequest) => {
       await makeRequest(request(app));
-      expect(middleware.loginLimiter).not.toHaveBeenCalled();
+      expect(adminOAuthLoginLimiter).not.toHaveBeenCalled();
       expect(middleware.markOAuthNavigation).not.toHaveBeenCalled();
     },
   );
