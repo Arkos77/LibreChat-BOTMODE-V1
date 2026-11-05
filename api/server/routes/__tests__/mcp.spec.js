@@ -660,6 +660,25 @@ describe('MCP Routes', () => {
         );
       });
 
+      it('does not fail a flow for an OAuth error callback with a different server name', async () => {
+        const flowId = 'test-user-id:test-server';
+        const mockFlowManager = { failFlow: jest.fn().mockResolvedValue(true) };
+        getLogStores.mockReturnValueOnce({});
+        require('~/config').getFlowStateManager.mockReturnValueOnce(mockFlowManager);
+        MCPOAuthHandler.resolveStateToFlowId.mockResolvedValueOnce(flowId);
+        MCPOAuthHandler.getFlowState.mockResolvedValueOnce({ state: flowId });
+
+        const csrfToken = generateTestCsrfToken(flowId);
+        const response = await request(app)
+          .get('/api/mcp/different-server/oauth/callback')
+          .set('Cookie', [`oauth_csrf=${csrfToken}`])
+          .query({ error: 'invalid_client', state: flowId });
+
+        expect(response.status).toBe(302);
+        expect(response.headers.location).toBe(`${getBasePath()}/oauth/error?error=invalid_client`);
+        expect(mockFlowManager.failFlow).not.toHaveBeenCalled();
+      });
+
       it('should NOT fail the flow when the error callback carries a superseded state', async () => {
         const flowId = 'test-user-id:test-server';
         const mockFlowManager = {
@@ -808,6 +827,42 @@ describe('MCP Routes', () => {
       expect(response.status).toBe(302);
       expect(response.headers.location).toBe(`${basePath}/oauth/error?error=invalid_state`);
       expect(MCPOAuthHandler.completeOAuthFlow).not.toHaveBeenCalled();
+    });
+
+    it('rejects a callback for a different server before exchanging tokens', async () => {
+      const flowId = 'test-user-id:test-server';
+      const flowManager = {
+        getFlowState: jest.fn().mockResolvedValue({
+          status: 'PENDING',
+          createdAt: Date.now(),
+        }),
+        completeFlow: jest.fn().mockResolvedValue(true),
+        deleteFlow: jest.fn().mockResolvedValue(true),
+      };
+
+      getLogStores.mockReturnValueOnce({});
+      require('~/config').getFlowStateManager.mockReturnValueOnce(flowManager);
+      MCPOAuthHandler.resolveStateToFlowId.mockResolvedValueOnce(flowId);
+      MCPOAuthHandler.getFlowState.mockResolvedValueOnce({
+        state: flowId,
+        serverName: 'test-server',
+        userId: 'test-user-id',
+        metadata: {},
+        clientInfo: {},
+        codeVerifier: 'test-verifier',
+      });
+      MCPOAuthHandler.completeOAuthFlow.mockResolvedValueOnce({ access_token: 'test-token' });
+
+      const csrfToken = generateTestCsrfToken(flowId);
+      const response = await request(app)
+        .get('/api/mcp/different-server/oauth/callback')
+        .set('Cookie', [`oauth_csrf=${csrfToken}`])
+        .query({ code: 'test-code', state: flowId });
+
+      expect(response.status).toBe(302);
+      expect(response.headers.location).toBe(`${getBasePath()}/oauth/error?error=invalid_state`);
+      expect(MCPOAuthHandler.completeOAuthFlow).not.toHaveBeenCalled();
+      expect(flowManager.completeFlow).not.toHaveBeenCalled();
     });
 
     it('should reject a stale-state callback without consuming the current flow', async () => {
