@@ -21,6 +21,7 @@ import {
   validateMissionTask,
 } from './missionOracle';
 import { getTaskLevels, nodeIdentity } from './planner';
+import { projectObservedResearchSources } from './researchSourceProjection';
 import { structuredTaskOptions } from './schema';
 
 export interface NativeMissionPlan {
@@ -140,19 +141,29 @@ function requirePredecessorOutputs(
       if (task.validation.length === 0) {
         continue;
       }
+      const observedSources =
+        resolveMissionOracleSources == null ? [] : await resolveMissionOracleSources(task.taskId);
+      const rawCandidate = messageCandidate(state.agentOutputs?.[task.nodeId]);
+      const sourceProjection = task.validation.some(
+        (requirement) => requirement.outputContract === 'research-v2',
+      )
+        ? projectObservedResearchSources(rawCandidate, observedSources)
+        : { candidate: rawCandidate };
       const result = await validateMissionTask({
         taskId: task.taskId,
         nodeId: task.nodeId,
         agentId: task.agentId,
-        candidate: messageCandidate(state.agentOutputs?.[task.nodeId]),
+        candidate: sourceProjection.candidate,
         requirements: task.validation,
-        observedSources:
-          resolveMissionOracleSources == null ? [] : await resolveMissionOracleSources(task.taskId),
+        observedSources,
         evidence:
           resolveMissionOracleEvidence == null
             ? []
             : await resolveMissionOracleEvidence(task.taskId),
       });
+      if ('audit' in sourceProjection && sourceProjection.audit != null) {
+        result.sourceProjection = sourceProjection.audit;
+      }
       await persistMissionOracleResult?.(result);
       assertMissionTaskVerified(result);
     }

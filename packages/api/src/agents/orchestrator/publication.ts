@@ -6,6 +6,7 @@ import {
   validateMissionTask,
 } from './missionOracle';
 import { normalizeSourceUrls, supportsResearchResult } from '../oracle/sources';
+import { projectObservedResearchSources } from './researchSourceProjection';
 
 export async function renderMissionPublication(
   plan: MissionPlan,
@@ -39,6 +40,19 @@ export async function renderMissionPublication(
       result.verdicts.some((v) => v.status !== 'VERIFIED' || v.input.candidate !== candidate)
     )
       fail();
+    if (result.sourceProjection != null) {
+      if (!task.validation.some((requirement) => requirement.outputContract === 'research-v2'))
+        fail();
+      const replay = projectObservedResearchSources(
+        result.sourceProjection.originalCandidate,
+        saved.sources?.[task.taskId] ?? [],
+      );
+      if (
+        replay.candidate !== candidate ||
+        JSON.stringify(replay.audit) !== JSON.stringify(result.sourceProjection)
+      )
+        fail();
+    }
     const checked = await validateMissionTask({
       taskId: task.taskId,
       nodeId: task.nodeId,
@@ -48,6 +62,7 @@ export async function renderMissionPublication(
       evidence: saved.evidence[task.taskId] ?? [],
       observedSources: saved.sources?.[task.taskId] ?? [],
     });
+    if (result.sourceProjection != null) checked.sourceProjection = result.sourceProjection;
     if (
       !areMissionOracleResultsEquivalent(result, checked) ||
       checked.verdicts.some((v) => v.status !== 'VERIFIED')

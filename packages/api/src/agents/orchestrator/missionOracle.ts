@@ -2,6 +2,7 @@ import type { BaseMessage } from '@librechat/agents/langchain/messages';
 import type { OracleEvidence, OracleVerdict, OracleSourceObservation } from '../oracle';
 import type { TransientToolEvidenceObservation } from './transientEvidenceBuffer';
 import type { MissionPlan, OracleRequirement } from './types';
+import type { ResearchSourceProjectionAudit } from './researchSourceProjection';
 import { createNativeToolEvidence } from './toolEvidence';
 import { normalizeSourceUrls } from '../oracle/sources';
 import { deterministicOracle } from '../oracle';
@@ -20,6 +21,8 @@ export interface MissionOracleTaskResult {
   taskId: string;
   nodeId: string;
   verdicts: OracleVerdict[];
+  /** Audit of any bounded host source correction; original model output is retained. */
+  sourceProjection?: ResearchSourceProjectionAudit;
 }
 
 export type MissionOracleResultPersister = (
@@ -304,6 +307,40 @@ export function normalizeMissionOracleState(value: unknown): MissionOracleState 
     requireDurableState(Array.isArray(result.verdicts), `results.${taskId}.verdicts`);
     for (const [index, verdict] of result.verdicts.entries()) {
       validateVerdict(verdict, `results.${taskId}.verdicts[${index}]`);
+    }
+    if (result.sourceProjection != null) {
+      const audit = result.sourceProjection;
+      requireDurableState(isPlainRecord(audit), 'source projection audit');
+      requireDurableState(audit.policy === 'observed-source-projection-v1', 'source projection policy');
+      requireDurableState(
+        typeof audit.originalCandidate === 'string' &&
+          audit.originalCandidate.length > 0 &&
+          audit.originalCandidate.length <= 65536,
+        'source projection original candidate',
+      );
+      requireDurableState(
+        Array.isArray(audit.removedUrls) &&
+          audit.removedUrls.length <= 4 &&
+          audit.removedUrls.every((url) => typeof url === 'string'),
+        'source projection removed URLs',
+      );
+      requireDurableState(
+        Array.isArray(audit.substitutedUrls) &&
+          audit.substitutedUrls.length <= 4 &&
+          audit.substitutedUrls.every(
+            (item) =>
+              isPlainRecord(item) &&
+              typeof item.from === 'string' &&
+              typeof item.to === 'string',
+          ),
+        'source projection substituted URLs',
+      );
+      requireDurableState(
+        result.verdicts.some(
+          (verdict) => isPlainRecord(verdict.input) && verdict.input.outputContract === 'research-v2',
+        ),
+        'source projection requires research-v2',
+      );
     }
   }
 
