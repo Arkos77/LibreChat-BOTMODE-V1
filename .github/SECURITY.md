@@ -1,64 +1,41 @@
-# Security Policy
+# Security policy — LibreChat BOT MODE V1
 
-At LibreChat, we prioritize the security of our project and value the contributions of security researchers in helping us improve the security of our codebase. If you discover a security vulnerability within our project, we appreciate your responsible disclosure. Please follow the guidelines below to report any vulnerabilities to us:
+This policy covers **[Arkos77/LibreChat-BOTMODE-V1](https://github.com/Arkos77/LibreChat-BOTMODE-V1)**, a fork of [LibreChat](https://github.com/danny-avila/LibreChat). Vulnerabilities affecting this fork should be reported to **BOT MODE maintainers**, not automatically to LibreChat upstream. If a problem also affects upstream, coordinate disclosure privately with both maintainers.
 
-**Note: Only report sensitive vulnerability details via the appropriate private communication channels mentioned below. Public channels, such as GitHub issues and Discord, should be used for initiating contact and establishing private communication channels.**
+## Supported versions
 
-## Communication Channels
+| Version | Status |
+| --- | --- |
+| v1.0.3 | Latest published BOT MODE release; security reports accepted |
+| Earlier BOT MODE releases | Historical; upgrade recommended where compatible |
+| Unmerged branches and DRAFT pull requests | Experimental; not production releases |
 
-When reporting a security vulnerability, you have the following options to reach out to us:
+Support here means reports will be reviewed. It is **not** a guarantee that every reported issue can be resolved, nor a claim that the existing release has no outstanding alerts.
 
-- **Option 1: GitHub Private Vulnerability Reporting**: Submit sensitive vulnerability details through LibreChat's [private vulnerability reporting form](https://github.com/danny-avila/LibreChat/security/advisories/new). This sends the report confidentially to the project maintainers.
+## Reporting a vulnerability privately
 
-- **Option 2: GitHub Issues**: You can initiate first contact via GitHub Issues. However, please note that initial contact through GitHub Issues should not include any sensitive details.
+1. **Preferred:** use [GitHub Private Vulnerability Reporting for this BOT MODE repository](https://github.com/Arkos77/LibreChat-BOTMODE-V1/security/advisories/new) **if the maintainer has enabled it**.
+2. If that page is unavailable, open a [GitHub issue in this repository](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/new) **only to request a private contact channel**. Include no proof of concept, vulnerable endpoint, private URL, personal data, credentials, token, exploit steps or other sensitive details in that public issue. Coordinate a private channel with the maintainer before sharing the report.
+3. Do not submit confidential BOT MODE findings to the upstream LibreChat Discord or repository unless they independently concern upstream and disclosure has been coordinated.
 
-- **Option 3: Discord Server**: You can join our [Discord community](https://discord.librechat.ai) and initiate first contact in the `#issues` channel. However, please ensure that initial contact through Discord does not include any sensitive details.
+For the private report, please include the affected BOT MODE release or commit, impact, reproduction steps, relevant configuration/profile (Lite or Full), and proposed mitigation, with **test-only credentials**. Never include production secrets or another person's data.
 
-_After the initial contact, we will establish a private communication channel for further discussion._
+The maintainer will acknowledge and triage reports as resources permit; **no fixed response-time or bug-bounty commitment is made**. Confirmed issues will be addressed through private coordination, security-focused pull requests and release notes when disclosure is safe.
 
-### When submitting a vulnerability report, please provide us with the following information:
+## Scope and deployment
 
-- A clear description of the vulnerability, including steps to reproduce it.
-- The version(s) of the project affected by the vulnerability.
-- Any additional information that may be useful for understanding and addressing the issue.
+- Supported distribution: the published BOT MODE image and installer paths described in the repository. **Running an Internet-facing service requires additional hardening** (TLS, access control, network restrictions, credentials and updates).
+- Historical upstream LibreChat code and third-party dependencies retain their own maintainers and licenses.
+- Security fixes developed in DRAFT pull requests are not included in a published release until they have been explicitly approved, merged and released.
 
-We strive to acknowledge vulnerability reports within 72 hours and will keep you informed of the progress towards resolution.
+## Note for the repository owner — public-release gate
 
-## Security Updates and Patching
-
-We are committed to maintaining the security of our open-source project, LibreChat, and promptly addressing any identified vulnerabilities. To ensure the security of our project, we adhere to the following practices:
-
-- We prioritize security updates for the current major release of our software.
-- We actively monitor the GitHub Security Advisory system and the `#issues` channel on Discord for any vulnerability reports.
-- We promptly review and validate reported vulnerabilities and take appropriate actions to address them.
-- We release security patches and updates in a timely manner to mitigate any identified vulnerabilities.
-
-Please note that as a security-conscious community, we may not always disclose detailed information about security issues until we have determined that doing so would not put our users or the project at risk. We appreciate your understanding and cooperation in these matters.
-
-## Scope
-
-This security policy applies to the following GitHub repository:
-
-- Repository: [LibreChat](https://github.librechat.ai)
-
-## Contact
-
-If you have any questions or concerns regarding the security of our project, please join our [Discord community](https://discord.librechat.ai) and report them in the appropriate channel. You can also reach out to us by [opening an issue](https://github.com/danny-avila/LibreChat/issues/new) on GitHub. Please note that the response time may vary depending on the nature and severity of the inquiry.
-
-## Acknowledgments
-
-We would like to express our gratitude to the security researchers and community members who help us improve the security of our project. Your contributions are invaluable, and we sincerely appreciate your efforts.
-
-## Bug Bounty Program
-
-We currently do not have a bug bounty program in place. However, we welcome and appreciate any
-
-security-related contributions through pull requests (PRs) that address vulnerabilities in our codebase. We believe in the power of collaboration to improve the security of our project and invite you to join us in making it more robust.
-
-**Reference**
-
-- https://cheatsheetseries.owasp.org/cheatsheets/Vulnerability_Disclosure_Cheat_Sheet.html
+**Before announcing a new public release**, enable GitHub **Private Vulnerability Reporting** for this repository (Settings → Code security and analysis, where available), and verify that its submission page works without exposing the report publicly. If it cannot be enabled, establish and document an alternative **private** reporting address/channel. A public GitHub issue is not a substitute for sending technical vulnerability details confidentially.
 
 ---
 
-## [Go Back to ReadMe](../README.md)
+## Version française
+
+Les vulnérabilités de **BOT MODE** doivent être signalées **de manière confidentielle au responsable de ce dépôt**. Utilisez le [signalement privé GitHub de BOT MODE](https://github.com/Arkos77/LibreChat-BOTMODE-V1/security/advisories/new) **s'il est activé**. Sinon, créez uniquement une issue publique de *demande de contact privé*, **sans détails techniques ni secrets**. Attendez le canal privé avant d'envoyer votre démonstration. Les PR en DRAFT ne sont pas des versions publiées.
+
+[Back to README](../README.md)
