@@ -4,6 +4,8 @@
 
 Ce guide concerne **une nouvelle installation**. Une installation existante nécessite un inventaire et une sauvegarde préalables : voir [Sauvegarde et retour arrière](BOT_MODE_ROLLBACK.md).
 
+> **Vous installez BOT MODE sur une machine précise ?** Commencez par le **[guide d'installation par système](BOT_MODE_INSTALL_PAR_MACHINE.md)** : Chromebook/Crostini, Ubuntu/Xubuntu, Debian, Fedora, macOS ou Windows/WSL2. Il détaille la préparation de Docker et la sélection automatique Lite/Full. Cette page décrit ensuite le fonctionnement et les vérifications de BOT MODE.
+
 ## 1. Vérifier les prérequis
 
 - **Linux AMD64/ARM64**, y compris ChromeOS avec Linux (Crostini), pour les chemins de distribution vérifiés. macOS avec Docker Desktop et Windows avec WSL2 ont des chemins possibles, mais n'ont pas bénéficié de la même qualification matérielle.
