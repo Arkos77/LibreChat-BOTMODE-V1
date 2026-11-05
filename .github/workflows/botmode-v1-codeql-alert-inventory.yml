@@ -1,0 +1,118 @@
+name: BOTMODE V1 CodeQL Open Alert Inventory
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/botmode-v1-codeql-alert-inventory.yml'
+      - '.github/workflows/botmode-codeql-security.yml'
+      - 'api/**'
+      - 'client/**'
+      - 'packages/**'
+      - 'vendor/**'
+      - 'scripts/**'
+      - 'Dockerfile'
+      - 'package*.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: read
+
+jobs:
+  collect-codeql-open-inventory:
+    # A fork PR may not receive the security-events permission; don't turn
+    # an external contribution into a privileged security-token workflow.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.16.0
+      - name: Summarize default-branch open CodeQL alerts without exposing code paths or messages
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          node <<'JS'
+          (async () => {
+            const counts = {};
+            const surfaces = {};
+            const rules = {};
+            const prioritized = {};
+            const scope = (path = '') => {
+              if (/(^|\/)(?:__tests__|tests?|e2e|fixtures)(\/|$)|\.(?:spec|test)\.[cm]?[jt]sx?$/.test(path)) return 'tests_or_fixtures';
+              if (path.startsWith('vendor/')) return 'vendored';
+              if (path.startsWith('client/')) return 'client';
+              if (path.startsWith('api/') || path.startsWith('packages/')) return 'backend_or_shared';
+              if (path.startsWith('scripts/') || path.startsWith('.github/')) return 'automation';
+              return 'other_or_unclassified';
+            };
+            let total = 0;
+            let complete = false;
+            for (let page = 1; page <= 25; page++) {
+              const endpoint = 'https://api.github.com/repos/' + process.env.REPO +
+                '/code-scanning/alerts?state=open&per_page=100&page=' + page;
+              const response = await fetch(endpoint, {
+                headers: {
+                  Authorization: 'Bearer ' + process.env.GITHUB_TOKEN,
+                  Accept: 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2026-03-10',
+                  'User-Agent': 'botmode-public-codeql-inventory',
+                },
+              });
+              if (!response.ok) {
+                console.error('BOTMODE_CODEQL_INVENTORY=NON_CONCLUANT_HTTP_' + response.status);
+                process.exit(2);
+              }
+              const pageAlerts = await response.json();
+              if (!Array.isArray(pageAlerts)) {
+                console.error('BOTMODE_CODEQL_INVENTORY=NON_CONCLUANT_INVALID_PAYLOAD');
+                process.exit(2);
+              }
+              for (const alert of pageAlerts) {
+                const severity = String(alert.rule?.security_severity_level ?? alert.rule?.severity ?? 'unknown').toLowerCase();
+                const category = scope(alert.most_recent_instance?.location?.path);
+                const rule = String(alert.rule?.id ?? 'unknown');
+                counts[severity] = (counts[severity] || 0) + 1;
+                surfaces[category] ||= {};
+                surfaces[category][severity] = (surfaces[category][severity] || 0) + 1;
+                rules[rule] = (rules[rule] || 0) + 1;
+                const priorityKey = category + '/' + severity + '/' + rule;
+                prioritized[priorityKey] = (prioritized[priorityKey] || 0) + 1;
+                total++;
+              }
+              if (pageAlerts.length < 100) {
+                complete = true;
+                break;
+              }
+            }
+            if (!complete) {
+              console.error('BOTMODE_CODEQL_INVENTORY=NON_CONCLUANT_PAGINATION_LIMIT');
+              process.exit(2);
+            }
+            const top = Object.entries(rules).sort((a, b) => b[1] - a[1]).slice(0, 15);
+            console.log('BOTMODE_CODEQL_DEFAULT_BRANCH=main');
+            console.log('BOTMODE_CODEQL_OPEN_TOTAL=' + total);
+            console.log('BOTMODE_CODEQL_OPEN_SEVERITY=' + JSON.stringify(counts));
+            console.log('BOTMODE_CODEQL_OPEN_SURFACES=' + JSON.stringify(surfaces));
+            console.log('BOTMODE_CODEQL_TOP_RULE_COUNTS=' + JSON.stringify(top));
+            const high = Object.entries(prioritized)
+              .filter(([key]) => /\/(high|critical)\//.test(key))
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 25);
+            console.log('BOTMODE_CODEQL_HIGH_PRIORITY_GROUPS=' + JSON.stringify(high));
+            console.log('BOTMODE_CODEQL_INVENTORY=PASS');
+            console.log('BOTMODE_CODEQL_RELEASE_GATE=' + (total ? 'MANUAL_TRIAGE_REQUIRED' : 'NO_OPEN_ALERTS_OBSERVED'));
+          })().catch(() => {
+            console.error('BOTMODE_CODEQL_INVENTORY=NON_CONCLUANT_RUNTIME_ERROR');
+            process.exit(2);
+          });
+          JS
+      - name: Scope of this check
+        if: always()
+        run: |
+          echo 'Open-alert summary is based on the repository default branch, not an exploitability analysis of the PR HEAD. Historical CodeQL alerts must be triaged individually before GO. Raw paths, messages, credentials and finding contents are not exported.' >> "$GITHUB_STEP_SUMMARY"
