@@ -57,6 +57,12 @@ async function getCustomConfigSpeech(req, res) {
 
     const speechTab = appConfig.speech.speechTab;
 
+    // This flag must reach the browser: it is a per-user default, not a request
+    // to start microphone recording. The user still grants mic permission.
+    if (speechTab.conversationMode !== undefined) {
+      settings.conversationMode = speechTab.conversationMode;
+    }
+
     if (speechTab.advancedMode !== undefined) {
       settings.advancedMode = speechTab.advancedMode;
     }
