@@ -70,3 +70,18 @@ Avant publication, les mises à jour compatibles avec les ranges existants ont �
 - la chaîne de build Tailwind CSS 3.x, dont le correctif proposé implique une migration majeure vers Tailwind 4.
 
 Ne pas utiliser `npm audit fix --force` pour masquer cette dette : ces migrations doivent être traitées séparément avec tests de compatibilité complets ou une correction upstream.
+
+## Provenance et nomenclature des composants (prochaine candidate)
+
+Le workflow `.github/workflows/botmode-image.yml` conserve une **barrière de publication manuelle** : les PR construisent des images de test sans pousser dans GHCR. La publication d'une candidate demande `workflow_dispatch`, `publish=true`, un tag exact `candidate-botmode-v1-<12 caractères SHA>` et la validation de l'absence de tag préexistant. **Ne pas déclencher cette publication sans autorisation explicite.**
+
+Lors d'une **future** construction candidate autorisée, le job de publication multiarchitecture demande à Docker Buildx :
+
+- une provenance BuildKit `mode=max` rattachée aux digests d'images AMD64 et ARM64 ;
+- un SBOM généré par BuildKit et attaché à ces images par `sbom: true`.
+
+Les builds de contrôle sur PR utilisent `load: true` / `push: false` et ne produisent pas ces attestations de registre. La présence de ces paramètres dans le YAML **ne prouve pas** que l'image de la prochaine release contient effectivement un SBOM et des informations de provenance. Après autorisation de publication, inspecter l'index multiarchitecture et ses attestations **sur le digest immuable exact** et conserver les preuves avec la release. La vérification d'une signature de provenance GitHub/Sigstore, si exigée, est **un contrôle distinct** ; une attestation BuildKit n'est pas une signature vérifiée par elle-même.
+
+Ne transmettre **aucune clé ni aucun mot de passe** en `build-args` : la provenance `mode=max` peut révéler leurs valeurs. Le workflow existant transmet uniquement le SHA de commit et le nom de branche. Conserver les secrets éventuels dans les mécanismes de secret mount appropriés.
+
+Références : [Docker — SBOM et provenance](https://docs.docker.com/build/ci/github-actions/attestations/) ; [GitHub — attestation d'artefacts](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations).
