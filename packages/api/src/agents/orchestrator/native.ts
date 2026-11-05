@@ -232,6 +232,7 @@ export function compileNativePlan(
               ...(task.requiredCapabilities.includes('writing')
                 ? [
                     'Produce a new integrated synthesis of findings and analysis that answers the mission objective. Do not relabel or reproduce a Research report.',
+                    'Oracle verification is performed independently by the BOT MODE host AFTER each specialist task; it is not a specialist tool. Never say Oracle verification was unavailable or not performed merely because you have no Oracle tool. Do not claim an Oracle VERIFIED verdict yourself; leave its status to the host.',
                   ]
                 : []),
             ]),

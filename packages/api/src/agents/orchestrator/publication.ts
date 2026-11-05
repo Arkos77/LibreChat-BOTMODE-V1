@@ -100,5 +100,16 @@ export async function renderMissionPublication(
     !supportsResearchResult(text, sources.join('\n'), observations, 'research-v2')
   )
     fail();
-  return `${text}\n\nSources\n${sources.map((url) => `- <${url}>`).join('\n')}`;
+  // Presentation only, after every independent Oracle verdict has been replayed.
+  // Keep the original candidate and its Oracle evidence unchanged in durable state.
+  // Remove only the known false statement that confuses a specialist's tools
+  // with the host-owned Oracle; do not rewrite other verification claims.
+  const staleOracleToolDisclaimer =
+    /^[ \t]*-[ \t]*La vérification avec Oracle n['’]a pas pu être effectuée \(aucun outil Oracle disponible dans cette tâche\) ; le résultat repose uniquement sur les preuves amont et l['’]analyse ci-dessus\.[ \t]*$/gm;
+  const verifiedCount = plan.tasks.length;
+  const displayedText = text.replace(
+    staleOracleToolDisclaimer,
+    `- Vérification Oracle : ${verifiedCount} ${verifiedCount === 1 ? 'étape vérifiée' : 'étapes vérifiées'} par le moteur BOT MODE après exécution.`,
+  );
+  return `${displayedText}\n\nSources\n${sources.map((url) => `- <${url}>`).join('\n')}`;
 }

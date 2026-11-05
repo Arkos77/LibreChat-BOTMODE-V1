@@ -199,6 +199,79 @@ describe('verified research publication', () => {
     await expect(renderMissionPublication(plan, forgedOriginal)).rejects.toThrow();
   });
 
+  it('corrects the observed false Oracle-tool disclaimer only in a fully verified presentation', async () => {
+    const { plan, state } = await fixture();
+    const task = plan.tasks[2];
+    const disclaimer =
+      "- La vérification avec Oracle n'a pas pu être effectuée (aucun outil Oracle disponible dans cette tâche) ; le résultat repose uniquement sur les preuves amont et l'analyse ci-dessus.";
+    const original = JSON.stringify({
+      ok: true,
+      result: `Comparatif FastAPI / Actix Web.\n${disclaimer}\nDes benchmarks restent nécessaires.`,
+    });
+    state.results[task.taskId] = await validateMissionTask({
+      taskId: task.taskId,
+      nodeId: task.nodeId,
+      agentId: task.agentId,
+      candidate: original,
+      requirements: task.validation,
+    });
+    const before = structuredClone(state);
+    const rendered = await renderMissionPublication(plan, state);
+    expect(rendered).toContain(
+      'Vérification Oracle : 3 étapes vérifiées par le moteur BOT MODE après exécution.',
+    );
+    expect(rendered).not.toContain("La vérification avec Oracle n'a pas pu être effectuée");
+    expect(rendered).toContain('Des benchmarks restent nécessaires.');
+    expect(rendered).toContain(url);
+    expect(state).toEqual(before);
+    expect(state.results[task.taskId].verdicts[0].input.candidate).toBe(original);
+
+    const rejected = structuredClone(state);
+    rejected.results[plan.tasks[0].taskId].verdicts[0].status = 'REJECTED';
+    await expect(renderMissionPublication(plan, rejected)).rejects.toThrow();
+  });
+
+  it('preserves unrelated discussion of external Oracle availability', async () => {
+    const { plan, state } = await fixture();
+    const task = plan.tasks[2];
+    const independentCaveat = 'Aucun Oracle tiers ne fournit de benchmark RAM vérifiable.';
+    const original = JSON.stringify({ ok: true, result: independentCaveat });
+    state.results[task.taskId] = await validateMissionTask({
+      taskId: task.taskId,
+      nodeId: task.nodeId,
+      agentId: task.agentId,
+      candidate: original,
+      requirements: task.validation,
+    });
+    const rendered = await renderMissionPublication(plan, state);
+    expect(rendered).toContain(independentCaveat);
+  });
+
+  it('tells the writing specialist that Oracle belongs to the host, without granting an Oracle tool', async () => {
+    const { plan } = await fixture();
+    const compiled = compileNativePlan(
+      plan,
+      new Map([
+        [
+          'worker',
+          {
+            agentId: 'worker',
+            provider: Providers.OPENROUTER,
+            clientOptions: {},
+            instructions: buildWebSearchContext(),
+            toolDefinitions: [{ name: 'web_search' }],
+          },
+        ],
+      ]),
+    );
+    const writer = compiled.graphConfig.agents.find(
+      (agent) => agent.agentId === plan.tasks[2].nodeId,
+    );
+    expect(writer?.instructions).toContain('Oracle verification is performed independently');
+    expect(writer?.instructions).toContain('it is not a specialist tool');
+    expect(writer?.toolDefinitions?.some((tool) => tool.name === 'oracle')).toBeFalsy();
+  });
+
   it('does not reinterpret any historic v1 plan or candidate', async () => {
     const { plan, state } = await fixture();
     const old = structuredClone(plan);
