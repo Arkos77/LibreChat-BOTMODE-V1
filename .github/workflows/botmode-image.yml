@@ -143,6 +143,10 @@ jobs:
           target: node
           platforms: linux/${{ matrix.arch }}
           push: true
+          # Publication is manually gated above. Attach source provenance and
+          # SPDX SBOM metadata to each immutable platform image digest.
+          provenance: mode=max
+          sbom: true
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=botmode-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=botmode-${{ matrix.arch }}
