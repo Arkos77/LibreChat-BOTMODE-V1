@@ -256,6 +256,8 @@ router.get('/:serverName/oauth/callback', async (req, res) => {
               logger.warn('[MCP OAuth] Invalid flow ID format for OAuth error callback', {
                 flowId,
               });
+            } else if (parsed.serverName !== serverName) {
+              logger.warn('[MCP OAuth] Ignoring error callback for mismatched server');
             } else {
               const hasCsrf = validateOAuthCsrf(req, res, flowId, OAUTH_CSRF_COOKIE_PATH);
               const hasSession = !hasCsrf && validateOAuthSession(req, parsed.userId);
@@ -310,6 +312,12 @@ router.get('/:serverName/oauth/callback', async (req, res) => {
     const parsedFlowId = MCPOAuthHandler.parseFlowId(flowId);
     if (!parsedFlowId) {
       logger.error('[MCP OAuth] Invalid flow ID format', { flowId });
+      return res.redirect(`${basePath}/oauth/error?error=invalid_state`);
+    }
+    // The callback URL must name the same server as the authenticated flow state.
+    // Otherwise its tokens could be associated with another MCP server.
+    if (parsedFlowId.serverName !== serverName) {
+      logger.warn('[MCP OAuth] Rejecting callback for mismatched server');
       return res.redirect(`${basePath}/oauth/error?error=invalid_state`);
     }
 
