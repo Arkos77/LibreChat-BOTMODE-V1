@@ -1,8 +1,9 @@
 const express = require('express');
 const passport = require('passport');
+const rateLimit = require('express-rate-limit');
 const crypto = require('node:crypto');
 const openIdClient = require('openid-client');
-const { CacheKeys } = require('librechat-data-provider');
+const { CacheKeys, ErrorTypes } = require('librechat-data-provider');
 const {
   logger,
   DEFAULT_SESSION_EXPIRY,
@@ -12,6 +13,8 @@ const {
 } = require('@librechat/data-schemas');
 const {
   isEnabled,
+  limiterCache,
+  removePorts,
   getAdminPanelUrl,
   exchangeAdminCode,
   createSetBalanceConfig,
@@ -38,8 +41,27 @@ const { getAppConfig } = require('~/server/services/Config');
 const getLogStores = require('~/cache/getLogStores');
 const { getOpenIdConfig } = require('~/strategies');
 const middleware = require('~/server/middleware');
-// Import the constructed express-rate-limit instance directly: preserve the existing login budget.
-const adminOAuthLoginLimiter = require('~/server/middleware/limiters/loginLimiter');
+const { redirectOAuthFailure } = require('~/server/middleware/oauthNavigation');
+
+/**
+ * Limit provider starts before creating OAuth state or contacting the IdP.
+ * Keep this budget distinct from local login attempts to avoid lockouts.
+ * The shared cache enforces the same budget across API replicas.
+ */
+const positiveInt = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+const adminOAuthWindowMinutes = positiveInt(process.env.ADMIN_OAUTH_WINDOW, 5);
+const adminOAuthLimiter = rateLimit({
+  windowMs: adminOAuthWindowMinutes * 60 * 1000,
+  max: positiveInt(process.env.ADMIN_OAUTH_MAX, 10),
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: removePorts,
+  store: limiterCache('admin_oauth_initiation_limiter'),
+  handler: (_req, res) => redirectOAuthFailure(res, ErrorTypes.AUTH_RATE_LIMITED),
+});
 
 const requireAdminAccess = requireCapability(SystemCapabilities.ACCESS_ADMIN);
 
@@ -235,7 +257,7 @@ function retrievePkceChallenge(provider) {
 router.get(
   '/oauth/openid',
   middleware.markOAuthNavigation,
-  adminOAuthLoginLimiter,
+  adminOAuthLimiter,
   requireOpenIdConfig,
   async (req, res, next) => {
     const state = generateState();
@@ -281,7 +303,7 @@ router.get(
 router.get(
   '/oauth/saml',
   middleware.markOAuthNavigation,
-  adminOAuthLoginLimiter,
+  adminOAuthLimiter,
   requireAdminStrategy('samlAdmin', 'SAML'),
   async (req, res, next) => {
     const state = generateState();
@@ -327,7 +349,7 @@ router.post(
 router.get(
   '/oauth/google',
   middleware.markOAuthNavigation,
-  adminOAuthLoginLimiter,
+  adminOAuthLimiter,
   requireAdminStrategy('googleAdmin', 'Google'),
   async (req, res, next) => {
     const state = generateState();
@@ -376,7 +398,7 @@ router.get(
 router.get(
   '/oauth/github',
   middleware.markOAuthNavigation,
-  adminOAuthLoginLimiter,
+  adminOAuthLimiter,
   requireAdminStrategy('githubAdmin', 'GitHub'),
   async (req, res, next) => {
     const state = generateState();
@@ -423,7 +445,7 @@ router.get(
 router.get(
   '/oauth/discord',
   middleware.markOAuthNavigation,
-  adminOAuthLoginLimiter,
+  adminOAuthLimiter,
   requireAdminStrategy('discordAdmin', 'Discord'),
   async (req, res, next) => {
     const state = generateState();
@@ -470,7 +492,7 @@ router.get(
 router.get(
   '/oauth/facebook',
   middleware.markOAuthNavigation,
-  adminOAuthLoginLimiter,
+  adminOAuthLimiter,
   requireAdminStrategy('facebookAdmin', 'Facebook'),
   async (req, res, next) => {
     const state = generateState();
@@ -517,7 +539,7 @@ router.get(
 router.get(
   '/oauth/apple',
   middleware.markOAuthNavigation,
-  adminOAuthLoginLimiter,
+  adminOAuthLimiter,
   requireAdminStrategy('appleAdmin', 'Apple'),
   async (req, res, next) => {
     const state = generateState();
