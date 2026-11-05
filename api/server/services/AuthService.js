@@ -44,7 +44,7 @@ const {
   deleteUserById,
   generateRefreshToken,
 } = require('~/models');
-const { registerSchema } = require('~/strategies/validators');
+const { registerSchema, passwordSchema } = require('~/strategies/validators');
 const { getAppConfig } = require('~/server/services/Config');
 const { sendEmail } = require('~/server/utils');
 
@@ -585,6 +585,9 @@ const resetPassword = async (userId, token, password) => {
 
   if (!bcrypt.compareSync(token, passwordResetToken.token)) {
     return invalidToken();
+  }
+  if (!passwordSchema.safeParse(password).success) {
+    return new Error('Password does not meet requirements');
   }
 
   // Atomically claim the one-time token before updating the credential.
