@@ -945,6 +945,23 @@ describe('requestPasswordReset', () => {
     expect(result.message).toContain('If an account with that email exists');
   });
 
+  it('does not issue local recovery credentials for an SSO-only account', async () => {
+    findUser.mockResolvedValue({
+      _id: 'user-sso',
+      email: 'user@example.com',
+      provider: 'openid',
+    });
+
+    const result = await requestPasswordReset({
+      body: { email: 'user@example.com' },
+      ip: '127.0.0.1',
+    });
+
+    expect(result.message).toContain('If an account with that email exists');
+    expect(result).not.toHaveProperty('link');
+    expect(createToken).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
   it('never issues a reset token or returns a recovery link without configured email', async () => {
     findUser.mockResolvedValue({ _id: 'user-reset', email: 'user@example.com', provider: 'local' });
     checkEmailConfig.mockReturnValue(false);
@@ -1119,6 +1136,23 @@ describe('resetPassword', () => {
     },
   );
 
+  it('refuses a valid reset token for an SSO-only identity', async () => {
+    const resetHash = bcrypt.hashSync('reset-token', 10);
+    findToken.mockResolvedValue({
+      token: resetHash,
+      userId: 'user-sso',
+      type: 'password_reset',
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+    });
+    getUserById.mockResolvedValue({ provider: 'openid' });
+
+    const result = await resetPassword('user-sso', 'reset-token', 'new-password');
+
+    expect(result).toBeInstanceOf(Error);
+    expect(deleteTokens).not.toHaveBeenCalled();
+    expect(updateUser).not.toHaveBeenCalled();
+    expect(deleteAllUserSessions).not.toHaveBeenCalled();
+  });
   it('rejects a token when another request already consumed it', async () => {
     const resetHash = bcrypt.hashSync('reset-token', 10);
     findToken.mockResolvedValue({
