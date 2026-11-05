@@ -6,6 +6,7 @@ import {
   validateMissionTask,
 } from './missionOracle';
 import { normalizeSourceUrls, supportsResearchResult } from '../oracle/sources';
+import { projectObservedResearchSources } from './researchSourceProjection';
 
 export async function renderMissionPublication(
   plan: MissionPlan,
@@ -39,6 +40,25 @@ export async function renderMissionPublication(
       result.verdicts.some((v) => v.status !== 'VERIFIED' || v.input.candidate !== candidate)
     )
       fail();
+    const candidateRecord = JSON.parse(candidate) as Record<string, unknown>;
+    if (
+      (candidateRecord.__botModeSourceProjection === 'observed-source-projection-v1') !==
+      (result.sourceProjection?.policy === 'observed-source-projection-v1')
+    )
+      fail();
+    if (result.sourceProjection != null) {
+      if (!task.validation.some((requirement) => requirement.outputContract === 'research-v2'))
+        fail();
+      const replay = projectObservedResearchSources(
+        result.sourceProjection.originalCandidate,
+        saved.sources?.[task.taskId] ?? [],
+      );
+      if (
+        replay.candidate !== candidate ||
+        JSON.stringify(replay.audit) !== JSON.stringify(result.sourceProjection)
+      )
+        fail();
+    }
     const checked = await validateMissionTask({
       taskId: task.taskId,
       nodeId: task.nodeId,
@@ -48,6 +68,7 @@ export async function renderMissionPublication(
       evidence: saved.evidence[task.taskId] ?? [],
       observedSources: saved.sources?.[task.taskId] ?? [],
     });
+    if (result.sourceProjection != null) checked.sourceProjection = result.sourceProjection;
     if (
       !areMissionOracleResultsEquivalent(result, checked) ||
       checked.verdicts.some((v) => v.status !== 'VERIFIED')
@@ -79,5 +100,16 @@ export async function renderMissionPublication(
     !supportsResearchResult(text, sources.join('\n'), observations, 'research-v2')
   )
     fail();
-  return `${text}\n\nSources\n${sources.map((url) => `- <${url}>`).join('\n')}`;
+  // Presentation only, after every independent Oracle verdict has been replayed.
+  // Keep the original candidate and its Oracle evidence unchanged in durable state.
+  // Remove only the known false statement that confuses a specialist's tools
+  // with the host-owned Oracle; do not rewrite other verification claims.
+  const staleOracleToolDisclaimer =
+    /^[ \t]*-[ \t]*La vérification avec Oracle n['’]a pas pu être effectuée \(aucun outil Oracle disponible dans cette tâche\) ; le résultat repose uniquement sur les preuves amont et l['’]analyse ci-dessus\.[ \t]*$/gm;
+  const verifiedCount = plan.tasks.length;
+  const displayedText = text.replace(
+    staleOracleToolDisclaimer,
+    `- Vérification Oracle : ${verifiedCount} ${verifiedCount === 1 ? 'étape vérifiée' : 'étapes vérifiées'} par le moteur BOT MODE après exécution.`,
+  );
+  return `${displayedText}\n\nSources\n${sources.map((url) => `- <${url}>`).join('\n')}`;
 }

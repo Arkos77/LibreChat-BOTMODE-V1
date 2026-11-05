@@ -55,6 +55,27 @@ export function nativeResearchComparisonQueries(objective: string): string[] {
   if (matchingSpeechSubjects.length >= 2) {
     return matchingSpeechSubjects.map(({ query }) => query);
   }
+  // Preserve the full framework names even when the mission writes language
+  // qualifiers in parentheses: "FastAPI (Python) et Actix Web (Rust)".
+  // No free-form entity extraction or tool argument can extend this allowlist.
+  const namedFrameworkSubjects = [
+    {
+      pattern: /\bfastapi\b/i,
+      query: 'FastAPI Python web framework official documentation fastapi.tiangolo.com',
+    },
+    {
+      pattern: /\bactix[\s-]+web\b/i,
+      query: 'Actix Web Rust web framework official documentation actix.rs',
+    },
+  ];
+  const matchingFrameworkSubjects = namedFrameworkSubjects
+    .map(({ pattern, query }) => ({ position: goal.search(pattern), query }))
+    .filter(({ position }) => position >= 0)
+    .sort((a, b) => a.position - b.position);
+  // A single matched name is not evidence of a two-topic comparison.
+  if (matchingFrameworkSubjects.length === 2) {
+    return matchingFrameworkSubjects.map(({ query }) => query);
+  }
   const camel = [
     ...new Set(
       [...goal.matchAll(/\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+\b/g)].map((match) => match[0]),

@@ -20,6 +20,7 @@ import {
   assertMissionTaskVerified,
   validateMissionTask,
 } from './missionOracle';
+import { projectObservedResearchSources } from './researchSourceProjection';
 import { getTaskLevels, nodeIdentity } from './planner';
 import { structuredTaskOptions } from './schema';
 
@@ -140,19 +141,29 @@ function requirePredecessorOutputs(
       if (task.validation.length === 0) {
         continue;
       }
+      const observedSources =
+        resolveMissionOracleSources == null ? [] : await resolveMissionOracleSources(task.taskId);
+      const rawCandidate = messageCandidate(state.agentOutputs?.[task.nodeId]);
+      const sourceProjection = task.validation.some(
+        (requirement) => requirement.outputContract === 'research-v2',
+      )
+        ? projectObservedResearchSources(rawCandidate, observedSources)
+        : { candidate: rawCandidate };
       const result = await validateMissionTask({
         taskId: task.taskId,
         nodeId: task.nodeId,
         agentId: task.agentId,
-        candidate: messageCandidate(state.agentOutputs?.[task.nodeId]),
+        candidate: sourceProjection.candidate,
         requirements: task.validation,
-        observedSources:
-          resolveMissionOracleSources == null ? [] : await resolveMissionOracleSources(task.taskId),
+        observedSources,
         evidence:
           resolveMissionOracleEvidence == null
             ? []
             : await resolveMissionOracleEvidence(task.taskId),
       });
+      if ('audit' in sourceProjection && sourceProjection.audit != null) {
+        result.sourceProjection = sourceProjection.audit;
+      }
       await persistMissionOracleResult?.(result);
       assertMissionTaskVerified(result);
     }
@@ -221,6 +232,7 @@ export function compileNativePlan(
               ...(task.requiredCapabilities.includes('writing')
                 ? [
                     'Produce a new integrated synthesis of findings and analysis that answers the mission objective. Do not relabel or reproduce a Research report.',
+                    'Oracle verification is performed independently by the BOT MODE host AFTER each specialist task; it is not a specialist tool. Never say Oracle verification was unavailable or not performed merely because you have no Oracle tool. Do not claim an Oracle VERIFIED verdict yourself; leave its status to the host.',
                   ]
                 : []),
             ]),
