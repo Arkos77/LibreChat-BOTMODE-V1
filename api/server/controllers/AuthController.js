@@ -297,7 +297,10 @@ const resetPasswordRequestController = async (req, res) => {
     }
   } catch (e) {
     logger.error('[resetPasswordRequestController]', e);
-    return res.status(400).json({ message: e.message });
+    // Do not reveal whether a particular account triggered a backend failure.
+    return res.status(200).json({
+      message: 'If an account with that email exists, a password reset link has been sent to it.',
+    });
   }
 };
 
@@ -315,7 +318,7 @@ const resetPasswordController = async (req, res) => {
     return res.status(200).json(resetPasswordService);
   } catch (e) {
     logger.error('[resetPasswordController]', e);
-    return res.status(400).json({ message: e.message });
+    return res.status(500).json({ message: 'Unable to reset password' });
   }
 };
 
