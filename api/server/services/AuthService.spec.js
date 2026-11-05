@@ -919,7 +919,11 @@ describe('requestPasswordReset', () => {
   });
 
   it('should reuse baseConfig for non-tenant user without calling resolveAppConfigForUser', async () => {
-    findUser.mockResolvedValue({ _id: 'user-no-tenant', email: 'user@example.com', provider: 'local' });
+    findUser.mockResolvedValue({
+      _id: 'user-no-tenant',
+      email: 'user@example.com',
+      provider: 'local',
+    });
 
     const req = { body: { email: 'user@example.com' }, ip: '127.0.0.1' };
     await requestPasswordReset(req);
@@ -963,7 +967,11 @@ describe('requestPasswordReset', () => {
     expect(sendEmail).not.toHaveBeenCalled();
   });
   it('never issues a reset token or returns a recovery link without configured email', async () => {
-    findUser.mockResolvedValue({ _id: 'user-reset', email: 'user@example.com', provider: 'local' });
+    findUser.mockResolvedValue({
+      _id: 'user-reset',
+      email: 'user@example.com',
+      provider: 'local',
+    });
     checkEmailConfig.mockReturnValue(false);
 
     const result = await requestPasswordReset({
@@ -979,7 +987,11 @@ describe('requestPasswordReset', () => {
   });
 
   it('revokes undelivered reset tokens and returns an account-neutral response', async () => {
-    findUser.mockResolvedValue({ _id: 'user-reset', email: 'user@example.com', provider: 'local' });
+    findUser.mockResolvedValue({
+      _id: 'user-reset',
+      email: 'user@example.com',
+      provider: 'local',
+    });
     sendEmail.mockRejectedValueOnce(new Error('mail transport unavailable'));
 
     const result = await requestPasswordReset({
@@ -998,7 +1010,7 @@ describe('requestPasswordReset', () => {
   });
 
   it('should only delete existing password reset tokens when issuing a new reset link', async () => {
-    const user = { _id: 'user-reset', email: 'user@example.com' };
+    const user = { _id: 'user-reset', email: 'user@example.com', provider: 'local' };
     findUser.mockResolvedValue(user);
 
     const req = { body: { email: 'user@example.com' }, ip: '127.0.0.1' };
