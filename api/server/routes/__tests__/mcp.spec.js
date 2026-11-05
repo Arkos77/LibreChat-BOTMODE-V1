@@ -33,6 +33,9 @@ const mockRegistryInstance = {
   }),
 };
 let mockMCPUseAllowed = true;
+const mockMcpReinitializeLimiter = jest.fn((_req, _res, next) => next());
+jest.mock('~/server/middleware/limiters/mcpReinitializeLimiter', () => mockMcpReinitializeLimiter);
+
 const mockLoadMCPServerCatalogs = jest.fn().mockResolvedValue({
   serverTools: new Map(),
   serversWithoutTools: [],
@@ -2377,6 +2380,18 @@ describe('MCP Routes', () => {
 
   describe('POST /:serverName/reinitialize', () => {
     // mockRegistryInstance is defined at the top of the file
+
+    it('enforces the user limiter before starting MCP network operations', async () => {
+      mockMcpReinitializeLimiter.mockImplementationOnce((_req, res) =>
+        res.status(429).json({ error: 'MCP server reinitialization rate limit exceeded' }),
+      );
+
+      const response = await request(app).post('/api/mcp/test-server/reinitialize');
+
+      expect(response.status).toBe(429);
+      expect(mockMcpReinitializeLimiter).toHaveBeenCalledTimes(1);
+      expect(mockRegistryInstance.getServerConfig).not.toHaveBeenCalled();
+    });
 
     it('should return 404 when server is not found in configuration', async () => {
       const mockMcpManager = {

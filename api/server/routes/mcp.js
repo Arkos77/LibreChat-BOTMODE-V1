@@ -48,6 +48,7 @@ const {
   getMCPSetupData,
 } = require('~/server/services/MCP');
 const { requireJwtAuth, canAccessMCPServerResource } = require('~/server/middleware');
+const mcpReinitializeLimiter = require('~/server/middleware/limiters/mcpReinitializeLimiter');
 const { getUserPluginAuthValue } = require('~/server/services/PluginService');
 const { invalidateCachedTools } = require('~/server/services/Config');
 const { updateMCPServerTools } = require('~/server/services/Config/mcp');
@@ -806,6 +807,7 @@ router.post(
   '/:serverName/reinitialize',
   requireJwtAuth,
   checkMCPUsePermissions,
+  mcpReinitializeLimiter,
   setOAuthSession,
   async (req, res) => {
     try {
