@@ -59,8 +59,9 @@ describe('MCP OAuth preflight rate limits', () => {
     mcpOAuthInitiateLimiter({ user: { id: 'user-a', tenantId: 'tenant-a' } }, res, next);
 
     const options = rateLimit.mock.calls[0][0];
-    const key = (id, tenantId, serverName) =>
-      options.keyGenerator({ user: { id, tenantId }, params: { serverName } });
+    function key(id, tenantId, serverName) {
+      return options.keyGenerator({ user: { id, tenantId }, params: { serverName } });
+    }
 
     expect(options.limit).toBe(20);
     expect(options.windowMs).toBe(5 * 60 * 1000);
@@ -79,8 +80,9 @@ describe('MCP OAuth preflight rate limits', () => {
     mcpOAuthCallbackLimiter({ ip: '192.0.2.3', params: { serverName: 'one' } }, res, next);
 
     const options = rateLimit.mock.calls[0][0];
-    const key = (serverName) =>
-      options.keyGenerator({ ip: '192.0.2.3', params: { serverName } });
+    function key(serverName) {
+      return options.keyGenerator({ ip: '192.0.2.3', params: { serverName } });
+    }
 
     expect(options.limit).toBe(120);
     expect(options.windowMs).toBe(5 * 60 * 1000);
@@ -109,7 +111,7 @@ describe('MCP OAuth preflight rate limits', () => {
     expect(rateLimit.mock.calls[1][0].limit).toBe(120);
   });
 
-  it('places the initiation gate before session and flow work but keeps the callback public', () => {
+  it('keeps OAuth guards ordered and the callback public', () => {
     const source = fs.readFileSync(path.resolve(__dirname, '../../routes/mcp.js'), 'utf8');
     expect(source).toContain(
       'const oauthInitiateGuards = [requireJwtAuth, mcpOAuthInitiateLimiter, setOAuthSession];',
@@ -117,7 +119,8 @@ describe('MCP OAuth preflight rate limits', () => {
     expect(source).toContain(
       "router.get('/:serverName/oauth/initiate', oauthInitiateGuards, async",
     );
-    expect(source).toContain("router.get('/:serverName/oauth/callback', mcpOAuthCallbackLimiter, async");
+    const callbackRoute = "router.get('/:serverName/oauth/callback', mcpOAuthCallbackLimiter, async";
+    expect(source).toContain(callbackRoute);
     expect(source).not.toContain("router.get('/:serverName/oauth/callback', requireJwtAuth");
   });
 });
