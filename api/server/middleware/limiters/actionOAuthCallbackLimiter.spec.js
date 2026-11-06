@@ -93,8 +93,6 @@ describe('Action OAuth callback rate limit', () => {
     expect(source).toContain(
       "router.get('/:action_id/oauth/callback', actionOAuthCallbackLimiter, async",
     );
-    expect(source).not.toContain(
-      "router.get('/:action_id/oauth/callback', requireJwtAuth",
-    );
+    expect(source).not.toContain("router.get('/:action_id/oauth/callback', requireJwtAuth");
   });
 });
