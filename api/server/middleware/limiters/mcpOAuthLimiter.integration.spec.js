@@ -78,7 +78,7 @@ describe('MCP OAuth limiters with real express-rate-limit', () => {
       .get('/api/mcp/three/oauth/initiate')
       .set('x-test-user', 'user-a')
       .expect(429);
-    expect(blocked.headers['retry-after']).toMatch(/^\\d+$/);
+    expect(blocked.headers['retry-after']).toMatch(/^\d+$/);
     expect(blocked.body).toEqual({ error: 'Too many MCP OAuth requests' });
 
     // Rate limiting another principal must not consume user-a's budget.
@@ -92,7 +92,7 @@ describe('MCP OAuth limiters with real express-rate-limit', () => {
     await request(app).get('/api/mcp/one/oauth/callback').expect(204);
     await request(app).get('/api/mcp/two/oauth/callback').expect(204);
     const blocked = await request(app).get('/api/mcp/three/oauth/callback').expect(429);
-    expect(blocked.headers['retry-after']).toMatch(/^\\d+$/);
+    expect(blocked.headers['retry-after']).toMatch(/^\d+$/);
     expect(blocked.body).toEqual({ error: 'Too many MCP OAuth requests' });
   });
 });
