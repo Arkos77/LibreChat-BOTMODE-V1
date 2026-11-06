@@ -217,9 +217,11 @@ jobs:
                   const modelIdsAfter=await creator.locator("input").evaluateAll(nodes =>
                     nodes.map(n => n.id));
                   console.log("CI_PANEL_MODELS_META="+JSON.stringify(modelIdsAfter));
-                  const newModelIndex=modelIdsAfter.findIndex((id,i) =>
-                    (id && !modelIdsBefore.includes(id)) ||
-                    (!id && i>=modelIdsBefore.length));
+                  // The pinned panel inserts an anonymous input before
+                  // modelDisplayLabel, not necessarily at the end.
+                  const newModelIndex=modelIdsAfter.length===modelIdsBefore.length+1
+                    ? modelIdsAfter.findIndex((id,i)=>id!==modelIdsBefore[i])
+                    : -1;
                   const indexedModel=creator.locator("input").nth(newModelIndex);
                   if(newModelIndex<0)throw Error("CI_MODEL_INPUT_NOT_ADDED");
                   await indexedModel.fill("botmode-ui-chat");
