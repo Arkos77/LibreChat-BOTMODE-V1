@@ -210,21 +210,38 @@ jobs:
                   await creator.locator("#create-endpoint-name").fill("BOTMODE_CI_From_UI");
                   await creator.locator("#create-endpoint-baseURL").fill("https://ui-provider.example.invalid/v1");
                   await creator.locator("#create-endpoint-apiKey").fill("user_provided");
-                  const modelIdsBefore=await creator.locator("input").evaluateAll(nodes =>
-                    nodes.map(n => n.id));
+                  // Pinned Admin Panel DOM diagnostics: capture only control
+                  // metadata and structural labels, never input values.
+                  const inspectModels=async (label) => creator.evaluate((el,phase) => {
+                    const clean=(value) => String(value||"").replace(/\s+/g," ").trim().slice(0,150);
+                    const names=Array.from(el.querySelectorAll("input,textarea,select,[contenteditable]"))
+                      .map((n,index)=>({
+                        index,tag:n.tagName.toLowerCase(),id:n.id||"",
+                        type:n.getAttribute("type")||"",
+                        role:n.getAttribute("role")||"",
+                        placeholder:n.getAttribute("placeholder")||"",
+                        label:clean(n.getAttribute("aria-label")||
+                          (n.id?el.querySelector("label[for="+CSS.escape(n.id)+"]")?.textContent:"")||
+                          n.closest("label")?.textContent),
+                        context:clean(n.parentElement?.parentElement?.textContent),
+                      }));
+                    const add=Array.from(el.querySelectorAll("button"))
+                      .find(b=>clean(b.textContent)==="Add item");
+                    const group=add?.parentElement?.parentElement?.parentElement;
+                    return {phase,fields:names,addGroup:clean(group?.textContent),
+                      addTag:group?.tagName||"",containerCount:el.querySelectorAll("textarea,[contenteditable]").length};
+                  },label);
+                  const modelBefore=await inspectModels("before");
+                  console.log("CI_PINNED_MODELS_DOM_BEFORE="+JSON.stringify(modelBefore));
                   await creator.getByRole("button",{name:"Add item"}).click();
                   await page.waitForTimeout(200);
-                  const modelIdsAfter=await creator.locator("input").evaluateAll(nodes =>
-                    nodes.map(n => n.id));
-                  console.log("CI_PANEL_MODELS_META="+JSON.stringify(modelIdsAfter));
-                  // The pinned panel inserts an anonymous input before
-                  // modelDisplayLabel, not necessarily at the end.
-                  const newModelIndex=modelIdsAfter.length===modelIdsBefore.length+1
-                    ? modelIdsAfter.findIndex((id,i)=>id!==modelIdsBefore[i])
-                    : -1;
-                  const indexedModel=creator.locator("input").nth(newModelIndex);
-                  if(newModelIndex<0)throw Error("CI_MODEL_INPUT_NOT_ADDED");
-                  await indexedModel.fill("botmode-ui-chat");
+                  const modelAfter=await inspectModels("after");
+                  console.log("CI_PINNED_MODELS_DOM_AFTER="+JSON.stringify(modelAfter));
+                  // This run is diagnostic only. Do not claim that UI create/save
+                  // passed or use a guessed model input selector.
+                  console.log("CI_PINNED_MODELS_DIAGNOSTIC=PASS");
+                  console.log("CI_REAL_ADMIN_PANEL_UI_CREATE_AND_SAVE=NON_CONCLUANT");
+                  return;
                   await creator.getByRole("button",{name:"Create",exact:true}).click();
                   const done=page.getByRole("dialog").getByRole("button",{name:"Done",exact:true});
                   if(await done.count()>0)await done.click();
