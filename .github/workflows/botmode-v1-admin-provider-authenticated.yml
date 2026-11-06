@@ -175,6 +175,15 @@ jobs:
                   if (!/configuration|endpoints|parameters|paramètres/i.test(text))
                     throw Error("ADMIN_CONFIG_PAGE_NOT_RENDERED");
                   console.log("CI_REAL_ADMIN_PANEL_CONFIG_PAGE=PASS");
+                  const configResponses=[];
+                  page.on("response", response => {
+                    try {
+                      const url=new URL(response.url());
+                      if(!/config|mutation|save|session/i.test(url.pathname))return;
+                      configResponses.push({path:url.pathname.slice(0,150),
+                        method:response.request().method(),status:response.status()});
+                    } catch (e) {}
+                  });
 
                   // Genuine browser path: add a fictional provider via the UI,
                   // then review and save. No secret or live inference is used.
@@ -263,22 +272,64 @@ jobs:
                   if(await saveButton.count()>0 && await saveButton.isVisible())
                     await saveButton.click();
                   console.log("CI_REAL_ADMIN_PANEL_UI_CREATE_SUBMITTED=PASS");
+                  await page.waitForTimeout(1200);
+                  const saveDialogs=await page.locator("[role=dialog]").evaluateAll(nodes =>
+                    nodes.map(n=>({
+                      title:(n.querySelector("h1,h2,h3,[role=heading]")?.textContent||"").trim().slice(0,80),
+                      buttons:Array.from(n.querySelectorAll("button"))
+                        .map(b=>(b.getAttribute("aria-label")||b.textContent||"").trim().slice(0,50))
+                        .filter(Boolean).slice(0,12),
+                    })));
+                  console.log("CI_UI_AFTER_SAVE_DIALOGS="+JSON.stringify(saveDialogs));
+                  // If Save opened a confirmation, click that explicit approval.
+                  const confirm=page.getByRole("dialog").getByRole("button",{
+                    name:/^(confirm|save changes|apply changes|apply|save)$/i,
+                  }).first();
+                  if(await confirm.count()>0 && await confirm.isVisible()){
+                    await confirm.click();
+                    console.log("CI_UI_SAVE_CONFIRM_CLICKED=PASS");
+                  }
+                  const networkStatuses=configResponses.filter(e=>e.method!=="GET").slice(-12);
+                  console.log("CI_UI_CONFIG_WRITE_NETWORK="+JSON.stringify(networkStatuses));
 
-                  // Confirm the UI-generated provider really persisted on the API.
-                  const login = await fetch("http://api:3080/api/auth/login",{
+                  // Confirm real UI persistence against the authenticated API.
+                  const login=await fetch("http://api:3080/api/auth/login",{
                     method:"POST",headers:{"Content-Type":"application/json"},
                     body:JSON.stringify({email:user.email,password:user.password}),
                   });
                   if(!login.ok)throw Error("CI_UI_VERIFY_LOGIN_HTTP_"+login.status);
                   const session=await login.json();
-                  const get=await fetch("http://api:3080/api/admin/config/role/__base__",{
-                    headers:{Authorization:"Bearer "+session.token},
-                  });
-                  if(!get.ok)throw Error("CI_UI_VERIFY_CONFIG_HTTP_"+get.status);
-                  const data=await get.json();
-                  const items=data.config?.overrides?.endpoints?.custom ?? [];
-                  if(!items.some(x=>x.name==="BOTMODE_CI_From_UI"))
+                  const headers={Authorization:"Bearer "+session.token};
+                  let persisted=false;
+                  let customNames=[];
+                  for(let attempt=0;attempt<12;attempt++){
+                    const get=await fetch("http://api:3080/api/admin/config/role/__base__",{headers});
+                    if(!get.ok)throw Error("CI_UI_VERIFY_CONFIG_HTTP_"+get.status);
+                    const data=await get.json();
+                    const items=data.config?.overrides?.endpoints?.custom ?? [];
+                    customNames=items.map(x=>x.name).filter(x=>typeof x==="string");
+                    if(customNames.includes("BOTMODE_CI_From_UI")){
+                      persisted=true;break;
+                    }
+                    await new Promise(resolve=>setTimeout(resolve,350));
+                  }
+                  if(!persisted){
+                    const list=await fetch("http://api:3080/api/admin/config",{headers});
+                    if(list.ok){
+                      const all=await list.json();
+                      console.log("CI_UI_CONFIG_LIST_KEYS="+JSON.stringify(Object.keys(all||{}).slice(0,12)));
+                      const records=Array.isArray(all)?all:(all.configs||all.items||[]);
+                      if(Array.isArray(records))
+                        console.log("CI_UI_CONFIG_SCOPES="+JSON.stringify(records.slice(0,12).map(x=>({
+                          type:x.principalType||x.type||"",
+                          id:x.principalId||x.id||"",
+                          count:x.overrides?.endpoints?.custom?.length||0,
+                        }))));
+                    }
+                    console.log("CI_UI_CONFIG_WRITE_NETWORK_ALL="+JSON.stringify(configResponses.slice(-18)));
+                    console.log("CI_UI_BASE_CUSTOM_PROVIDER_NAMES="+JSON.stringify(customNames.slice(0,12)));
                     throw Error("CI_UI_CREATED_PROVIDER_NOT_PERSISTED");
+                  }
                   console.log("CI_UI_PROVIDER_PERSISTENCE=PASS");
                 } finally { await browser.close(); }
               })().catch(e => { console.error("CI_ADMIN_PANEL_BROWSER_FAIL="+e.message); process.exit(1); });
