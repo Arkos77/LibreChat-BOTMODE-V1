@@ -208,6 +208,47 @@ router.delete('/', async (req, res) => {
     const fileIds = files.map((file) => file.file_id);
     const dbFiles = await db.getFiles({ file_id: { $in: fileIds } });
 
+    if (req.body.assistant_id) {
+      // Source-bound provider checks prevent a client-supplied endpoint from
+      // choosing a more permissive Assistant policy than the persisted file.
+      const endpoints = new Set();
+      const includeSource = (source) => {
+        if (source === FileSources.openai) {
+          endpoints.add(EModelEndpoint.assistants);
+        } else if (source === FileSources.azure) {
+          endpoints.add(EModelEndpoint.azureAssistants);
+        }
+      };
+      dbFiles.forEach((file) => includeSource(file.source));
+      if (endpoints.size === 0) {
+        files.forEach((file) => includeSource(file.source));
+      }
+      if (isAssistantsEndpoint(req.body.endpoint)) {
+        endpoints.add(req.body.endpoint);
+      }
+      if (endpoints.size === 0) {
+        endpoints.add(EModelEndpoint.assistants);
+        endpoints.add(EModelEndpoint.azureAssistants);
+      }
+
+      for (const endpoint of endpoints) {
+        if (!req.config?.endpoints?.[endpoint]?.privateAssistants) {
+          continue;
+        }
+        try {
+          const { openai } = await getOpenAIClient({ req, res, overrideEndpoint: endpoint });
+          await validateAuthor({
+            req,
+            openai,
+            overrideEndpoint: endpoint,
+            overrideAssistantId: req.body.assistant_id,
+          });
+        } catch (_error) {
+          return res.status(403).json({ message: 'Assistant access denied' });
+        }
+      }
+    }
+
     if (req.body.agent_id && req.body.tool_resource) {
       if (!isAgentToolResourceKey(req.body.tool_resource)) {
         return res.status(400).json({ message: 'Invalid agent tool resource' });
