@@ -107,4 +107,6 @@ jobs:
         if: always()
         shell: bash
         run: |
-          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml --profile admin down --remove-orphans || true
+          files=(-f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)
+          docker compose "${files[@]}" --profile admin stop admin-panel || true
+          docker compose "${files[@]}" --profile admin rm -f admin-panel || true
