@@ -93,6 +93,7 @@ import { parseFrontmatter } from '../skills/import';
 import { cleanCodeToolOutput } from './cleanup';
 import { primeSkillFiles } from './skillFiles';
 import { markSandboxReady } from './prewarm';
+import { isToolCallFailurePrefix } from '../utils/toolCallFailure';
 
 export interface ToolEndCallbackData {
   /** The executed call's arguments. The stream-consumer tool-end path cannot
@@ -4513,7 +4514,7 @@ function getFileAuthoringQueueKey(
  * failed background run renders as clean stdout.
  */
 function toBackgroundToolFailure(toolName: string, message: string): string {
-  if (/^Error:\s*(\[.*?\]\s*)*tool call failed:/i.test(message)) {
+  if (isToolCallFailurePrefix(message)) {
     return message;
   }
   return `Error: [${toolName}] tool call failed: ${message}`;
