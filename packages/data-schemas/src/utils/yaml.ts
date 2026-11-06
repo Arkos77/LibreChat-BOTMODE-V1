@@ -10,7 +10,7 @@
  */
 export function stripYamlTrailingComment(value: string): string {
   if (value.trimStart().startsWith('#')) return '';
-  // Avoid the quadratic backtracking of /^(.*?)\\s+#.*$/ on long scalars
+  // Avoid the quadratic backtracking of /^(.*?)\s+#.*$/ on long scalars
   // with whitespace but no inline comment.
   let firstLineBreak = -1;
   let lastLineBreak = -1;
@@ -35,10 +35,7 @@ export function stripYamlTrailingComment(value: string): string {
     }
 
     // Preserve the original single-line regex semantics for multiline input.
-    if (
-      (firstLineBreak !== -1 && firstLineBreak < whitespaceStart) ||
-      lastLineBreak > hashIndex
-    ) {
+    if ((firstLineBreak !== -1 && firstLineBreak < whitespaceStart) || lastLineBreak > hashIndex) {
       continue;
     }
     return value.slice(0, whitespaceStart);
