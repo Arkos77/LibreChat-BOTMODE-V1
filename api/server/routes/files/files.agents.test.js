@@ -431,7 +431,7 @@ describe('File Routes - Agent Files Endpoint', () => {
       return testApp;
     };
 
-    it('blocks uploading a file into another user\'s private Assistant before provider work', async () => {
+    it("blocks uploading a file into another user's private Assistant before provider work", async () => {
       const testApp = createAppWithUser(otherUserId, SystemRoles.USER, {
         endpoints: { assistants: { privateAssistants: true } },
       });
