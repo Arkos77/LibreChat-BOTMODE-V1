@@ -68,16 +68,7 @@ const OAUTH_CSRF_COOKIE_PATH = '/api/mcp';
 const getOAuthFlowId = (userId, serverName) =>
   MCPOAuthHandler.generateFlowId(userId, serverName, getTenantId());
 
-const canAccessOAuthFlow = (flowId, userId) => {
-  const parsed = MCPOAuthHandler.parseFlowId(flowId);
-  if (!parsed) {
-    return false;
-  }
-  if (parsed.tenantId && parsed.tenantId !== getTenantId()) {
-    return false;
-  }
-  return parsed.userId === userId || parsed.userId === 'system';
-};
+const canAccessOAuthFlow = require('./mcpOAuthFlowAccess');
 
 const clearGetTokensFlow = async ({ flowManager, flowId, tokens }) => {
   const state = await flowManager.getFlowState(flowId, 'mcp_get_tokens');
