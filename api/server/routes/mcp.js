@@ -49,6 +49,10 @@ const {
 } = require('~/server/services/MCP');
 const { requireJwtAuth, canAccessMCPServerResource } = require('~/server/middleware');
 const mcpReinitializeLimiter = require('~/server/middleware/limiters/mcpReinitializeLimiter');
+const {
+  mcpOAuthInitiateLimiter,
+  mcpOAuthCallbackLimiter,
+} = require('~/server/middleware/limiters/mcpOAuthLimiter');
 const { getUserPluginAuthValue } = require('~/server/services/PluginService');
 const { invalidateCachedTools } = require('~/server/services/Config');
 const { updateMCPServerTools } = require('~/server/services/Config/mcp');
@@ -108,7 +112,7 @@ router.get('/tools', requireJwtAuth, checkMCPUsePermissions, async (req, res) =>
  * Initiate OAuth flow
  * This endpoint is called when the user clicks the auth link in the UI
  */
-router.get('/:serverName/oauth/initiate', requireJwtAuth, setOAuthSession, async (req, res) => {
+router.get('/:serverName/oauth/initiate', requireJwtAuth, mcpOAuthInitiateLimiter, setOAuthSession, async (req, res) => {
   try {
     const { serverName } = req.params;
     const { userId, flowId } = req.query;
@@ -230,7 +234,7 @@ router.get('/:serverName/oauth/initiate', requireJwtAuth, setOAuthSession, async
  * OAuth callback handler
  * This handles the OAuth callback after the user has authorized the application
  */
-router.get('/:serverName/oauth/callback', async (req, res) => {
+router.get('/:serverName/oauth/callback', mcpOAuthCallbackLimiter, async (req, res) => {
   const basePath = getBasePath();
   try {
     const { serverName } = req.params;
