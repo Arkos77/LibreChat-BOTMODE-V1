@@ -87,13 +87,13 @@ import {
 } from './intent';
 import { buildSkillPrimeMessage, isSkillFilePath, SKILL_FILE_PREFIX } from './skills';
 import { resolveCallerCapabilityProjectionSnapshot } from './callerCapabilities';
+import { isToolCallFailurePrefix } from '../utils/toolCallFailure';
 import { guardPtcToolMap, instrumentPtcToolMap } from './ptc';
 import { createSkillContentDigest } from './compatibility';
 import { parseFrontmatter } from '../skills/import';
 import { cleanCodeToolOutput } from './cleanup';
 import { primeSkillFiles } from './skillFiles';
 import { markSandboxReady } from './prewarm';
-import { isToolCallFailurePrefix } from '../utils/toolCallFailure';
 
 export interface ToolEndCallbackData {
   /** The executed call's arguments. The stream-consumer tool-end path cannot
