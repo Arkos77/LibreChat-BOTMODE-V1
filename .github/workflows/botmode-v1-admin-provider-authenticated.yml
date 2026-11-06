@@ -175,6 +175,44 @@ jobs:
                   if (!/configuration|endpoints|parameters|paramètres/i.test(text))
                     throw Error("ADMIN_CONFIG_PAGE_NOT_RENDERED");
                   console.log("CI_REAL_ADMIN_PANEL_CONFIG_PAGE=PASS");
+
+                  // Genuine browser path: add a fictional provider via the UI,
+                  // then review and save. No secret or live inference is used.
+                  await page.goto("http://admin-panel:3000/configuration?tab=endpoints&field=endpoints.custom", {waitUntil:"domcontentloaded",timeout:30000});
+                  await page.getByRole("button",{name:"Create endpoint"}).first().waitFor({state:"visible",timeout:25000});
+                  await page.getByRole("button",{name:"Create endpoint"}).first().click();
+                  const creator = page.getByRole("dialog",{name:"Create endpoint"});
+                  await creator.getByRole("button",{name:/Blank endpoint/i}).click();
+                  await creator.getByPlaceholder("Shown in the model menu, e.g. OpenRouter").fill("BOTMODE_CI_From_UI");
+                  await creator.getByRole("textbox",{name:/base url/i}).fill("https://ui-provider.example.invalid/v1");
+                  await creator.locator("input[placeholder*=user_provided]").fill("user_provided");
+                  const modelInput = creator.getByPlaceholder("Add models, comma-separated");
+                  await modelInput.fill("botmode-ui-chat");
+                  await modelInput.press("Enter");
+                  await creator.getByRole("button",{name:"Create endpoint"}).last().click();
+                  const editor = page.getByRole("dialog");
+                  await editor.getByRole("button",{name:"Done"}).click();
+                  await page.getByRole("button",{name:"Review & save"}).click();
+                  await page.getByRole("button",{name:"Save",exact:true}).click();
+                  await page.getByRole("button",{name:"Review & save"}).waitFor({state:"hidden",timeout:25000});
+                  console.log("CI_REAL_ADMIN_PANEL_UI_CREATE_AND_SAVE=PASS");
+
+                  // Confirm the UI-generated provider really persisted on the API.
+                  const login = await fetch("http://api:3080/api/auth/login",{
+                    method:"POST",headers:{"Content-Type":"application/json"},
+                    body:JSON.stringify({email:user.email,password:user.password}),
+                  });
+                  if(!login.ok)throw Error("CI_UI_VERIFY_LOGIN_HTTP_"+login.status);
+                  const session=await login.json();
+                  const get=await fetch("http://api:3080/api/admin/config/role/__base__",{
+                    headers:{Authorization:"Bearer "+session.token},
+                  });
+                  if(!get.ok)throw Error("CI_UI_VERIFY_CONFIG_HTTP_"+get.status);
+                  const data=await get.json();
+                  const items=data.config?.overrides?.endpoints?.custom ?? [];
+                  if(!items.some(x=>x.name==="BOTMODE_CI_From_UI"))
+                    throw Error("CI_UI_CREATED_PROVIDER_NOT_PERSISTED");
+                  console.log("CI_UI_PROVIDER_PERSISTENCE=PASS");
                 } finally { await browser.close(); }
               })().catch(e => { console.error("CI_ADMIN_PANEL_BROWSER_FAIL="+e.message); process.exit(1); });
             ' </tmp/botmode-ci-admin-auth.json
