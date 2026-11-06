@@ -184,9 +184,20 @@ jobs:
                   const creator = page.getByRole("dialog",{name:"Create endpoint"});
                   // Pinned UI localization can differ from current upstream text.
                   // Upstream TemplatePicker always puts the blank entry first.
-                  const templates = creator.locator("ul li button");
-                  if(await templates.count() < 1)throw Error("CI_ENDPOINT_TEMPLATES_NOT_VISIBLE");
-                  await templates.first().click();
+                  await creator.waitFor({state:"visible",timeout:15000});
+                  const chooser = await creator.evaluate(el => ({
+                    title:(el.querySelector("[role=heading]")?.textContent||"").trim().slice(0,90),
+                    buttons:Array.from(el.querySelectorAll("button")).slice(0,16)
+                      .map(b => (b.getAttribute("aria-label")||b.textContent||"").trim().slice(0,90)),
+                    lists:el.querySelectorAll("ul").length,
+                  }));
+                  // Log only public button names, never text fields or credentials.
+                  console.log("CI_PANEL_CHOOSER_META="+JSON.stringify(chooser));
+                  const labelledBlank=creator.getByRole("button",{name:/blank|empty|from scratch/i}).first();
+                  const templateList=creator.locator("ul li button").first();
+                  if(await labelledBlank.count()>0)await labelledBlank.click();
+                  else if(await templateList.count()>0)await templateList.click();
+                  else throw Error("CI_ENDPOINT_TEMPLATE_NOT_FOUND");
                   console.log("CI_PANEL_BLANK_TEMPLATE_SELECTED=PASS");
                   const controls = await creator.locator("input").evaluateAll(nodes =>
                     nodes.map(n => ({id:n.id, placeholder:n.getAttribute("placeholder"),
