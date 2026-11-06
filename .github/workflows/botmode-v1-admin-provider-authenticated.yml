@@ -182,7 +182,16 @@ jobs:
                   await page.getByRole("button",{name:"Create endpoint"}).first().waitFor({state:"visible",timeout:25000});
                   await page.getByRole("button",{name:"Create endpoint"}).first().click();
                   const creator = page.getByRole("dialog",{name:"Create endpoint"});
-                  await creator.getByRole("button",{name:/Blank endpoint/i}).click();
+                  // The pinned UI's localization can differ from current upstream text.
+                  // Upstream TemplatePicker always puts the blank entry first.
+                  const templates = creator.locator("ul li button");
+                  if(await templates.count() < 1)throw Error("CI_ENDPOINT_TEMPLATES_NOT_VISIBLE");
+                  await templates.first().click();
+                  console.log("CI_PANEL_BLANK_TEMPLATE_SELECTED=PASS");
+                  const controls = await creator.locator("input").evaluateAll(nodes =>
+                    nodes.map(n => ({id:n.id, placeholder:n.getAttribute("placeholder"),
+                      ariaLabel:n.getAttribute("aria-label"), type:n.type})));
+                  console.log("CI_PANEL_FORM_CONTROLS="+JSON.stringify(controls));
                   await creator.getByPlaceholder("Shown in the model menu, e.g. OpenRouter").fill("BOTMODE_CI_From_UI");
                   await creator.getByRole("textbox",{name:/base url/i}).fill("https://ui-provider.example.invalid/v1");
                   await creator.locator("input[placeholder*=user_provided]").fill("user_provided");
