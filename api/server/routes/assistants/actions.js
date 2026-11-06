@@ -78,7 +78,6 @@ router.post('/:assistant_id', async (req, res) => {
       return res.status(403).json({ message: 'Assistant access denied' });
     }
 
-
     initialPromises.push(db.getAssistant({ assistant_id }));
     initialPromises.push(openai.beta.assistants.retrieve(assistant_id));
     !!_action_id && initialPromises.push(db.getActions({ action_id }, true));
@@ -214,7 +213,6 @@ router.delete('/:assistant_id/:action_id/:model', async (req, res) => {
     } catch {
       return res.status(403).json({ message: 'Assistant access denied' });
     }
-
 
     const initialPromises = [];
     initialPromises.push(db.getAssistant({ assistant_id }));
