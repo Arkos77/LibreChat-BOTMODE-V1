@@ -6,6 +6,11 @@ const mockDecryptMetadata = jest.fn();
 const mockDomainParser = jest.fn();
 const mockGetOpenAIClient = jest.fn();
 const mockAssistantUpdate = jest.fn();
+const mockAssistantRetrieve = jest.fn();
+
+jest.mock('~/server/middleware/roles/capabilities', () => ({
+  hasCapability: jest.fn().mockResolvedValue(false),
+}));
 
 jest.mock('~/server/services/ActionService', () => ({
   legacyDomainEncode: jest.fn(),
@@ -32,11 +37,11 @@ const router = require('./actions');
 const db = require('~/models');
 const { CONTENT_TRAVERSAL_MAX_DEPTH } = require('@librechat/api');
 
-function createApp(filters) {
+function createApp(filters, endpoints) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    req.config = { filters };
+    req.config = { filters, endpoints };
     req.user = { id: 'user-id' };
     next();
   });
@@ -61,11 +66,15 @@ describe('assistant action content filters', () => {
     mockEncryptMetadata.mockImplementation(async (metadata) => metadata);
     mockDecryptMetadata.mockImplementation(async (metadata) => metadata);
     mockDomainParser.mockResolvedValue('encoded');
+    mockAssistantRetrieve.mockResolvedValue({
+      tools: [],
+      metadata: { author: 'owner-id' },
+    });
     mockGetOpenAIClient.mockResolvedValue({
       openai: {
         beta: {
           assistants: {
-            retrieve: jest.fn().mockResolvedValue({ tools: [] }),
+            retrieve: mockAssistantRetrieve,
             update: mockAssistantUpdate,
           },
         },
@@ -365,5 +374,43 @@ describe('assistant action content filters', () => {
     );
     expect(mockAssistantUpdate).not.toHaveBeenCalled();
     expect(db.updateAction).not.toHaveBeenCalled();
+  });
+
+
+  it('denies editing a private assistant action owned by another user', async () => {
+    const app = createApp(undefined, { assistants: { privateAssistants: true } });
+    db.getAssistant.mockImplementation(async (query) =>
+      query.user ? null : { actions: [], user: 'owner-id' },
+    );
+
+    const response = await request(app)
+      .post('/assistant-id')
+      .send({
+        endpoint: 'assistants',
+        functions: [{ type: 'function', function: { name: 'lookup' } }],
+        metadata: { domain: 'example.test' },
+      });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ message: 'Assistant access denied' });
+    expect(mockAssistantUpdate).not.toHaveBeenCalled();
+    expect(db.updateAssistantDoc).not.toHaveBeenCalled();
+    expect(db.updateAction).not.toHaveBeenCalled();
+  });
+
+  it('denies deleting a private assistant action owned by another user', async () => {
+    const app = createApp(undefined, { assistants: { privateAssistants: true } });
+    db.getAssistant.mockImplementation(async (query) =>
+      query.user ? null : { actions: [], user: 'owner-id' },
+    );
+
+    const response = await request(app).delete(
+      '/assistant-id/action-id/model?endpoint=assistants',
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ message: 'Assistant access denied' });
+    expect(mockAssistantUpdate).not.toHaveBeenCalled();
+    expect(db.deleteAction).not.toHaveBeenCalled();
   });
 });
