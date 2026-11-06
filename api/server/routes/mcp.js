@@ -50,6 +50,7 @@ const {
 const { requireJwtAuth, canAccessMCPServerResource } = require('~/server/middleware');
 const mcpReinitializeLimiter = require('~/server/middleware/limiters/mcpReinitializeLimiter');
 const {
+  initializeMcpOAuthLimiters,
   mcpOAuthInitiateLimiter,
   mcpOAuthCallbackLimiter,
 } = require('~/server/middleware/limiters/mcpOAuthLimiter');
@@ -60,6 +61,9 @@ const { reinitMCPServer } = require('~/server/services/Tools/mcp');
 const { createOpenIDSessionTokenProvider } = require('~/server/services/OpenIDSessionRefresh');
 const { getLogStores } = require('~/cache');
 const db = require('~/models');
+
+// Construct the real rate limiters at startup; never on an incoming OAuth request.
+initializeMcpOAuthLimiters();
 
 const router = Router();
 
@@ -227,6 +231,9 @@ router.get('/:serverName/oauth/initiate', oauthInitiateGuards, async (req, res) 
  * This handles the OAuth callback after the user has authorized the application
  */
 router.get('/:serverName/oauth/callback', mcpOAuthCallbackLimiter, async (req, res) => {
+  // OAuth query codes must not be cached or sent in a subsequent Referer.
+  res.set('Cache-Control', 'no-store');
+  res.set('Referrer-Policy', 'no-referrer');
   const basePath = getBasePath();
   try {
     const { serverName } = req.params;
@@ -235,7 +242,7 @@ router.get('/:serverName/oauth/callback', mcpOAuthCallbackLimiter, async (req, r
     logger.debug('[MCP OAuth] Callback received', {
       serverName,
       code: code ? 'present' : 'missing',
-      state,
+      state: state ? 'present' : 'missing',
       error: oauthError,
     });
 
@@ -301,7 +308,7 @@ router.get('/:serverName/oauth/callback', mcpOAuthCallbackLimiter, async (req, r
 
     const flowId = await MCPOAuthHandler.resolveStateToFlowId(state, flowManager);
     if (!flowId) {
-      logger.error('[MCP OAuth] Could not resolve state to flow ID', { state });
+      logger.error('[MCP OAuth] Could not resolve state to flow ID');
       return res.redirect(`${basePath}/oauth/error?error=invalid_state`);
     }
     logger.debug('[MCP OAuth] Resolved flow ID from state', { flowId });
