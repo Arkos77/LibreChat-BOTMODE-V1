@@ -21,11 +21,8 @@ function sendLimitError(req, res, defaultWindowSeconds) {
   return res.status(429).json({ error: 'Too many MCP OAuth requests' });
 }
 
-/** Throttle network/IdP work across all MCP servers for one authenticated user. */
-function mcpOAuthInitiateLimiter(req, res, next) {
-  if (!req.user?.id) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
+/** Create the per-user limiter once, outside the request path during route startup. */
+function createInitiationLimiter() {
   if (!initiationLimiter) {
     const minutes = positiveInteger(process.env.MCP_OAUTH_INITIATE_WINDOW, 5);
     initiationLimiter = rateLimit({
@@ -42,11 +39,11 @@ function mcpOAuthInitiateLimiter(req, res, next) {
       handler: (request, response) => sendLimitError(request, response, minutes * 60),
     });
   }
-  return initiationLimiter(req, res, next);
+  return initiationLimiter;
 }
 
-/** Throttle unauthenticated callbacks by client IP, before state processing. */
-function mcpOAuthCallbackLimiter(req, res, next) {
+/** Create the callback limiter once, outside the request path during route startup. */
+function createCallbackLimiter() {
   if (!callbackLimiter) {
     const minutes = positiveInteger(process.env.MCP_OAUTH_CALLBACK_WINDOW, 5);
     callbackLimiter = rateLimit({
@@ -59,7 +56,30 @@ function mcpOAuthCallbackLimiter(req, res, next) {
       handler: (request, response) => sendLimitError(request, response, minutes * 60),
     });
   }
-  return callbackLimiter(req, res, next);
+  return callbackLimiter;
 }
 
-module.exports = { mcpOAuthInitiateLimiter, mcpOAuthCallbackLimiter };
+/** Called during route initialization, before the first incoming request. */
+function initializeMcpOAuthLimiters() {
+  createInitiationLimiter();
+  createCallbackLimiter();
+}
+
+/** Throttle network/IdP work across all MCP servers for one authenticated user. */
+function mcpOAuthInitiateLimiter(req, res, next) {
+  if (!req.user?.id) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  return createInitiationLimiter()(req, res, next);
+}
+
+/** Throttle unauthenticated callbacks by client IP, before state processing. */
+function mcpOAuthCallbackLimiter(req, res, next) {
+  return createCallbackLimiter()(req, res, next);
+}
+
+module.exports = {
+  initializeMcpOAuthLimiters,
+  mcpOAuthInitiateLimiter,
+  mcpOAuthCallbackLimiter,
+};
