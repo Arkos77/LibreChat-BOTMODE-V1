@@ -22,9 +22,7 @@ describe('stripYamlTrailingComment', () => {
 
   it('preserves legacy behavior around line breaks', () => {
     expect(stripYamlTrailingComment('value\n# comment')).toBe('value');
-    expect(stripYamlTrailingComment('value\nother # comment')).toBe(
-      'value\nother # comment',
-    );
+    expect(stripYamlTrailingComment('value\nother # comment')).toBe('value\nother # comment');
     expect(stripYamlTrailingComment('value # comment\n')).toBe('value # comment\n');
     expect(stripYamlTrailingComment('value # comment\r\n')).toBe('value # comment\r\n');
   });
