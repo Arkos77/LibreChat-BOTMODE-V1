@@ -91,13 +91,10 @@ function hasUnsafeConfigObjectKey(root: unknown): boolean {
     visited.add(value);
 
     for (const [key, child] of Object.entries(value)) {
-      if (
-        key.split('.').some(
-          (segment) =>
-            UNSAFE_OBJECT_KEY_SEGMENTS.has(segment) || UNSAFE_SEGMENTS.test(segment),
-        )
-      ) {
-        return true;
+      for (const segment of key.split('.')) {
+        if (UNSAFE_OBJECT_KEY_SEGMENTS.has(segment) || UNSAFE_SEGMENTS.test(segment)) {
+          return true;
+        }
       }
       if (child != null && typeof child === 'object') {
         pending.push(child);
