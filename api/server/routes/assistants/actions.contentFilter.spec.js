@@ -410,4 +410,82 @@ describe('assistant action content filters', () => {
     expect(mockAssistantUpdate).not.toHaveBeenCalled();
     expect(db.deleteAction).not.toHaveBeenCalled();
   });
+
+  it('allows the owner to update a private Assistant action', async () => {
+    const app = createApp(undefined, { assistants: { privateAssistants: true } });
+    db.getAssistant.mockResolvedValue({ actions: [], user: 'user-id' });
+    db.updateAssistantDoc.mockResolvedValue({ actions: [] });
+    db.updateAction.mockResolvedValue({ metadata: {} });
+    mockAssistantUpdate.mockResolvedValue({ tools: [] });
+
+    const response = await request(app)
+      .post('/assistant-id')
+      .send({
+        endpoint: 'assistants',
+        functions: [{ type: 'function', function: { name: 'lookup' } }],
+        metadata: { domain: 'example.test' },
+      });
+
+    expect(response.status).toBe(200);
+    expect(mockAssistantUpdate).toHaveBeenCalledTimes(1);
+    expect(db.updateAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves action editing for explicitly shared Assistants', async () => {
+    const app = createApp(undefined, { assistants: { privateAssistants: false } });
+    db.updateAssistantDoc.mockResolvedValue({ actions: [] });
+    db.updateAction.mockResolvedValue({ metadata: {} });
+    mockAssistantUpdate.mockResolvedValue({ tools: [] });
+
+    const response = await request(app)
+      .post('/assistant-id')
+      .send({
+        endpoint: 'assistants',
+        functions: [{ type: 'function', function: { name: 'lookup' } }],
+        metadata: { domain: 'example.test' },
+      });
+
+    expect(response.status).toBe(200);
+    expect(mockAssistantUpdate).toHaveBeenCalledTimes(1);
+    expect(db.updateAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('denies private Azure Assistant action edits despite shared OpenAI configuration', async () => {
+    const app = createApp(undefined, {
+      assistants: { privateAssistants: false },
+      azureAssistants: { privateAssistants: true },
+    });
+    db.getAssistant.mockImplementation(async (query) =>
+      query.user ? null : { actions: [], user: 'owner-id' },
+    );
+
+    const response = await request(app)
+      .post('/assistant-id?endpoint=assistants')
+      .send({
+        endpoint: 'azureAssistants',
+        functions: [{ type: 'function', function: { name: 'lookup' } }],
+        metadata: { domain: 'example.test' },
+      });
+
+    expect(response.status).toBe(403);
+    expect(mockAssistantUpdate).not.toHaveBeenCalled();
+    expect(db.updateAction).not.toHaveBeenCalled();
+  });
+
+  it('denies deletion for a private OpenAI Assistant despite shared Azure configuration', async () => {
+    const app = createApp(undefined, {
+      assistants: { privateAssistants: true },
+      azureAssistants: { privateAssistants: false },
+    });
+    db.getAssistant.mockImplementation(async (query) =>
+      query.user ? null : { actions: [], user: 'owner-id' },
+    );
+
+    const response = await request(app)
+      .delete('/assistant-id/action-id/model?endpoint=assistants');
+
+    expect(response.status).toBe(403);
+    expect(mockAssistantUpdate).not.toHaveBeenCalled();
+    expect(db.deleteAction).not.toHaveBeenCalled();
+  });
 });
