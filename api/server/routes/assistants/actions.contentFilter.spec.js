@@ -376,7 +376,6 @@ describe('assistant action content filters', () => {
     expect(db.updateAction).not.toHaveBeenCalled();
   });
 
-
   it('denies editing a private assistant action owned by another user', async () => {
     const app = createApp(undefined, { assistants: { privateAssistants: true } });
     db.getAssistant.mockImplementation(async (query) =>
