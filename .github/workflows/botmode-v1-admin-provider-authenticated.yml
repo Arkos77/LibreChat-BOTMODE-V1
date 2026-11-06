@@ -175,15 +175,35 @@ jobs:
                   if (!/configuration|endpoints|parameters|paramètres/i.test(text))
                     throw Error("ADMIN_CONFIG_PAGE_NOT_RENDERED");
                   console.log("CI_REAL_ADMIN_PANEL_CONFIG_PAGE=PASS");
-                  const configResponses=[];
+                  // TanStack server mutations use framework routes; their
+                  // URLs do not necessarily contain config or save. Record
+                  // status metadata for ALL writes without payloads or cookies.
+                  const writeResponses=[];
+                  const browserErrors=[];
                   page.on("response", response => {
                     try {
+                      const method=response.request().method();
+                      if(!["POST","PUT","PATCH","DELETE"].includes(method))return;
                       const url=new URL(response.url());
-                      if(!/config|mutation|save|session/i.test(url.pathname))return;
-                      configResponses.push({path:url.pathname.slice(0,150),
-                        method:response.request().method(),status:response.status()});
+                      writeResponses.push({
+                        path:url.pathname.slice(0,140),
+                        method,status:response.status(),
+                        contentType:(response.headers()["content-type"]||"").split(";")[0],
+                      });
                     } catch (e) {}
                   });
+                  page.on("requestfailed", request => {
+                    if(["POST","PUT","PATCH"].includes(request.method())){
+                      const url=new URL(request.url());
+                      browserErrors.push({
+                        path:url.pathname.slice(0,120),
+                        cause:(request.failure()?.errorText||"network-error").slice(0,100),
+                      });
+                    }
+                  });
+                  page.on("pageerror", error => browserErrors.push({
+                    kind:"page-error",type:error.name||"Error",
+                  }));
 
                   // Genuine browser path: add a fictional provider via the UI,
                   // then review and save. No secret or live inference is used.
@@ -289,8 +309,14 @@ jobs:
                     await confirm.click();
                     console.log("CI_UI_SAVE_CONFIRM_CLICKED=PASS");
                   }
-                  const networkStatuses=configResponses.filter(e=>e.method!=="GET").slice(-12);
-                  console.log("CI_UI_CONFIG_WRITE_NETWORK="+JSON.stringify(networkStatuses));
+                  console.log("CI_UI_WRITE_STATUSES="+JSON.stringify(writeResponses.slice(-18)));
+                  console.log("CI_UI_BROWSER_ERRORS="+JSON.stringify(browserErrors.slice(-12)));
+                  const alertMeta=await page.locator("[role=alert],[data-sonner-toast]").evaluateAll(nodes=>
+                    nodes.slice(0,10).map(n=>({
+                      role:n.getAttribute("role")||"",
+                      message:(n.textContent||"").replace(/(api[_ -]?key|password|token|secret)[=: ]+[^ ,;]+/ig,"$1=[REDACTED]").trim().slice(0,220),
+                    })));
+                  console.log("CI_UI_AFTER_SAVE_ALERTS="+JSON.stringify(alertMeta));
 
                   // Confirm real UI persistence against the authenticated API.
                   const login=await fetch("http://api:3080/api/auth/login",{
@@ -326,7 +352,7 @@ jobs:
                           count:x.overrides?.endpoints?.custom?.length||0,
                         }))));
                     }
-                    console.log("CI_UI_CONFIG_WRITE_NETWORK_ALL="+JSON.stringify(configResponses.slice(-18)));
+                    console.log("CI_UI_WRITE_STATUSES_FINAL="+JSON.stringify(writeResponses.slice(-20)));
                     console.log("CI_UI_BASE_CUSTOM_PROVIDER_NAMES="+JSON.stringify(customNames.slice(0,12)));
                     throw Error("CI_UI_CREATED_PROVIDER_NOT_PERSISTED");
                   }
