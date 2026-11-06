@@ -237,19 +237,32 @@ jobs:
                   await page.waitForTimeout(200);
                   const modelAfter=await inspectModels("after");
                   console.log("CI_PINNED_MODELS_DOM_AFTER="+JSON.stringify(modelAfter));
-                  // This run is diagnostic only. Do not claim that UI create/save
-                  // passed or use a guessed model input selector.
-                  console.log("CI_PINNED_MODELS_DIAGNOSTIC=PASS");
-                  console.log("CI_REAL_ADMIN_PANEL_UI_CREATE_AND_SAVE=NON_CONCLUANT");
-                  return;
+                  // Exact pinned-image evidence: Add item inserts item 1
+                  // as the fifth text input, before the two checkboxes.
+                  const modelField=modelAfter.fields.find(field =>
+                    field.type==="text" && field.label==="item 1");
+                  if(!modelField)throw Error("CI_PINNED_MODEL_TEXTBOX_NOT_FOUND");
+                  const textboxesBefore=modelAfter.fields.slice(0,modelField.index)
+                    .filter(field=>field.type==="text").length;
+                  await creator.locator("input[type=text]").nth(textboxesBefore).fill("botmode-ui-chat");
+                  console.log("CI_PINNED_MODEL_INPUT_FILLED=PASS");
                   await creator.getByRole("button",{name:"Create",exact:true}).click();
+                  await page.waitForTimeout(700);
+                  const postButtons=await page.locator("button:visible").evaluateAll(nodes =>
+                    nodes.map(n=>(n.getAttribute("aria-label")||n.textContent||"").trim().slice(0,60))
+                      .filter(Boolean).filter(s=>/done|review|save|create|apply/i.test(s)).slice(0,12));
+                  console.log("CI_PINNED_POST_CREATE_ACTIONS="+JSON.stringify(postButtons));
                   const done=page.getByRole("dialog").getByRole("button",{name:"Done",exact:true});
-                  if(await done.count()>0)await done.click();
-                  const review=page.getByRole("button",{name:/review.*save|review changes/i});
-                  await review.first().waitFor({state:"visible",timeout:15000});
-                  await review.first().click();
-                  await page.getByRole("button",{name:"Save",exact:true}).click();
-                  console.log("CI_REAL_ADMIN_PANEL_UI_CREATE_AND_SAVE=PASS");
+                  if(await done.count()>0 && await done.first().isVisible())await done.first().click();
+                  const review=page.getByRole("button",{name:/review.*save|review changes/i}).first();
+                  if(await review.count()>0 && await review.isVisible()){
+                    await review.click();
+                    await page.waitForTimeout(250);
+                  }
+                  const saveButton=page.getByRole("button",{name:"Save",exact:true}).first();
+                  if(await saveButton.count()>0 && await saveButton.isVisible())
+                    await saveButton.click();
+                  console.log("CI_REAL_ADMIN_PANEL_UI_CREATE_SUBMITTED=PASS");
 
                   // Confirm the UI-generated provider really persisted on the API.
                   const login = await fetch("http://api:3080/api/auth/login",{
