@@ -400,6 +400,27 @@ describe('createAdminConfigHandlers', () => {
       expect(res.statusCode).toBe(200);
     });
 
+    it.each([
+      ['top-level prototype', '{"__proto__":{"enabled":true},"interface":{"modelSelect":true}}'],
+      ['nested prototype', '{"interface":{"__proto__":{"use":true},"modelSelect":true}}'],
+      ['composite constructor', '{"interface":{"mcpServers":{"constructor":{"use":true}}}}'],
+      ['dotted nested prototype', '{"interface":{"mcpServers":{"x.__proto__.y":1}}}'],
+      ['array member prototype', '{"endpoints":{"custom":[{"__proto__":{"enabled":true}}]}}'],
+    ])('rejects an unsafe object key in %s', async (_label, json) => {
+      const { handlers, deps } = createHandlers();
+      const req = mockReq({
+        params: { principalType: 'role', principalId: 'admin' },
+        body: { overrides: JSON.parse(json) },
+      });
+      const res = mockRes();
+
+      await handlers.upsertConfigOverrides(req, res);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({ error: 'Unsafe config property name' });
+      expect(deps.upsertConfig).not.toHaveBeenCalled();
+    });
+
     it('returns 400 when overrides is missing', async () => {
       const { handlers } = createHandlers();
       const req = mockReq({
@@ -1107,6 +1128,28 @@ describe('createAdminConfigHandlers', () => {
   });
 
   describe('patchConfigField', () => {
+    it.each([
+      ['prototype', '{"__proto__":{"use":true}}'],
+      ['constructor', '{"constructor":{"use":true}}'],
+      ['nested dotted key', '{"allowed":{"nested.__proto__.role":true}}'],
+    ])('rejects an unsafe %s in a field value', async (_label, json) => {
+      const { handlers, deps } = createHandlers();
+      const req = mockReq({
+        params: { principalType: 'role', principalId: 'admin' },
+        body: {
+          entries: [{ fieldPath: 'interface.mcpServers', value: JSON.parse(json) }],
+        },
+      });
+      const res = mockRes();
+
+      await handlers.patchConfigField(req, res);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({ error: 'Unsafe config property name' });
+      expect(deps.patchConfigFields).not.toHaveBeenCalled();
+    });
+
+
     it('returns 403 when user lacks capability for section', async () => {
       const { handlers } = createHandlers({
         hasConfigCapability: jest.fn().mockResolvedValue(false),
