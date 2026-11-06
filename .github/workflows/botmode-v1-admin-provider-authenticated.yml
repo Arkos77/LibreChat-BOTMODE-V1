@@ -179,17 +179,38 @@ jobs:
                   // URLs do not necessarily contain config or save. Record
                   // status metadata for ALL writes without payloads or cookies.
                   const writeResponses=[];
+                  const writeReplyTasks=[];
                   const browserErrors=[];
+                  const summarize=(value,depth=0,key="")=>{
+                    if(depth>5)return "<nested>";
+                    if(Array.isArray(value))return value.slice(0,4)
+                      .map(entry=>summarize(entry,depth+1,key));
+                    if(value && typeof value==="object"){
+                      return Object.fromEntries(Object.entries(value).slice(0,24)
+                        .map(([k,v])=>[k,/apiKey|password|token|secret|cookie/i.test(k)
+                          ? "[REDACTED]" : summarize(v,depth+1,k)]));
+                    }
+                    if(typeof value==="string"){
+                      if(/^(code|error|message|reason|type|status|path|fieldPath)$/i.test(key))
+                        return value.slice(0,180);
+                      return "<string>";
+                    }
+                    return value;
+                  };
                   page.on("response", response => {
                     try {
                       const method=response.request().method();
                       if(!["POST","PUT","PATCH","DELETE"].includes(method))return;
                       const url=new URL(response.url());
-                      writeResponses.push({
-                        path:url.pathname.slice(0,140),
-                        method,status:response.status(),
-                        contentType:(response.headers()["content-type"]||"").split(";")[0],
-                      });
+                      const entry={path:url.pathname.slice(0,140),method,
+                        status:response.status(),
+                        contentType:(response.headers()["content-type"]||"").split(";")[0]};
+                      writeResponses.push(entry);
+                      if(entry.contentType==="application/json"){
+                        writeReplyTasks.push(response.json().then(body=>{
+                          entry.reply=summarize(body);
+                        }).catch(()=>{entry.reply="<unreadable-json>"}));
+                      }
                     } catch (e) {}
                   });
                   page.on("requestfailed", request => {
@@ -352,7 +373,8 @@ jobs:
                           count:x.overrides?.endpoints?.custom?.length||0,
                         }))));
                     }
-                    console.log("CI_UI_WRITE_STATUSES_FINAL="+JSON.stringify(writeResponses.slice(-20)));
+                    await Promise.all(writeReplyTasks);
+                    console.log("CI_UI_WRITE_REPLIES="+JSON.stringify(writeResponses.slice(-20)));
                     console.log("CI_UI_BASE_CUSTOM_PROVIDER_NAMES="+JSON.stringify(customNames.slice(0,12)));
                     throw Error("CI_UI_CREATED_PROVIDER_NOT_PERSISTED");
                   }
