@@ -197,8 +197,10 @@ jobs:
                   const templateList=creator.locator("ul li button").first();
                   if(await labelledBlank.count()>0)await labelledBlank.click();
                   else if(await templateList.count()>0)await templateList.click();
-                  else throw Error("CI_ENDPOINT_TEMPLATE_NOT_FOUND");
-                  console.log("CI_PANEL_BLANK_TEMPLATE_SELECTED=PASS");
+                  else if(await creator.locator("input").count()>0)
+                    console.log("CI_PANEL_FORM_DIRECT=PASS");
+                  else throw Error("CI_ENDPOINT_FORM_NOT_FOUND");
+                  console.log("CI_PANEL_CREATION_FORM_AVAILABLE=PASS");
                   const controls = await creator.locator("input").evaluateAll(nodes =>
                     nodes.map(n => ({id:n.id, placeholder:n.getAttribute("placeholder"),
                       ariaLabel:n.getAttribute("aria-label"), type:n.type})));
