@@ -182,7 +182,7 @@ jobs:
                   await page.getByRole("button",{name:"Create endpoint"}).first().waitFor({state:"visible",timeout:25000});
                   await page.getByRole("button",{name:"Create endpoint"}).first().click();
                   const creator = page.getByRole("dialog",{name:"Create endpoint"});
-                  // The pinned UI's localization can differ from current upstream text.
+                  // Pinned UI localization can differ from current upstream text.
                   // Upstream TemplatePicker always puts the blank entry first.
                   const templates = creator.locator("ul li button");
                   if(await templates.count() < 1)throw Error("CI_ENDPOINT_TEMPLATES_NOT_VISIBLE");
