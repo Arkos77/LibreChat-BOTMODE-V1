@@ -1151,7 +1151,6 @@ describe('createAdminConfigHandlers', () => {
       expect(deps.patchConfigFields).not.toHaveBeenCalled();
     });
 
-
     it('returns 403 when user lacks capability for section', async () => {
       const { handlers } = createHandlers({
         hasConfigCapability: jest.fn().mockResolvedValue(false),
