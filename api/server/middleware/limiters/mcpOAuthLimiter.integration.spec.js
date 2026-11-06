@@ -11,7 +11,11 @@ jest.mock('@librechat/data-schemas', () => ({
   getTenantId: jest.fn(() => undefined),
 }));
 
-const { initializeMcpOAuthLimiters, mcpOAuthInitiateLimiter, mcpOAuthCallbackLimiter } = require('./mcpOAuthLimiter');
+const {
+  initializeMcpOAuthLimiters,
+  mcpOAuthInitiateLimiter,
+  mcpOAuthCallbackLimiter,
+} = require('./mcpOAuthLimiter');
 
 describe('MCP OAuth limiters with real express-rate-limit', () => {
   let app;
