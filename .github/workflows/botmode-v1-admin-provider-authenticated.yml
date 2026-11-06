@@ -420,6 +420,40 @@ jobs:
                     throw Error("CI_UI_CREATED_PROVIDER_NOT_PERSISTED");
                   }
                   console.log("CI_UI_PROVIDER_PERSISTENCE=PASS");
+
+                  // The authenticated chat picker obtains its catalog from
+                  // these existing LibreChat API routes, not from Admin Panel.
+                  const inspectCatalog=async()=>{
+                    const [modelsResponse,endpointsResponse]=await Promise.all([
+                      fetch("http://api:3080/api/models",{headers}),
+                      fetch("http://api:3080/api/endpoints",{headers}),
+                    ]);
+                    if(!modelsResponse.ok)throw Error("CI_CHAT_MODELS_HTTP_"+modelsResponse.status);
+                    if(!endpointsResponse.ok)throw Error("CI_CHAT_ENDPOINTS_HTTP_"+endpointsResponse.status);
+                    const models=await modelsResponse.json();
+                    const endpoints=await endpointsResponse.json();
+                    const names=Object.keys(models||{});
+                    const choices=models?.BOTMODE_CI_From_UI||[];
+                    const idFound=Array.isArray(choices)&&choices.some(item =>
+                      (typeof item==="string"?item:item?.id||item?.name)==="botmode-ui-chat");
+                    const endpointKnown=!!endpoints?.BOTMODE_CI_From_UI ||
+                      !!endpoints?.custom?.find?.(item=>item?.name==="BOTMODE_CI_From_UI");
+                    return {idFound,endpointKnown,names};
+                  };
+                  let catalog;
+                  for(let attempt=0;attempt<12;attempt++){
+                    catalog=await inspectCatalog();
+                    if(catalog.idFound && catalog.endpointKnown)break;
+                    await new Promise(resolve=>setTimeout(resolve,400));
+                  }
+                  if(!catalog?.idFound){
+                    console.log("CI_CHAT_MODEL_KEYS="+JSON.stringify(catalog?.names.slice(0,24)||[]));
+                    throw Error("CI_CREATED_MODEL_MISSING_FROM_CHAT_CATALOG");
+                  }
+                  console.log("CI_CHAT_MODEL_CATALOG=PASS");
+                  if(!catalog?.endpointKnown)
+                    throw Error("CI_CREATED_ENDPOINT_MISSING_FROM_CHAT_CATALOG");
+                  console.log("CI_CHAT_ENDPOINT_CATALOG=PASS");
                 } finally { await browser.close(); }
               })().catch(e => { console.error("CI_ADMIN_PANEL_BROWSER_FAIL="+e.message); process.exit(1); });
             ' </tmp/botmode-ci-admin-auth.json
@@ -442,6 +476,7 @@ jobs:
             echo '### BOT MODE Admin Provider authenticated integration'
             echo 'Runtime API: immutable public v1.0.3 image; Compose and admin profile: exact PR revision.'
             echo 'Verifies first-user ADMIN, non-admin rejection, real API config write/read, real Admin Panel browser login and configuration page.'
-            echo 'Does not claim click-through provider creation in the browser, model inference, or exact-HEAD backend runtime integration.'
+            echo 'Verifies browser click-through provider creation and persistence, and authenticated chat API catalogs.'
+            echo 'Does not claim visual chat picker rendering, model inference, or exact-HEAD backend runtime integration.'
             echo 'Uses fictional provider, no user keys, no model spending, disposable CI-only storage.'
           } >> "$GITHUB_STEP_SUMMARY"
