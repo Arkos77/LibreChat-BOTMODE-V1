@@ -11,7 +11,7 @@ jest.mock('@librechat/data-schemas', () => ({
   getTenantId: jest.fn(() => undefined),
 }));
 
-const { mcpOAuthInitiateLimiter, mcpOAuthCallbackLimiter } = require('./mcpOAuthLimiter');
+const { initializeMcpOAuthLimiters, mcpOAuthInitiateLimiter, mcpOAuthCallbackLimiter } = require('./mcpOAuthLimiter');
 
 describe('MCP OAuth limiters with real express-rate-limit', () => {
   let app;
@@ -26,6 +26,7 @@ describe('MCP OAuth limiters with real express-rate-limit', () => {
     process.env.MCP_OAUTH_INITIATE_WINDOW = '5';
     process.env.MCP_OAUTH_CALLBACK_WINDOW = '5';
 
+    initializeMcpOAuthLimiters();
     app = express();
     // Test-only authenticated principal. Production JWT auth is tested by the
     // existing route suite; this exercises the real limiter after that guard.
@@ -59,7 +60,8 @@ describe('MCP OAuth limiters with real express-rate-limit', () => {
   });
 
   it('rejects unauthenticated initiation before dispatch', async () => {
-    await request(app).get('/api/mcp/one/oauth/initiate').expect(401);
+    const response = await request(app).get('/api/mcp/one/oauth/initiate');
+    expect(response.status).toBe(401);
   });
 
   it('limits authenticated initiations across MCP names but isolates users', async () => {
