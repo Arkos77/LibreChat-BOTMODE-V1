@@ -178,7 +178,7 @@ jobs:
 
                   // Genuine browser path: add a fictional provider via the UI,
                   // then review and save. No secret or live inference is used.
-                  await page.goto("http://admin-panel:3000/configuration?tab=endpoints&field=endpoints.custom", {waitUntil:"domcontentloaded",timeout:30000});
+                  await page.goto("http://admin-panel:3000/configuration?tab=custom&field=endpoints.custom", {waitUntil:"domcontentloaded",timeout:30000});
                   await page.getByRole("button",{name:"Create endpoint"}).first().waitFor({state:"visible",timeout:25000});
                   await page.getByRole("button",{name:"Create endpoint"}).first().click();
                   const creator = page.getByRole("dialog",{name:"Create endpoint"});
