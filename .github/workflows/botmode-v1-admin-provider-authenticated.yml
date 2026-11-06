@@ -6,6 +6,7 @@ on:
       - .github/workflows/botmode-v1-admin-provider-authenticated.yml
       - docker-compose.botmode-lite.yml
       - docker-compose.botmode.yml
+      - librechat.yaml
       - packages/api/src/admin/config.handler.spec.ts
   workflow_dispatch:
 
@@ -28,6 +29,27 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+
+      - name: Fail fast on invalid custom provider model defaults
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          config=json.loads(Path('librechat.yaml').read_text())
+          entries=config.get('endpoints', {}).get('custom', [])
+          missing=[
+            endpoint.get('name', '<unnamed>')
+            for endpoint in entries
+            if not isinstance(endpoint.get('models', {}).get('default'), list)
+            or not endpoint['models']['default']
+          ]
+          if missing:
+            print('CI_CUSTOM_PROVIDER_MODEL_DEFAULTS=FAIL')
+            print('Invalid endpoint names: '+', '.join(missing))
+            raise SystemExit(1)
+          print('CI_CUSTOM_PROVIDER_MODEL_DEFAULTS=PASS')
+          PY
 
       - name: Install disposable Lite using the existing bootstrap
         shell: bash
