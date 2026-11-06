@@ -205,18 +205,31 @@ jobs:
                     nodes.map(n => ({id:n.id, placeholder:n.getAttribute("placeholder"),
                       ariaLabel:n.getAttribute("aria-label"), type:n.type})));
                   console.log("CI_PANEL_FORM_CONTROLS="+JSON.stringify(controls));
-                  await creator.getByPlaceholder("Shown in the model menu, e.g. OpenRouter").fill("BOTMODE_CI_From_UI");
-                  await creator.getByRole("textbox",{name:/base url/i}).fill("https://ui-provider.example.invalid/v1");
-                  await creator.locator("input[placeholder*=user_provided]").fill("user_provided");
-                  const modelInput = creator.getByPlaceholder("Add models, comma-separated");
-                  await modelInput.fill("botmode-ui-chat");
-                  await modelInput.press("Enter");
-                  await creator.getByRole("button",{name:"Create endpoint"}).last().click();
-                  const editor = page.getByRole("dialog");
-                  await editor.getByRole("button",{name:"Done"}).click();
-                  await page.getByRole("button",{name:"Review & save"}).click();
+                  // These ids and labels are verified against the pinned image
+                  // from run 42163506202; do not use newer upstream placeholders.
+                  await creator.locator("#create-endpoint-name").fill("BOTMODE_CI_From_UI");
+                  await creator.locator("#create-endpoint-baseURL").fill("https://ui-provider.example.invalid/v1");
+                  await creator.locator("#create-endpoint-apiKey").fill("user_provided");
+                  const modelIdsBefore=await creator.locator("input").evaluateAll(nodes =>
+                    nodes.map(n => n.id));
+                  await creator.getByRole("button",{name:"Add item"}).click();
+                  await page.waitForTimeout(200);
+                  const modelIdsAfter=await creator.locator("input").evaluateAll(nodes =>
+                    nodes.map(n => n.id));
+                  console.log("CI_PANEL_MODELS_META="+JSON.stringify(modelIdsAfter));
+                  const newModelIndex=modelIdsAfter.findIndex((id,i) =>
+                    (id && !modelIdsBefore.includes(id)) ||
+                    (!id && i>=modelIdsBefore.length));
+                  const indexedModel=creator.locator("input").nth(newModelIndex);
+                  if(newModelIndex<0)throw Error("CI_MODEL_INPUT_NOT_ADDED");
+                  await indexedModel.fill("botmode-ui-chat");
+                  await creator.getByRole("button",{name:"Create",exact:true}).click();
+                  const done=page.getByRole("dialog").getByRole("button",{name:"Done",exact:true});
+                  if(await done.count()>0)await done.click();
+                  const review=page.getByRole("button",{name:/review.*save|review changes/i});
+                  await review.first().waitFor({state:"visible",timeout:15000});
+                  await review.first().click();
                   await page.getByRole("button",{name:"Save",exact:true}).click();
-                  await page.getByRole("button",{name:"Review & save"}).waitFor({state:"hidden",timeout:25000});
                   console.log("CI_REAL_ADMIN_PANEL_UI_CREATE_AND_SAVE=PASS");
 
                   // Confirm the UI-generated provider really persisted on the API.
