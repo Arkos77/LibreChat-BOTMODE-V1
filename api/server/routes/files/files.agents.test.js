@@ -13,6 +13,9 @@ const {
   PrincipalType,
 } = require('librechat-data-provider');
 const { createAgent, createFile } = require('~/models');
+const mockValidateAuthor = jest.fn();
+
+jest.mock('~/server/middleware/assistants/validateAuthor', () => mockValidateAuthor);
 
 // Only mock the external dependencies that we don't want to test
 jest.mock('~/server/services/Files/process', () => ({
@@ -72,7 +75,8 @@ jest.mock('fs', () => {
   };
 });
 
-const { processAgentFileUpload } = require('~/server/services/Files/process');
+const { processAgentFileUpload, processFileUpload } = require('~/server/services/Files/process');
+const { getOpenAIClient } = require('~/server/controllers/assistants/helpers');
 const { UninspectableFileError } = require('@librechat/api');
 
 // Import the router
@@ -426,6 +430,88 @@ describe('File Routes - Agent Files Endpoint', () => {
       testApp.use('/files', router);
       return testApp;
     };
+
+    it('blocks uploading a file into another user\'s private Assistant before provider work', async () => {
+      const testApp = createAppWithUser(otherUserId, SystemRoles.USER, {
+        endpoints: { assistants: { privateAssistants: true } },
+      });
+      getOpenAIClient.mockResolvedValueOnce({ openai: {} });
+      mockValidateAuthor.mockRejectedValueOnce(new Error('Assistant not authored by user'));
+
+      const response = await request(testApp).post('/files').send({
+        endpoint: 'assistants',
+        assistant_id: 'private-assistant-id',
+        file_id: uuidv4(),
+      });
+
+      expect(response.status).toBe(403);
+      expect(response.body).toEqual({ message: 'Assistant access denied' });
+      expect(mockValidateAuthor).toHaveBeenCalledWith(
+        expect.objectContaining({ overrideAssistantId: 'private-assistant-id' }),
+      );
+      expect(processFileUpload).not.toHaveBeenCalled();
+    });
+
+    it('allows a validated owner to upload to their private Assistant', async () => {
+      const testApp = createAppWithUser(authorId, SystemRoles.USER, {
+        endpoints: { assistants: { privateAssistants: true } },
+      });
+      getOpenAIClient.mockResolvedValueOnce({ openai: {} });
+      mockValidateAuthor.mockResolvedValueOnce(undefined);
+      processFileUpload.mockImplementationOnce(async ({ res }) =>
+        res.status(200).json({ message: 'File uploaded' }),
+      );
+
+      const response = await request(testApp).post('/files').send({
+        endpoint: 'assistants',
+        assistant_id: 'owner-assistant-id',
+        file_id: uuidv4(),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockValidateAuthor).toHaveBeenCalledTimes(1);
+      expect(processFileUpload).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps shared Assistant file associations available without an ownership check', async () => {
+      const testApp = createAppWithUser(otherUserId, SystemRoles.USER, {
+        endpoints: { assistants: { privateAssistants: false } },
+      });
+      processFileUpload.mockImplementationOnce(async ({ res }) =>
+        res.status(200).json({ message: 'File uploaded' }),
+      );
+
+      const response = await request(testApp).post('/files').send({
+        endpoint: 'assistants',
+        assistant_id: 'shared-assistant-id',
+        file_id: uuidv4(),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockValidateAuthor).not.toHaveBeenCalled();
+      expect(getOpenAIClient).not.toHaveBeenCalled();
+      expect(processFileUpload).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps message attachments independent of Assistant ownership mutation checks', async () => {
+      const testApp = createAppWithUser(otherUserId, SystemRoles.USER, {
+        endpoints: { assistants: { privateAssistants: true } },
+      });
+      processFileUpload.mockImplementationOnce(async ({ res }) =>
+        res.status(200).json({ message: 'File uploaded' }),
+      );
+
+      const response = await request(testApp).post('/files').send({
+        endpoint: 'assistants',
+        assistant_id: 'private-assistant-id',
+        message_file: 'true',
+        file_id: uuidv4(),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockValidateAuthor).not.toHaveBeenCalled();
+      expect(processFileUpload).toHaveBeenCalledTimes(1);
+    });
 
     it('inspects the canonical sanitized filename used by upload processing', async () => {
       const testApp = createAppWithUser(
