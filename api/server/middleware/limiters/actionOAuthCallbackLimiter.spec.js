@@ -88,7 +88,7 @@ describe('Action OAuth callback rate limit', () => {
   it('places the rate limit before callback JWT validation and keeps the callback public', () => {
     const source = fs.readFileSync(path.resolve(__dirname, '../../routes/actions.js'), 'utf8');
     expect(source).toContain(
-      "const actionOAuthCallbackLimiter = require('~/server/middleware/limiters/actionOAuthCallbackLimiter');",
+      "const actionOAuthCallbackLimiter = require('../middleware/limiters/actionOAuthCallbackLimiter');",
     );
     expect(source).toContain(
       "router.get('/:action_id/oauth/callback', actionOAuthCallbackLimiter, async",
