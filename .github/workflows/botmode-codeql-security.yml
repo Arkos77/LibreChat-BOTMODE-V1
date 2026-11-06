@@ -124,6 +124,7 @@ jobs:
                 console.log('CANDIDATE_' + kind + '_OPEN_SEVERITY=' + JSON.stringify(counts));
                 console.log('CANDIDATE_' + kind + '_OPEN_RULE_COUNTS=' + JSON.stringify(Object.entries(byRule).sort((a, b) => b[1] - a[1]).slice(0, 20)));
                 console.log('CANDIDATE_' + kind + '_TARGET_ALERT_IDS_PRESENT=' + JSON.stringify(rows.filter(a => [19, 112, 113, 114, 116].includes(a.number)).map(a => a.number)));
+                console.log('CANDIDATE_' + kind + '_OPEN_DETAILS=' + JSON.stringify(rows.map(a => ({ number: a.number, rule: a.rule?.id, severity: a.rule?.security_severity_level || a.rule?.severity, path: a.most_recent_instance?.location?.path, line: a.most_recent_instance?.location?.start_line }))));
               } catch (error) {
                 console.error('CANDIDATE_' + kind + '_QUERY=NON_CONCLUANT: ' + error.message);
                 process.exitCode = 2;
