@@ -56,6 +56,7 @@ import {
 } from '~/app/metrics';
 import { isRecoveredSteerPayload, RecoveredSteerPayloadMismatchError } from './SteerRecovery';
 import { assertJobStoreV2 } from './jobStoreCapabilities';
+import { isToolCallFailurePrefix } from '../utils/toolCallFailure';
 
 /**
  * Tombstone budget per generation. Twice the queue depth so a full queue's
@@ -117,7 +118,7 @@ function completedToolExecutionStatus(call: Agents.ToolCall): ToolExecutionStatu
   }
   const output = call.output;
   return typeof output === 'string' &&
-    (/^Error:\s*(\[.*?\]\s*)*tool call failed:/i.test(output) ||
+    (isToolCallFailurePrefix(output) ||
       /^Error processing tool(?::|$)/i.test(output) ||
       /^Error:[\s\S]*\n Please fix your mistakes\.$/i.test(output))
     ? 'error'
