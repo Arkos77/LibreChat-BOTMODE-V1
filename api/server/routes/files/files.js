@@ -42,6 +42,7 @@ const {
 const { fileAccess } = require('~/server/middleware/accessResources/fileAccess');
 const { getStrategyFunctions } = require('~/server/services/Files/strategies');
 const { getOpenAIClient } = require('~/server/controllers/assistants/helpers');
+const validateAuthor = require('~/server/middleware/assistants/validateAuthor');
 const { hasCapability } = require('~/server/middleware/roles/capabilities');
 const { checkPermission } = require('~/server/services/PermissionService');
 const { cleanFileName, getContentDisposition } = require('~/server/utils/files');
@@ -757,6 +758,20 @@ router.post('/', async (req, res) => {
     metadata.file_id = req.file_id;
 
     if (isAssistantsEndpoint(metadata.endpoint)) {
+      // Assistant file associations mutate the provider resource. Enforce the
+      // existing privateAssistants ownership policy before uploading the file.
+      if (
+        !metadata.message_file &&
+        metadata.assistant_id &&
+        req.config?.endpoints?.[metadata.endpoint]?.privateAssistants
+      ) {
+        const { openai } = await getOpenAIClient({ req, res });
+        try {
+          await validateAuthor({ req, openai, overrideAssistantId: metadata.assistant_id });
+        } catch {
+          return res.status(403).json({ message: 'Assistant access denied' });
+        }
+      }
       openSseStreamIfRequested();
       return await processFileUpload({ req, res, metadata, sseStream });
     }
