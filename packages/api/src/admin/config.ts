@@ -31,6 +31,7 @@ import {
 } from './secrets';
 
 const UNSAFE_SEGMENTS = /(?:^|\.)(__[\w]*|constructor|prototype)(?:\.|$)/;
+const UNSAFE_OBJECT_KEY_SEGMENTS = new Set(Object.getOwnPropertyNames(Object.prototype));
 const MAX_PATCH_ENTRIES = 100;
 const DEFAULT_PRIORITY = 10;
 const BASE_ONLY_OVERRIDE_SECTIONS = new Set<string>(BASE_ONLY_CONFIG_SECTIONS);
@@ -90,7 +91,12 @@ function hasUnsafeConfigObjectKey(root: unknown): boolean {
     visited.add(value);
 
     for (const [key, child] of Object.entries(value)) {
-      if (UNSAFE_SEGMENTS.test(key)) {
+      if (
+        key.split('.').some(
+          (segment) =>
+            UNSAFE_OBJECT_KEY_SEGMENTS.has(segment) || UNSAFE_SEGMENTS.test(segment),
+        )
+      ) {
         return true;
       }
       if (child != null && typeof child === 'object') {
