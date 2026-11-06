@@ -119,7 +119,8 @@ describe('MCP OAuth preflight rate limits', () => {
     expect(source).toContain(
       "router.get('/:serverName/oauth/initiate', oauthInitiateGuards, async",
     );
-    const callbackRoute = "router.get('/:serverName/oauth/callback', mcpOAuthCallbackLimiter, async";
+    const callbackRoute =
+      "router.get('/:serverName/oauth/callback', mcpOAuthCallbackLimiter, async";
     expect(source).toContain(callbackRoute);
     expect(source).not.toContain("router.get('/:serverName/oauth/callback', requireJwtAuth");
   });
