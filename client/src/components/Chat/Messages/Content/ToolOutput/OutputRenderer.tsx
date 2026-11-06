@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import copy from 'copy-to-clipboard';
+import { TOOL_CALL_FAILURE_PREFIX } from './toolCallFailure';
 import { Button } from '@librechat/client';
 import CopyButton from '~/components/Messages/Content/CopyButton';
 import { useLocalize } from '~/hooks';
@@ -10,7 +11,7 @@ interface ContentBlock {
   text?: string;
 }
 
-const ERROR_PREFIX = /^Error:\s*(\[.*?\]\s*)*tool call failed:\s*/i;
+const ERROR_PREFIX = TOOL_CALL_FAILURE_PREFIX;
 const ERROR_INNER = /^Error\s+\w+ing to endpoint\s*\(HTTP \d+\):\s*/i;
 
 function cleanError(text: string): string {
