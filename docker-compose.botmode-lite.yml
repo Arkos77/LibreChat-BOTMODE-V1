@@ -36,8 +36,10 @@ services:
       timeout: 3s
       retries: 12
 
+  # Optional on-demand admin UI; excluded from the default Lite startup.
+  # Enable explicitly with --profile admin and a session secret.
   admin-panel:
-    profiles: ["full"]
+    profiles: ["full", "admin"]
 
   meilisearch:
     profiles: ["full"]
