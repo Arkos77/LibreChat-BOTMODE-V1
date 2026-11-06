@@ -1,0 +1,59 @@
+name: BOTMODE V1 Lite Optional Admin Profile
+
+on:
+  pull_request:
+    paths:
+      - docker-compose.botmode.yml
+      - docker-compose.botmode-lite.yml
+      - .github/workflows/botmode-v1-lite-admin-profile.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  profile-contract:
+    name: Lite admin opt-in contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BOTMODE_MONGO_PASSWORD: disposable-ci-only
+      POSTGRES_PASSWORD: disposable-ci-only
+      ADMIN_PANEL_SESSION_SECRET: disposable-ci-only-not-for-runtime
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify normal Lite excludes admin and Full services
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(-f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)
+          docker compose "${files[@]}" config --quiet
+          services="$(docker compose "${files[@]}" config --services)"
+          printf '%s\n' "$services"
+          printf '%s\n' "$services" | grep -qx api
+          printf '%s\n' "$services" | grep -qx mongodb
+          printf '%s\n' "$services" | grep -qx redis
+          for forbidden in admin-panel meilisearch vectordb rag_api; do
+            if printf '%s\n' "$services" | grep -qx "$forbidden"; then
+              echo "::error::Default Lite unexpectedly enables $forbidden"
+              exit 1
+            fi
+          done
+      - name: Verify explicit admin opt-in excludes other Full services
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(-f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)
+          docker compose "${files[@]}" --profile admin config --quiet
+          services="$(docker compose "${files[@]}" --profile admin config --services)"
+          printf '%s\n' "$services"
+          printf '%s\n' "$services" | grep -qx admin-panel
+          for forbidden in meilisearch vectordb rag_api; do
+            if printf '%s\n' "$services" | grep -qx "$forbidden"; then
+              echo "::error::Optional admin profile unexpectedly enables $forbidden"
+              exit 1
+            fi
+          done
+          docker compose "${files[@]}" --profile admin config --format json |
+            jq -e '.services["admin-panel"].ports[] | select(.target == 3000 and .host_ip == "127.0.0.1")' >/dev/null
+          echo 'BOTMODE_LITE_ADMIN_PROFILE=PASS'
