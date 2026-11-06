@@ -481,8 +481,7 @@ describe('assistant action content filters', () => {
       query.user ? null : { actions: [], user: 'owner-id' },
     );
 
-    const response = await request(app)
-      .delete('/assistant-id/action-id/model?endpoint=assistants');
+    const response = await request(app).delete('/assistant-id/action-id/model?endpoint=assistants');
 
     expect(response.status).toBe(403);
     expect(mockAssistantUpdate).not.toHaveBeenCalled();
