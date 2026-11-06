@@ -11,10 +11,7 @@ jest.mock('@librechat/data-schemas', () => ({
   getTenantId: jest.fn(() => undefined),
 }));
 
-const {
-  mcpOAuthInitiateLimiter,
-  mcpOAuthCallbackLimiter,
-} = require('./mcpOAuthLimiter');
+const { mcpOAuthInitiateLimiter, mcpOAuthCallbackLimiter } = require('./mcpOAuthLimiter');
 
 describe('MCP OAuth limiters with real express-rate-limit', () => {
   let app;
@@ -66,14 +63,8 @@ describe('MCP OAuth limiters with real express-rate-limit', () => {
   });
 
   it('limits authenticated initiations across MCP names but isolates users', async () => {
-    await request(app)
-      .get('/api/mcp/one/oauth/initiate')
-      .set('x-test-user', 'user-a')
-      .expect(204);
-    await request(app)
-      .get('/api/mcp/two/oauth/initiate')
-      .set('x-test-user', 'user-a')
-      .expect(204);
+    await request(app).get('/api/mcp/one/oauth/initiate').set('x-test-user', 'user-a').expect(204);
+    await request(app).get('/api/mcp/two/oauth/initiate').set('x-test-user', 'user-a').expect(204);
     const blocked = await request(app)
       .get('/api/mcp/three/oauth/initiate')
       .set('x-test-user', 'user-a')
@@ -82,10 +73,7 @@ describe('MCP OAuth limiters with real express-rate-limit', () => {
     expect(blocked.body).toEqual({ error: 'Too many MCP OAuth requests' });
 
     // Rate limiting another principal must not consume user-a's budget.
-    await request(app)
-      .get('/api/mcp/one/oauth/initiate')
-      .set('x-test-user', 'user-b')
-      .expect(204);
+    await request(app).get('/api/mcp/one/oauth/initiate').set('x-test-user', 'user-b').expect(204);
   });
 
   it('limits public callbacks by client IP across server names before dispatch', async () => {
