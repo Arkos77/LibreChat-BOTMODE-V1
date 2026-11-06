@@ -602,6 +602,13 @@ describe('MCP Routes', () => {
       expect(response.headers.location).toBe(`${basePath}/oauth/error?error=access_denied`);
       expect(response.headers['cache-control']).toBe('no-store');
       expect(response.headers['referrer-policy']).toBe('no-referrer');
+      expect(require('@librechat/data-schemas').logger.debug).toHaveBeenCalledWith(
+        '[MCP OAuth] Callback received',
+        expect.objectContaining({
+          code: 'missing',
+          state: 'present',
+        }),
+      );
     });
 
     describe('OAuth error callback failFlow', () => {
