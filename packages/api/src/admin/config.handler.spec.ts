@@ -675,6 +675,61 @@ describe('createAdminConfigHandlers', () => {
       expect(responseConfig.overrides.endpoints.custom[1].apiKey).toBe('${OPENROUTER_KEY}');
     });
 
+    it('adds an OpenAI-compatible custom provider with user-provided key and model list without persisting a secret', async () => {
+      const { handlers, deps } = createHandlers({
+        upsertConfig: jest.fn(async (_type, _id, _model, overrides) => ({
+          _id: 'provider-config',
+          configVersion: 1,
+          overrides,
+        })),
+      });
+      const provider = {
+        name: 'ExampleProvider',
+        apiKey: 'user_provided',
+        baseURL: 'https://provider.example.test/v1',
+        models: { default: ['example-chat'], fetch: false },
+        modelDisplayLabel: 'Example Provider',
+      };
+      const req = mockReq({
+        params: { principalType: 'role', principalId: 'admin' },
+        body: { overrides: { endpoints: { custom: [provider] } } },
+      });
+      const res = mockRes();
+
+      await handlers.upsertConfigOverrides(req, res);
+
+      expect(res.statusCode).toBe(201);
+      const stored = deps.upsertConfig.mock.calls[0][3].endpoints.custom[0];
+      expect(stored).toEqual(provider);
+      expect(stored.apiKeyPreview).toBeUndefined();
+      const returned = (res.body!.config as {
+        overrides: { endpoints: { custom: Array<Record<string, unknown>> } };
+      }).overrides.endpoints.custom[0];
+      expect(returned).toEqual(provider);
+    });
+
+    it('refuses an unauthorized custom-provider configuration write before database access', async () => {
+      const { handlers, deps } = createHandlers({
+        hasConfigCapability: jest.fn().mockResolvedValue(false),
+      });
+      const req = mockReq({
+        params: { principalType: 'role', principalId: 'admin' },
+        body: {
+          overrides: {
+            endpoints: {
+              custom: [{ name: 'DeniedProvider', apiKey: 'user_provided', baseURL: 'https://example.test/v1' }],
+            },
+          },
+        },
+      });
+      const res = mockRes();
+
+      await handlers.upsertConfigOverrides(req, res);
+
+      expect(res.statusCode).toBe(403);
+      expect(deps.upsertConfig).not.toHaveBeenCalled();
+    });
+
     it('rejects encrypted custom endpoint API key submissions on full override writes', async () => {
       const { handlers, deps } = createHandlers();
       const req = mockReq({
