@@ -404,6 +404,7 @@ describe('createAdminConfigHandlers', () => {
       ['top-level prototype', '{"__proto__":{"enabled":true},"interface":{"modelSelect":true}}'],
       ['nested prototype', '{"interface":{"__proto__":{"use":true},"modelSelect":true}}'],
       ['composite constructor', '{"interface":{"mcpServers":{"constructor":{"use":true}}}}'],
+      ['built-in method key', '{"interface":{"toString":"value","modelSelect":true}}'],
       ['dotted nested prototype', '{"interface":{"mcpServers":{"x.__proto__.y":1}}}'],
       ['array member prototype', '{"endpoints":{"custom":[{"__proto__":{"enabled":true}}]}}'],
     ])('rejects an unsafe object key in %s', async (_label, json) => {
@@ -1131,6 +1132,7 @@ describe('createAdminConfigHandlers', () => {
     it.each([
       ['prototype', '{"__proto__":{"use":true}}'],
       ['constructor', '{"constructor":{"use":true}}'],
+      ['built-in valueOf', '{"valueOf":0}'],
       ['nested dotted key', '{"allowed":{"nested.__proto__.role":true}}'],
     ])('rejects an unsafe %s in a field value', async (_label, json) => {
       const { handlers, deps } = createHandlers();
