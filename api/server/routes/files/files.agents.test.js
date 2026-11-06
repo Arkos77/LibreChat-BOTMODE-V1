@@ -11,6 +11,7 @@ const {
   ResourceType,
   EToolResources,
   PrincipalType,
+  FileSources,
 } = require('librechat-data-provider');
 const { createAgent, createFile } = require('~/models');
 const mockValidateAuthor = jest.fn();
@@ -75,7 +76,11 @@ jest.mock('fs', () => {
   };
 });
 
-const { processAgentFileUpload, processFileUpload } = require('~/server/services/Files/process');
+const {
+  processAgentFileUpload,
+  processFileUpload,
+  processDeleteRequest,
+} = require('~/server/services/Files/process');
 const { getOpenAIClient } = require('~/server/controllers/assistants/helpers');
 const { UninspectableFileError } = require('@librechat/api');
 
@@ -382,6 +387,114 @@ describe('File Routes - Agent Files Endpoint', () => {
       expect(response.body).toHaveLength(2);
       expect(response.body.map((f) => f.file_id)).toContain(fileId1);
       expect(response.body.map((f) => f.file_id)).toContain(fileId3);
+    });
+  });
+
+  describe('DELETE /files - private Assistant ownership', () => {
+    const createDeleteApp = (userId, endpoints) => {
+      const testApp = express();
+      testApp.use(express.json());
+      testApp.use((req, _res, next) => {
+        req.user = { id: userId.toString(), role: SystemRoles.USER };
+        req.config = { endpoints };
+        req.app.locals = {};
+        next();
+      });
+      testApp.use('/files', router);
+      return testApp;
+    };
+
+    beforeEach(() => jest.clearAllMocks());
+
+    it('denies a private Assistant file deletion before side effects', async () => {
+      await File.updateOne({ file_id: fileId3 }, { $set: { source: FileSources.openai } });
+      const testApp = createDeleteApp(otherUserId, {
+        assistants: { privateAssistants: true },
+      });
+      getOpenAIClient.mockResolvedValueOnce({ openai: {} });
+      mockValidateAuthor.mockRejectedValueOnce(new Error('Assistant not authored by user'));
+
+      const response = await request(testApp)
+        .delete('/files')
+        .send({
+          endpoint: 'assistants',
+          assistant_id: 'private-assistant-id',
+          files: [{ file_id: fileId3, filepath: '/uploads/file3.txt' }],
+        });
+
+      expect(response.status).toBe(403);
+      expect(response.body).toEqual({ message: 'Assistant access denied' });
+      expect(mockValidateAuthor).toHaveBeenCalledWith(
+        expect.objectContaining({
+          overrideEndpoint: 'assistants',
+          overrideAssistantId: 'private-assistant-id',
+        }),
+      );
+      expect(processDeleteRequest).not.toHaveBeenCalled();
+    });
+
+    it('uses persisted Azure file source instead of a client-selected shared endpoint', async () => {
+      await File.updateOne({ file_id: fileId3 }, { $set: { source: FileSources.azure } });
+      const testApp = createDeleteApp(otherUserId, {
+        assistants: { privateAssistants: false },
+        azureAssistants: { privateAssistants: true },
+      });
+      getOpenAIClient.mockResolvedValueOnce({ openai: {} });
+      mockValidateAuthor.mockRejectedValueOnce(new Error('Assistant not authored by user'));
+
+      const response = await request(testApp)
+        .delete('/files')
+        .send({
+          endpoint: 'assistants',
+          assistant_id: 'azure-private-assistant-id',
+          files: [{ file_id: fileId3, filepath: '/uploads/file3.txt' }],
+        });
+
+      expect(response.status).toBe(403);
+      expect(getOpenAIClient).toHaveBeenCalledWith(
+        expect.objectContaining({ overrideEndpoint: 'azureAssistants' }),
+      );
+      expect(processDeleteRequest).not.toHaveBeenCalled();
+    });
+
+    it('allows private Assistant file deletion after a successful ownership check', async () => {
+      await File.updateOne({ file_id: fileId3 }, { $set: { source: FileSources.openai } });
+      const testApp = createDeleteApp(otherUserId, {
+        assistants: { privateAssistants: true },
+      });
+      getOpenAIClient.mockResolvedValueOnce({ openai: {} });
+      mockValidateAuthor.mockResolvedValueOnce(undefined);
+
+      const response = await request(testApp)
+        .delete('/files')
+        .send({
+          endpoint: 'assistants',
+          assistant_id: 'owned-assistant-id',
+          files: [{ file_id: fileId3, filepath: '/uploads/file3.txt' }],
+        });
+
+      expect(response.status).toBe(200);
+      expect(mockValidateAuthor).toHaveBeenCalledTimes(1);
+      expect(processDeleteRequest).toHaveBeenCalledTimes(1);
+    });
+
+    it('preserves shared Assistant file deletion without private ownership checks', async () => {
+      await File.updateOne({ file_id: fileId3 }, { $set: { source: FileSources.openai } });
+      const testApp = createDeleteApp(otherUserId, {
+        assistants: { privateAssistants: false },
+      });
+
+      const response = await request(testApp)
+        .delete('/files')
+        .send({
+          endpoint: 'assistants',
+          assistant_id: 'shared-assistant-id',
+          files: [{ file_id: fileId3, filepath: '/uploads/file3.txt' }],
+        });
+
+      expect(response.status).toBe(200);
+      expect(mockValidateAuthor).not.toHaveBeenCalled();
+      expect(processDeleteRequest).toHaveBeenCalledTimes(1);
     });
   });
 
