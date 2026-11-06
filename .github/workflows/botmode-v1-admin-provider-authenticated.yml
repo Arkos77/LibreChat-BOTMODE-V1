@@ -1,0 +1,202 @@
+name: BOTMODE V1 Admin Provider Authenticated Integration
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/botmode-v1-admin-provider-authenticated.yml
+      - docker-compose.botmode-lite.yml
+      - docker-compose.botmode.yml
+      - packages/api/src/admin/config.handler.spec.ts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  admin-provider-authenticated:
+    name: Admin provider live API and browser login (disposable)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      BOTMODE_HOST_PORT: '3098'
+      ADMIN_PANEL_PORT: '3099'
+      DOMAIN_CLIENT: http://127.0.0.1:3098
+      # Explicitly test integration against the public immutable V1.0.3 runtime.
+      # Exact-HEAD backend contracts are already covered by Backend Unit Tests.
+      BOTMODE_CI_RUNTIME: ghcr.io/arkos77/librechat-botmode-v1@sha256:a09a07f21c2075b79ba132b831bb13d31a1f51b980000967a7e1191036811598
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install disposable Lite using the existing bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e .env
+          sudo env BOTMODE_HOST_PORT="$BOTMODE_HOST_PORT" ./install.sh --lite --image "$BOTMODE_CI_RUNTIME" >/tmp/botmode-ci-admin-install.log 2>&1 || {
+            echo "::error::Disposable Lite bootstrap failed (log deliberately withheld to avoid secrets)"
+            exit 1
+          }
+          ready=0
+          for i in $(seq 1 100); do
+            if curl -fsS --max-time 3 "http://127.0.0.1:$BOTMODE_HOST_PORT/api/config" -o /dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" -eq 1
+          echo 'CI_ADMIN_LITE_BOOTSTRAP=PASS'
+
+      - name: Real admin and non-admin authorization plus custom endpoint write
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, secrets
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError
+
+          base = 'http://127.0.0.1:3098'
+          agent = 'Mozilla/5.0 BOTMODE-Admin-CI'
+          def call(method, path, data=None, token=None):
+              body = json.dumps(data).encode() if data is not None else None
+              headers = {'Content-Type': 'application/json', 'User-Agent': agent}
+              if token:
+                  headers['Authorization'] = 'Bearer ' + token
+              request = Request(base + path, data=body, headers=headers, method=method)
+              try:
+                  with urlopen(request, timeout=30) as response:
+                      raw = response.read()
+                      return response.status, json.loads(raw) if raw else {}
+              except HTTPError as e:
+                  # Never log tokens, passwords, response payloads, or secret previews.
+                  return e.code, {}
+
+          def account(email, username):
+              password = secrets.token_urlsafe(28) + 'Ab3!'
+              status, _ = call('POST', '/api/auth/register', {
+                  'name': 'Disposable BOT MODE CI',
+                  'username': username, 'email': email,
+                  'password': password, 'confirm_password': password,
+              })
+              assert status == 200, 'CI_REGISTRATION_HTTP_' + str(status)
+              status, result = call('POST', '/api/auth/login', {'email': email, 'password': password})
+              assert status == 200 and isinstance(result.get('token'), str), 'CI_LOGIN_FAILED'
+              return {'email': email, 'password': password, 'token': result['token']}
+
+          # LibreChat single-tenant bootstrap grants ADMIN to the first registered account.
+          admin = account('botmode-admin-ci@example.invalid', 'botmode-admin-ci')
+          regular = account('botmode-user-ci@example.invalid', 'botmode-user-ci')
+          s, _ = call('GET', '/api/admin/verify', token=admin['token'])
+          assert s == 200, 'CI_ADMIN_VERIFY_HTTP_' + str(s)
+          s, _ = call('GET', '/api/admin/verify', token=regular['token'])
+          assert s in (401, 403), 'CI_NON_ADMIN_VERIFY_HTTP_' + str(s)
+          print('CI_ADMIN_AND_NON_ADMIN_IDENTITY=PASS')
+
+          path = '/api/admin/config/role/__base__'
+          provider = {
+              'name': 'BOTMODE_CI_Provider',
+              'apiKey': 'user_provided',
+              'baseURL': 'https://provider.example.invalid/v1',
+              'models': {'default': ['botmode-ci-chat'], 'fetch': False},
+              'modelDisplayLabel': 'BOT MODE CI Provider',
+          }
+          s, _ = call('PUT', path, {'overrides': {'endpoints': {'custom': [provider]}}}, regular['token'])
+          assert s in (401, 403), 'CI_NON_ADMIN_CONFIG_WRITE_HTTP_' + str(s)
+          s, saved = call('PUT', path, {'overrides': {'endpoints': {'custom': [provider]}}}, admin['token'])
+          assert s in (200, 201), 'CI_ADMIN_CONFIG_WRITE_HTTP_' + str(s)
+          s, conf = call('GET', path, token=admin['token'])
+          assert s == 200, 'CI_ADMIN_CONFIG_READ_HTTP_' + str(s)
+          parsed = conf.get('config', {}).get('overrides', {}).get('endpoints', {}).get('custom', [])
+          assert any(item.get('name') == provider['name'] for item in parsed), 'CI_PROVIDER_NOT_PERSISTED'
+          assert not any(item.get('apiKeyPreview') for item in parsed), 'CI_UNEXPECTED_KEY_PREVIEW'
+          s, _ = call('GET', path, token=regular['token'])
+          assert s in (401, 403), 'CI_NON_ADMIN_CONFIG_READ_HTTP_' + str(s)
+          print('CI_ADMIN_CUSTOM_ENDPOINT_WRITE_READ=PASS')
+          print('CI_NON_ADMIN_ENDPOINT_ACCESS_DENIED=PASS')
+
+          path = Path('/tmp/botmode-ci-admin-auth.json')
+          path.write_text(json.dumps({'email': admin['email'], 'password': admin['password']}))
+          path.chmod(0o600)
+          PY
+
+      - name: Start the real pinned Admin Panel against the same disposable Lite API
+        shell: bash
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          echo "::add-mask::$secret"
+          export ADMIN_PANEL_SESSION_SECRET="$secret"
+          sudo env BOTMODE_HOST_PORT="$BOTMODE_HOST_PORT" ADMIN_PANEL_PORT="$ADMIN_PANEL_PORT" \
+            DOMAIN_CLIENT="$DOMAIN_CLIENT" ADMIN_PANEL_SESSION_SECRET="$secret" \
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml \
+            --profile admin up -d admin-panel
+          ready=0
+          for i in $(seq 1 70); do
+            status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:$ADMIN_PANEL_PORT/login" || true)"
+            if [[ "$status" =~ ^(200|301|302|303|307|308)$ ]]; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" -eq 1
+          echo 'CI_ADMIN_PANEL_WITH_LIVE_API=PASS'
+
+      - name: Browser signs into actual Admin Panel and loads configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The pinned BOT MODE runtime already bundles Playwright + Chromium.
+          # Credentials travel solely over stdin, not command arguments or CI logs.
+          sudo env BOTMODE_HOST_PORT="$BOTMODE_HOST_PORT" docker compose \
+            -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml \
+            --profile admin exec -T api node -e '
+              const fs = require("fs");
+              const { chromium } = require("playwright");
+              (async () => {
+                const user = JSON.parse(fs.readFileSync(0, "utf8"));
+                const browser = await chromium.launch({headless:true,args:["--no-sandbox"]});
+                try {
+                  const page = await browser.newPage({locale:"en-US"});
+                  await page.goto("http://admin-panel:3000/login", {waitUntil:"domcontentloaded",timeout:25000});
+                  const inputs = page.locator("input");
+                  await inputs.first().waitFor({state:"visible",timeout:15000});
+                  await inputs.first().fill(user.email);
+                  await page.locator("input[type=password]").first().fill(user.password);
+                  await page.getByRole("button",{name:/sign in|log in|se connecter|connexion/i}).first().click();
+                  await page.waitForURL(url => !url.pathname.endsWith("/login"),{timeout:25000});
+                  console.log("CI_REAL_ADMIN_PANEL_BROWSER_LOGIN=PASS");
+                  await page.goto("http://admin-panel:3000/configuration", {waitUntil:"domcontentloaded",timeout:30000});
+                  await page.locator("body").waitFor({state:"visible",timeout:15000});
+                  await page.waitForTimeout(1800);
+                  const text = await page.locator("body").innerText();
+                  if (/access denied|permission denied|not authorized|accès refusé/i.test(text))
+                    throw Error("ADMIN_CONFIG_PAGE_ACCESS_DENIED");
+                  if (!/configuration|endpoints|parameters|paramètres/i.test(text))
+                    throw Error("ADMIN_CONFIG_PAGE_NOT_RENDERED");
+                  console.log("CI_REAL_ADMIN_PANEL_CONFIG_PAGE=PASS");
+                } finally { await browser.close(); }
+              })().catch(e => { console.error("CI_ADMIN_PANEL_BROWSER_FAIL="+e.message); process.exit(1); });
+            ' </tmp/botmode-ci-admin-auth.json
+
+      - name: Clean up only the disposable CI installation
+        if: always()
+        shell: bash
+        run: |
+          sudo env BOTMODE_HOST_PORT="$BOTMODE_HOST_PORT" ADMIN_PANEL_PORT="$ADMIN_PANEL_PORT" \
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml \
+            --profile admin down --volumes --remove-orphans >/dev/null 2>&1 || true
+          sudo rm -f /tmp/botmode-ci-admin-auth.json /tmp/botmode-ci-admin-install.log
+          echo 'CI_DISPOSABLE_CLEANUP=PASS'
+
+      - name: Coverage boundary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '### BOT MODE Admin Provider authenticated integration'
+            echo 'Runtime API: immutable public v1.0.3 image; Compose and admin profile: exact PR revision.'
+            echo 'Verifies first-user ADMIN, non-admin rejection, real API config write/read, real Admin Panel browser login and configuration page.'
+            echo 'Does not claim click-through provider creation in the browser, model inference, or exact-HEAD backend runtime integration.'
+            echo 'Uses fictional provider, no user keys, no model spending, disposable CI-only storage.'
+          } >> "$GITHUB_STEP_SUMMARY"
