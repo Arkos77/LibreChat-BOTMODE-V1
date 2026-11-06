@@ -55,8 +55,8 @@ import {
   recordGenerationJob,
 } from '~/app/metrics';
 import { isRecoveredSteerPayload, RecoveredSteerPayloadMismatchError } from './SteerRecovery';
-import { assertJobStoreV2 } from './jobStoreCapabilities';
 import { isToolCallFailurePrefix } from '../utils/toolCallFailure';
+import { assertJobStoreV2 } from './jobStoreCapabilities';
 
 /**
  * Tombstone budget per generation. Twice the queue depth so a full queue's
