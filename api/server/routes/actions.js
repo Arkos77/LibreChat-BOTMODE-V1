@@ -14,7 +14,7 @@ const {
 } = require('@librechat/api');
 const { findToken, updateToken, createToken } = require('~/models');
 const { requireJwtAuth } = require('~/server/middleware');
-const actionOAuthCallbackLimiter = require('~/server/middleware/limiters/actionOAuthCallbackLimiter');
+const actionOAuthCallbackLimiter = require('../middleware/limiters/actionOAuthCallbackLimiter');
 const { getActionFlowStateManager } = require('~/config');
 const { getLogStores } = require('~/cache');
 
