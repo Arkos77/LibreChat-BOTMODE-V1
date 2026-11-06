@@ -702,9 +702,11 @@ describe('createAdminConfigHandlers', () => {
       const stored = deps.upsertConfig.mock.calls[0][3].endpoints.custom[0];
       expect(stored).toEqual(provider);
       expect(stored.apiKeyPreview).toBeUndefined();
-      const returned = (res.body!.config as {
-        overrides: { endpoints: { custom: Array<Record<string, unknown>> } };
-      }).overrides.endpoints.custom[0];
+      const returned = (
+        res.body!.config as {
+          overrides: { endpoints: { custom: Array<Record<string, unknown>> } };
+        }
+      ).overrides.endpoints.custom[0];
       expect(returned).toEqual(provider);
     });
 
@@ -717,7 +719,13 @@ describe('createAdminConfigHandlers', () => {
         body: {
           overrides: {
             endpoints: {
-              custom: [{ name: 'DeniedProvider', apiKey: 'user_provided', baseURL: 'https://example.test/v1' }],
+              custom: [
+                {
+                  name: 'DeniedProvider',
+                  apiKey: 'user_provided',
+                  baseURL: 'https://example.test/v1',
+                },
+              ],
             },
           },
         },
