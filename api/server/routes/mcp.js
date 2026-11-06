@@ -112,7 +112,8 @@ router.get('/tools', requireJwtAuth, checkMCPUsePermissions, async (req, res) =>
  * Initiate OAuth flow
  * This endpoint is called when the user clicks the auth link in the UI
  */
-router.get('/:serverName/oauth/initiate', requireJwtAuth, mcpOAuthInitiateLimiter, setOAuthSession, async (req, res) => {
+const oauthInitiateGuards = [requireJwtAuth, mcpOAuthInitiateLimiter, setOAuthSession];
+router.get('/:serverName/oauth/initiate', oauthInitiateGuards, async (req, res) => {
   try {
     const { serverName } = req.params;
     const { userId, flowId } = req.query;
