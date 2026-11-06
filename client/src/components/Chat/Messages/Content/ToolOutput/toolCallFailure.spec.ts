@@ -19,8 +19,6 @@ describe('tool error prefix rendering', () => {
   it('handles repeated bracket groups without exponential backtracking', () => {
     const labels = '[tool] '.repeat(32);
     expect(TOOL_CALL_FAILURE_PREFIX.test(`Error: ${labels}other text`)).toBe(false);
-    expect(TOOL_CALL_FAILURE_PREFIX.test(`Error: ${labels}tool call failed: details`)).toBe(
-      true,
-    );
+    expect(TOOL_CALL_FAILURE_PREFIX.test(`Error: ${labels}tool call failed: details`)).toBe(true);
   });
 });
