@@ -54,3 +54,98 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           category: /language:javascript-typescript
+
+  inspect-integrated-pr169-codeql:
+    name: Read-only candidate CodeQL alert comparison (PR 169)
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: read
+    steps:
+      - name: Query open alerts and selected historical instances on candidate ref
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CANDIDATE_PR: '169'
+          EXPECTED_HEAD: cc9888371c7301b48e649a29de5dad7ccaa77937
+        run: |
+          set -euo pipefail
+          node <<'JS'
+          (async () => {
+            const repo = process.env.REPO;
+            const target = process.env.CANDIDATE_PR;
+            const headers = {
+              Authorization: 'Bearer ' + process.env.GITHUB_TOKEN,
+              Accept: 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2026-03-10',
+              'User-Agent': 'botmode-pr169-candidate-codeql-diagnostic',
+            };
+            async function get(path) {
+              const response = await fetch('https://api.github.com/repos/' + repo + path, { headers });
+              if (!response.ok) throw new Error('GitHub API status ' + response.status + ' on ' + path.split('?')[0]);
+              return response.json();
+            }
+            const pull = await get('/pulls/' + target);
+            if (pull.head?.sha !== process.env.EXPECTED_HEAD) {
+              throw new Error('Candidate PR head changed; refusing stale alert comparison');
+            }
+            console.log('CANDIDATE_PR=' + target);
+            console.log('CANDIDATE_HEAD=' + pull.head.sha);
+            async function collect(filter) {
+              const rows = [];
+              for (let page = 1; page <= 25; page++) {
+                const joined = filter + '&state=open&per_page=100&page=' + page;
+                const batch = await get('/code-scanning/alerts?' + joined);
+                if (!Array.isArray(batch)) throw new Error('Invalid CodeQL alert response');
+                rows.push(...batch);
+                if (batch.length < 100) return rows;
+              }
+              throw new Error('CodeQL alert pagination limit exceeded');
+            }
+            const modes = [
+              ['PR', 'pr=' + target],
+              ['REF', 'ref=' + encodeURIComponent('refs/pull/' + target + '/merge')],
+            ];
+            for (const [kind, filter] of modes) {
+              try {
+                const rows = await collect(filter);
+                const counts = {};
+                const byRule = {};
+                for (const alert of rows) {
+                  const severity = String(alert.rule?.security_severity_level || alert.rule?.severity || 'unknown').toLowerCase();
+                  const rule = String(alert.rule?.id || 'unknown');
+                  counts[severity] = (counts[severity] || 0) + 1;
+                  byRule[rule] = (byRule[rule] || 0) + 1;
+                }
+                console.log('CANDIDATE_' + kind + '_OPEN_TOTAL=' + rows.length);
+                console.log('CANDIDATE_' + kind + '_OPEN_SEVERITY=' + JSON.stringify(counts));
+                console.log('CANDIDATE_' + kind + '_OPEN_RULE_COUNTS=' + JSON.stringify(Object.entries(byRule).sort((a, b) => b[1] - a[1]).slice(0, 20)));
+                console.log('CANDIDATE_' + kind + '_TARGET_ALERT_IDS_PRESENT=' + JSON.stringify(rows.filter(a => [19, 112, 113, 114, 116].includes(a.number)).map(a => a.number)));
+              } catch (error) {
+                console.error('CANDIDATE_' + kind + '_QUERY=NON_CONCLUANT: ' + error.message);
+                process.exitCode = 2;
+              }
+            }
+            for (const id of [19, 112, 113, 114, 116]) {
+              try {
+                const instances = await get('/code-scanning/alerts/' + id + '/instances?pr=' + target + '&per_page=100');
+                const state = Array.isArray(instances)
+                  ? Array.from(new Set(instances.map(x => x.state || 'unknown')))
+                  : ['invalid_payload'];
+                console.log('CANDIDATE_ALERT_' + id + '_INSTANCE_STATES=' + JSON.stringify(state));
+              } catch (error) {
+                console.error('CANDIDATE_ALERT_' + id + '_INSTANCES=NON_CONCLUANT: ' + error.message);
+              }
+            }
+          })().catch((error) => {
+            console.error('CANDIDATE_CODEQL_DIAGNOSTIC=NON_CONCLUANT: ' + error.message);
+            process.exit(2);
+          });
+          JS
+      - name: Document scope
+        if: always()
+        run: |
+          echo 'Read-only counts for PR #169 are diagnostics, not proof of exploitability or clearance. Compare CodeQL instances individually before public GO. No alert is dismissed.' >> "$GITHUB_STEP_SUMMARY"
