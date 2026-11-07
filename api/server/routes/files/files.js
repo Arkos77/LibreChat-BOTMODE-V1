@@ -42,6 +42,7 @@ const {
 const { fileAccess } = require('~/server/middleware/accessResources/fileAccess');
 const { getStrategyFunctions } = require('~/server/services/Files/strategies');
 const { getOpenAIClient } = require('~/server/controllers/assistants/helpers');
+const validateAuthor = require('~/server/middleware/assistants/validateAuthor');
 const { hasCapability } = require('~/server/middleware/roles/capabilities');
 const { checkPermission } = require('~/server/services/PermissionService');
 const { cleanFileName, getContentDisposition } = require('~/server/utils/files');
@@ -206,6 +207,47 @@ router.delete('/', async (req, res) => {
 
     const fileIds = files.map((file) => file.file_id);
     const dbFiles = await db.getFiles({ file_id: { $in: fileIds } });
+
+    if (req.body.assistant_id) {
+      // Source-bound provider checks prevent a client-supplied endpoint from
+      // choosing a more permissive Assistant policy than the persisted file.
+      const endpoints = new Set();
+      const includeSource = (source) => {
+        if (source === FileSources.openai) {
+          endpoints.add(EModelEndpoint.assistants);
+        } else if (source === FileSources.azure) {
+          endpoints.add(EModelEndpoint.azureAssistants);
+        }
+      };
+      dbFiles.forEach((file) => includeSource(file.source));
+      if (endpoints.size === 0) {
+        files.forEach((file) => includeSource(file.source));
+      }
+      if (isAssistantsEndpoint(req.body.endpoint)) {
+        endpoints.add(req.body.endpoint);
+      }
+      if (endpoints.size === 0) {
+        endpoints.add(EModelEndpoint.assistants);
+        endpoints.add(EModelEndpoint.azureAssistants);
+      }
+
+      for (const endpoint of endpoints) {
+        if (!req.config?.endpoints?.[endpoint]?.privateAssistants) {
+          continue;
+        }
+        try {
+          const { openai } = await getOpenAIClient({ req, res, overrideEndpoint: endpoint });
+          await validateAuthor({
+            req,
+            openai,
+            overrideEndpoint: endpoint,
+            overrideAssistantId: req.body.assistant_id,
+          });
+        } catch (_error) {
+          return res.status(403).json({ message: 'Assistant access denied' });
+        }
+      }
+    }
 
     if (req.body.agent_id && req.body.tool_resource) {
       if (!isAgentToolResourceKey(req.body.tool_resource)) {
@@ -757,6 +799,20 @@ router.post('/', async (req, res) => {
     metadata.file_id = req.file_id;
 
     if (isAssistantsEndpoint(metadata.endpoint)) {
+      // Assistant file associations mutate the provider resource. Enforce the
+      // existing privateAssistants ownership policy before uploading the file.
+      if (
+        !metadata.message_file &&
+        metadata.assistant_id &&
+        req.config?.endpoints?.[metadata.endpoint]?.privateAssistants
+      ) {
+        const { openai } = await getOpenAIClient({ req, res });
+        try {
+          await validateAuthor({ req, openai, overrideAssistantId: metadata.assistant_id });
+        } catch {
+          return res.status(403).json({ message: 'Assistant access denied' });
+        }
+      }
       openSseStreamIfRequested();
       return await processFileUpload({ req, res, metadata, sseStream });
     }

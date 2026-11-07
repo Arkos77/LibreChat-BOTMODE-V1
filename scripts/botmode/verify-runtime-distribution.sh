@@ -13,6 +13,52 @@ export BOTMODE_IMAGE="${BOTMODE_IMAGE:-ghcr.io/arkos77/librechat-botmode-v1:sha-
 docker compose -f docker-compose.botmode.yml config --quiet
 docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml config --quiet
 
+# Assert actual resolved port binding, not merely the YAML string.
+# Empty overrides force Compose's safe defaults even if a CI runner has a .env.
+python3 - <<'PY_PUBLIC_PORTS'
+import json
+import os
+import subprocess
+
+base = os.environ.copy()
+base['BOTMODE_HOST_BIND_IP'] = ''
+base['BOTMODE_ADMIN_PANEL_BIND_IP'] = ''
+
+def config(files, env):
+    cmd = ['docker', 'compose']
+    for path in files:
+        cmd.extend(['-f', path])
+    cmd.extend(['config', '--format', 'json'])
+    return json.loads(subprocess.check_output(cmd, env=env, text=True))['services']
+
+base_file = 'docker-compose.botmode.yml'
+lite_file = 'docker-compose.botmode-lite.yml'
+full = config([base_file], base)
+lite = config([base_file, lite_file], base)
+
+def host_ip(services, name, target):
+    ports = [port for port in services[name].get('ports', [])
+             if int(port.get('target', -1)) == target]
+    assert len(ports) == 1, f'{name}:{target}: expected one published port'
+    return ports[0].get('host_ip', '')
+
+assert host_ip(full, 'api', 3080) == '127.0.0.1', 'Full API must default to loopback'
+assert host_ip(lite, 'api', 3080) == '127.0.0.1', 'Lite API must default to loopback'
+assert host_ip(full, 'admin-panel', 3000) == '127.0.0.1', 'Full admin panel must default to loopback'
+for name in ['mongodb', 'redis']:
+    assert not lite[name].get('ports'), f'Lite {name} must not publish a host port'
+
+# Network access must be a deliberate opt-in; the admin panel remains
+# independent from the API's external binding decision.
+opt_in = base.copy()
+opt_in['BOTMODE_HOST_BIND_IP'] = '0.0.0.0'
+opt_in['BOTMODE_ADMIN_PANEL_BIND_IP'] = '192.0.2.5'
+remote = config([base_file], opt_in)
+assert host_ip(remote, 'api', 3080) == '0.0.0.0', 'Explicit API bind must be honored'
+assert host_ip(remote, 'admin-panel', 3000) == '192.0.2.5', 'Admin bind must be independent'
+print('BOTMODE_PUBLIC_PORT_DEFAULTS=PASS')
+PY_PUBLIC_PORTS
+
 full_image=$(docker compose -f docker-compose.botmode.yml config | awk '
   /^  api:$/ {in_api=1; next}
   in_api && /^  [[:alnum:]_-]+:$/ {exit}

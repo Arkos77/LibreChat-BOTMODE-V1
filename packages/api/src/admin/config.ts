@@ -31,6 +31,7 @@ import {
 } from './secrets';
 
 const UNSAFE_SEGMENTS = /(?:^|\.)(__[\w]*|constructor|prototype)(?:\.|$)/;
+const UNSAFE_OBJECT_KEY_SEGMENTS = new Set(Object.getOwnPropertyNames(Object.prototype));
 const MAX_PATCH_ENTRIES = 100;
 const DEFAULT_PRIORITY = 10;
 const BASE_ONLY_OVERRIDE_SECTIONS = new Set<string>(BASE_ONLY_CONFIG_SECTIONS);
@@ -71,6 +72,37 @@ function hasLangfuseHeadersOverride(rawOverrides: Record<string, unknown>): bool
     return false;
   }
   return Object.keys(rawLangfuse).some((key) => key === 'headers' || key.startsWith('headers.'));
+}
+
+/**
+ * Detect unsafe property segments in JSON config values before they are copied
+ * into plain objects, merged, or persisted. A patch can validate its dot path
+ * while still carrying attacker-controlled keys inside an object-valued entry.
+ */
+function hasUnsafeConfigObjectKey(root: unknown): boolean {
+  const pending: unknown[] = [root];
+  const visited = new WeakSet<object>();
+
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (value == null || typeof value !== 'object' || visited.has(value)) {
+      continue;
+    }
+    visited.add(value);
+
+    for (const [key, child] of Object.entries(value)) {
+      for (const segment of key.split('.')) {
+        if (UNSAFE_OBJECT_KEY_SEGMENTS.has(segment) || UNSAFE_SEGMENTS.test(segment)) {
+          return true;
+        }
+      }
+      if (child != null && typeof child === 'object') {
+        pending.push(child);
+      }
+    }
+  }
+
+  return false;
 }
 
 export function isValidFieldPath(path: string): boolean {
@@ -589,6 +621,10 @@ export function createAdminConfigHandlers(deps: AdminConfigDeps): {
       }
 
       const rawOverrides = overrides as Record<string, unknown>;
+      if (hasUnsafeConfigObjectKey(rawOverrides)) {
+        return res.status(400).json({ error: 'Unsafe config property name' });
+      }
+
       if (
         hasProcessMCPServerConfig(rawOverrides.mcpServers) ||
         hasProcessMCPServerConfig(rawOverrides.mcpConfig)
@@ -805,6 +841,9 @@ export function createAdminConfigHandlers(deps: AdminConfigDeps): {
           return res
             .status(400)
             .json({ error: `Invalid or unsafe field path: ${entry.fieldPath}` });
+        }
+        if (hasUnsafeConfigObjectKey(entry.value)) {
+          return res.status(400).json({ error: 'Unsafe config property name' });
         }
         if (isProcessMCPServerFieldPath(entry.fieldPath, entry.value)) {
           return res.status(400).json({ error: PROCESS_MCP_CONFIG_ERROR });

@@ -12,6 +12,7 @@ jest.mock('openid-client', () => ({
 
 jest.mock('librechat-data-provider', () => ({
   CacheKeys: { ADMIN_OAUTH_EXCHANGE: 'admin-oauth-exchange' },
+  ErrorTypes: { AUTH_RATE_LIMITED: 'auth_rate_limited' },
 }));
 
 jest.mock('@librechat/data-schemas', () => ({
@@ -38,6 +39,8 @@ jest.mock('@librechat/api', () => {
 
   return {
     isEnabled: jest.fn(),
+    limiterCache: jest.fn(() => undefined),
+    removePorts: jest.fn((req) => req.ip),
     getAdminPanelUrl: jest.fn(() => 'http://admin.example.com'),
     exchangeAdminCode: jest.fn(),
     createSetBalanceConfig: jest.fn(() => (req, res, next) => next()),
@@ -96,9 +99,19 @@ jest.mock('~/strategies', () => ({
   getOpenIdConfig: jest.fn(),
 }));
 
+const mockAdminOAuthLimiter = jest.fn((_req, _res, next) => next());
+jest.mock('express-rate-limit', () => jest.fn(() => mockAdminOAuthLimiter));
+jest.mock('~/server/middleware/oauthNavigation', () => ({
+  redirectOAuthFailure: jest.fn((res, code) => res.redirect(302, '/login?error=' + code)),
+}));
+
 jest.mock('~/server/middleware', () => ({
   logHeaders: jest.fn((req, res, next) => next()),
   loginLimiter: jest.fn((req, res, next) => next()),
+  markOAuthNavigation: jest.fn((req, _res, next) => {
+    req.isOAuthNavigation = true;
+    next();
+  }),
   checkBan: jest.fn((req, res, next) => next()),
   validateEmailLogin: jest.fn((req, res, next) => next()),
   requireLocalAuth: jest.fn((req, res, next) => next()),
@@ -118,7 +131,11 @@ const {
 } = require('@librechat/api');
 const { getOpenIdConfig } = require('~/strategies');
 const middleware = require('~/server/middleware');
+const rateLimit = require('express-rate-limit');
+const { redirectOAuthFailure } = require('~/server/middleware/oauthNavigation');
 const adminAuthRouter = require('./auth');
+const configuredAdminOAuthOptions = rateLimit.mock.calls.at(-1)[0];
+const configuredAdminOAuthCacheKey = require('@librechat/api').limiterCache.mock.calls.at(-1)[0];
 
 const ORIGINAL_OPENID_SCOPE = process.env.OPENID_SCOPE;
 const ORIGINAL_OPENID_REFRESH_AUDIENCE = process.env.OPENID_REFRESH_AUDIENCE;
@@ -500,6 +517,20 @@ describe('admin auth OpenID route availability', () => {
 describe('admin auth social route availability', () => {
   let app;
 
+  it('configures a separate shared-budget limiter for OAuth initiations', () => {
+    const options = configuredAdminOAuthOptions;
+    expect(options).toMatchObject({
+      windowMs: 5 * 60 * 1000,
+      max: 10,
+      standardHeaders: 'draft-7',
+      legacyHeaders: false,
+    });
+    expect(configuredAdminOAuthCacheKey).toBe('admin_oauth_initiation_limiter');
+    const response = { redirect: jest.fn() };
+    options.handler({}, response);
+    expect(redirectOAuthFailure).toHaveBeenCalledWith(response, 'auth_rate_limited');
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     passport._strategy.mockReturnValue(undefined);
@@ -517,6 +548,24 @@ describe('admin auth social route availability', () => {
     ['facebook', 'Facebook'],
     ['apple', 'Apple'],
   ];
+
+  it.each(['openid', ...startRoutes.map(([path]) => path)])(
+    'rejects excessive %s admin OAuth initiations before cache or provider work',
+    async (path) => {
+      mockAdminOAuthLimiter.mockImplementationOnce((req, res) => {
+        expect(req.isOAuthNavigation).toBe(true);
+        res.status(429).json({ error: 'rate_limited' });
+      });
+
+      const response = await request(app).get(`/api/admin/oauth/${path}`);
+
+      expect(response.status).toBe(429);
+      expect(middleware.markOAuthNavigation).toHaveBeenCalledTimes(1);
+      expect(mockAdminOAuthLimiter).toHaveBeenCalledTimes(1);
+      expect(storeAndStripChallenge).not.toHaveBeenCalled();
+      expect(passport.authenticate).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(startRoutes)(
     'does not start %s admin login when the strategy is not registered',
@@ -553,6 +602,15 @@ describe('admin auth social route availability', () => {
       (agent) => agent.post('/api/admin/oauth/apple/callback').send({ state: 'state' }),
     ],
   ];
+
+  it.each(callbackRoutes)(
+    'does not rate-limit the %s OAuth callback (provider verification stays intact)',
+    async (_path, _provider, makeRequest) => {
+      await makeRequest(request(app));
+      expect(mockAdminOAuthLimiter).not.toHaveBeenCalled();
+      expect(middleware.markOAuthNavigation).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(callbackRoutes)(
     'does not run %s admin callback auth when the strategy is not registered',

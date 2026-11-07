@@ -400,6 +400,28 @@ describe('createAdminConfigHandlers', () => {
       expect(res.statusCode).toBe(200);
     });
 
+    it.each([
+      ['top-level prototype', '{"__proto__":{"enabled":true},"interface":{"modelSelect":true}}'],
+      ['nested prototype', '{"interface":{"__proto__":{"use":true},"modelSelect":true}}'],
+      ['composite constructor', '{"interface":{"mcpServers":{"constructor":{"use":true}}}}'],
+      ['built-in method key', '{"interface":{"toString":"value","modelSelect":true}}'],
+      ['dotted nested prototype', '{"interface":{"mcpServers":{"x.__proto__.y":1}}}'],
+      ['array member prototype', '{"endpoints":{"custom":[{"__proto__":{"enabled":true}}]}}'],
+    ])('rejects an unsafe object key in %s', async (_label, json) => {
+      const { handlers, deps } = createHandlers();
+      const req = mockReq({
+        params: { principalType: 'role', principalId: 'admin' },
+        body: { overrides: JSON.parse(json) },
+      });
+      const res = mockRes();
+
+      await handlers.upsertConfigOverrides(req, res);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({ error: 'Unsafe config property name' });
+      expect(deps.upsertConfig).not.toHaveBeenCalled();
+    });
+
     it('returns 400 when overrides is missing', async () => {
       const { handlers } = createHandlers();
       const req = mockReq({
@@ -673,6 +695,69 @@ describe('createAdminConfigHandlers', () => {
       expect(responseConfig.overrides.endpoints.custom[0].apiKey).toBeUndefined();
       expect(responseConfig.overrides.endpoints.custom[0].apiKeyPreview).toBe('sk-or-...-key');
       expect(responseConfig.overrides.endpoints.custom[1].apiKey).toBe('${OPENROUTER_KEY}');
+    });
+
+    it('adds an OpenAI-compatible custom provider with user-provided key and model list without persisting a secret', async () => {
+      const { handlers, deps } = createHandlers({
+        upsertConfig: jest.fn(async (_type, _id, _model, overrides) => ({
+          _id: 'provider-config',
+          configVersion: 1,
+          overrides,
+        })),
+      });
+      const provider = {
+        name: 'ExampleProvider',
+        apiKey: 'user_provided',
+        baseURL: 'https://provider.example.test/v1',
+        models: { default: ['example-chat'], fetch: false },
+        modelDisplayLabel: 'Example Provider',
+      };
+      const req = mockReq({
+        params: { principalType: 'role', principalId: 'admin' },
+        body: { overrides: { endpoints: { custom: [provider] } } },
+      });
+      const res = mockRes();
+
+      await handlers.upsertConfigOverrides(req, res);
+
+      expect(res.statusCode).toBe(201);
+      const stored = deps.upsertConfig.mock.calls[0][3].endpoints.custom[0];
+      expect(stored).toEqual(provider);
+      expect(stored.apiKeyPreview).toBeUndefined();
+      const returned = (
+        res.body!.config as {
+          overrides: { endpoints: { custom: Array<Record<string, unknown>> } };
+        }
+      ).overrides.endpoints.custom[0];
+      expect(returned).toEqual(provider);
+    });
+
+    it('refuses an unauthorized custom-provider configuration write before database access', async () => {
+      const { handlers, deps } = createHandlers({
+        hasConfigCapability: jest.fn().mockResolvedValue(false),
+      });
+      const req = mockReq({
+        params: { principalType: 'role', principalId: 'admin' },
+        body: {
+          overrides: {
+            endpoints: {
+              custom: [
+                {
+                  name: 'DeniedProvider',
+                  apiKey: 'user_provided',
+                  baseURL: 'https://example.test/v1',
+                },
+              ],
+            },
+          },
+        },
+      });
+      const res = mockRes();
+
+      await handlers.upsertConfigOverrides(req, res);
+
+      expect(res.statusCode).toBe(403);
+      expect(deps.upsertConfig).not.toHaveBeenCalled();
     });
 
     it('rejects encrypted custom endpoint API key submissions on full override writes', async () => {
@@ -1044,6 +1129,28 @@ describe('createAdminConfigHandlers', () => {
   });
 
   describe('patchConfigField', () => {
+    it.each([
+      ['prototype', '{"__proto__":{"use":true}}'],
+      ['constructor', '{"constructor":{"use":true}}'],
+      ['built-in valueOf', '{"valueOf":0}'],
+      ['nested dotted key', '{"allowed":{"nested.__proto__.role":true}}'],
+    ])('rejects an unsafe %s in a field value', async (_label, json) => {
+      const { handlers, deps } = createHandlers();
+      const req = mockReq({
+        params: { principalType: 'role', principalId: 'admin' },
+        body: {
+          entries: [{ fieldPath: 'interface.mcpServers', value: JSON.parse(json) }],
+        },
+      });
+      const res = mockRes();
+
+      await handlers.patchConfigField(req, res);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({ error: 'Unsafe config property name' });
+      expect(deps.patchConfigFields).not.toHaveBeenCalled();
+    });
+
     it('returns 403 when user lacks capability for section', async () => {
       const { handlers } = createHandlers({
         hasConfigCapability: jest.fn().mockResolvedValue(false),

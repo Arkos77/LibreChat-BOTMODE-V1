@@ -49,6 +49,11 @@ const {
 } = require('~/server/services/MCP');
 const { requireJwtAuth, canAccessMCPServerResource } = require('~/server/middleware');
 const mcpReinitializeLimiter = require('~/server/middleware/limiters/mcpReinitializeLimiter');
+const {
+  initializeMcpOAuthLimiters,
+  mcpOAuthInitiateLimiter,
+  mcpOAuthCallbackLimiter,
+} = require('~/server/middleware/limiters/mcpOAuthLimiter');
 const { getUserPluginAuthValue } = require('~/server/services/PluginService');
 const { invalidateCachedTools } = require('~/server/services/Config');
 const { updateMCPServerTools } = require('~/server/services/Config/mcp');
@@ -57,6 +62,9 @@ const { createOpenIDSessionTokenProvider } = require('~/server/services/OpenIDSe
 const { getLogStores } = require('~/cache');
 const db = require('~/models');
 
+// Construct the real rate limiters at startup; never on an incoming OAuth request.
+initializeMcpOAuthLimiters();
+
 const router = Router();
 
 const OAUTH_CSRF_COOKIE_PATH = '/api/mcp';
@@ -64,16 +72,7 @@ const OAUTH_CSRF_COOKIE_PATH = '/api/mcp';
 const getOAuthFlowId = (userId, serverName) =>
   MCPOAuthHandler.generateFlowId(userId, serverName, getTenantId());
 
-const canAccessOAuthFlow = (flowId, userId) => {
-  const parsed = MCPOAuthHandler.parseFlowId(flowId);
-  if (!parsed) {
-    return false;
-  }
-  if (parsed.tenantId && parsed.tenantId !== getTenantId()) {
-    return false;
-  }
-  return parsed.userId === userId || parsed.userId === 'system';
-};
+const canAccessOAuthFlow = require('./mcpOAuthFlowAccess');
 
 const clearGetTokensFlow = async ({ flowManager, flowId, tokens }) => {
   const state = await flowManager.getFlowState(flowId, 'mcp_get_tokens');
@@ -108,7 +107,8 @@ router.get('/tools', requireJwtAuth, checkMCPUsePermissions, async (req, res) =>
  * Initiate OAuth flow
  * This endpoint is called when the user clicks the auth link in the UI
  */
-router.get('/:serverName/oauth/initiate', requireJwtAuth, setOAuthSession, async (req, res) => {
+const oauthInitiateGuards = [requireJwtAuth, mcpOAuthInitiateLimiter, setOAuthSession];
+router.get('/:serverName/oauth/initiate', oauthInitiateGuards, async (req, res) => {
   try {
     const { serverName } = req.params;
     const { userId, flowId } = req.query;
@@ -230,7 +230,10 @@ router.get('/:serverName/oauth/initiate', requireJwtAuth, setOAuthSession, async
  * OAuth callback handler
  * This handles the OAuth callback after the user has authorized the application
  */
-router.get('/:serverName/oauth/callback', async (req, res) => {
+router.get('/:serverName/oauth/callback', mcpOAuthCallbackLimiter, async (req, res) => {
+  // OAuth query codes must not be cached or sent in a subsequent Referer.
+  res.set('Cache-Control', 'no-store');
+  res.set('Referrer-Policy', 'no-referrer');
   const basePath = getBasePath();
   try {
     const { serverName } = req.params;
@@ -239,7 +242,7 @@ router.get('/:serverName/oauth/callback', async (req, res) => {
     logger.debug('[MCP OAuth] Callback received', {
       serverName,
       code: code ? 'present' : 'missing',
-      state,
+      state: state ? 'present' : 'missing',
       error: oauthError,
     });
 
@@ -305,7 +308,7 @@ router.get('/:serverName/oauth/callback', async (req, res) => {
 
     const flowId = await MCPOAuthHandler.resolveStateToFlowId(state, flowManager);
     if (!flowId) {
-      logger.error('[MCP OAuth] Could not resolve state to flow ID', { state });
+      logger.error('[MCP OAuth] Could not resolve state to flow ID');
       return res.redirect(`${basePath}/oauth/error?error=invalid_state`);
     }
     logger.debug('[MCP OAuth] Resolved flow ID from state', { flowId });

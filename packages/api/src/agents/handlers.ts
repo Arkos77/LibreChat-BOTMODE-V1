@@ -87,6 +87,7 @@ import {
 } from './intent';
 import { buildSkillPrimeMessage, isSkillFilePath, SKILL_FILE_PREFIX } from './skills';
 import { resolveCallerCapabilityProjectionSnapshot } from './callerCapabilities';
+import { isToolCallFailurePrefix } from '../utils/toolCallFailure';
 import { guardPtcToolMap, instrumentPtcToolMap } from './ptc';
 import { createSkillContentDigest } from './compatibility';
 import { parseFrontmatter } from '../skills/import';
@@ -4513,7 +4514,7 @@ function getFileAuthoringQueueKey(
  * failed background run renders as clean stdout.
  */
 function toBackgroundToolFailure(toolName: string, message: string): string {
-  if (/^Error:\s*(\[.*?\]\s*)*tool call failed:/i.test(message)) {
+  if (isToolCallFailurePrefix(message)) {
     return message;
   }
   return `Error: [${toolName}] tool call failed: ${message}`;

@@ -26,7 +26,9 @@
         "baseURL": "https://api.openai.com/v1",
         "models": {
           "fetch": true,
-          "default": []
+          "default": [
+            "gpt-4.1-mini"
+          ]
         },
         "titleConvo": true,
         "modelDisplayLabel": "OpenAI"
@@ -37,7 +39,9 @@
         "baseURL": "https://router.huggingface.co/v1",
         "models": {
           "fetch": true,
-          "default": []
+          "default": [
+            "openai/gpt-oss-120b:fastest"
+          ]
         },
         "titleConvo": true,
         "modelDisplayLabel": "Hugging Face"
@@ -48,7 +52,9 @@
         "baseURL": "https://api.deepseek.com",
         "models": {
           "fetch": true,
-          "default": []
+          "default": [
+            "deepseek-flash"
+          ]
         },
         "titleConvo": true,
         "modelDisplayLabel": "DeepSeek"
@@ -72,7 +78,9 @@
         "baseURL": "https://api.mistral.ai/v1",
         "models": {
           "fetch": true,
-          "default": []
+          "default": [
+            "mistral-small-latest"
+          ]
         },
         "titleConvo": true,
         "modelDisplayLabel": "Mistral"
@@ -83,7 +91,9 @@
         "baseURL": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
         "models": {
           "fetch": true,
-          "default": []
+          "default": [
+            "qwen-plus"
+          ]
         },
         "titleConvo": true,
         "modelDisplayLabel": "Qwen"
@@ -94,7 +104,9 @@
         "baseURL": "https://api.z.ai/api/paas/v4",
         "models": {
           "fetch": true,
-          "default": []
+          "default": [
+            "glm-4.7"
+          ]
         },
         "titleConvo": true,
         "modelDisplayLabel": "GLM"
@@ -105,7 +117,9 @@
         "baseURL": "https://api.minimax.io/v1",
         "models": {
           "fetch": true,
-          "default": []
+          "default": [
+            "MiniMax-M2.5"
+          ]
         },
         "titleConvo": true,
         "modelDisplayLabel": "MiniMax"
@@ -142,7 +156,9 @@
         "baseURL": "http://localhost:11434/v1",
         "models": {
           "fetch": true,
-          "default": []
+          "default": [
+            "llama3.2:1b"
+          ]
         },
         "titleConvo": true,
         "modelDisplayLabel": "Ollama"

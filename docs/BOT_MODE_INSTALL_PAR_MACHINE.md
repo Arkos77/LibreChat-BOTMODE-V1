@@ -256,7 +256,7 @@ BOTMODE_HOST_BIND_IP=127.0.0.1 ./install.sh --lite --image \
 
 Pour une machine Linux compatible et suffisamment dimensionnée, Full peut être demandé explicitement via `--full` ; le bootstrap **refuse Full** si le CPU x86_64 n'a pas AVX ou si la RAM détectée est inférieure à 4 Gio. Full inclut davantage de services locaux, ce qui exige des ressources supplémentaires.
 
-**Pourquoi `BOTMODE_HOST_BIND_IP=127.0.0.1` ?** Cette variable limite le port HTTP à l'hôte pendant la première installation. La configuration Docker de base peut sinon écouter sur toutes les interfaces (`0.0.0.0`). Une fois `.env` créé, **ajoutez-y** `BOTMODE_HOST_BIND_IP=127.0.0.1` avant tout redémarrage, pour conserver ce choix (sauf si vous souhaitez explicitement administrer un accès réseau distant sécurisé). N'exposez pas directement un service non sécurisé sur Internet.
+**Pourquoi `BOTMODE_HOST_BIND_IP=127.0.0.1` ?** Cette variable limite le port HTTP à l'hôte. **La release v1.0.3 (les commandes ci-dessus) conserve l'ancien défaut `0.0.0.0`** : gardez donc ce paramètre explicite, puis inscrivez `BOTMODE_HOST_BIND_IP=127.0.0.1` dans `.env` pour les redémarrages. **Sur les prochaines candidates de distribution**, le Compose BOT MODE se limitera par défaut à `127.0.0.1` pour l'API **et** le panneau d'administration Full (port 3000). Pour un accès réseau distant, choisissez explicitement `BOTMODE_HOST_BIND_IP` et, séparément, `BOTMODE_ADMIN_PANEL_BIND_IP`, seulement après avoir configuré TLS, un contrôle d'accès et les protections réseau adaptées. N'exposez jamais directement un service non sécurisé sur Internet.
 
 ### Premier démarrage et diagnostic
 

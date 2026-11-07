@@ -1,0 +1,112 @@
+name: BOTMODE V1 Lite Optional Admin Profile
+
+on:
+  pull_request:
+    paths:
+      - docker-compose.botmode.yml
+      - docker-compose.botmode-lite.yml
+      - .github/workflows/botmode-v1-lite-admin-profile.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  profile-contract:
+    name: Lite admin opt-in contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BOTMODE_MONGO_PASSWORD: disposable-ci-only
+      POSTGRES_PASSWORD: disposable-ci-only
+      ADMIN_PANEL_SESSION_SECRET: disposable-ci-only-not-for-runtime
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify normal Lite excludes admin and Full services
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(-f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)
+          docker compose "${files[@]}" config --quiet
+          services="$(docker compose "${files[@]}" config --services)"
+          printf '%s\n' "$services"
+          printf '%s\n' "$services" | grep -qx api
+          printf '%s\n' "$services" | grep -qx mongodb
+          printf '%s\n' "$services" | grep -qx redis
+          for forbidden in admin-panel meilisearch vectordb rag_api; do
+            if printf '%s\n' "$services" | grep -qx "$forbidden"; then
+              echo "::error::Default Lite unexpectedly enables $forbidden"
+              exit 1
+            fi
+          done
+      - name: Verify explicit admin opt-in excludes other Full services
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(-f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)
+          docker compose "${files[@]}" --profile admin config --quiet
+          services="$(docker compose "${files[@]}" --profile admin config --services)"
+          printf '%s\n' "$services"
+          printf '%s\n' "$services" | grep -qx admin-panel
+          for forbidden in meilisearch vectordb rag_api; do
+            if printf '%s\n' "$services" | grep -qx "$forbidden"; then
+              echo "::error::Optional admin profile unexpectedly enables $forbidden"
+              exit 1
+            fi
+          done
+          docker compose "${files[@]}" --profile admin config --format json |
+            jq -e '.services["admin-panel"].ports[] | select(.target == 3000 and .host_ip == "127.0.0.1")' >/dev/null
+          echo 'BOTMODE_LITE_ADMIN_PROFILE=PASS'
+
+  admin-panel-smoke:
+    name: Optional admin panel image boot smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      BOTMODE_MONGO_PASSWORD: disposable-ci-only
+      POSTGRES_PASSWORD: disposable-ci-only
+      BOTMODE_HOST_PORT: '3098'
+      ADMIN_PANEL_PORT: '3099'
+      DOMAIN_CLIENT: http://127.0.0.1:3098
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate ephemeral admin secret
+        shell: bash
+        run: |
+          secret="$(openssl rand -hex 32)"
+          echo "::add-mask::$secret"
+          echo "ADMIN_PANEL_SESSION_SECRET=$secret" >> "$GITHUB_ENV"
+      - name: Start only the existing admin panel image, never API or Full services
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(-f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)
+          docker compose "${files[@]}" --profile admin up --no-deps -d admin-panel
+          names="$(docker compose "${files[@]}" --profile admin ps --services --status running)"
+          printf '%s\n' "$names"
+          printf '%s\n' "$names" | grep -qx admin-panel
+          for forbidden in api mongodb redis meilisearch vectordb rag_api; do
+            if printf '%s\n' "$names" | grep -qx "$forbidden"; then
+              echo "::error::Unexpected service started: $forbidden"
+              exit 1
+            fi
+          done
+          ready=0
+          for attempt in $(seq 1 45); do
+            status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:3099/ || true)"
+            if [[ "$status" =~ ^(200|301|302|303|307|308)$ ]]; then ready=1; break; fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "::error::Admin panel UI did not answer HTTP 2xx/3xx"
+            docker compose "${files[@]}" --profile admin ps
+            exit 1
+          fi
+          echo 'BOTMODE_LITE_ADMIN_IMAGE_BOOT=PASS'
+      - name: Stop only optional admin panel
+        if: always()
+        shell: bash
+        run: |
+          files=(-f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml)
+          docker compose "${files[@]}" --profile admin stop admin-panel || true
+          docker compose "${files[@]}" --profile admin rm -f admin-panel || true

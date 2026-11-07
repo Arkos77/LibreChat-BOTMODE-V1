@@ -1,0 +1,482 @@
+name: BOTMODE V1 Admin Provider Authenticated Integration
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/botmode-v1-admin-provider-authenticated.yml
+      - docker-compose.botmode-lite.yml
+      - docker-compose.botmode.yml
+      - librechat.yaml
+      - packages/api/src/admin/config.handler.spec.ts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  admin-provider-authenticated:
+    name: Admin provider live API and browser login (disposable)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      BOTMODE_HOST_PORT: '3098'
+      ADMIN_PANEL_PORT: '3099'
+      DOMAIN_CLIENT: http://127.0.0.1:3098
+      # Explicitly test integration against the public immutable V1.0.3 runtime.
+      # Exact-HEAD backend contracts are already covered by Backend Unit Tests.
+      BOTMODE_CI_RUNTIME: ghcr.io/arkos77/librechat-botmode-v1@sha256:a09a07f21c2075b79ba132b831bb13d31a1f51b980000967a7e1191036811598
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Fail fast on invalid custom provider model defaults
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          config=json.loads(Path('librechat.yaml').read_text())
+          entries=config.get('endpoints', {}).get('custom', [])
+          missing=[
+            endpoint.get('name', '<unnamed>')
+            for endpoint in entries
+            if not isinstance(endpoint.get('models', {}).get('default'), list)
+            or not endpoint['models']['default']
+          ]
+          if missing:
+            print('CI_CUSTOM_PROVIDER_MODEL_DEFAULTS=FAIL')
+            print('Invalid endpoint names: '+', '.join(missing))
+            raise SystemExit(1)
+          print('CI_CUSTOM_PROVIDER_MODEL_DEFAULTS=PASS')
+          PY
+
+      - name: Install disposable Lite using the existing bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e .env
+          sudo env BOTMODE_HOST_PORT="$BOTMODE_HOST_PORT" ./install.sh --lite --image "$BOTMODE_CI_RUNTIME" >/tmp/botmode-ci-admin-install.log 2>&1 || {
+            echo "::error::Disposable Lite bootstrap failed (log deliberately withheld to avoid secrets)"
+            exit 1
+          }
+          ready=0
+          for i in $(seq 1 100); do
+            if curl -fsS --max-time 3 "http://127.0.0.1:$BOTMODE_HOST_PORT/api/config" -o /dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" -eq 1
+          echo 'CI_ADMIN_LITE_BOOTSTRAP=PASS'
+
+      - name: Real admin and non-admin authorization plus custom endpoint write
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, secrets
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError
+
+          base = 'http://127.0.0.1:3098'
+          agent = 'Mozilla/5.0 BOTMODE-Admin-CI'
+          def call(method, path, data=None, token=None):
+              body = json.dumps(data).encode() if data is not None else None
+              headers = {'Content-Type': 'application/json', 'User-Agent': agent}
+              if token:
+                  headers['Authorization'] = 'Bearer ' + token
+              request = Request(base + path, data=body, headers=headers, method=method)
+              try:
+                  with urlopen(request, timeout=30) as response:
+                      raw = response.read()
+                      return response.status, json.loads(raw) if raw else {}
+              except HTTPError as e:
+                  # Never log tokens, passwords, response payloads, or secret previews.
+                  return e.code, {}
+
+          def account(email, username):
+              password = secrets.token_urlsafe(28) + 'Ab3!'
+              status, _ = call('POST', '/api/auth/register', {
+                  'name': 'Disposable BOT MODE CI',
+                  'username': username, 'email': email,
+                  'password': password, 'confirm_password': password,
+              })
+              assert status == 200, 'CI_REGISTRATION_HTTP_' + str(status)
+              status, result = call('POST', '/api/auth/login', {'email': email, 'password': password})
+              assert status == 200 and isinstance(result.get('token'), str), 'CI_LOGIN_FAILED'
+              return {'email': email, 'password': password, 'token': result['token']}
+
+          # LibreChat single-tenant bootstrap grants ADMIN to the first registered account.
+          admin = account('botmode-admin-ci@example.invalid', 'botmode-admin-ci')
+          regular = account('botmode-user-ci@example.invalid', 'botmode-user-ci')
+          s, _ = call('GET', '/api/admin/verify', token=admin['token'])
+          assert s == 200, 'CI_ADMIN_VERIFY_HTTP_' + str(s)
+          s, _ = call('GET', '/api/admin/verify', token=regular['token'])
+          assert s in (401, 403), 'CI_NON_ADMIN_VERIFY_HTTP_' + str(s)
+          print('CI_ADMIN_AND_NON_ADMIN_IDENTITY=PASS')
+
+          path = '/api/admin/config/role/__base__'
+          provider = {
+              'name': 'BOTMODE_CI_Provider',
+              'apiKey': 'user_provided',
+              'baseURL': 'https://provider.example.invalid/v1',
+              'models': {'default': ['botmode-ci-chat'], 'fetch': False},
+              'modelDisplayLabel': 'BOT MODE CI Provider',
+          }
+          s, _ = call('PUT', path, {'overrides': {'endpoints': {'custom': [provider]}}}, regular['token'])
+          assert s in (401, 403), 'CI_NON_ADMIN_CONFIG_WRITE_HTTP_' + str(s)
+          s, saved = call('PUT', path, {'overrides': {'endpoints': {'custom': [provider]}}}, admin['token'])
+          assert s in (200, 201), 'CI_ADMIN_CONFIG_WRITE_HTTP_' + str(s)
+          s, conf = call('GET', path, token=admin['token'])
+          assert s == 200, 'CI_ADMIN_CONFIG_READ_HTTP_' + str(s)
+          parsed = conf.get('config', {}).get('overrides', {}).get('endpoints', {}).get('custom', [])
+          assert any(item.get('name') == provider['name'] for item in parsed), 'CI_PROVIDER_NOT_PERSISTED'
+          assert not any(item.get('apiKeyPreview') for item in parsed), 'CI_UNEXPECTED_KEY_PREVIEW'
+          s, _ = call('GET', path, token=regular['token'])
+          assert s in (401, 403), 'CI_NON_ADMIN_CONFIG_READ_HTTP_' + str(s)
+          print('CI_ADMIN_CUSTOM_ENDPOINT_WRITE_READ=PASS')
+          print('CI_NON_ADMIN_ENDPOINT_ACCESS_DENIED=PASS')
+
+          path = Path('/tmp/botmode-ci-admin-auth.json')
+          path.write_text(json.dumps({'email': admin['email'], 'password': admin['password']}))
+          path.chmod(0o600)
+          PY
+
+      - name: Start the real pinned Admin Panel against the same disposable Lite API
+        shell: bash
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          echo "::add-mask::$secret"
+          export ADMIN_PANEL_SESSION_SECRET="$secret"
+          sudo env BOTMODE_HOST_PORT="$BOTMODE_HOST_PORT" ADMIN_PANEL_PORT="$ADMIN_PANEL_PORT" \
+            DOMAIN_CLIENT="$DOMAIN_CLIENT" ADMIN_PANEL_SESSION_SECRET="$secret" \
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml \
+            --profile admin up -d admin-panel
+          ready=0
+          for i in $(seq 1 70); do
+            status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:$ADMIN_PANEL_PORT/login" || true)"
+            if [[ "$status" =~ ^(200|301|302|303|307|308)$ ]]; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" -eq 1
+          echo 'CI_ADMIN_PANEL_WITH_LIVE_API=PASS'
+
+      - name: Browser signs into actual Admin Panel and loads configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The pinned BOT MODE runtime already bundles Playwright + Chromium.
+          # Credentials travel solely over stdin, not command arguments or CI logs.
+          sudo env BOTMODE_HOST_PORT="$BOTMODE_HOST_PORT" docker compose \
+            -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml \
+            --profile admin exec -T api node -e '
+              const fs = require("fs");
+              const { chromium } = require("playwright");
+              (async () => {
+                const user = JSON.parse(fs.readFileSync(0, "utf8"));
+                const browser = await chromium.launch({headless:true,args:["--no-sandbox"]});
+                try {
+                  const page = await browser.newPage({locale:"en-US"});
+                  await page.goto("http://admin-panel:3000/login", {waitUntil:"domcontentloaded",timeout:25000});
+                  const inputs = page.locator("input");
+                  await inputs.first().waitFor({state:"visible",timeout:15000});
+                  await inputs.first().fill(user.email);
+                  await page.locator("input[type=password]").first().fill(user.password);
+                  await page.getByRole("button",{name:/sign in|log in|se connecter|connexion/i}).first().click();
+                  await page.waitForURL(url => !url.pathname.endsWith("/login"),{timeout:25000});
+                  console.log("CI_REAL_ADMIN_PANEL_BROWSER_LOGIN=PASS");
+                  await page.goto("http://admin-panel:3000/configuration", {waitUntil:"domcontentloaded",timeout:30000});
+                  await page.locator("body").waitFor({state:"visible",timeout:15000});
+                  await page.waitForTimeout(1800);
+                  const text = await page.locator("body").innerText();
+                  if (/access denied|permission denied|not authorized|accès refusé/i.test(text))
+                    throw Error("ADMIN_CONFIG_PAGE_ACCESS_DENIED");
+                  if (!/configuration|endpoints|parameters|paramètres/i.test(text))
+                    throw Error("ADMIN_CONFIG_PAGE_NOT_RENDERED");
+                  console.log("CI_REAL_ADMIN_PANEL_CONFIG_PAGE=PASS");
+                  // TanStack server mutations use framework routes; their
+                  // URLs do not necessarily contain config or save. Record
+                  // status metadata for ALL writes without payloads or cookies.
+                  const writeResponses=[];
+                  const writeReplyTasks=[];
+                  const browserErrors=[];
+                  // TanStack Start server functions return devalue-encoded JSON.
+                  // Decode structural keys and error descriptors only. Never
+                  // reveal provider values, credentials, or request bodies.
+                  const safeMessage=(s)=>String(s||"")
+                    .replace(/(api[_ -]?key|password|token|secret)[=: ]+[^ ,;]+/ig,"$1=[REDACTED]")
+                    .slice(0,220);
+                  const summarize=(value,depth=0,key="")=>{
+                    if(depth>9)return "<nested>";
+                    if(Array.isArray(value))return value.slice(0,8)
+                      .map(entry=>summarize(entry,depth+1,key));
+                    if(value && typeof value==="object"){
+                      if(value.t===25)return {serializedError:true,
+                        name:value.c?.s||"Error",
+                        message:safeMessage(value.s?.message?.s||value.s?.message||"")};
+                      if(value.t===2){
+                        if(/^(code|error|message|reason|status|path|fieldPath|type)$/i.test(key))
+                          return safeMessage(value.s);
+                        return "<string>";
+                      }
+                      if(value.t===10 && Array.isArray(value.p?.k)){
+                        return {keys:value.p.k.slice(0,28).map(k=>typeof k==="string"?k.slice(0,80):"<key>"),
+                          fields:value.p.v?.slice(0,28).map((v,i)=>
+                            summarize(v,depth+1,value.p.k[i]))||[]};
+                      }
+                      return Object.fromEntries(Object.entries(value).slice(0,24)
+                        .map(([k,v])=>[k,/apiKey|password|token|secret|cookie/i.test(k)
+                          ? "[REDACTED]" : summarize(v,depth+1,k)]));
+                    }
+                    if(typeof value==="string"){
+                      if(/^(code|error|message|reason|status|path|fieldPath|type)$/i.test(key))
+                        return safeMessage(value);
+                      return "<string>";
+                    }
+                    return value;
+                  };
+                  page.on("response", response => {
+                    try {
+                      const method=response.request().method();
+                      if(!["POST","PUT","PATCH","DELETE"].includes(method))return;
+                      const url=new URL(response.url());
+                      const entry={path:url.pathname.slice(0,140),method,
+                        status:response.status(),
+                        contentType:(response.headers()["content-type"]||"").split(";")[0]};
+                      writeResponses.push(entry);
+                      if(entry.contentType==="application/json"){
+                        writeReplyTasks.push(response.json().then(body=>{
+                          entry.reply=summarize(body);
+                        }).catch(()=>{entry.reply="<unreadable-json>"}));
+                      }
+                    } catch (e) {}
+                  });
+                  page.on("requestfailed", request => {
+                    if(["POST","PUT","PATCH"].includes(request.method())){
+                      const url=new URL(request.url());
+                      browserErrors.push({
+                        path:url.pathname.slice(0,120),
+                        cause:(request.failure()?.errorText||"network-error").slice(0,100),
+                      });
+                    }
+                  });
+                  page.on("pageerror", error => browserErrors.push({
+                    kind:"page-error",type:error.name||"Error",
+                  }));
+
+                  // Genuine browser path: add a fictional provider via the UI,
+                  // then review and save. No secret or live inference is used.
+                  await page.goto("http://admin-panel:3000/configuration?tab=custom&field=endpoints.custom", {waitUntil:"domcontentloaded",timeout:30000});
+                  await page.getByRole("button",{name:"Create endpoint"}).first().waitFor({state:"visible",timeout:25000});
+                  await page.getByRole("button",{name:"Create endpoint"}).first().click();
+                  const creator = page.getByRole("dialog",{name:"Create endpoint"});
+                  // Pinned UI localization can differ from current upstream text.
+                  // Upstream TemplatePicker always puts the blank entry first.
+                  await creator.waitFor({state:"visible",timeout:15000});
+                  const chooser = await creator.evaluate(el => ({
+                    title:(el.querySelector("[role=heading]")?.textContent||"").trim().slice(0,90),
+                    buttons:Array.from(el.querySelectorAll("button")).slice(0,16)
+                      .map(b => (b.getAttribute("aria-label")||b.textContent||"").trim().slice(0,90)),
+                    lists:el.querySelectorAll("ul").length,
+                  }));
+                  // Log only public button names, never text fields or credentials.
+                  console.log("CI_PANEL_CHOOSER_META="+JSON.stringify(chooser));
+                  const labelledBlank=creator.getByRole("button",{name:/blank|empty|from scratch/i}).first();
+                  const templateList=creator.locator("ul li button").first();
+                  if(await labelledBlank.count()>0)await labelledBlank.click();
+                  else if(await templateList.count()>0)await templateList.click();
+                  else if(await creator.locator("input").count()>0)
+                    console.log("CI_PANEL_FORM_DIRECT=PASS");
+                  else throw Error("CI_ENDPOINT_FORM_NOT_FOUND");
+                  console.log("CI_PANEL_CREATION_FORM_AVAILABLE=PASS");
+                  const controls = await creator.locator("input").evaluateAll(nodes =>
+                    nodes.map(n => ({id:n.id, placeholder:n.getAttribute("placeholder"),
+                      ariaLabel:n.getAttribute("aria-label"), type:n.type})));
+                  console.log("CI_PANEL_FORM_CONTROLS="+JSON.stringify(controls));
+                  // These ids and labels are verified against the pinned image
+                  // from run 42163506202; do not use newer upstream placeholders.
+                  await creator.locator("#create-endpoint-name").fill("BOTMODE_CI_From_UI");
+                  await creator.locator("#create-endpoint-baseURL").fill("https://ui-provider.example.invalid/v1");
+                  await creator.locator("#create-endpoint-apiKey").fill("user_provided");
+                  // Pinned Admin Panel DOM diagnostics: capture only control
+                  // metadata and structural labels, never input values.
+                  const inspectModels=async (label) => creator.evaluate((el,phase) => {
+                    const clean=(value) => String(value||"").replace(/\s+/g," ").trim().slice(0,150);
+                    const names=Array.from(el.querySelectorAll("input,textarea,select,[contenteditable]"))
+                      .map((n,index)=>({
+                        index,tag:n.tagName.toLowerCase(),id:n.id||"",
+                        type:n.getAttribute("type")||"",
+                        role:n.getAttribute("role")||"",
+                        placeholder:n.getAttribute("placeholder")||"",
+                        label:clean(n.getAttribute("aria-label")||
+                          (n.id?el.querySelector("label[for="+CSS.escape(n.id)+"]")?.textContent:"")||
+                          n.closest("label")?.textContent),
+                        context:clean(n.parentElement?.parentElement?.textContent),
+                      }));
+                    const add=Array.from(el.querySelectorAll("button"))
+                      .find(b=>clean(b.textContent)==="Add item");
+                    const group=add?.parentElement?.parentElement?.parentElement;
+                    return {phase,fields:names,addGroup:clean(group?.textContent),
+                      addTag:group?.tagName||"",containerCount:el.querySelectorAll("textarea,[contenteditable]").length};
+                  },label);
+                  const modelBefore=await inspectModels("before");
+                  console.log("CI_PINNED_MODELS_DOM_BEFORE="+JSON.stringify(modelBefore));
+                  await creator.getByRole("button",{name:"Add item"}).click();
+                  await page.waitForTimeout(200);
+                  const modelAfter=await inspectModels("after");
+                  console.log("CI_PINNED_MODELS_DOM_AFTER="+JSON.stringify(modelAfter));
+                  // Exact pinned-image evidence: Add item inserts item 1
+                  // as the fifth text input, before the two checkboxes.
+                  const modelField=modelAfter.fields.find(field =>
+                    field.type==="text" && field.label==="item 1");
+                  if(!modelField)throw Error("CI_PINNED_MODEL_TEXTBOX_NOT_FOUND");
+                  const textboxesBefore=modelAfter.fields.slice(0,modelField.index)
+                    .filter(field=>field.type==="text").length;
+                  await creator.locator("input[type=text]").nth(textboxesBefore).fill("botmode-ui-chat");
+                  console.log("CI_PINNED_MODEL_INPUT_FILLED=PASS");
+                  await creator.getByRole("button",{name:"Create",exact:true}).click();
+                  await page.waitForTimeout(700);
+                  const postButtons=await page.locator("button:visible").evaluateAll(nodes =>
+                    nodes.map(n=>(n.getAttribute("aria-label")||n.textContent||"").trim().slice(0,60))
+                      .filter(Boolean).filter(s=>/done|review|save|create|apply/i.test(s)).slice(0,12));
+                  console.log("CI_PINNED_POST_CREATE_ACTIONS="+JSON.stringify(postButtons));
+                  const done=page.getByRole("dialog").getByRole("button",{name:"Done",exact:true});
+                  if(await done.count()>0 && await done.first().isVisible())await done.first().click();
+                  const review=page.getByRole("button",{name:/review.*save|review changes/i}).first();
+                  if(await review.count()>0 && await review.isVisible()){
+                    await review.click();
+                    await page.waitForTimeout(250);
+                  }
+                  const saveButton=page.getByRole("button",{name:"Save",exact:true}).first();
+                  if(await saveButton.count()>0 && await saveButton.isVisible())
+                    await saveButton.click();
+                  console.log("CI_REAL_ADMIN_PANEL_UI_CREATE_SUBMITTED=PASS");
+                  await page.waitForTimeout(1200);
+                  const saveDialogs=await page.locator("[role=dialog]").evaluateAll(nodes =>
+                    nodes.map(n=>({
+                      title:(n.querySelector("h1,h2,h3,[role=heading]")?.textContent||"").trim().slice(0,80),
+                      buttons:Array.from(n.querySelectorAll("button"))
+                        .map(b=>(b.getAttribute("aria-label")||b.textContent||"").trim().slice(0,50))
+                        .filter(Boolean).slice(0,12),
+                    })));
+                  console.log("CI_UI_AFTER_SAVE_DIALOGS="+JSON.stringify(saveDialogs));
+                  // If Save opened a confirmation, click that explicit approval.
+                  const confirm=page.getByRole("dialog").getByRole("button",{
+                    name:/^(confirm|save changes|apply changes|apply|save)$/i,
+                  }).first();
+                  if(await confirm.count()>0 && await confirm.isVisible()){
+                    await confirm.click();
+                    console.log("CI_UI_SAVE_CONFIRM_CLICKED=PASS");
+                  }
+                  console.log("CI_UI_WRITE_STATUSES="+JSON.stringify(writeResponses.slice(-18)));
+                  console.log("CI_UI_BROWSER_ERRORS="+JSON.stringify(browserErrors.slice(-12)));
+                  const alertMeta=await page.locator("[role=alert],[data-sonner-toast]").evaluateAll(nodes=>
+                    nodes.slice(0,10).map(n=>({
+                      role:n.getAttribute("role")||"",
+                      message:(n.textContent||"").replace(/(api[_ -]?key|password|token|secret)[=: ]+[^ ,;]+/ig,"$1=[REDACTED]").trim().slice(0,220),
+                    })));
+                  console.log("CI_UI_AFTER_SAVE_ALERTS="+JSON.stringify(alertMeta));
+
+                  // Confirm real UI persistence against the authenticated API.
+                  const login=await fetch("http://api:3080/api/auth/login",{
+                    method:"POST",headers:{"Content-Type":"application/json"},
+                    body:JSON.stringify({email:user.email,password:user.password}),
+                  });
+                  if(!login.ok)throw Error("CI_UI_VERIFY_LOGIN_HTTP_"+login.status);
+                  const session=await login.json();
+                  const headers={Authorization:"Bearer "+session.token};
+                  let persisted=false;
+                  let customNames=[];
+                  for(let attempt=0;attempt<12;attempt++){
+                    const get=await fetch("http://api:3080/api/admin/config/role/__base__",{headers});
+                    if(!get.ok)throw Error("CI_UI_VERIFY_CONFIG_HTTP_"+get.status);
+                    const data=await get.json();
+                    const items=data.config?.overrides?.endpoints?.custom ?? [];
+                    customNames=items.map(x=>x.name).filter(x=>typeof x==="string");
+                    if(customNames.includes("BOTMODE_CI_From_UI")){
+                      persisted=true;break;
+                    }
+                    await new Promise(resolve=>setTimeout(resolve,350));
+                  }
+                  if(!persisted){
+                    const list=await fetch("http://api:3080/api/admin/config",{headers});
+                    if(list.ok){
+                      const all=await list.json();
+                      console.log("CI_UI_CONFIG_LIST_KEYS="+JSON.stringify(Object.keys(all||{}).slice(0,12)));
+                      const records=Array.isArray(all)?all:(all.configs||all.items||[]);
+                      if(Array.isArray(records))
+                        console.log("CI_UI_CONFIG_SCOPES="+JSON.stringify(records.slice(0,12).map(x=>({
+                          type:x.principalType||x.type||"",
+                          id:x.principalId||x.id||"",
+                          count:x.overrides?.endpoints?.custom?.length||0,
+                        }))));
+                    }
+                    await Promise.all(writeReplyTasks);
+                    console.log("CI_UI_WRITE_REPLIES="+JSON.stringify(writeResponses.slice(-20)));
+                    console.log("CI_UI_BASE_CUSTOM_PROVIDER_NAMES="+JSON.stringify(customNames.slice(0,12)));
+                    throw Error("CI_UI_CREATED_PROVIDER_NOT_PERSISTED");
+                  }
+                  console.log("CI_UI_PROVIDER_PERSISTENCE=PASS");
+
+                  // The authenticated chat picker obtains its catalog from
+                  // these existing LibreChat API routes, not from Admin Panel.
+                  const inspectCatalog=async()=>{
+                    const [modelsResponse,endpointsResponse]=await Promise.all([
+                      fetch("http://api:3080/api/models",{headers}),
+                      fetch("http://api:3080/api/endpoints",{headers}),
+                    ]);
+                    if(!modelsResponse.ok)throw Error("CI_CHAT_MODELS_HTTP_"+modelsResponse.status);
+                    if(!endpointsResponse.ok)throw Error("CI_CHAT_ENDPOINTS_HTTP_"+endpointsResponse.status);
+                    const models=await modelsResponse.json();
+                    const endpoints=await endpointsResponse.json();
+                    const names=Object.keys(models||{});
+                    const choices=models?.BOTMODE_CI_From_UI||[];
+                    const idFound=Array.isArray(choices)&&choices.some(item =>
+                      (typeof item==="string"?item:item?.id||item?.name)==="botmode-ui-chat");
+                    const endpointKnown=!!endpoints?.BOTMODE_CI_From_UI ||
+                      !!endpoints?.custom?.find?.(item=>item?.name==="BOTMODE_CI_From_UI");
+                    return {idFound,endpointKnown,names};
+                  };
+                  let catalog;
+                  for(let attempt=0;attempt<12;attempt++){
+                    catalog=await inspectCatalog();
+                    if(catalog.idFound && catalog.endpointKnown)break;
+                    await new Promise(resolve=>setTimeout(resolve,400));
+                  }
+                  if(!catalog?.idFound){
+                    console.log("CI_CHAT_MODEL_KEYS="+JSON.stringify(catalog?.names.slice(0,24)||[]));
+                    throw Error("CI_CREATED_MODEL_MISSING_FROM_CHAT_CATALOG");
+                  }
+                  console.log("CI_CHAT_MODEL_CATALOG=PASS");
+                  if(!catalog?.endpointKnown)
+                    throw Error("CI_CREATED_ENDPOINT_MISSING_FROM_CHAT_CATALOG");
+                  console.log("CI_CHAT_ENDPOINT_CATALOG=PASS");
+                } finally { await browser.close(); }
+              })().catch(e => { console.error("CI_ADMIN_PANEL_BROWSER_FAIL="+e.message); process.exit(1); });
+            ' </tmp/botmode-ci-admin-auth.json
+
+      - name: Clean up only the disposable CI installation
+        if: always()
+        shell: bash
+        run: |
+          sudo env BOTMODE_HOST_PORT="$BOTMODE_HOST_PORT" ADMIN_PANEL_PORT="$ADMIN_PANEL_PORT" \
+            docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml \
+            --profile admin down --volumes --remove-orphans >/dev/null 2>&1 || true
+          sudo rm -f /tmp/botmode-ci-admin-auth.json /tmp/botmode-ci-admin-install.log
+          echo 'CI_DISPOSABLE_CLEANUP=PASS'
+
+      - name: Coverage boundary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '### BOT MODE Admin Provider authenticated integration'
+            echo 'Runtime API: immutable public v1.0.3 image; Compose and admin profile: exact PR revision.'
+            echo 'Verifies first-user ADMIN, non-admin rejection, real API config write/read, real Admin Panel browser login and configuration page.'
+            echo 'Verifies browser click-through provider creation and persistence, and authenticated chat API catalogs.'
+            echo 'Does not claim visual chat picker rendering, model inference, or exact-HEAD backend runtime integration.'
+            echo 'Uses fictional provider, no user keys, no model spending, disposable CI-only storage.'
+          } >> "$GITHUB_STEP_SUMMARY"

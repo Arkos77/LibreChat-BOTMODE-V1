@@ -1,11 +1,11 @@
 name: BOTMODE V1 Exact HEAD Production npm Audit
 
 on:
+  # Always audit production dependencies on the exact PR SHA, including
+  # integration/release candidates whose lockfiles did not change.
   pull_request:
-    paths:
-      - '.github/workflows/botmode-v1-pinned-npm-audit.yml'
-      - 'package-lock.json'
-      - 'package.json'
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -41,6 +41,14 @@ jobs:
           }));
           console.log('BOTMODE_PRODUCTION_NPM_AUDIT=' + JSON.stringify(p.metadata.vulnerabilities));
           console.log('BOTMODE_PRODUCTION_NPM_FINDINGS=' + JSON.stringify(list));
+          const severe = (p.metadata.vulnerabilities.critical || 0) +
+            (p.metadata.vulnerabilities.high || 0);
+          console.log('BOTMODE_NPM_PROD_HIGH_CRITICAL=' + severe);
+          if (severe > 0) {
+            console.error('BOTMODE_NPM_PRODUCTION_RELEASE_GATE=FAIL');
+            process.exit(1);
+          }
+          console.log('BOTMODE_NPM_PRODUCTION_RELEASE_GATE=PASS');
           JS
           test "${rc:-0}" -le 1
           echo 'BOTMODE_NPM_AUDIT_EVIDENCE=PASS'

@@ -660,6 +660,14 @@ export async function buildInlineMemoryTool({
     return null;
   }
 
+  // The caller supplies userId separately from the authenticated request.
+  // Fail closed if a delegated or replayed tool call attempts another user's
+  // memory partition, even when memory permissions would otherwise allow use.
+  const authenticatedUserId = req?.user?.id?.toString() ?? req?.user?._id?.toString();
+  if (!authenticatedUserId || authenticatedUserId !== userId?.toString()) {
+    return null;
+  }
+
   const memoryConfig = req?.config?.memory;
   const validKeys = memoryConfig?.validKeys as string[] | undefined;
   const memoryAgentId = getMemoryAgentId(agent);

@@ -80,12 +80,14 @@ cd LibreChat-BOTMODE-V1
 test "$(git rev-parse HEAD)" = \
   724afac023b4a47a49bba72895c7c2d15ad3e292
 
-# Installer l'image exacte, sans compiler LibreChat sur votre machine.
-./install.sh --lite --image \
+# Limiter l'API au PC local (indispensable avec le tag v1.0.3).
+BOTMODE_HOST_BIND_IP=127.0.0.1 ./install.sh --lite --image \
   ghcr.io/arkos77/librechat-botmode-v1@sha256:a09a07f21c2075b79ba132b831bb13d31a1f51b980000967a7e1191036811598
 ```
 
 L'installateur vérifie Docker/Compose, prépare le fichier local `.env`, génère les identifiants de base de données nécessaires sur une installation neuve, télécharge l'image et démarre les services.
+
+**Sécurité v1.0.3 :** ajoutez `BOTMODE_HOST_BIND_IP=127.0.0.1` au fichier `.env` avant un futur `./start.sh` pour garder l'accès local uniquement. Le tag v1.0.3 ne définit pas encore cette restriction par défaut ; le correctif est proposé pour la prochaine version, sans modifier la release existante.
 
 **Après le démarrage :**
 

@@ -83,7 +83,7 @@ const { PORT, HOST, ALLOW_SOCIAL_LOGIN, DISABLE_COMPRESSION, TRUST_PROXY } = pro
 /** Allow PORT=0 to be used for automatic free port assignment */
 const port = isNaN(Number(PORT)) ? 3080 : Number(PORT);
 const host = HOST || 'localhost';
-const trusted_proxy = Number(TRUST_PROXY) || 1;
+const trusted_proxy = TRUST_PROXY === '0' ? 0 : Number(TRUST_PROXY) || 1;
 
 /** Number of worker processes to spawn (simulating multiple pods) */
 const workers = Number(process.env.CLUSTER_WORKERS) || 4;
