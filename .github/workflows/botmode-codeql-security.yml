@@ -55,8 +55,8 @@ jobs:
         with:
           category: /language:javascript-typescript
 
-  inspect-integrated-pr169-codeql:
-    name: Read-only candidate CodeQL alert comparison (PR 169)
+  inspect-integrated-pr171-codeql:
+    name: Read-only candidate CodeQL alert comparison (PR 171)
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -69,8 +69,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          CANDIDATE_PR: '169'
-          EXPECTED_HEAD: cc9888371c7301b48e649a29de5dad7ccaa77937
+          CANDIDATE_PR: '171'
+          EXPECTED_HEAD: df881d27fad9940701470b1d853f9d0ae006c473
         run: |
           set -euo pipefail
           node <<'JS'
@@ -81,7 +81,7 @@ jobs:
               Authorization: 'Bearer ' + process.env.GITHUB_TOKEN,
               Accept: 'application/vnd.github+json',
               'X-GitHub-Api-Version': '2026-03-10',
-              'User-Agent': 'botmode-pr169-candidate-codeql-diagnostic',
+              'User-Agent': 'botmode-pr171-candidate-codeql-diagnostic',
             };
             async function get(path) {
               const response = await fetch('https://api.github.com/repos/' + repo + path, { headers });
@@ -149,4 +149,4 @@ jobs:
       - name: Document scope
         if: always()
         run: |
-          echo 'Read-only counts for PR #169 are diagnostics, not proof of exploitability or clearance. Compare CodeQL instances individually before public GO. No alert is dismissed.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Read-only counts for PR #171 are diagnostics, not proof of exploitability or clearance. Compare CodeQL instances individually before public GO. No alert is dismissed.' >> "$GITHUB_STEP_SUMMARY"
