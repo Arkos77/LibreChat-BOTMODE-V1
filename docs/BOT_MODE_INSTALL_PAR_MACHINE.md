@@ -4,7 +4,7 @@
 
 Ce guide concerne **une nouvelle installation**, pas la migration d'un LibreChat/BOT MODE existant. Les commandes de préparation de Docker ci-dessous ne doivent **pas** être exécutées sur un hôte où Docker et des volumes importants fonctionnent déjà : passez directement aux vérifications, puis à l'installation de BOT MODE. Sauvegardez et vérifiez la restauration de toute installation existante avant de changer quoi que ce soit.
 
-**Version figée :** [v1.0.3](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.3) ; commit `724afac023b4a47a49bba72895c7c2d15ad3e292` ; image Linux AMD64/ARM64 `ghcr.io/arkos77/librechat-botmode-v1@sha256:a09a07f21c2075b79ba132b831bb13d31a1f51b980000967a7e1191036811598`. Les alias Docker `stable` et `latest` ne sont **pas** les références de cette version.
+**Version figée :** [v1.0.4](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.4) ; commit `aface7a55ab9609392d0bb8e7e90553e3db2926c` ; image Linux AMD64/ARM64 `ghcr.io/arkos77/librechat-botmode-v1@sha256:c3d7caa1cf23158d4b2e6fabcc0d3f740507620805fcf254dbd721675b8350ff`. Les alias Docker `stable` et `latest` ne sont **pas** les références de cette version.
 
 ## Choisir son système
 
@@ -230,33 +230,33 @@ La quantité de RAM détectée est celle de l'environnement Linux WSL2 ; elle pe
 Sur une **nouvelle installation**, sans dossier BOT MODE préexistant :
 
 ```bash
-git clone --branch v1.0.3 --depth 1 \
+git clone --branch v1.0.4 --depth 1 \
   https://github.com/Arkos77/LibreChat-BOTMODE-V1.git
 
 cd LibreChat-BOTMODE-V1
 
 # Si cette vérification échoue, arrêtez-vous : ne lancez pas l'installateur.
 test "$(git rev-parse HEAD)" = \
-  724afac023b4a47a49bba72895c7c2d15ad3e292
+  aface7a55ab9609392d0bb8e7e90553e3db2926c
 ```
 
 **Mode automatique** : il choisit **Lite** si moins de **4 Gio de RAM** ou si le CPU x86_64 manque d'AVX ; **Full** autrement. Référencez systématiquement le digest validé :
 
 ```bash
 BOTMODE_HOST_BIND_IP=127.0.0.1 ./install.sh --image \
-  ghcr.io/arkos77/librechat-botmode-v1@sha256:a09a07f21c2075b79ba132b831bb13d31a1f51b980000967a7e1191036811598
+  ghcr.io/arkos77/librechat-botmode-v1@sha256:c3d7caa1cf23158d4b2e6fabcc0d3f740507620805fcf254dbd721675b8350ff
 ```
 
 Sur une petite machine, un Mac avec ressources Docker limitées ou une installation Windows WSL2 non encore qualifiée, utilisez **Lite explicitement** :
 
 ```bash
 BOTMODE_HOST_BIND_IP=127.0.0.1 ./install.sh --lite --image \
-  ghcr.io/arkos77/librechat-botmode-v1@sha256:a09a07f21c2075b79ba132b831bb13d31a1f51b980000967a7e1191036811598
+  ghcr.io/arkos77/librechat-botmode-v1@sha256:c3d7caa1cf23158d4b2e6fabcc0d3f740507620805fcf254dbd721675b8350ff
 ```
 
 Pour une machine Linux compatible et suffisamment dimensionnée, Full peut être demandé explicitement via `--full` ; le bootstrap **refuse Full** si le CPU x86_64 n'a pas AVX ou si la RAM détectée est inférieure à 4 Gio. Full inclut davantage de services locaux, ce qui exige des ressources supplémentaires.
 
-**Pourquoi `BOTMODE_HOST_BIND_IP=127.0.0.1` ?** Cette variable limite le port HTTP à l'hôte. **La release v1.0.3 (les commandes ci-dessus) conserve l'ancien défaut `0.0.0.0`** : gardez donc ce paramètre explicite, puis inscrivez `BOTMODE_HOST_BIND_IP=127.0.0.1` dans `.env` pour les redémarrages. **Sur les prochaines candidates de distribution**, le Compose BOT MODE se limitera par défaut à `127.0.0.1` pour l'API **et** le panneau d'administration Full (port 3000). Pour un accès réseau distant, choisissez explicitement `BOTMODE_HOST_BIND_IP` et, séparément, `BOTMODE_ADMIN_PANEL_BIND_IP`, seulement après avoir configuré TLS, un contrôle d'accès et les protections réseau adaptées. N'exposez jamais directement un service non sécurisé sur Internet.
+**Pourquoi `BOTMODE_HOST_BIND_IP=127.0.0.1` ?** La **v1.0.4** limite déjà par défaut l'API (port 3080) **et** le panneau d'administration Full (port 3000) à `127.0.0.1`. Garder cette valeur explicite dans `.env` rend l'intention vérifiable lors des redémarrages. Pour un accès distant, ne définissez `BOTMODE_HOST_BIND_IP` et `BOTMODE_ADMIN_PANEL_BIND_IP` qu'après configuration d'un proxy TLS et d'un contrôle d'accès. Réglez `TRUST_PROXY` sur le nombre de proxys réellement fiables (`0` en accès direct) et ne journalisez pas les paramètres OAuth `code`/`state` dans les logs du proxy.
 
 ### Premier démarrage et diagnostic
 
