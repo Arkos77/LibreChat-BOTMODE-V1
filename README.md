@@ -4,9 +4,9 @@
 
 **Ce n'est pas un nouveau moteur de chat :** BOT MODE s'intègre directement au runtime de [LibreChat](https://github.com/danny-avila/LibreChat), avec ses conversations, ses projets et son interface.
 
-**Version stable publiée : [v1.0.3](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.3) — 5 novembre 2026.** Source Git `724afac023b4a47a49bba72895c7c2d15ad3e292`, image Docker précompilée pour Linux AMD64 et ARM64. Le profil **Lite** vise notamment les Chromebooks sous Linux, les machines CPU-only et les petits environnements sans AVX.
+**Version stable publiée : [v1.0.4](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.4) — 7 novembre 2026.** Source Git `aface7a55ab9609392d0bb8e7e90553e3db2926c`, image Docker précompilée pour Linux AMD64 et ARM64. Le profil **Lite** vise notamment les Chromebooks sous Linux, les machines CPU-only et les petits environnements sans AVX.
 
-> **À retenir :** installer le tag Git `v1.0.3` et l'image correspondant au **digest exact** ci-dessous. Les alias Docker `stable` et `latest` peuvent encore pointer vers une ancienne version.
+> **À retenir :** installer le tag Git `v1.0.4` et l'image correspondant au **digest exact** ci-dessous. Les alias Docker `stable` et `latest` peuvent encore pointer vers une ancienne version.
 
 ## Pourquoi BOT MODE ?
 
@@ -45,7 +45,7 @@ Votre demande dans LibreChat
 
 **Choisissez votre système avant de copier les commandes :** [Chromebook ChromeOS / Crostini](docs/BOT_MODE_INSTALL_PAR_MACHINE.md#chromebook--chromeos-et-linux-crostini), [Ubuntu / Xubuntu](docs/BOT_MODE_INSTALL_PAR_MACHINE.md#ubuntu-ou-xubuntu--pc-linux-et-macbook-sous-linux), [Debian](docs/BOT_MODE_INSTALL_PAR_MACHINE.md#debian--autre-pc-linux), [Fedora](docs/BOT_MODE_INSTALL_PAR_MACHINE.md#fedora--autre-pc-linux), [macOS](docs/BOT_MODE_INSTALL_PAR_MACHINE.md#macos--mac-intel-ou-apple-silicon) ou [Windows / WSL2](docs/BOT_MODE_INSTALL_PAR_MACHINE.md#windows-1011--wsl2-et-docker-desktop).
 
-Le **[guide d'installation adapté à chaque machine](docs/BOT_MODE_INSTALL_PAR_MACHINE.md)** explique comment préparer Git, Docker et Compose v2, puis propose les commandes de la **v1.0.3** pour un ordinateur neuf. **L'installateur choisit Lite ou Full automatiquement** selon la mémoire et l'AVX sur x86_64 ; sur macOS/Windows, l'installation reste à qualifier sur matériel réel. Pour démarrer avec le profil Lite explicitement, utilisez les commandes ci-dessous.
+Le **[guide d'installation adapté à chaque machine](docs/BOT_MODE_INSTALL_PAR_MACHINE.md)** explique comment préparer Git, Docker et Compose v2, puis propose les commandes de la **v1.0.4** pour un ordinateur neuf. **L'installateur choisit Lite ou Full automatiquement** selon la mémoire et l'AVX sur x86_64 ; sur macOS/Windows, l'installation reste à qualifier sur matériel réel. Pour démarrer avec le profil Lite explicitement, utilisez les commandes ci-dessous.
 
 ## Installation rapide — nouvelle machine
 
@@ -66,28 +66,28 @@ docker info >/dev/null
 openssl version
 ```
 
-### Installer BOT MODE V1.0.3 en profil Lite
+### Installer BOT MODE V1.0.4 en profil Lite
 
 Sur une **installation neuve**, copiez les commandes suivantes :
 
 ```bash
-git clone --branch v1.0.3 --depth 1 \
+git clone --branch v1.0.4 --depth 1 \
   https://github.com/Arkos77/LibreChat-BOTMODE-V1.git
 
 cd LibreChat-BOTMODE-V1
 
 # Vérifier la révision publiée : la commande s'arrête en cas d'écart.
 test "$(git rev-parse HEAD)" = \
-  724afac023b4a47a49bba72895c7c2d15ad3e292
+  aface7a55ab9609392d0bb8e7e90553e3db2926c
 
-# Limiter l'API au PC local (indispensable avec le tag v1.0.3).
+# Conserver explicitement l'accès local (réglage par défaut en v1.0.4).
 BOTMODE_HOST_BIND_IP=127.0.0.1 ./install.sh --lite --image \
-  ghcr.io/arkos77/librechat-botmode-v1@sha256:a09a07f21c2075b79ba132b831bb13d31a1f51b980000967a7e1191036811598
+  ghcr.io/arkos77/librechat-botmode-v1@sha256:c3d7caa1cf23158d4b2e6fabcc0d3f740507620805fcf254dbd721675b8350ff
 ```
 
 L'installateur vérifie Docker/Compose, prépare le fichier local `.env`, génère les identifiants de base de données nécessaires sur une installation neuve, télécharge l'image et démarre les services.
 
-**Sécurité v1.0.3 :** ajoutez `BOTMODE_HOST_BIND_IP=127.0.0.1` au fichier `.env` avant un futur `./start.sh` pour garder l'accès local uniquement. Le tag v1.0.3 ne définit pas encore cette restriction par défaut ; le correctif est proposé pour la prochaine version, sans modifier la release existante.
+**Sécurité v1.0.4 :** l'API (port 3080) et le panneau d'administration Full (port 3000) écoutent sur `127.0.0.1` par défaut dans Docker Compose. Pour conserver un choix explicite lors des redémarrages, notez `BOTMODE_HOST_BIND_IP=127.0.0.1` dans `.env`. Un accès distant exige un proxy TLS, un contrôle d'accès et une configuration de `TRUST_PROXY` adaptée. Ne journalisez pas les paramètres OAuth `code`/`state` sur le frontal.
 
 **Après le démarrage :**
 
@@ -113,19 +113,19 @@ Le [guide complet d'installation](docs/BOT_MODE_INSTALL.md) couvre la configurat
 
 ## Image officielle et reproductibilité
 
-- **Code source :** [tag v1.0.3](https://github.com/Arkos77/LibreChat-BOTMODE-V1/tree/v1.0.3)
-- **Commit :** `724afac023b4a47a49bba72895c7c2d15ad3e292`
-- **Image :** `ghcr.io/arkos77/librechat-botmode-v1@sha256:a09a07f21c2075b79ba132b831bb13d31a1f51b980000967a7e1191036811598`
+- **Code source :** [tag v1.0.4](https://github.com/Arkos77/LibreChat-BOTMODE-V1/tree/v1.0.4)
+- **Commit :** `aface7a55ab9609392d0bb8e7e90553e3db2926c`
+- **Image :** `ghcr.io/arkos77/librechat-botmode-v1@sha256:c3d7caa1cf23158d4b2e6fabcc0d3f740507620805fcf254dbd721675b8350ff`
 - **Architectures :** Linux AMD64 / ARM64
-- **Preuves :** [construction et smoke de l'image](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/41952027930), [installation Lite et restauration sur environnement jetable](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/41955296403), [audit des secrets](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/41955300147).
+- **Preuves :** [image multiarchitecture, téléchargement public, smoke Lite et publication](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42321927636), [installation Lite et restauration MongoDB sur runner jetable](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42298001610), [audit npm et sécurité du conteneur](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42298001601).
 
-Cette version a également été déployée et contrôlée sur les instances de test et de production d'un Chromebook. Cela ne constitue pas une garantie de compatibilité avec chaque configuration.
+La **v1.0.4** a été vérifiée sur runners GitHub Linux AMD64/ARM64 et en profil Lite. Les essais sur Chromebook concernent notamment la release historique **v1.0.3** ; ils ne garantissent pas la compatibilité de chaque matériel.
 
 ## Modèles, coûts et sécurité
 
 - Le routage natif par défaut est prévu pour les **modèles explicitement gratuits** configurés dans OpenRouter. Aucun fallback payant automatique n'est autorisé par défaut. **Gratuit ne signifie pas accès illimité :** les fournisseurs imposent leurs propres conditions, disponibilités et quotas.
 - Aucune clé API personnelle n'est fournie ni attendue dans Git. Les fichiers `.env` locaux ne doivent jamais être commités.
-- Les contrôles automatisés de publication et de provenance de l'image ont réussi. **Cela ne vaut pas certification de sécurité exhaustive :** des alertes CodeQL et Dependabot sont encore en cours de qualification.
+- Les contrôles automatisés de publication et de provenance de l'image ont réussi. **Cela ne vaut pas certification de sécurité exhaustive :** les trois alertes CodeQL résiduelles de la candidate (#328, #330 et #63) restent ouvertes, avec mesures compensatoires et acceptation documentées dans [l'issue sécurité #154](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/154).
 - Pour signaler une faille, privilégiez un [signalement privé sur GitHub](https://github.com/Arkos77/LibreChat-BOTMODE-V1/security/advisories/new), sans publier de secrets ni de détails exploitables dans une issue.
 - **Licences :** dépôt sous MIT, avec des licences tierces distinctes pouvant imposer d'autres restrictions. Lire [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), notamment avant toute redistribution commerciale.
 
@@ -135,7 +135,7 @@ Cette version a également été déployée et contrôlée sur les instances de 
 - [Sauvegardes et retour arrière](docs/BOT_MODE_ROLLBACK.md)
 - [Méthode de publication publique](docs/BOT_MODE_PUBLIC_RELEASE.md)
 - [Risques de dépendances suivis](docs/BOTMODE_V1_NPM_RISK_DECISION_20261014.md)
-- [Release v1.0.3 et notes de version](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.3)
+- [Release v1.0.4 et notes de version](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.4)
 
 ## English summary
 

@@ -1,6 +1,6 @@
-# Installer BOT MODE V1.0.3 — guide officiel
+# Installer BOT MODE V1.0.4 — guide officiel
 
-**BOT MODE** ajoute à LibreChat un orchestrateur de missions et des spécialistes (Recherche, Analyse, Code, Documents, Rédaction), avec vérification Oracle indépendante et publication contrôlée par P6. La version publique à installer est **[v1.0.3](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.3)**.
+**BOT MODE** ajoute à LibreChat un orchestrateur de missions et des spécialistes (Recherche, Analyse, Code, Documents, Rédaction), avec vérification Oracle indépendante et publication contrôlée par P6. La version publique à installer est **[v1.0.4](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.4)**.
 
 Ce guide concerne **une nouvelle installation**. Une installation existante nécessite un inventaire et une sauvegarde préalables : voir [Sauvegarde et retour arrière](BOT_MODE_ROLLBACK.md).
 
@@ -30,19 +30,19 @@ Si `docker info` échoue, corriger l'accès au démon Docker **avant** de lancer
 
 | Élément | Référence |
 | --- | --- |
-| Tag Git | `v1.0.3` |
-| Commit complet | `724afac023b4a47a49bba72895c7c2d15ad3e292` |
-| Image Docker AMD64/ARM64 | `ghcr.io/arkos77/librechat-botmode-v1@sha256:a09a07f21c2075b79ba132b831bb13d31a1f51b980000967a7e1191036811598` |
-| Release officielle | [v1.0.3](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.3) |
+| Tag Git | `v1.0.4` |
+| Commit complet | `aface7a55ab9609392d0bb8e7e90553e3db2926c` |
+| Image Docker AMD64/ARM64 | `ghcr.io/arkos77/librechat-botmode-v1@sha256:c3d7caa1cf23158d4b2e6fabcc0d3f740507620805fcf254dbd721675b8350ff` |
+| Release officielle | [v1.0.4](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.4) |
 
 ```bash
-git clone --branch v1.0.3 --depth 1 \
+git clone --branch v1.0.4 --depth 1 \
   https://github.com/Arkos77/LibreChat-BOTMODE-V1.git
 
 cd LibreChat-BOTMODE-V1
 
 test "$(git rev-parse HEAD)" = \
-  724afac023b4a47a49bba72895c7c2d15ad3e292
+  aface7a55ab9609392d0bb8e7e90553e3db2926c
 ```
 
 La commande `test` ne produit rien si la révision est bonne et échoue si elle diffère. **Arrêtez l'installation en cas d'échec.**
@@ -51,7 +51,7 @@ La commande `test` ne produit rien si la révision est bonne et échoue si elle 
 
 ```bash
 BOTMODE_HOST_BIND_IP=127.0.0.1 ./install.sh --lite --image \
-  ghcr.io/arkos77/librechat-botmode-v1@sha256:a09a07f21c2075b79ba132b831bb13d31a1f51b980000967a7e1191036811598
+  ghcr.io/arkos77/librechat-botmode-v1@sha256:c3d7caa1cf23158d4b2e6fabcc0d3f740507620805fcf254dbd721675b8350ff
 ```
 
 L'installateur :
@@ -69,12 +69,12 @@ Le mode Lite réduit les services locaux, notamment sur les CPU x86_64 sans AVX.
 
 ```bash
 BOTMODE_HOST_BIND_IP=127.0.0.1 ./install.sh --full --image \
-  ghcr.io/arkos77/librechat-botmode-v1@sha256:a09a07f21c2075b79ba132b831bb13d31a1f51b980000967a7e1191036811598
+  ghcr.io/arkos77/librechat-botmode-v1@sha256:c3d7caa1cf23158d4b2e6fabcc0d3f740507620805fcf254dbd721675b8350ff
 ```
 
 Le profil Full active d'autres services ; ses intégrations externes ne sont pas toutes qualifiées sur du matériel réel. Pour un petit ordinateur, commencer par **Lite**.
 
-**Réseau et sécurité :** sur la **v1.0.3 publiée**, la variable `BOTMODE_HOST_BIND_IP=127.0.0.1` protège l'API lors de la commande ci-dessus ; inscrivez-la ensuite dans `.env` avant tout redémarrage. Le panneau d'administration du profil Full sur la v1.0.3 reste publié sur le port 3000 sans réglage distinct de l'adresse hôte : ne l'exposez pas à Internet, utilisez un pare-feu/réseau privé. **Pour la prochaine candidate**, le Compose restreint par défaut les ports 3080 et 3000 à `127.0.0.1`. Un accès distant nécessite une décision explicite, TLS, authentification et configuration réseau adaptée.
+**Réseau et sécurité v1.0.4 :** Docker Compose limite par défaut l'API (3080) et le panneau d'administration Full (3000) à `127.0.0.1`. La commande explicite ci-dessus permet de conserver ce réglage dans `.env` pour les redémarrages. L'accès distant exige un proxy TLS, une authentification, `TRUST_PROXY` adapté au nombre de proxys et des journaux d'accès ne révélant pas les paramètres OAuth `code`/`state`.
 
 ## 4. Configurer le fournisseur et démarrer la mission
 
@@ -109,7 +109,7 @@ Autres modes :
 ./install.sh --lite       # Choisit automatiquement le tag sha-<commit> correspondant à Git
 ```
 
-Le **tag Docker `sha-724afac023b4` existe** et correspond au digest de `v1.0.3`. Le paramètre explicite `--image ...@sha256:...` reste recommandé pour figer l'image exacte. Les alias `stable` et `latest` ne doivent pas servir de référence pour cette version.
+Le **tag Docker `sha-aface7a55ab9` existe** et correspond au digest de `v1.0.4`. Le paramètre explicite `--image ...@sha256:...` reste recommandé pour figer l'image exacte. Les alias `stable` et `latest` ne doivent pas servir de référence pour cette version.
 
 `./update.sh` **refuse** un checkout Git épinglé à un tag (HEAD détaché). Pour mettre à jour une installation existante, ne forcez pas la commande : suivre une procédure de sauvegarde et de changement de version explicite.
 
@@ -130,15 +130,15 @@ Voir [le plan de retour arrière](BOT_MODE_ROLLBACK.md).
 
 Les preuves directement rattachées au commit/source de la release :
 
-- [Image multiarchitecture et téléchargement public, tests Lite — PASS](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/41952027930).
-- [Installation Lite fraîche, vérification des scripts et restauration MongoDB — PASS](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/41955296403).
-- [Audit public de détection de secrets — PASS](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/41955300147).
+- [Image multiarchitecture publiée, pull public, API Lite et GitHub Release — PASS](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42321927636).
+- [Installation Lite fraîche, vérification des scripts et restauration MongoDB — PASS](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42298001610).
+- [Audits Git/secrets, dépendances et Docker — PASS](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42298001610).
 - Le moteur Oracle/P6 et l'affichage ont été validés sur une mission réelle à trois spécialistes. La dernière correction de formulation Oracle a été testée automatiquement et livrée dans l'image, sans nouvelle mission LLM après cette seule retouche.
 
-**À ne pas confondre avec une certification de sécurité intégrale :** des alertes CodeQL et Dependabot sur `main` sont toujours en cours de qualification. Les risques des composants tiers et leurs licences peuvent différer de la licence MIT du dépôt. Voir [décisions de risques](BOTMODE_V1_NPM_RISK_DECISION_20261014.md), [procédure de publication](BOT_MODE_PUBLIC_RELEASE.md) et [mentions de tiers](../THIRD_PARTY_NOTICES.md).
+**À ne pas confondre avec une certification de sécurité intégrale :** les alertes CodeQL #328, #330 (limitation OAuth) et #63 (callback GET) de la candidate restent ouvertes avec mesures compensatoires et acceptation encadrée dans [l'issue #154](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/154). Les risques des composants tiers et leurs licences peuvent différer de la licence MIT du dépôt. Voir [décisions de risques](BOTMODE_V1_NPM_RISK_DECISION_20261014.md), [procédure de publication](BOT_MODE_PUBLIC_RELEASE.md) et [mentions de tiers](../THIRD_PARTY_NOTICES.md).
 
 ## 8. Versions historiques
 
-Les anciens guides et preuves V1.0.0 / V1.0.1 / V1.0.2 documentent l'historique du projet, **pas l'installation recommandée aujourd'hui**. Pour une installation nouvelle, utiliser exclusivement le couple source **v1.0.3** et image par digest donné en haut de cette page.
+Les anciens guides et preuves V1.0.0 / V1.0.1 / V1.0.2 documentent l'historique du projet, **pas l'installation recommandée aujourd'hui**. Pour une installation nouvelle, utiliser exclusivement le couple source **v1.0.4** et image par digest donné en haut de cette page.
 
 Ce projet est un **fork communautaire de LibreChat**, et non la distribution officielle du projet LibreChat upstream.
