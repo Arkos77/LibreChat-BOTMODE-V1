@@ -40,8 +40,8 @@ const createWrapper = (generationCreatedAt: number | null, chatProjectId: string
       <RecoilRoot initializeState={initializeState}>
         <ChatContext.Provider
           value={{
-            ...chatContextValue,
-            conversation: { ...chatContextValue.conversation, chatProjectId },
+            ...chatContextValue!,
+            conversation: { ...chatContextValue!.conversation!, chatProjectId },
           }}
         >
           <ApprovalProvider>{children}</ApprovalProvider>
