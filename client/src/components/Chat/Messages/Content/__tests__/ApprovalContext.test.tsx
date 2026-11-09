@@ -26,7 +26,7 @@ const chatContextValue = {
   },
 } as unknown as React.ContextType<typeof ChatContext>;
 
-const createWrapper = (generationCreatedAt: number | null) =>
+const createWrapper = (generationCreatedAt: number | null, chatProjectId: string | null = null) =>
   function ResumeWrapper({ children }: { children: React.ReactNode }) {
     const initializeState = (snapshot: MutableSnapshot) => {
       if (generationCreatedAt != null) {
@@ -38,7 +38,7 @@ const createWrapper = (generationCreatedAt: number | null) =>
     };
     return (
       <RecoilRoot initializeState={initializeState}>
-        <ChatContext.Provider value={chatContextValue}>
+        <ChatContext.Provider value={{ ...chatContextValue, conversation: { ...chatContextValue.conversation, chatProjectId } }}>
           <ApprovalProvider>{children}</ApprovalProvider>
         </ChatContext.Provider>
       </RecoilRoot>
@@ -93,6 +93,47 @@ describe('useResumeSubmit', () => {
       result.current.resume.submitToolApproval('action-1');
     });
     expect(mockApprovalMutate).toHaveBeenCalledTimes(2);
+  });
+
+  test.each([
+    ['project-scoped', 'project-a'],
+    ['global', null],
+  ])('keeps %s project scope for approval and question resumes', (_label, chatProjectId) => {
+    const { result } = renderHook(
+      () => ({
+        approval: useApprovalContext(),
+        resume: useResumeSubmit(),
+      }),
+      { wrapper: createWrapper(1000, chatProjectId) },
+    );
+
+    act(() => {
+      result.current.approval.registerToolCall('action-1', 'call-1');
+      result.current.approval.setDecision('action-1', 'call-1', {
+        tool_call_id: 'call-1',
+        decision: 'approve',
+      });
+    });
+    act(() => {
+      result.current.resume.submitToolApproval('action-1');
+      result.current.resume.submitAskAnswer('ask-1', 'answer');
+    });
+    expect(mockApprovalMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conversation-1',
+        chatProjectId,
+        actionId: 'action-1',
+      }),
+      expect.any(Object),
+    );
+    expect(mockAskMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conversation-1',
+        chatProjectId,
+        actionId: 'ask-1',
+      }),
+      expect.any(Object),
+    );
   });
 
   test('retains a decision across a transient card unregister and re-register', () => {
