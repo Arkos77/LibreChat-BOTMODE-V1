@@ -67,6 +67,8 @@ export interface ResumeAgentFields {
   conversationId: string;
   /** Exact paused generation being resumed. */
   generationCreatedAt: number;
+  /** Original conversation project, including null for a global conversation. */
+  chatProjectId?: string | null;
   endpoint?: EModelEndpoint | string | null;
   endpointType?: EModelEndpoint | string | null;
   agent_id?: string | null;
