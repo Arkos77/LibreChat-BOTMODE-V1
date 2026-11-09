@@ -26,5 +26,17 @@ class ProvisioningSafety(unittest.TestCase):
         for operation in ('insertOne(', 'updateOne(', 'deleteMany(', 'drop('):
             self.assertNotIn(operation, script)
 
+
+    def test_recherche_official_sources_rule_is_documented_and_only_applied_on_explicit_seeding(self):
+        seed = (BASE / 'seed-default-specialists.js').read_text()
+        guide = (BASE.parents[1] / 'docs' / 'BOT_MODE_INSTALL.md').read_text()
+        for phrase in ('EXIGENCE DE SOURCE OFFICIELLE', 'source officielle pertinente', 'ne présente jamais Wikipédia'):
+            self.assertIn(phrase, seed)
+            self.assertIn(phrase, guide)
+        self.assertIn('${officialSourcePolicy}', seed)
+        self.assertIn("process.argv.includes('--apply')", seed)
+        self.assertIn('Never overwrite an agent', seed)
+        self.assertIn('interface native LibreChat', guide)
+
 if __name__ == '__main__':
     unittest.main()
