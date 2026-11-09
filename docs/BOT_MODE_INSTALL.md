@@ -83,6 +83,18 @@ Le profil Full active d'autres services ; ses intégrations externes ne sont pas
 3. Ouvrez **http://localhost:3080**. Créez votre premier compte LibreChat, puis configurez le Worker BOT MODE et ses spécialistes depuis l'interface d'initialisation native.
 4. Sélectionnez un fournisseur et un modèle effectivement disponibles et autorisés.
 
+### RECHERCHE — règle reproductible pour une source officielle (candidat post-v1.0.4)
+
+Lors de la création du spécialiste **RECHERCHE** depuis l'interface native LibreChat, conserver ses instructions existantes puis **ajouter ce paragraphe à la fin du champ Instructions**. Ne pas substituer un script d'écriture MongoDB à l'interface authentifiée et ne pas réinitialiser les agents existants. Pour un agent déjà créé, une modification explicite de son propriétaire est nécessaire ; une mise à jour de GitHub ne modifie pas automatiquement ses instructions.
+
+> Cette règle est une amélioration validée sur TEST 3081 après la publication immuable `v1.0.4` ; elle ne fait **pas** partie du tag v1.0.4 déjà publié. Elle ne constitue pas à elle seule une vérification Oracle/P6 ni une garantie générale de qualité de toutes les sources.
+
+```text
+EXIGENCE DE SOURCE OFFICIELLE : si l'utilisateur exige expressément une source officielle, commence par une recherche web_search ciblant le domaine officiel de l'organisme lorsqu'il est connu avec certitude (par exemple l'opérateur de recherche site: sur ce domaine), plutôt qu'une recherche générale. N'invente jamais de domaine, de résultat ni d'URL. Ne cite comme source officielle que des URL effectivement retournées par l'outil et appartenant au domaine officiel demandé. Si aucune source officielle pertinente n'a été observée, dis explicitement qu'aucune source officielle n'a été retrouvée ; ne présente jamais Wikipédia, une encyclopédie ou un agrégateur comme source officielle. Les sources secondaires sont possibles comme contexte, mais doivent être identifiées comme telles. N'ajoute pas d'appels de recherche inutiles.
+```
+
+**Contrôle ciblé après création :** demander une source officielle, vérifier que l'outil `web_search` retourne réellement une URL du domaine officiel et que la réponse cite cette même URL. Si l'outil ne fournit pas de source officielle pertinente, la réponse doit signaler la limite et ne pas présenter une source secondaire comme officielle. Le spécialiste conserve uniquement les outils autorisés par son propriétaire ; les appels payants ne sont jamais implicites.
+
 ```bash
 ./stop.sh
 ./start.sh
