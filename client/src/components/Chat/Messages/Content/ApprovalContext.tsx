@@ -338,6 +338,9 @@ export function useResumeSubmit() {
     return {
       conversationId,
       generationCreatedAt: activeGenerationCreatedAt,
+      // Keep the original project scope across human-approval / ask-answer resumes.
+      // The server rejects any resume that switches or drops an existing project.
+      chatProjectId: conversation?.chatProjectId ?? null,
       endpoint: conversation?.endpoint,
       endpointType: conversation?.endpointType,
       agent_id: conversation?.agent_id,
