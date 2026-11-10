@@ -667,3 +667,18 @@ Ces vérifications ont été ajoutées **avant toute exécution** de la V1.0.6. 
 ---
 
 **État à la rédaction :** FEUILLE DE ROUTE PRÊTE, AUCUNE CORRECTION EXECUTÉE. **Prochaine opération autorisée par la feuille : LOT 1 en lecture seule.**
+
+---
+
+## Checkpoint de qualification complémentaire — 10 novembre 2026 (preuves attachées au SHA)
+
+> Le présent état ne transforme **aucun** ancien PASS en résultat du futur tag de publication. Il décrit les contrôles terminés sur le SHA indiqué au moment de la mesure, sans prétendre qu'une release v1.0.6 existe déjà.
+
+- **Source candidate précédente** : `530a7d74764c3d892b7af2840355af0146c2eff5`, PR #180 DRAFT. **20 workflows SUCCESS, 2 SKIPPED, 1 Playwright E2E en cours** au checkpoint ; les suites Static Checks, Backend Unit Tests, Full RAG Native, Lite Current HEAD Release Preflight, contrat Mission/Oracle et CodeQL avaient PASS. Le dernier commit d'essai HITL HTTP `45f8dc2a29af609712e7fe6f83cee288c611965a` est un nouveau HEAD : ne pas déclarer ses 23 contrôles PASS avant les résultats effectifs.
+- **HITL** : une reprise HTTP déjà PASS dans `hitlCheckpoint.e2e.spec.js`. Deux reprises SDK avec `FakeChatModel` / Mongo jetable **PASS** sur `1c311223...` (run Backend Unit Tests #42845382258). Test supplémentaire **deux POST /agents/chat/resume et deux décisions successives** ajouté sur `45f8dc2...`, verdict **NON CONCLUANT tant que le job CI n'a pas terminé**. R5 réel de TEST 3081 reste FAIL historique ; une simulation réussie ne le corrige pas rétroactivement.
+- **Web Search** : Keenable Search/Fetch public HTTP 200 depuis TEST Mac, configuration native keyless `keenable/keenable/none` et tests de provenance PASS ; **mission complète réelle outil → spécialiste → Oracle/P6 avec fournisseur externe NON CONCLUANTE**, distincte du fixture du navigateur synthétique.
+- **Sécurité** : sur `main`, inventaire agrégé du run #42847558708 **307 OPEN (134 HIGH, 173 MEDIUM)** ; pas de clôture automatique. Triage exact dans #154 ; `admin/config.ts` contient déjà validations de propriétés sensibles et suites négatives. `npm audit --omit=dev` sur SHA `530a7d7...` : **0 constat** dans les cinq niveaux, run #42847559129 ; ce résultat n'annule pas CodeQL/Dependabot ou les décisions #109 / #37.
+- **Publisher générique** : `.github/workflows/tag-images.yml` exclut déjà `v1.0.6` ; la PR ajoute une garde **ciblée au dépôt BOT MODE** dans `.github/workflows/dev-images.yml` pour que le merge sur `main` ne publie pas automatiquement des images LibreChat génériques sur GHCR/Docker Hub. Cette garde doit elle-même PASS sur le nouveau HEAD.
+- **Préparation de distribution** : README / guides continuent de donner **la release officielle v1.0.5** comme repli, en rappelant que v1.0.6 est candidate ; **aucun digest v1.0.6 inventé**, tag/manifest/promotions et GH Release interdits avant qualification et GO distinct. Les notes de publication devront fournir SHA source tag et digest multiarchitecture réellement vérifiés.
+
+**Verdicts provisoires** : L1 inventaire essentiellement documenté (pas de clôture globale certifiée), L2 technique largement PASS dans son périmètre synthétique mais HITL/Web Search réels restant NON CONCLUANTS, L3 sécurité **NO-GO** tant que les alertes HIGH pertinentes ne sont pas traitées/acceptées par une décision nouvelle. Pas de modification des conteneurs 3080/3081, Mac, Chromebook, JARVIS ou PangaraBOT.

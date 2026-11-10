@@ -6,6 +6,9 @@ Ce guide concerne **une nouvelle installation**, pas la migration d'un LibreChat
 
 **Version figée :** [v1.0.5](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.5) ; commit `0973da6cc8cfc5b35616e26132d0945fff147ebe` ; image Linux AMD64/ARM64 `ghcr.io/arkos77/librechat-botmode-v1@sha256:27708c107dc434a59a2e6a5fe4e3501ae5f6c13bfdb064464932c88a0c2a4c80`. Les alias Docker `stable` et `latest` ne sont **pas** les références de cette version.
 
+> **V1.0.6 en cours de qualification (non publiée à la préparation de ce guide).** Ces commandes conservent le couple **v1.0.5** vérifié. Une fois v1.0.6 publiée avec accord explicite, prenez le **tag Git**, le **SHA source** et le **digest GHCR AMD64/ARM64** dans ses notes officielles, puis installez ce couple exact sur un hôte neuf uniquement. Le changement de version d'un Chromebook/Mac déjà en service exige inventaire, sauvegarde et décision de déploiement distincte. Ne mélangez jamais la configuration source v1.0.5 avec une image v1.0.6.
+
+
 ## Choisir son système
 
 | Système | Préparation de Docker | Profil conseillé | Niveau de qualification BOT MODE |

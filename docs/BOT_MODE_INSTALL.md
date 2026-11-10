@@ -2,6 +2,9 @@
 
 **BOT MODE** ajoute à LibreChat un orchestrateur de missions et des spécialistes (Recherche, Analyse, Code, Documents, Rédaction), avec vérification Oracle indépendante et publication contrôlée par P6. La version publique à installer est **[v1.0.5](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.5)**.
 
+> **Préparation V1.0.6 :** ce guide conserve les commandes **v1.0.5 actuellement publiées** afin de ne pas présenter un digest v1.0.6 imaginaire. Après la publication officielle, la GitHub Release v1.0.6 fournira le SHA Git de son tag et le digest OCI Linux AMD64/ARM64 à copier. **Le tag source et l'image doivent être de la même version.** Avant cette publication, ne pas lancer `git clone --branch v1.0.6` ni installer une image candidate. Ni une fusion GitHub ni la réussite des tests unitaires ne sont une autorisation de déploiement. L'usage Lite reste local, avec MongoDB 4.4 non maintenu ; Full nécessite AVX (x86_64), au moins 4 Gio de RAM et la validation RAG/permissions.
+
+
 Ce guide concerne **une nouvelle installation**. Une installation existante nécessite un inventaire et une sauvegarde préalables : voir [Sauvegarde et retour arrière](BOT_MODE_ROLLBACK.md).
 
 > **Vous installez BOT MODE sur une machine précise ?** Commencez par le **[guide d'installation par système](BOT_MODE_INSTALL_PAR_MACHINE.md)** : Chromebook/Crostini, Ubuntu/Xubuntu, Debian, Fedora, macOS ou Windows/WSL2. Il détaille la préparation de Docker et la sélection automatique Lite/Full. Cette page décrit ensuite le fonctionnement et les vérifications de BOT MODE.

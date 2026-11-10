@@ -8,6 +8,9 @@
 
 > **À retenir :** installer le tag Git `v1.0.5` et l'image correspondant au **digest exact** ci-dessous. Les alias Docker `stable` et `latest` peuvent encore pointer vers une ancienne version.
 
+> **V1.0.6 — préparation de release (PR #180, non publiée à ce checkpoint).** Les commandes v1.0.5 ci-dessous restent le **repli officiel**. Pour une nouvelle installation v1.0.6 après publication, utilisez son **tag Git exact** et l'**image GHCR par digest** indiqués dans ses notes de release, jamais un mélange entre versions. La qualification HITL multi-reprise réelle, Web Search de mission et les alertes CodeQL restent soumises aux portes de la [feuille maître V1.0.6](docs/BOTMODE_V106_FEUILLE_DE_ROUTE_MAITRE_20261110.md). Ne lancez aucune mise à jour de machine existante sans sauvegarde et GO séparé.
+
+
 ## Pourquoi BOT MODE ?
 
 Au lieu d'attendre qu'un seul agent accomplisse toutes les étapes, BOT MODE structure les missions :
