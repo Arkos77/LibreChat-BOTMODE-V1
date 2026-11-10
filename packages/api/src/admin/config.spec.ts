@@ -38,6 +38,13 @@ describe('isValidFieldPath', () => {
     expect(isValidFieldPath('prototype.a')).toBe(false);
   });
 
+  it('rejects inherited Object.prototype keys in direct and nested paths', () => {
+    expect(isValidFieldPath('toString')).toBe(false);
+    expect(isValidFieldPath('interface.toString')).toBe(false);
+    expect(isValidFieldPath('interface.valueOf.enabled')).toBe(false);
+    expect(isValidFieldPath('interface.hasOwnProperty')).toBe(false);
+  });
+
   it('allows segments containing but not matching reserved words', () => {
     expect(isValidFieldPath('constructorName')).toBe(true);
     expect(isValidFieldPath('prototypeChain')).toBe(true);
