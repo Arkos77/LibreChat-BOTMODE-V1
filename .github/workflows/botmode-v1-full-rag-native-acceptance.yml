@@ -63,10 +63,10 @@ jobs:
           set -euo pipefail
           sudo ./install.sh --full --no-pull --no-start --image "$BOTMODE_IMAGE" >/dev/null
           echo "MEILI_MASTER_KEY=$(openssl rand -hex 24)" | sudo tee -a .env >/dev/null
-          # Diagnostic: both independent Full services must verify the SAME
-          # JWT. Without an explicit shared value API bootstraps one privately
-          # inside /app/data/.env.temp while rag_api reads .env.
-          echo "JWT_SECRET=$(openssl rand -hex 32)" | sudo tee -a .env >/dev/null
+          # Fresh Full bootstrap already generates durable shared JWTs.
+          # Do not append a second different JWT_SECRET over the installed one.
+          sudo awk -F= '/^JWT_SECRET=/{last=$2} END {if(length(last)<32) exit 1}' .env
+          echo 'CI_FULL_RAG_SHARED_JWT_BOOTSTRAP=PASS'
           # Lite RAG requires an embeddings backend. Only a CI-local network
           # provider is permitted; never send requests to paid OpenAI.
           printf '%s\n' \
@@ -105,7 +105,10 @@ jobs:
             if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then ready=1; break; fi
             sleep 3
           done
-          test "$ready" = 1
+          if [ "$ready" != 1 ]; then
+            echo 'CI_FULL_API_HOST_HTTP_TIMEOUT=FAIL'
+            exit 1
+          fi
           sudo -E docker compose -f docker-compose.botmode.yml exec -T vectordb sh -ec 'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT 1"' | grep -q 1
           echo 'CI_FULL_RAG_REAL_API_PG_UP=PASS'
 
@@ -126,6 +129,18 @@ jobs:
               docker inspect -f 'CI_CONTAINER={{.Name}} STATE={{.State.Status}} EXIT={{.State.ExitCode}} OOM={{.State.OOMKilled}} RESTARTING={{.State.Restarting}}' "$cid" || true
             fi
           done
+          echo 'CI_FULL_API_BIND_DIAGNOSTIC_BEGIN'
+          sudo -E docker compose -f docker-compose.botmode.yml port api 3080 || true
+          sudo -E docker compose -f docker-compose.botmode.yml config --format json |
+            jq -cr '.services.api.ports // [] | .[] | {published,target,host_ip}' || true
+          curl --noproxy '*' -sS --max-time 5 -o /dev/null -w 'CI_FULL_HOST_HTTP_STATUS=%{http_code}\\n' http://127.0.0.1:3090/api/config || true
+          sudo -E docker compose -f docker-compose.botmode.yml exec -T api node -e '
+            const http=require("http");
+            http.get("http://127.0.0.1:3080/api/config",r=>{
+              console.log("CI_FULL_INTERNAL_HTTP_STATUS="+r.statusCode); r.resume();
+            }).on("error",e=>console.log("CI_FULL_INTERNAL_HTTP_ERROR="+e.code));
+            setTimeout(()=>process.exit(0),6000);' || true
+          echo 'CI_FULL_API_BIND_DIAGNOSTIC_END'
           # Only on this synthetic ephemeral CI runner: no personal data or live API keys.
           # Restrict to bounded error-class logs; redact commonplace credential patterns.
           sudo -E docker compose -f docker-compose.botmode.yml logs --no-color --tail 120 api rag_api mongodb 2>&1 |
