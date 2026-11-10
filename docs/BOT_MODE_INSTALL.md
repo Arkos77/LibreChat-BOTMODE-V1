@@ -1,4 +1,4 @@
-# Installer BOT MODE V1.0.4 — guide officiel
+# Installer BOT MODE V1.0.5 — guide officiel
 
 **BOT MODE** ajoute à LibreChat un orchestrateur de missions et des spécialistes (Recherche, Analyse, Code, Documents, Rédaction), avec vérification Oracle indépendante et publication contrôlée par P6. La version publique à installer est **[v1.0.5](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.5)**.
 
