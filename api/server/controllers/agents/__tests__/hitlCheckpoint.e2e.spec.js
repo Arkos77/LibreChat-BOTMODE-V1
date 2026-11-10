@@ -482,13 +482,15 @@ describe('HITL checkpoint lifecycle (full wiring)', () => {
       ResumeAgentController(req, res, next, initializeClient, jest.fn()),
     );
 
-    const approveFirst = await request(app).post('/api/agents/chat/resume').send({
-      conversationId,
-      actionId: firstAction.actionId,
-      agent_id: 'agent-e2e',
-      endpoint: 'agents',
-      decisions: [{ tool_call_id: 'tc_http_1', decision: 'approve' }],
-    });
+    const approveFirst = await request(app)
+      .post('/api/agents/chat/resume')
+      .send({
+        conversationId,
+        actionId: firstAction.actionId,
+        agent_id: 'agent-e2e',
+        endpoint: 'agents',
+        decisions: [{ tool_call_id: 'tc_http_1', decision: 'approve' }],
+      });
     expect(approveFirst.status).toBe(200);
     expect(approveFirst.body.status).toBe('resuming');
 
@@ -505,13 +507,15 @@ describe('HITL checkpoint lifecycle (full wiring)', () => {
     expect(secondAction?.actionId).not.toBe(firstAction.actionId);
     expect(toolExecutions).toBe(1);
 
-    const approveSecond = await request(app).post('/api/agents/chat/resume').send({
-      conversationId,
-      actionId: secondAction.actionId,
-      agent_id: 'agent-e2e',
-      endpoint: 'agents',
-      decisions: [{ tool_call_id: 'tc_http_2', decision: 'approve' }],
-    });
+    const approveSecond = await request(app)
+      .post('/api/agents/chat/resume')
+      .send({
+        conversationId,
+        actionId: secondAction.actionId,
+        agent_id: 'agent-e2e',
+        endpoint: 'agents',
+        decisions: [{ tool_call_id: 'tc_http_2', decision: 'approve' }],
+      });
     expect(approveSecond.status).toBe(200);
     expect(approveSecond.body.status).toBe('resuming');
     await waitFor(async () => {
