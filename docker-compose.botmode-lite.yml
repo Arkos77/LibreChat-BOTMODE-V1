@@ -1,40 +1,12 @@
 services:
   api:
-    depends_on:
-      mongodb:
-        condition: service_started
-        required: true
-      rag_api:
-        condition: service_started
-        required: false
-      redis:
-        condition: service_healthy
-        required: true
     environment:
       - MEILI_HOST=
       - RAG_API_URL=
       - SCHEDULES_SINGLE_PROCESS=true
-      - USE_REDIS=true
-      - USE_REDIS_STREAMS=true
-      - REDIS_URI=redis://redis:6379
-      - STREAM_KEEP_COMPLETED_JOBS=true
 
   mongodb:
     image: mongo:4.4.29
-
-  # Lightweight internal-only store required for durable mission/P6 state.
-  redis:
-    image: redis:7-alpine
-    restart: always
-    mem_limit: 160m
-    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
-    volumes:
-      - botmode-redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 12
 
   # Optional on-demand admin UI; excluded from the default Lite startup.
   # Enable explicitly with --profile admin and a session secret.
@@ -50,5 +22,3 @@ services:
   rag_api:
     profiles: ["full"]
 
-volumes:
-  botmode-redis-data:
