@@ -1,6 +1,42 @@
 # BOT MODE V1 — décision de périmètre et critères de publication
 
-Date : 13 octobre 2026. Statut : **RELEASE NO-GO** jusqu'à levée explicite des réserves.
+Date initiale : 13 octobre 2026 ; état courant en tête : 10 novembre 2026. Statut : **RELEASE NO-GO** jusqu'à levée explicite des réserves.
+
+## V1.0.6 — point de décision au 10 novembre 2026 (PR #180)
+
+**CANDIDATE TECHNIQUE VALIDÉE, RELEASE NON AUTORISÉE.** La version stable publique est toujours **v1.0.5**. La [PR #180](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/180) reste **DRAFT, non fusionnée**. La source qualifiée avant ce complément documentaire est `cec7497ca0978d99702bf8d121f192de66d941e3` : **23 workflows SUCCESS, 2 SKIPPED conditionnels, 0 FAILURE**. *Ce document met à jour la source ; son commit documentaire successeur devra avoir son propre verdict CI avant toute décision finale.*
+
+### Périmètres prouvés et réserves
+
+| Contrat | Verdict actuel | Preuve / limite |
+| --- | --- | --- |
+| Code et tests candidate (Backend, statiques, Playwright, intégration) | **PASS** sur `cec7497...` | [PR #180](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/180) |
+| Lite installation neuve / image conservée après vrai redémarrage | **PASS runner jetable** | [Préflight GitHub Actions #42878161505](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42878161505) |
+| Full RAG natif, pgvector, isolation et embargo coût | **PASS tests spécifiques runner** | [Full RAG #42878161960](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42878161960) ; ne pas inférer un déploiement Full sur Chromebook/Mac anciens |
+| Missions Worker/Oracle/P6 avec modèles synthétiques | **PASS contrat CI**, fournisseur externe non démontré sur candidate | [Contrat #42878162521](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42878162521) |
+| HITL deux approbations HTTP, checkpoint Mongo et exécution unique | **PASS test HTTP simulé** | [Backend #42878162266](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42878162266), `hitlCheckpoint.e2e.spec.js` ; **R5 réel du Mac TEST 3081 a FAIL**, ne pas le rebaptiser PASS |
+| RECHERCHE + `web_search` Keyless et Playwright | **Configuration / disponibilité locale partielles PASS ; mission réelle NON CONCLUANTE** | Six agents et modèle `openrouter/free` réellement présents sur TEST Mac 3081 ; pas de preuve d'un outil navigateur réellement invoqué → Oracle/P6 sur OCI v1.0.6 |
+| Alertes CodeQL propres à la vue PR | **2 HIGH ouvertes à arbitrer** | #331 et #332 `js/missing-rate-limiting` ; les routes MCP OAuth ont `requireJwtAuth` puis `mcpOAuthPollLimiter` avec tests 429/Retry-After sur les deux routes. Pas de dismissal automatique |
+| Dette CodeQL historique sur `main` | **307 OPEN (134 HIGH / 173 MEDIUM), triage partiel** | [Issue #154](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/154) ; comptes distincts par ref, pas la preuve de 307 défauts nouveaux introduits par cette PR |
+| Sauvegardes Mac/Chromebook v1.0.5 | **Présence et intégrité gzip PASS ; restauration réelle/multi-volumes NON CONCLUANTE** | Archives PROD 3080 du 10/11 retrouvées et contrôlées sans lire les secrets ; aucune migration autorisée |
+| Exposition locale | **Non conforme à localhost strict sur trois points d'écoute existants** | Mac PROD 3080 `0.0.0.0`, Chromebook PROD/TEST 3080/3081 `0.0.0.0` et `[::]` ; accès public non démontré, aucun changement sans fenêtre de maintenance |
+| Référence image v1.0.6 publiable AMD64 + ARM64 | **NON CONCLUANTE** | Aucun digest GHCR candidat public ni tag v1.0.6 inventé ; builds CI non équivalents à publication |
+| Droit de publier et de mettre à jour les machines | **NON ACQUIS** | GO humain de publication **séparé** du GO de déploiement ; aucun GO implicite à partir d'un « ok, continue » |
+
+### Dernières portes, sans empiler
+
+1. **L1** : formaliser les risques d'exploitation des installations (MongoDB 4.4 hors support, trois binds non loopback, sauvegardes multi-volumes) sans intervenir sur les machines stables ; vérifier les seuls critères V1 vraiment obligatoires.
+2. **L2** : véritable réception HITL / recherche native / Oracle-P6 **sur une image candidate identique au code livré**, sous session et permissions autorisées ; à défaut, délimiter explicitement la fonctionnalité non démontrée et décider si elle est hors promesse V1. Ne pas présenter le test simulé comme une preuve du fournisseur externe.
+3. **L3** : trier les risques HIGH pertinents à la distribution (et disposer #331–#332 sur preuve de code et test) ; réexaminer #109 et #37 à l'échéance 16 novembre ; contrôler secrets, licences, support Lite/Full et préparer les notes et artefacts exacts.
+4. **Avant release** : obtenir **GO de publication explicite**, construire/vérifier la même image multiarch candidate par digest, contrôle du pull anonyme, puis seulement tag Git et GitHub Release. Déploiement local, s'il est demandé, exige une autorisation **distincte**.
+
+**Verdict de sortie : `L1=PARTIEL / L2=CI PASS, RÉEL NON CONCLUANT / L3=PARTIEL / RELEASE=NO-GO`.** Aucun secret copié dans ce document ; aucun paiement, merge, tag, publication ou déploiement.
+
+**V2 privée** : [issue #181](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/181), uniquement **après** clôture de la V1.0.6. Les travaux V2 ne bloquent pas cette release.
+
+---
+
+
 
 ## Gates vérifiés sur la candidate
 
