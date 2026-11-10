@@ -976,8 +976,16 @@ jobs:
               checkbox.wait_for(timeout=15000)
               manual_name=checkbox.locator('xpath=..').inner_text().strip()
               checkbox.check()
-              launch=page.locator('section').filter(has=selector).last.locator('button').first
-              assert launch.is_enabled(), 'CI_BROWSER_MANUAL_LAUNCH_DISABLED'
+              panel=page.locator('section').filter(has=selector).last
+              launch=panel.locator('button').first
+              # A newly created project has no objective, even if the previous
+              # automatic-mode project had one. Preserve the genuine UI guard.
+              assert launch.is_disabled(), 'CI_BROWSER_MANUAL_EMPTY_OBJECTIVE_SHOULD_BLOCK'
+              panel.locator('textarea[id^="botmode-objective-"]').first.fill(
+                  'Analyse les sources officielles disponibles, vérifie les faits avec le spécialiste choisi et rédige une réponse sourcée en français.'
+              )
+              expect(launch).to_be_enabled(timeout=20000)
+              print('CI_BROWSER_MANUAL_OBJECTIVE_GATE=PASS',flush=True)
               launch.click()
               launched('manual')
               print('CI_BROWSER_REAL_OCI_PROJECT_AGENT_MODES=PASS',flush=True)
