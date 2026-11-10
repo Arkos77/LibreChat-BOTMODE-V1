@@ -103,6 +103,8 @@ EXIGENCE DE SOURCE OFFICIELLE : si l'utilisateur exige expressément une source 
 ./doctor.sh --lite
 ```
 
+**Recherche Web de la candidate v1.0.6 (non encore publiée) :** la configuration prévue utilise **Keenable** pour la recherche et l'extraction de pages, avec `rerankerType: none`. Aucune clé Serper, Firecrawl, Tavily ni abonnement SearXNG local n'est nécessaire pour ce fonctionnement par défaut. Les requêtes et URL consultées sont transmises au prestataire Keenable ; ses points d'accès publics sont limités en fréquence et peuvent être indisponibles. Le modèle conversationnel reste distinct et doit être configuré ; l'outil `web_search` doit être autorisé dans l'agent RECHERCHE. La preuve HTTP anonyme Search+Fetch ne suffit pas, seule, à certifier une mission native complète. Cette nouveauté **ne s'applique pas à la release stable v1.0.5**. Voir la configuration officielle LibreChat : https://www.librechat.ai/docs/configuration/librechat_yaml/object_structure/web_search .
+
 **Modèles et coût :** le routage natif par défaut privilégie des modèles OpenRouter **explicitement gratuits** ; il ne déclenche pas de fallback payant sans autorisation. Une clé/fournisseur valide reste nécessaire, et la disponibilité ainsi que les quotas des modèles gratuits peuvent varier.
 
 **Contrôle de la chaîne :** demande utilisateur → Recherche → Analyse → Synthèse → Oracle → P6 → réponse. Un test réel de cette chaîne à trois étapes a été validé sur le Chromebook ; il ne constitue pas une preuve que toutes les intégrations optionnelles sont actives.

@@ -877,6 +877,14 @@ jobs:
                       except Exception:
                           admission_replies.append({'status':response.status})
               page.on('response',capture_reply)
+              # Production intentionally refuses a launch without a specific
+              # objective; the original CI forgot to type one.
+              assert launch.is_disabled(), 'CI_BROWSER_EMPTY_OBJECTIVE_SHOULD_BLOCK'
+              objective=panel.locator('textarea[id^="botmode-objective-"]').first
+              objective.fill('Recherche les sources officielles de la Déclaration universelle des droits de l’homme et rédige une synthèse en français avec les références vérifiées.')
+              from playwright.sync_api import expect
+              expect(launch).to_be_enabled(timeout=20000)
+              print('CI_BROWSER_OBJECTIVE_GATE=PASS',flush=True)
               launch.click()
               launched('auto')
               # Require an actual browser-originated backend admission, not

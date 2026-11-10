@@ -8,6 +8,8 @@ on:
       - 'api/server/middleware/limiters/mcpOAuthLimiter.integration.spec.js'
       - 'api/server/middleware/limiters/mcpOAuthLimiter.spec.js'
       - 'packages/api/src/agents/orchestrator/**'
+      - 'api/server/services/nativeResearchWebSearch.js'
+      - 'librechat.yaml'
 
 permissions:
   contents: read
@@ -68,6 +70,23 @@ jobs:
             server/middleware/limiters/mcpOAuthLimiter.spec.js \
             server/routes/mcpOAuthFlowAccess.spec.js
           echo 'BOTMODE_MCP_OAUTH_THROTTLE_AND_FLOW_GUARDS=PASS'
+      - name: Verify keyless Web Search default and native source-receipt contract
+        run: |
+          node - <<'NODE'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const cfg = JSON.parse(fs.readFileSync('librechat.yaml', 'utf8'));
+          assert.equal(cfg.webSearch.searchProvider, 'keenable');
+          assert.equal(cfg.webSearch.scraperProvider, 'keenable');
+          assert.equal(cfg.webSearch.rerankerType, 'none');
+          assert.ok(cfg.endpoints.agents.capabilities.includes('web_search'));
+          assert.equal(cfg.webSearch.keenableSearchOptions.maxResults, 8);
+          assert.equal(cfg.webSearch.keenableScraperOptions.timeout, 15000);
+          console.log('BOTMODE_KEYLESS_WEB_SEARCH_DEFAULT=PASS');
+          NODE
+          cd api
+          npx jest --ci --runInBand --coverage=false --runTestsByPath server/services/nativeResearchWebSearch.spec.js
+          echo 'BOTMODE_WEB_SEARCH_SOURCE_RECEIPT_GUARDS=PASS'
       - name: Declare bounded evidence
         if: always()
         run: |
