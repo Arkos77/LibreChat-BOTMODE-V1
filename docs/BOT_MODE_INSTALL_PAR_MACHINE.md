@@ -1,4 +1,4 @@
-# BOT MODE V1.0.4 — installation selon votre machine
+# BOT MODE V1.0.5 — installation selon votre machine
 
 **Choisissez votre système, préparez Docker, puis installez une seule fois BOT MODE.** L'installateur natif détecte le système, la mémoire et l'AVX sur x86_64, et choisit automatiquement le profil **Lite** ou **Full**. Il reste possible de forcer `--lite` ou `--full`.
 
