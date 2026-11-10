@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/botmode-v1-full-rag-native-acceptance.yml'
+      - 'docker-compose.botmode.yml'
+      - 'scripts/botmode/bootstrap.sh'
       - 'scripts/botmode/ci-full-rag-native-acceptance.py'
       - 'scripts/botmode/ci-mock-embeddings.js'
   workflow_dispatch:
@@ -117,6 +119,15 @@ jobs:
           fi
           sudo -E docker compose -f docker-compose.botmode.yml exec -T vectordb sh -ec 'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT 1"' | grep -q 1
           echo 'CI_FULL_RAG_REAL_API_PG_UP=PASS'
+          # Full reuses the existing Lite durable AOF Redis store.
+          test "$(sudo -E docker compose -f docker-compose.botmode.yml exec -T redis redis-cli ping | tr -d '\\r')" = PONG
+          test "$(sudo -E docker compose -f docker-compose.botmode.yml exec -T redis redis-cli --raw CONFIG GET appendonly | tail -n 1 | tr -d '\\r')" = yes
+          sudo -E docker compose -f docker-compose.botmode.yml exec -T api node -e '
+            if (process.env.USE_REDIS !== "true" ||
+                process.env.USE_REDIS_STREAMS !== "true" ||
+                process.env.REDIS_URI !== "redis://redis:6379") process.exit(1);
+          '
+          echo 'CI_FULL_REDIS_DURABLE_CONFIG_AND_CONNECTIVITY=PASS'
 
       - name: Real embed, durable pgvector, native graph, owner isolation and delete
         shell: bash
