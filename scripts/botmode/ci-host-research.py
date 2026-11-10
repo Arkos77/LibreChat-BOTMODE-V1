@@ -314,7 +314,7 @@ def main():
         env_path.chmod(0o640)
         run(['sudo', 'chown', f'1000:{os.getgid()}', str(env_path)])
         (directory / 'qualification.yml').write_text(json.dumps(compose_override(real, fallback)))
-        env = {**os.environ, 'BOTMODE_IMAGE': image, 'BOTMODE_HOST_PORT': '127.0.0.1:3090', **values}
+        env = {**os.environ, 'BOTMODE_IMAGE': image, 'BOTMODE_HOST_PORT': '3090', **values}
         for key in ('PROXY', 'HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy'):
             env[key] = ''
         env['NO_PROXY'] = env['no_proxy'] = 'localhost,127.0.0.1,api,mongodb,redis,fixture'
