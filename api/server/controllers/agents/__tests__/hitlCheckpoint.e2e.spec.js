@@ -382,6 +382,149 @@ describe('HITL checkpoint lifecycle (full wiring)', () => {
     expect((await checkpointCounts(conversationId)).checkpoints).toBe(0);
   });
 
+  test('two consecutive HTTP approvals resume one generation without duplicate tool execution', async () => {
+    const conversationId = `e2e-http-double-${Date.now()}`;
+    const responseMessageId = 'resp-http-double';
+    const job = await GenerationJobManager.createJob(conversationId, USER_ID, conversationId, {
+      initialMetadata: { generationProtocolVersion: 2 },
+    });
+    const config = runConfig(conversationId, job.metadata.checkpointNamespace);
+    const initial = await buildHitlRun({
+      saver,
+      conversationId,
+      responses: ['Requesting tool one.'],
+      toolCalls: [
+        { name: GATED_TOOL, args: { text: 'first' }, id: 'tc_http_1', type: 'tool_call' },
+      ],
+      runId: responseMessageId,
+    });
+    await initial.processStream({ messages: [new HumanMessage('run two guarded tools')] }, config);
+    const firstInterrupt = initial.getInterrupt();
+    expect(firstInterrupt?.payload?.type).toBe('tool_approval');
+    expect(toolExecutions).toBe(0);
+    expect((await checkpointCounts(conversationId)).checkpoints).toBeGreaterThan(0);
+    await GenerationJobManager.updateMetadata(conversationId, {
+      endpoint: 'agents',
+      agent_id: 'agent-e2e',
+      responseMessageId,
+    });
+    const firstAction = buildPendingAction(firstInterrupt.payload, {
+      streamId: conversationId,
+      conversationId,
+      runId: responseMessageId,
+      responseMessageId,
+      ttlMs: 60_000,
+    });
+    expect(await GenerationJobManager.approvals.pause(conversationId, firstAction)).toBe(true);
+
+    let resumeCalls = 0;
+    const thinClient = {
+      contentParts: [],
+      artifactPromises: [],
+      conversationId,
+      responseMessageId,
+      pendingApproval: null,
+      exposePendingApproval: jest.fn(async () => {}),
+      async resumeCompletion({ resumeValue, abortController }) {
+        resumeCalls += 1;
+        const askForSecondTool = resumeCalls === 1;
+        const continued = await buildHitlRun({
+          saver,
+          conversationId,
+          responses: [askForSecondTool ? 'Requesting tool two.' : 'Both tools finished.'],
+          ...(askForSecondTool && {
+            toolCalls: [
+              { name: GATED_TOOL, args: { text: 'second' }, id: 'tc_http_2', type: 'tool_call' },
+            ],
+          }),
+          runId: responseMessageId,
+        });
+        await continued.resume(resumeValue, {
+          ...config,
+          signal: (abortController ?? new AbortController()).signal,
+        });
+        const reInterrupt = continued.getInterrupt?.();
+        if (reInterrupt?.payload) {
+          const nextAction = buildPendingAction(reInterrupt.payload, {
+            streamId: conversationId,
+            conversationId,
+            runId: responseMessageId,
+            responseMessageId,
+            ttlMs: 60_000,
+          });
+          const paused = await GenerationJobManager.approvals.pause(conversationId, nextAction, {
+            expectedCreatedAt: job.createdAt,
+            persistencePending: true,
+          });
+          if (!paused) {
+            throw new Error('Second approval could not be saved');
+          }
+          this.pendingApproval = nextAction;
+        } else {
+          this.pendingApproval = null;
+        }
+        this.contentParts.push({
+          type: 'text',
+          text: askForSecondTool ? 'Tool one approved.' : 'Both tools approved.',
+        });
+        return continued;
+      },
+    };
+    const initializeClient = jest.fn(async () => ({ client: thinClient }));
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      req.user = { id: USER_ID };
+      req.config = { endpoints: { agents: { checkpointer: MONGO_CFG } }, interfaceConfig: {} };
+      next();
+    });
+    app.post('/api/agents/chat/resume', (req, res, next) =>
+      ResumeAgentController(req, res, next, initializeClient, jest.fn()),
+    );
+
+    const approveFirst = await request(app).post('/api/agents/chat/resume').send({
+      conversationId,
+      actionId: firstAction.actionId,
+      agent_id: 'agent-e2e',
+      endpoint: 'agents',
+      decisions: [{ tool_call_id: 'tc_http_1', decision: 'approve' }],
+    });
+    expect(approveFirst.status).toBe(200);
+    expect(approveFirst.body.status).toBe('resuming');
+
+    await waitFor(async () => {
+      const state = await GenerationJobManager.getJobStore().getJob(conversationId);
+      return (
+        state?.status === 'requires_action' &&
+        state?.pendingAction?.actionId !== firstAction.actionId &&
+        state?.terminalPersistencePending !== true
+      );
+    });
+    const secondAction = await GenerationJobManager.approvals.peek(conversationId);
+    expect(secondAction?.payload?.type).toBe('tool_approval');
+    expect(secondAction?.actionId).not.toBe(firstAction.actionId);
+    expect(toolExecutions).toBe(1);
+
+    const approveSecond = await request(app).post('/api/agents/chat/resume').send({
+      conversationId,
+      actionId: secondAction.actionId,
+      agent_id: 'agent-e2e',
+      endpoint: 'agents',
+      decisions: [{ tool_call_id: 'tc_http_2', decision: 'approve' }],
+    });
+    expect(approveSecond.status).toBe(200);
+    expect(approveSecond.body.status).toBe('resuming');
+    await waitFor(async () => {
+      const status = await GenerationJobManager.getJobStatus(conversationId);
+      return status === 'complete' || status === 'error';
+    });
+    expect(await GenerationJobManager.getJobStatus(conversationId)).toBe('complete');
+    expect(resumeCalls).toBe(2);
+    expect(toolExecutions).toBe(2);
+    await waitFor(async () => (await checkpointCounts(conversationId)).checkpoints === 0);
+    expect(await checkpointCounts(conversationId)).toEqual({ checkpoints: 0, writes: 0 });
+  });
+
   test('an abandoned pause expires without deleting a replacement-scoped checkpoint', async () => {
     const conversationId = `e2e-expiry-${Date.now()}`;
     const run = await buildHitlRun({
