@@ -86,12 +86,6 @@ jobs:
         run: |
           set -euo pipefail
           cp .env.example .env
-          # Since v1.0.6 Redis AOF and its volume are shared by Lite + Full
-          # in docker-compose.botmode.yml. Do NOT inject another Redis service
-          # or modify Compose at runtime: exercise the exact candidate contract.
-          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml config --quiet
-          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml config --format json |
-            python3 -c 'import json,sys; d=json.load(sys.stdin); a=d["services"]["api"]; r=d["services"]["redis"]; e=a["environment"]; assert e["USE_REDIS"]=="true" and e["USE_REDIS_STREAMS"]=="true" and e["REDIS_URI"]=="redis://redis:6379"; assert "botmode-redis-data" in d["volumes"]; assert "appendonly" in " ".join(r["command"]); print("CI_LITE_REDIS_SOURCE_CONFIG=PASS")'
           # Fixture comes from the exact same Git checkout as the runtime image.
           # No network-fetched harness can silently test a different revision.
           cp scripts/botmode/ci-openai-subagent-fixture.py /tmp/botmode-ci-model-fixture.py
@@ -175,6 +169,12 @@ jobs:
           export POSTGRES_PASSWORD=ci-isolated-only
           export BOTMODE_IMAGE=${BOTMODE_PUBLISHED_IMAGE}
           export BOTMODE_HOST_PORT=3090
+          # Since v1.0.6 Redis AOF and its volume are shared by Lite + Full
+          # in docker-compose.botmode.yml. Do NOT inject another Redis service
+          # or modify Compose at runtime: exercise the exact candidate contract.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml config --quiet
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml config --format json |
+            python3 -c 'import json,sys; d=json.load(sys.stdin); a=d["services"]["api"]; r=d["services"]["redis"]; e=a["environment"]; assert e["USE_REDIS"]=="true" and e["USE_REDIS_STREAMS"]=="true" and e["REDIS_URI"]=="redis://redis:6379"; assert "botmode-redis-data" in d["volumes"]; assert "appendonly" in " ".join(r["command"]); print("CI_LITE_REDIS_SOURCE_CONFIG=PASS")'
           docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml up -d
           ready=0
           for i in $(seq 1 90); do
