@@ -372,7 +372,9 @@ describe('HITL checkpoint lifecycle (full wiring)', () => {
     expect(toolExecutions).toBe(2);
 
     // This test isolates the SDK/checkpoint lifecycle; HTTP finalize/P6 has its own gate.
-    await deleteAgentCheckpoint(conversationId, MONGO_CFG, job.metadata.checkpointNamespace);
+    await deleteAgentCheckpoint(conversationId, MONGO_CFG, undefined, {
+      checkpointNamespace: job.metadata.checkpointNamespace,
+    });
     expect((await checkpointCounts(conversationId)).checkpoints).toBe(0);
   });
 
