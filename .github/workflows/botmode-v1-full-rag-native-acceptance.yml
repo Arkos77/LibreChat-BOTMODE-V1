@@ -62,6 +62,9 @@ jobs:
         run: |
           set -euo pipefail
           sudo ./install.sh --full --no-pull --no-start --image "$BOTMODE_IMAGE" >/dev/null
+          # sudo -E on this runner did not preserve BOTMODE_HOST_PORT=3090.
+          # Persist the test-only port in the runner's private Compose dotenv.
+          echo 'BOTMODE_HOST_PORT=3090' | sudo tee -a .env >/dev/null
           echo "MEILI_MASTER_KEY=$(openssl rand -hex 24)" | sudo tee -a .env >/dev/null
           # Fresh Full bootstrap already generates durable shared JWTs.
           # Do not append a second different JWT_SECRET over the installed one.
@@ -84,6 +87,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          published_port="$(sudo -E docker compose -f docker-compose.botmode.yml config --format json | jq -er '.services.api.ports[] | select(.target == 3080) | .published')"
+          test "$published_port" = 3090 || { echo "CI_FULL_UNEXPECTED_API_PUBLISHED_PORT=$published_port"; exit 1; }
+          echo 'CI_FULL_API_HOST_PORT_3090=PASS'
           sudo -E docker compose -f docker-compose.botmode.yml up -d mongodb vectordb
           # Compose top-level `name:` can determine the effective project name.
           # Resolve the real network instead of assuming COMPOSE_PROJECT_NAME.
