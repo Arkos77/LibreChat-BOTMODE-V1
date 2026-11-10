@@ -160,6 +160,38 @@ jobs:
           sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps --status running
           echo 'BOTMODE_CURRENT_FRESH_LITE_HTTP=PASS'
           echo 'SCOPE=source-built exact HEAD, CLI first installation and HTTP; no registry publication, paid provider or external tool replay'
+      - name: Real stop/start without --image preserves installed image and database
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The installer has pinned an exact built source image in private .env.
+          # Capture only the image reference and Docker image IDs, no credentials.
+          expected="botmode-local-release:$BOTMODE_CANDIDATE_SHA"
+          test "$(sudo sed -n 's/^BOTMODE_IMAGE=//p' .env | tail -n 1)" = "$expected"
+          before_sha="$(sudo sha256sum .env | awk '{print $1}')"
+          before_id="$(sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps -q api)"
+          test -n "$before_id"
+          before_image="$(docker inspect -f '{{.Image}}' "$before_id")"
+          before_volume="$(docker volume inspect librechat-botmode_botmode-mongo-data --format '{{.Name}}')"
+          sudo ./stop.sh
+          test "$(docker volume inspect librechat-botmode_botmode-mongo-data --format '{{.Name}}')" = "$before_volume"
+          sudo ./start.sh --lite --no-pull > "$RUNNER_TEMP/botmode-restart-current.log" 2>&1 || {
+            tail -40 "$RUNNER_TEMP/botmode-restart-current.log" | sed -E 's/(password|secret|token|api[_-]?key)([=: ]+)[^ ]+/\\1\\2[REDACTED]/Ig'
+            exit 1
+          }
+          test "$(sudo sha256sum .env | awk '{print $1}')" = "$before_sha"
+          test "$(sudo sed -n 's/^BOTMODE_IMAGE=//p' .env | tail -n 1)" = "$expected"
+          after_id="$(sudo docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml ps -q api)"
+          test -n "$after_id"
+          test "$(docker inspect -f '{{.Image}}' "$after_id")" = "$before_image"
+          test "$(docker volume inspect librechat-botmode_botmode-mongo-data --format '{{.Name}}')" = "$before_volume"
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -fsS --max-time 4 http://127.0.0.1:3080/api/config >/dev/null 2>&1; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          echo 'BOTMODE_V106_REAL_RESTART_SAME_IMAGE_AND_VOLUME=PASS'
       - name: Delete runner-only stack and generated credentials
         if: always()
         shell: bash
