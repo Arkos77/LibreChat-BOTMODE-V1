@@ -85,8 +85,12 @@ jobs:
         run: |
           set -euo pipefail
           sudo -E docker compose -f docker-compose.botmode.yml up -d mongodb vectordb
+          # Compose top-level `name:` can determine the effective project name.
+          # Resolve the real network instead of assuming COMPOSE_PROJECT_NAME.
+          compose_network="$(sudo -E docker compose -f docker-compose.botmode.yml config --format json | jq -er '.networks.default.name')"
+          docker network inspect "$compose_network" >/dev/null
           docker run -d --name "ci-embeddings-${{ github.run_id }}" \
-            --network "${COMPOSE_PROJECT_NAME}_default" \
+            --network "$compose_network" \
             --network-alias ci-embeddings \
             --read-only --cap-drop ALL --security-opt no-new-privileges \
             --user 1000:1000 --memory 128m \
