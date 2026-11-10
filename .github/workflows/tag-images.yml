@@ -10,6 +10,8 @@ on:
       # BOT MODE v1.0.5 uses the separately authorized, pinned GHCR-only release workflow.
       # Exclude the generic publisher so this tag cannot trigger Docker Hub or unrelated images.
       - '!v1.0.5'
+      # BOT MODE v1.0.6 is reserved for its explicit, verified GHCR-only gate.
+      - '!v1.0.6'
 
 permissions:
   contents: read
