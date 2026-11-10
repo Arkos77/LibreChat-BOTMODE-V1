@@ -66,7 +66,7 @@ docker info >/dev/null
 openssl version
 ```
 
-### Installer BOT MODE V1.0.4 en profil Lite
+### Installer BOT MODE V1.0.5 en profil Lite
 
 Sur une **installation neuve**, copiez les commandes suivantes :
 
