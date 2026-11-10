@@ -42,7 +42,7 @@ jobs:
           test "$(git rev-parse HEAD^)" = "$BASE_SOURCE_SHA"
           test "$(git rev-parse "$BASE_SOURCE_SHA^{tree}")" = "$BASE_SOURCE_TREE"
           actual_changes="$(git diff --name-only "$BASE_SOURCE_SHA" HEAD | LC_ALL=C sort)"
-          expected_changes="$(printf '%s\\n' '.github/workflows/botmode-v105-one-time-release.yml' '.github/workflows/tag-images.yml' | LC_ALL=C sort)"
+          expected_changes="$( { echo .github/workflows/botmode-v105-one-time-release.yml; echo .github/workflows/tag-images.yml; } | LC_ALL=C sort)"
           test "$actual_changes" = "$expected_changes"
           # The version tag must use this same commit, where generic Docker-Hub publishing is excluded.
           grep -Fq -- "- '!v1.0.5'" .github/workflows/tag-images.yml
