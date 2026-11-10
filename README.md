@@ -39,6 +39,8 @@ Votre demande dans LibreChat
 - **Intégration LibreChat :** conversations, projets, progression visible et résultats conservés.
 - **Profil Lite :** image prête à l'emploi, MongoDB et Redis légers, sans compilation locale lourde.
 
+**Limite de sécurité Lite :** pour rester compatible avec certains CPU anciens sans AVX, ce profil utilise MongoDB 4.4.29, branche arrivée en fin de support fournisseur. Ce profil vise un usage local protégé ; ne pas exposer MongoDB ni présenter cette dépendance comme recevant des mises à jour de sécurité. Le profil Full demande du matériel plus récent, au minimum 4 Gio de mémoire et AVX sur x86_64. Les capacités Code Interpreter et Documents/RAG ne sont pas incluses ni validées dans le Lite par défaut.
+
 **Parcours réel vérifié en V1.0.3 :** Recherche → Analyse → Synthèse, 3 étapes Oracle VERIFIED, une publication P6 et la persistance des résultats. D'autres capacités dépendent des outils et services configurés ; elles ne sont pas toutes validées sur toutes les plateformes.
 
 ## Installation par machine
