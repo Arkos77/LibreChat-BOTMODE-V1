@@ -332,7 +332,9 @@ describe('HITL checkpoint lifecycle (full wiring)', () => {
       saver,
       conversationId,
       responses: ['Requesting first approval.'],
-      toolCalls: [{ name: GATED_TOOL, args: { text: 'first' }, id: 'tc_double_1', type: 'tool_call' }],
+      toolCalls: [
+        { name: GATED_TOOL, args: { text: 'first' }, id: 'tc_double_1', type: 'tool_call' },
+      ],
       runId: responseMessageId,
     });
 
@@ -346,7 +348,9 @@ describe('HITL checkpoint lifecycle (full wiring)', () => {
       saver,
       conversationId,
       responses: ['Requesting second approval.'],
-      toolCalls: [{ name: GATED_TOOL, args: { text: 'second' }, id: 'tc_double_2', type: 'tool_call' }],
+      toolCalls: [
+        { name: GATED_TOOL, args: { text: 'second' }, id: 'tc_double_2', type: 'tool_call' },
+      ],
       runId: responseMessageId,
     });
     await second.resume(
