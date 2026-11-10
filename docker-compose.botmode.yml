@@ -12,6 +12,9 @@ services:
       mongodb:
         condition: service_started
         required: true
+      redis:
+        condition: service_healthy
+        required: true
       rag_api:
         condition: service_started
         required: false
@@ -26,13 +29,18 @@ services:
       - RAG_PORT=${RAG_PORT:-8000}
       - RAG_API_URL=http://rag_api:${RAG_PORT:-8000}
       - SCHEDULES_SINGLE_PROCESS=${SCHEDULES_SINGLE_PROCESS:-true}
+      # Share the previously Lite-only durable mission and stream state with Full.
+      - USE_REDIS=true
+      - USE_REDIS_STREAMS=true
+      - REDIS_URI=redis://redis:6379
+      - STREAM_KEEP_COMPLETED_JOBS=true
       - PROXY=${PROXY:-}
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
-      - NO_PROXY=${NO_PROXY:-localhost,127.0.0.1,::1},${no_proxy:-},mongodb,chat-mongodb,meilisearch,chat-meilisearch,rag_api,vectordb,host.docker.internal
+      - NO_PROXY=${NO_PROXY:-localhost,127.0.0.1,::1},${no_proxy:-},mongodb,chat-mongodb,redis,meilisearch,chat-meilisearch,rag_api,vectordb,host.docker.internal
       - http_proxy=${http_proxy:-}
       - https_proxy=${https_proxy:-}
-      - no_proxy=${no_proxy:-localhost,127.0.0.1,::1},${NO_PROXY:-},mongodb,chat-mongodb,meilisearch,chat-meilisearch,rag_api,vectordb,host.docker.internal
+      - no_proxy=${no_proxy:-localhost,127.0.0.1,::1},${NO_PROXY:-},mongodb,chat-mongodb,redis,meilisearch,chat-meilisearch,rag_api,vectordb,host.docker.internal
     volumes:
       - ./.env:/app/.env:ro
       - ./librechat.yaml:/app/librechat.yaml:ro
@@ -65,6 +73,20 @@ services:
       MONGO_INITDB_ROOT_USERNAME: botmode_admin
       MONGO_INITDB_ROOT_PASSWORD: ${BOTMODE_MONGO_PASSWORD:?Set BOTMODE_MONGO_PASSWORD in .env}
     command: ["mongod", "--auth"]
+
+  # The same bounded, internal-only durable mission store in Lite and Full.
+  redis:
+    image: redis:7-alpine
+    restart: always
+    mem_limit: 160m
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - botmode-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
   meilisearch:
     image: getmeili/meilisearch:v1.35.1
@@ -123,3 +145,4 @@ volumes:
   botmode-mongo-data:
   botmode-meili-data:
   botmode-pgdata:
+  botmode-redis-data:
