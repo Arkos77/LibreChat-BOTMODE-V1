@@ -119,7 +119,16 @@ jobs:
           echo 'CI_FULL_RAG_REAL_API_PG_UP=PASS'
 
       - name: Real embed, durable pgvector, native graph, owner isolation and delete
-        run: sudo -E python3 scripts/botmode/ci-full-rag-native-acceptance.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Preserve the CI-only guard explicitly: sudo -E is not supported
+          # on this runner and must never weaken ci-full-rag-native-acceptance.py.
+          test "${CI:-}" = true
+          test -n "${GITHUB_RUN_ID:-}"
+          [[ "$BOTMODE_IMAGE" == botmode-ci-full-rag:* ]]
+          sudo env CI=true GITHUB_RUN_ID="$GITHUB_RUN_ID" BOTMODE_IMAGE="$BOTMODE_IMAGE" \
+            python3 scripts/botmode/ci-full-rag-native-acceptance.py
 
       - name: Classify Full boot failure before disposal (CI dummy secrets only)
         if: failure()
