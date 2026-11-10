@@ -51,6 +51,7 @@ const {
   GenerationJobManager,
   createStreamServices,
   buildPendingAction,
+  mapToolApprovalResolutions,
   getAgentCheckpointer,
   deleteAgentCheckpoint,
   buildHITLRunWiring,
@@ -318,6 +319,61 @@ describe('HITL checkpoint lifecycle (full wiring)', () => {
     expect(await checkpointCounts(conversationId)).toEqual({ checkpoints: 0, writes: 0 });
 
     expect(job).toBeDefined();
+  });
+
+  test('two consecutive approvals use durable re-pauses and execute each gated tool once', async () => {
+    const conversationId = `e2e-double-approval-${Date.now()}`;
+    const responseMessageId = 'resp-double-approval';
+    const job = await GenerationJobManager.createJob(conversationId, USER_ID, conversationId, {
+      initialMetadata: { generationProtocolVersion: 2 },
+    });
+    const config = runConfig(conversationId, job.metadata.checkpointNamespace);
+    const first = await buildHitlRun({
+      saver,
+      conversationId,
+      responses: ['Requesting first approval.'],
+      toolCalls: [{ name: GATED_TOOL, args: { text: 'first' }, id: 'tc_double_1', type: 'tool_call' }],
+      runId: responseMessageId,
+    });
+
+    await first.processStream({ messages: [new HumanMessage('run two gated tools')] }, config);
+    expect(first.getInterrupt()?.payload?.type).toBe('tool_approval');
+    expect(toolExecutions).toBe(0);
+    expect((await checkpointCounts(conversationId)).checkpoints).toBeGreaterThan(0);
+
+    // Rebuild the real SDK run from Mongo checkpoint; the model requests a SECOND gate.
+    const second = await buildHitlRun({
+      saver,
+      conversationId,
+      responses: ['Requesting second approval.'],
+      toolCalls: [{ name: GATED_TOOL, args: { text: 'second' }, id: 'tc_double_2', type: 'tool_call' }],
+      runId: responseMessageId,
+    });
+    await second.resume(
+      mapToolApprovalResolutions([{ tool_call_id: 'tc_double_1', decision: 'approve' }]),
+      config,
+    );
+    expect(toolExecutions).toBe(1);
+    expect(second.getInterrupt()?.payload?.type).toBe('tool_approval');
+    expect((await checkpointCounts(conversationId)).checkpoints).toBeGreaterThan(0);
+
+    // The second user decision completes the SAME generation without replaying tool 1.
+    const third = await buildHitlRun({
+      saver,
+      conversationId,
+      responses: ['Both approved tools completed.'],
+      runId: responseMessageId,
+    });
+    await third.resume(
+      mapToolApprovalResolutions([{ tool_call_id: 'tc_double_2', decision: 'approve' }]),
+      config,
+    );
+    expect(third.getInterrupt()).toBeFalsy();
+    expect(toolExecutions).toBe(2);
+
+    // This test isolates the SDK/checkpoint lifecycle; HTTP finalize/P6 has its own gate.
+    await deleteAgentCheckpoint(conversationId, MONGO_CFG, job.metadata.checkpointNamespace);
+    expect((await checkpointCounts(conversationId)).checkpoints).toBe(0);
   });
 
   test('an abandoned pause expires without deleting a replacement-scoped checkpoint', async () => {
