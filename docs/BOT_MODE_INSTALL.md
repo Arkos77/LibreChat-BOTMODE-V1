@@ -63,7 +63,9 @@ L'installateur :
 5. lance la stack Lite : **API LibreChat/BOT MODE, MongoDB 4.4 et Redis 7**, avec volumes de données persistants ;
 6. vérifie l'authentification de la base de données avant de déclarer l'installation achevée.
 
-Le mode Lite réduit les services locaux, notamment sur les CPU x86_64 sans AVX. Les services RAG et de recherche locaux lourds ne font pas partie du profil Lite par défaut.
+Le mode Lite réduit les services locaux, notamment sur les CPU x86_64 sans AVX. Les services RAG et de recherche locaux lourds ne font pas partie du profil Lite par défaut. **L'exécution de code et la recherche documentaire ne doivent pas être annoncées comme disponibles par défaut en Lite**, même si le nom du spécialiste ou certaines permissions apparaissent dans l'interface.
+
+**Risque résiduel de compatibilité :** le profil Lite embarque MongoDB 4.4.29, version hors support fournisseur depuis le 29 février 2024. Préserver une exposition strictement locale et contrôler les ports effectifs sur les anciens fichiers Compose ; une distribution téléchargeable n'est pas une certification d'hébergement public sur Internet.
 
 **Alternative pour un hôte compatible Full** (au moins 4 Gio de RAM, AVX sur x86_64) :
 
