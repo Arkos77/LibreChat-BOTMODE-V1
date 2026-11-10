@@ -8,6 +8,11 @@ on:
         type: boolean
         required: true
         default: false
+      run_real_specialist:
+        description: Also qualify one real Worker to RECHERCHE to Oracle and P6 mission
+        type: boolean
+        required: true
+        default: false
 permissions:
   contents: read
 jobs:
@@ -18,10 +23,12 @@ jobs:
       - name: Checkout exact triggering source SHA
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          # Test harness lives on this qualification branch, but the app image
+          # is always compiled from the exact, otherwise unchanged release HEAD.
+          ref: dc52100ad729b0207d16612552f9182f9828b090
           persist-credentials: false
       - name: Prove checked-out revision
-        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+        run: test "$(git rev-parse HEAD)" = 'dc52100ad729b0207d16612552f9182f9828b090'
       - name: OpenRouter key and one minimal free-model inference preflight
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -545,6 +552,42 @@ jobs:
           echo 'BOTMODE_CURRENT_FREE_RUNTIME_BOOT=PASS'
           echo '### Current HEAD Oracle/QA E2E (REAL free OpenRouter provider, isolated configuration)' >> "$GITHUB_STEP_SUMMARY"
           echo 'Free provider checked, durable Oracle decision and publication assertions required. The run_default_free_router input determines whether default free-only host routing was exercised; forced 429 fallback and actual specialists remain separate gates.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Real free Worker-to-RECHERCHE-to-Oracle-and-P6 receipt
+        if: ${{ inputs.run_real_specialist == true }}
+        timeout-minutes: 15
+        env:
+          CI_EXTERNAL_FREE_PROVIDER: 'true'
+          CI_LIVE_FREE_FIVE_TASKS: 'false'
+        run: |
+          set -euo pipefail
+          # Select exactly the pre-provisioned RECHERCHE specialist via the
+          # native Worker allowlist; never modify agents, ACLs or databases.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml exec -T api node - <<'NODE_CHILD' > /tmp/botmode-ci-child-id
+          const mongoose = require('mongoose');
+          (async () => {
+            await mongoose.connect(process.env.MONGO_URI);
+            const db = mongoose.connection.db;
+            const worker = await db.collection('agents').findOne(
+              { name: 'BOT MODE Worker' }, { projection: { subagents: 1 } },
+            );
+            const research = await db.collection('agents').findOne(
+              { name: 'RECHERCHE' }, { projection: { id: 1 } },
+            );
+            const ids = worker?.subagents?.agent_ids;
+            if (!worker?.subagents?.enabled || !Array.isArray(ids) ||
+                !research?.id || !ids.includes(research.id)) {
+              throw new Error('CI_AUTHORIZED_RESEARCH_SPECIALIST_MISSING');
+            }
+            process.stdout.write(research.id);
+            await mongoose.disconnect();
+          })().catch(e => { console.error('CI_RESEARCH_SETUP_CLASS=' + e.name); process.exit(1); });
+          NODE_CHILD
+          test -s /tmp/botmode-ci-child-id
+          # The pre-existing strict gate verifies two real model-backed
+          # independent graph actors, VERIFIED Oracle verdicts and one P6
+          # publication. Do not relabel this test as web_search/HITL.
+          python3 scripts/botmode/ci-live-free-child-oracle-gate.py
+          echo 'BOTMODE_V106_REAL_RESEARCH_ORACLE_P6=PASS'
       - name: Always destroy disposable stack
         if: always()
         env:
