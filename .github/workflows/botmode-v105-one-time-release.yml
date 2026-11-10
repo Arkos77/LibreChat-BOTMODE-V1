@@ -1,0 +1,244 @@
+name: BOT MODE v1.0.5 verified one-time GHCR and GitHub Release
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/botmode-v105-one-time-release.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: botmode-v105-once
+  cancel-in-progress: false
+
+env:
+  # The release tag points to this workflow-only merge commit on main.
+  SOURCE_SHA: ${{ github.sha }}
+  # Only the two allowlisted workflow files may differ from the qualified application source.
+  BASE_SOURCE_SHA: ced3c59f79bd868598e8958bd7fb6661e517ea76
+  BASE_SOURCE_TREE: 4ee86c3fe94a184478ec01f9234a2143044065e8
+  VERSION: v1.0.5
+  IMAGE: ghcr.io/arkos77/librechat-botmode-v1
+
+jobs:
+  preflight:
+    if: github.repository == 'Arkos77/LibreChat-BOTMODE-V1'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify locked source and only the two authorized release workflow changes
+        env:
+          BEFORE: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$BEFORE" = "$BASE_SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD^)" = "$BASE_SOURCE_SHA"
+          test "$(git rev-parse "$BASE_SOURCE_SHA^{tree}")" = "$BASE_SOURCE_TREE"
+          actual_changes="$(git diff --name-only "$BASE_SOURCE_SHA" HEAD | LC_ALL=C sort)"
+          expected_changes="$( { echo .github/workflows/botmode-v105-one-time-release.yml; echo .github/workflows/tag-images.yml; } | LC_ALL=C sort)"
+          test "$actual_changes" = "$expected_changes"
+          # The version tag must use this same commit, where generic Docker-Hub publishing is excluded.
+          grep -Fq -- "- '!v1.0.5'" .github/workflows/tag-images.yml
+          if gh release view "$VERSION" >/dev/null 2>&1; then echo 'RELEASE_EXISTS_REFUSED'; exit 1; fi
+          if test -n "$(git ls-remote --tags origin "refs/tags/$VERSION")"; then echo 'TAG_EXISTS_REFUSED'; exit 1; fi
+          echo 'BOTMODE_PINNED_RELEASE_PREFLIGHT=PASS'
+
+  build:
+    name: Build GHCR digest (${{ matrix.arch }})
+    needs: preflight
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Publish digest only (no stable alias)
+        id: image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          target: node
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          outputs: type=image,name=ghcr.io/arkos77/librechat-botmode-v1,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=botmode-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=botmode-${{ matrix.arch }}
+          build-args: |
+            BUILD_COMMIT=${{ env.SOURCE_SHA }}
+            BUILD_BRANCH=v1.0.5
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          test -n "$DIGEST"
+          mkdir -p /tmp/v105
+          touch "/tmp/v105/$(printf '%s' "$DIGEST" | sed 's/^sha256://')"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v105-digest-${{ matrix.arch }}
+          path: /tmp/v105/*
+          if-no-files-found: error
+          retention-days: 2
+
+  manifest:
+    name: Candidate multiarch manifest (no stable tag)
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: v105-digest-*
+          merge-multiple: true
+          path: /tmp/v105
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Verify two native digests and publish immutable candidate
+        run: |
+          set -euo pipefail
+          if docker buildx imagetools inspect "$IMAGE:$VERSION" >/dev/null 2>&1; then echo 'STABLE_TAG_EXISTS_REFUSED'; exit 1; fi
+          SHORT="$(printf '%.12s' "$SOURCE_SHA")"
+          cd /tmp/v105
+          shopt -s nullglob
+          digests=(*)
+          test "${#digests[@]}" -eq 2
+          args=()
+          for d in "${digests[@]}"; do
+            test "${#d}" -eq 64
+            args+=("$IMAGE@sha256:$d")
+          done
+          docker buildx imagetools create -t "$IMAGE:candidate-botmode-v1-$SHORT" -t "$IMAGE:sha-$SHORT" "${args[@]}"
+          docker buildx imagetools inspect --raw "$IMAGE:sha-$SHORT" | jq -e '([.manifests[]?.platform?.architecture] | index("amd64") != null and index("arm64") != null)'
+          echo 'BOTMODE_V105_CANDIDATE_BOTH_ARCH=PASS'
+
+  smoke-lite:
+    name: Public anonymous pull and disposable Lite API
+    needs: manifest
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - name: Anonymous pull of new GHCR candidate
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          SHORT="$(printf '%.12s' "$SOURCE_SHA")"
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          docker pull "$IMAGE:sha-$SHORT"
+          echo 'BOTMODE_V105_PUBLIC_PULL=PASS'
+      - name: Verify API starts from this exact published image
+        run: |
+          set -euo pipefail
+          SHORT="$(printf '%.12s' "$SOURCE_SHA")"
+          cp .env.example .env
+          chmod 600 .env
+          printf '\nBOTMODE_MONGO_PASSWORD=ci-release-password\nPOSTGRES_PASSWORD=ci-release-password\n' >> .env
+          export BOTMODE_MONGO_PASSWORD=ci-release-password
+          export POSTGRES_PASSWORD=ci-release-password
+          export BOTMODE_IMAGE="$IMAGE:sha-$SHORT"
+          export BOTMODE_HOST_PORT=3094
+          export BOTMODE_HOST_BIND_IP=127.0.0.1
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml up -d
+          ready=0
+          for i in $(seq 1 90); do
+            if curl -fsS --max-time 4 http://127.0.0.1:3094/api/config >/tmp/v105-config.json; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" -eq 1
+          echo 'BOTMODE_V105_GHCR_LITE_SMOKE=PASS'
+      - name: Clean up disposable runner
+        if: always()
+        run: |
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml down -v --remove-orphans || true
+
+  publish:
+    name: Stable versioned GHCR tag and official GitHub Release
+    needs: smoke-lite
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Promote exactly the candidate manifest to v1.0.5
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          SHORT="$(printf '%.12s' "$SOURCE_SHA")"
+          if docker buildx imagetools inspect "$IMAGE:$VERSION" >/dev/null 2>&1; then echo 'STABLE_TAG_EXISTS_REFUSED'; exit 1; fi
+          docker buildx imagetools create -t "$IMAGE:$VERSION" "$IMAGE:sha-$SHORT"
+          docker buildx imagetools inspect --raw "$IMAGE:$VERSION" | jq -e '([.manifests[]?.platform?.architecture] | index("amd64") != null and index("arm64") != null)'
+          echo 'BOTMODE_V105_STABLE_GHCR=PASS'
+      - name: Create versioned GitHub Release only after GHCR and Lite PASS
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$VERSION" >/dev/null 2>&1; then echo 'RELEASE_EXISTS_REFUSED'; exit 1; fi
+          cat > /tmp/v105-notes.md <<NOTES
+          BOT MODE V1 v1.0.5 — correctif ciblé HITL + sources officielles, distribution Docker Compose/GHCR.
+
+          Commit source exact de cette version : ${SOURCE_SHA}.
+          Code applicatif inchangé depuis le commit fusionné ced3c59f79bd868598e8958bd7fb6661e517ea76 :
+          la différence est limitée aux deux fichiers de sécurité de publication vérifiés par le préflight.
+          PR #176 : 36 contrôles PASS, 12 SKIP, 0 FAIL sur le HEAD qualifié 9be8e7f49ab9da2b54ffd1125f40b4a398c0f301.
+          Contrôles post-fusion main ced3c59 : CodeQL et smoke Docker AMD64/ARM64 PASS.
+
+          Modifications : reprise HITL conservant le chatProjectId, consignes de citation de sources officielles
+          dans l'initialisation native RECHERCHE et le seeding explicite historique, test de non-écrasement.
+          La règle de source officielle a été éprouvée dans TEST 3081 ; elle n'est pas imposée automatiquement
+          aux agents existants d'autres installations.
+          Image Linux AMD64 et ARM64 : ghcr.io/arkos77/librechat-botmode-v1:v1.0.5
+          Installation Lite depuis la source de ce tag :
+            BOTMODE_HOST_BIND_IP=127.0.0.1 ./install.sh --lite --image ghcr.io/arkos77/librechat-botmode-v1:v1.0.5
+
+          Trois alertes CodeQL restent documentées et acceptées sous conditions : #328 et #330 (rate limiting OAuth MCP réel, 429 vérifiés), #63 (paramètres GET du callback OAuth). Voir issue GitHub #154.
+          En production : TLS HTTPS, confiance des proxys réglée via TRUST_PROXY, ne pas journaliser les paramètres OAuth code/state en frontal, Redis partagé si plusieurs répliques.
+          Distribution : Docker Compose/GHCR sur Linux qualifié, profils Lite/Full selon ressources. Helm et migration ou downgrade de schéma non inclus. Sauvegarder les données avant une mise à niveau. Ne pas annoncer chaque OS comme testé.
+          NOTES
+          gh release create "$VERSION" --target "$SOURCE_SHA" --title 'LibreChat BOT MODE V1 — v1.0.5' --notes-file /tmp/v105-notes.md
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" --jq .object.sha)" = "$SOURCE_SHA"
+          gh release view "$VERSION" --json tagName,url,isDraft,isPrerelease
+          echo 'BOTMODE_V105_PUBLIC_RELEASE=PASS'
