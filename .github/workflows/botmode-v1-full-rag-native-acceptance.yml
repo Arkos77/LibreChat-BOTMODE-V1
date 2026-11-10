@@ -112,6 +112,28 @@ jobs:
       - name: Real embed, durable pgvector, native graph, owner isolation and delete
         run: sudo -E python3 scripts/botmode/ci-full-rag-native-acceptance.py
 
+      - name: Classify Full boot failure before disposal (CI dummy secrets only)
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          echo 'CI_FULL_DIAGNOSTIC_BEGIN'
+          sudo -E docker compose -f docker-compose.botmode.yml ps -a --format json |
+            jq -cr 'if type == "array" then .[] else . end | {Service,State,Health,ExitCode}' 2>/dev/null || true
+          for svc in api rag_api mongodb vectordb meilisearch; do
+            cid="$(sudo -E docker compose -f docker-compose.botmode.yml ps -aq "$svc" | head -n 1)"
+            if [ -n "$cid" ]; then
+              docker inspect -f 'CI_CONTAINER={{.Name}} STATE={{.State.Status}} EXIT={{.State.ExitCode}} OOM={{.State.OOMKilled}} RESTARTING={{.State.Restarting}}' "$cid" || true
+            fi
+          done
+          # Only on this synthetic ephemeral CI runner: no personal data or live API keys.
+          # Restrict to bounded error-class logs; redact commonplace credential patterns.
+          sudo -E docker compose -f docker-compose.botmode.yml logs --no-color --tail 120 api rag_api mongodb 2>&1 |
+            grep -Ei 'error|fatal|fail|exception|connect|refus|timeout|start|config|auth|listen|mongodb|rag' |
+            tail -n 80 |
+            sed -E 's/(Bearer[[:space:]]+)[^[:space:]]+/\\1[REDACTED]/Ig; s/((api.?key|password|secret|token)[=:][[:space:]]*)[^[:space:],]+/\\1[REDACTED]/Ig' || true
+          echo 'CI_FULL_DIAGNOSTIC_END'
+
       - name: Cleanup strictly runner-local Compose stack
         if: always()
         shell: bash
