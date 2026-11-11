@@ -4,6 +4,20 @@
 
 **Ce n'est pas un nouveau moteur de chat :** BOT MODE s'intègre directement au runtime de [LibreChat](https://github.com/danny-avila/LibreChat), avec ses conversations, ses projets et son interface.
 
+## Aperçu visuel — MJK V11
+
+<p align="center">
+  <img src="branding/mjk-v10/assets/logo.svg" width="118" alt="Flamant rose MJK, emblème de BOT MODE">
+</p>
+
+<p align="center">
+  <img src="branding/mjk-v11/login-preview-v11.webp" width="960" alt="Connexion BOT MODE, palette rose et bleu nuit, globe terrestre néon avec Afrique au centre">
+</p>
+
+<p align="center"><em>Capture de l'interface réelle, sans identifiants. Le thème MJK V11 est une personnalisation optionnelle de l'image stable V1.0.6, pas une nouvelle release.</em></p>
+
+**Personnalisation graphique :** [aperçu et documentation MJK V11](docs/branding/MJK_V11.md). Le globe reprend la maquette validée ; en bas à gauche les initiales de l'utilisateur connecté sont conservées, avec un habillage rose et bleu.
+
 **Version stable publiée : [v1.0.6](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.6) — 11 novembre 2026.** Source Git `416bf00898a6b0fb2eaf271ee4671d30ea55ccf0`, image Docker multiarchitecture **Linux AMD64 et ARM64**. Le profil **Lite** vise notamment les machines CPU-only et les CPU x86_64 sans AVX.
 
 > **Référence reproductible :** cloner le tag Git `v1.0.6` et utiliser l’image `ghcr.io/arkos77/librechat-botmode-v1@sha256:e3640ac10833e4743796589b53d8a935d94867d73b0c25e82b4e7e1eba985cdb`. Les alias Docker `stable` ou `latest` ne sont pas des références de cette release.
