@@ -1,0 +1,49 @@
+/* MJK V14: clearly visible release status next to its button. */
+#botmode-update-check-v14 {
+  padding: 16px; margin-top: 16px;
+  border: 1px solid rgba(250,67,158,.54);
+  border-radius: 14px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+html.dark #botmode-update-check-v14 { background: #18132f; color: #f5ebff; }
+html:not(.dark) #botmode-update-check-v14 { background: #fbf5ff; color: #382342; }
+.botmode-update-heading-v14 { font-size: 15px; font-weight: 700; margin: 0 0 8px; }
+.botmode-update-installed-v14 { font-weight: 600; margin: 0 0 8px; }
+.botmode-update-detail-v14 { margin: 0; opacity: .9; line-height: 1.5; }
+.botmode-update-result-v14 {
+  margin: 12px 0; padding: 11px 12px; border-radius: 10px;
+  background: rgba(127,92,171,.12);
+  border: 1px solid rgba(136,92,181,.3);
+  font-weight: 600; line-height: 1.45;
+}
+#botmode-update-check-v14[data-state="current"] .botmode-update-result-v14,
+#botmode-update-check-v14[data-state="ahead"] .botmode-update-result-v14 {
+  border-color: #4dd3a2; background: rgba(38,185,131,.14);
+}
+#botmode-update-check-v14[data-state="newer"] .botmode-update-result-v14 {
+  border-color: #e748aa; background: rgba(232,61,158,.13);
+}
+#botmode-update-check-v14[data-state="error"] .botmode-update-result-v14 {
+  border-color: #eca24d; background: rgba(243,166,54,.13);
+}
+.botmode-update-actions-v14 { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:12px; }
+.botmode-update-button-v14 {
+  padding:11px 14px; min-height:44px;
+  background: linear-gradient(105deg,#c81c79,#f3289b);
+  border:1px solid #f36db6; border-radius:9px;
+  color:#fff; font-weight:700; cursor:pointer;
+}
+.botmode-update-button-v14:hover { background:linear-gradient(105deg,#a8196a,#d51387); }
+.botmode-update-button-v14:disabled { opacity:.73; cursor:wait; }
+.botmode-update-button-v14:focus-visible,.botmode-update-link-v14:focus-visible {
+  outline:2px solid #50d6ff; outline-offset:3px;
+}
+.botmode-update-link-v14 { color:#e65aab; font-weight:600; text-underline-offset:3px; text-decoration:underline; }
+html:not(.dark) .botmode-update-link-v14 { color:#8b1b67; }
+#botmode-update-check-v14 [hidden] { display:none!important; }
+@media(max-width:540px) {
+  #botmode-update-check-v14 {padding:12px;}
+  .botmode-update-actions-v14 {flex-direction:column;align-items:stretch;}
+  .botmode-update-button-v14 {width:100%;}
+}
