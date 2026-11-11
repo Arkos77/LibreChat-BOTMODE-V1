@@ -1,5 +1,7 @@
 # BOT MODE V1 — décision de périmètre et critères de publication
 
+> **ÉTAT FINAL (11/11/2026) — V1.0.6 PUBLIÉE.** PR #180 fusionnée ; tag Git `v1.0.6` pointant vers `416bf00898a6b0fb2eaf271ee4671d30ea55ccf0` ; [GitHub Release](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.6) publiée ; image GHCR AMD64/ARM64 par digest `sha256:e3640ac10833e4743796589b53d8a935d94867d73b0c25e82b4e7e1eba985cdb` ; [8/8 contrôles OCI PASS](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42953398588), CI source 29 SUCCESS / 2 SKIPPED / 0 FAIL. **Les sections « checkpoint » ci-dessous sont des archives pré-publication**, pas des annonces d'étapes encore ouvertes. Maintenir les restrictions de sécurité et l'interdiction de migration automatique.
+
 ## V1.0.6 — checkpoint de promotion officielle (11 novembre 2026)
 
 **La release officielle est distincte de la candidate GHCR.** Le propriétaire a donné les autorisations séparées suivantes : (1) acceptation **limitée** des risques CodeQL OAuth #331/#332 pour des installations Linux protégées — [#154](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/154) ; (2) construction/push de l'image candidate multiarchitecture ; (3) fusion PR #180, tag `v1.0.6` et GitHub Release. Aucun accord de migration ni de mise à jour du Mac ou du Chromebook n'a été donné.

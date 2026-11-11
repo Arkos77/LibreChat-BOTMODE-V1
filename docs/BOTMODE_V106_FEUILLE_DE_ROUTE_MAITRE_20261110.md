@@ -1,5 +1,7 @@
 # BOT MODE — FEUILLE DE ROUTE MAÎTRE DE MISE À JOUR V1.0.6
 
+> **Note d'archivage (11/11/2026) :** cette feuille est le plan original du 10 novembre, pas le statut actuel. La **V1.0.6 a été publiée** via [GitHub Release](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.6) : tag Git `416bf00898a6b0fb2eaf271ee4671d30ea55ccf0`, digest OCI AMD64/ARM64 `sha256:e3640ac10833e4743796589b53d8a935d94867d73b0c25e82b4e7e1eba985cdb`, [preuves GHCR](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42953398588). Les travaux et tests terminés sont enregistrés dans [issue #179](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/179) et [PR #180](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/180). Les limites matériels / sécurité restent applicables ; aucun déploiement des machines personnelles n'est autorisé.
+
 **Révision du plan :** 10 novembre 2026 (complétée après vérifications des sources officielles et des workflows)  
 **Statut :** PLAN DE QUALIFICATION — aucun correctif exécuté ni validation V1.0.6 acquise  
 **Dépôt public :** https://github.com/Arkos77/LibreChat-BOTMODE-V1  
