@@ -1,19 +1,19 @@
-# BOT MODE V1.0.5 — installation selon votre machine
+# BOT MODE V1.0.6 — installation selon votre machine
 
 **Choisissez votre système, préparez Docker, puis installez une seule fois BOT MODE.** L'installateur natif détecte le système, la mémoire et l'AVX sur x86_64, et choisit automatiquement le profil **Lite** ou **Full**. Il reste possible de forcer `--lite` ou `--full`.
 
 Ce guide concerne **une nouvelle installation**, pas la migration d'un LibreChat/BOT MODE existant. Les commandes de préparation de Docker ci-dessous ne doivent **pas** être exécutées sur un hôte où Docker et des volumes importants fonctionnent déjà : passez directement aux vérifications, puis à l'installation de BOT MODE. Sauvegardez et vérifiez la restauration de toute installation existante avant de changer quoi que ce soit.
 
-**Version figée :** [v1.0.5](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.5) ; commit `0973da6cc8cfc5b35616e26132d0945fff147ebe` ; image Linux AMD64/ARM64 `ghcr.io/arkos77/librechat-botmode-v1@sha256:27708c107dc434a59a2e6a5fe4e3501ae5f6c13bfdb064464932c88a0c2a4c80`. Les alias Docker `stable` et `latest` ne sont **pas** les références de cette version.
+**Release publiée :** [v1.0.6](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.6) ; source `416bf00898a6b0fb2eaf271ee4671d30ea55ccf0` ; image GHCR Linux AMD64/ARM64 `ghcr.io/arkos77/librechat-botmode-v1@sha256:e3640ac10833e4743796589b53d8a935d94867d73b0c25e82b4e7e1eba985cdb`. Les alias `stable` et `latest` ne remplacent pas ce digest.
 
-> **V1.0.6 en cours de qualification (non publiée à la préparation de ce guide).** Ces commandes conservent le couple **v1.0.5** vérifié. Une fois v1.0.6 publiée avec accord explicite, prenez le **tag Git**, le **SHA source** et le **digest GHCR AMD64/ARM64** dans ses notes officielles, puis installez ce couple exact sur un hôte neuf uniquement. Le changement de version d'un Chromebook/Mac déjà en service exige inventaire, sauvegarde et décision de déploiement distincte. Ne mélangez jamais la configuration source v1.0.5 avec une image v1.0.6.
+> **Usage : nouvelles installations seulement.** Le Chromebook avec Crostini et le MacBook sous Xubuntu suivent les guides **Linux** ; leurs configurations exactes v1.0.6 ne sont pas certifiées par les seuls runners. **macOS natif avec Docker Desktop** et **Windows avec WSL2/Docker Desktop** : procédures d'essai **non qualifiées pour v1.0.6**, sans promesse d'installation réussie. Ne pas migrer les machines existantes sans sauvegarde et accord séparé.
 
 
 ## Choisir son système
 
 | Système | Préparation de Docker | Profil conseillé | Niveau de qualification BOT MODE |
 | --- | --- | --- | --- |
-| [Chromebook ChromeOS](#chromebook--chromeos-et-linux-crostini) | Linux/Crostini (Debian), Docker Engine | **Lite** | Mission réelle et runtime qualifiés sur un Chromebook |
+| [Chromebook ChromeOS](#chromebook--chromeos-et-linux-crostini) | Linux/Crostini (Debian), Docker Engine | **Lite** | Essais antérieurs sur Chromebook ; v1.0.6 non réceptionnée spécifiquement sur chaque appareil |
 | [Ubuntu / Xubuntu Linux](#ubuntu-ou-xubuntu--pc-linux-et-macbook-sous-linux) | Docker Engine Ubuntu | **Auto**, ou Lite sur petit PC | Chemin Linux + image AMD64 validés ; chaque machine reste à tester |
 | [Debian Linux](#debian--autre-pc-linux) | Docker Engine Debian | **Auto** | Chemin d'installation basé sur Docker officiel |
 | [Fedora Linux](#fedora--autre-pc-linux) | Docker Engine Fedora | **Auto** | Procédure documentée, pas de qualification matérielle BOT MODE |
@@ -43,7 +43,7 @@ Vérifiez également qu'aucune autre application n'utilise le port **3080**, que
 
 ## Chromebook — ChromeOS et Linux (Crostini)
 
-**Statut :** profil Lite réellement testé sur un Chromebook CPU-only ; les restrictions Crostini varient selon l'appareil et les politiques d'administration.
+**Statut :** profil Lite testé sur un Chromebook CPU-only dans l'historique du projet (pas une réception matérielle spécifique v1.0.6) ; les restrictions Crostini varient selon l'appareil et les politiques d'administration.
 
 1. Dans ChromeOS, ouvrez **Paramètres → À propos de ChromeOS → Développeurs → Environnement de développement Linux → Configurer**. Google installe un environnement **Debian** et ouvre l'application Terminal. [Instructions officielles ChromeOS](https://support.google.com/chromebook/answer/9145439?hl=fr).
 2. Dans le **terminal Linux**, vérifiez la distribution et l'espace disque :
@@ -136,7 +136,7 @@ Si la version de Debian n'est pas prise en charge par le dépôt officiel, **arr
 
 ## Fedora — autre PC Linux
 
-**Statut :** préparation Docker documentée, mais aucun test matériel Fedora spécifique à BOT MODE V1.0.3.
+**Statut :** préparation Docker documentée, mais aucun test matériel Fedora spécifique à BOT MODE V1.0.6.
 
 Sur un Fedora neuf compatible avec le [guide officiel Docker Fedora](https://docs.docker.com/engine/install/fedora/), sans Docker concurrent :
 
@@ -167,7 +167,7 @@ sudo usermod -aG docker "$USER"
 
 ## macOS — Mac Intel ou Apple Silicon
 
-**Statut :** image Linux AMD64/ARM64 disponible via Docker Desktop, mais **pas de réception BOT MODE V1.0.3 sur macOS**. Ne pas confondre Mac matériel et machine **Xubuntu Linux**.
+**Statut :** image Linux AMD64/ARM64 accessible via Docker Desktop, mais **pas de réception BOT MODE V1.0.6 sur macOS natif**. Le script d'installation impose des permissions et un propriétaire UID 1000 pour le fichier `.env`, ce qui peut bloquer macOS natif ; ce chemin est expérimental. Ne pas confondre Mac matériel et machine **Xubuntu Linux**.
 
 1. Vérifiez que votre Mac utilise une **version de macOS prise en charge** et que les [prérequis Docker Desktop](https://docs.docker.com/desktop/setup/install/mac-install/) sont satisfaits. Docker Desktop demande au moins **4 Gio de RAM**, et ses conditions d'utilisation sont distinctes des licences du projet BOT MODE.
 2. Téléchargez la version officielle **Docker Desktop pour Mac Intel** ou **Mac Apple Silicon** ; installez et ouvrez l'application Docker, puis attendez que le moteur soit démarré.
@@ -233,33 +233,33 @@ La quantité de RAM détectée est celle de l'environnement Linux WSL2 ; elle pe
 Sur une **nouvelle installation**, sans dossier BOT MODE préexistant :
 
 ```bash
-git clone --branch v1.0.5 --depth 1 \
+git clone --branch v1.0.6 --depth 1 \
   https://github.com/Arkos77/LibreChat-BOTMODE-V1.git
 
 cd LibreChat-BOTMODE-V1
 
 # Si cette vérification échoue, arrêtez-vous : ne lancez pas l'installateur.
 test "$(git rev-parse HEAD)" = \
-  0973da6cc8cfc5b35616e26132d0945fff147ebe
+  416bf00898a6b0fb2eaf271ee4671d30ea55ccf0
 ```
 
 **Mode automatique** : il choisit **Lite** si moins de **4 Gio de RAM** ou si le CPU x86_64 manque d'AVX ; **Full** autrement. Référencez systématiquement le digest validé :
 
 ```bash
 BOTMODE_HOST_BIND_IP=127.0.0.1 ./install.sh --image \
-  ghcr.io/arkos77/librechat-botmode-v1@sha256:27708c107dc434a59a2e6a5fe4e3501ae5f6c13bfdb064464932c88a0c2a4c80
+  ghcr.io/arkos77/librechat-botmode-v1@sha256:e3640ac10833e4743796589b53d8a935d94867d73b0c25e82b4e7e1eba985cdb
 ```
 
 Sur une petite machine, un Mac avec ressources Docker limitées ou une installation Windows WSL2 non encore qualifiée, utilisez **Lite explicitement** :
 
 ```bash
 BOTMODE_HOST_BIND_IP=127.0.0.1 ./install.sh --lite --image \
-  ghcr.io/arkos77/librechat-botmode-v1@sha256:27708c107dc434a59a2e6a5fe4e3501ae5f6c13bfdb064464932c88a0c2a4c80
+  ghcr.io/arkos77/librechat-botmode-v1@sha256:e3640ac10833e4743796589b53d8a935d94867d73b0c25e82b4e7e1eba985cdb
 ```
 
 Pour une machine Linux compatible et suffisamment dimensionnée, Full peut être demandé explicitement via `--full` ; le bootstrap **refuse Full** si le CPU x86_64 n'a pas AVX ou si la RAM détectée est inférieure à 4 Gio. Full inclut davantage de services locaux, ce qui exige des ressources supplémentaires.
 
-**Pourquoi `BOTMODE_HOST_BIND_IP=127.0.0.1` ?** La **v1.0.5** limite déjà par défaut l'API (port 3080) **et** le panneau d'administration Full (port 3000) à `127.0.0.1`. Garder cette valeur explicite dans `.env` rend l'intention vérifiable lors des redémarrages. Pour un accès distant, ne définissez `BOTMODE_HOST_BIND_IP` et `BOTMODE_ADMIN_PANEL_BIND_IP` qu'après configuration d'un proxy TLS et d'un contrôle d'accès. Réglez `TRUST_PROXY` sur le nombre de proxys réellement fiables (`0` en accès direct) et ne journalisez pas les paramètres OAuth `code`/`state` dans les logs du proxy.
+**Pourquoi `BOTMODE_HOST_BIND_IP=127.0.0.1` ?** La **v1.0.6** limite déjà par défaut l'API (port 3080) **et** le panneau d'administration Full (port 3000) à `127.0.0.1`. Garder cette valeur explicite dans `.env` rend l'intention vérifiable lors des redémarrages. Pour un accès distant, ne définissez `BOTMODE_HOST_BIND_IP` et `BOTMODE_ADMIN_PANEL_BIND_IP` qu'après configuration d'un proxy TLS et d'un contrôle d'accès. Réglez `TRUST_PROXY` sur le nombre de proxys réellement fiables (`0` en accès direct) et ne journalisez pas les paramètres OAuth `code`/`state` dans les logs du proxy.
 
 ### Premier démarrage et diagnostic
 

@@ -6,7 +6,8 @@ This policy covers **[Arkos77/LibreChat-BOTMODE-V1](https://github.com/Arkos77/L
 
 | Version | Status |
 | --- | --- |
-| v1.0.5 | Latest published BOT MODE release; security reports accepted |
+| v1.0.6 | Latest published BOT MODE release; private security reports accepted |
+| v1.0.5 | Historical release; report security issues privately, migrate only with backups and qualification |
 | Earlier BOT MODE releases | Historical; upgrade recommended where compatible |
 | Unmerged branches and DRAFT pull requests | Experimental; not production releases |
 
@@ -14,7 +15,7 @@ Support here means reports will be reviewed. It is **not** a guarantee that ever
 
 ## Reporting a vulnerability privately
 
-1. **Preferred:** use [GitHub Private Vulnerability Reporting for this BOT MODE repository](https://github.com/Arkos77/LibreChat-BOTMODE-V1/security/advisories/new) **if the maintainer has enabled it**.
+1. **Preferred:** use [GitHub Private Vulnerability Reporting for this BOT MODE repository](https://github.com/Arkos77/LibreChat-BOTMODE-V1/security/advisories/new) **(enabled for this repository)**.
 2. If that page is unavailable, open a [GitHub issue in this repository](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/new) **only to request a private contact channel**. Include no proof of concept, vulnerable endpoint, private URL, personal data, credentials, token, exploit steps or other sensitive details in that public issue. Coordinate a private channel with the maintainer before sharing the report.
 3. Do not submit confidential BOT MODE findings to the upstream LibreChat Discord or repository unless they independently concern upstream and disclosure has been coordinated.
 
