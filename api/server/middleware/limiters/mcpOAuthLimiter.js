@@ -11,6 +11,7 @@ function positiveInteger(value, fallback) {
 // redirects while initiation happens only after JWT authentication.
 let initiationLimiter;
 let callbackLimiter;
+let pollLimiter;
 
 function sendLimitError(req, res, defaultWindowSeconds) {
   const resetAt = req.rateLimit?.resetTime?.getTime?.();
@@ -59,10 +60,33 @@ function createCallbackLimiter() {
   return callbackLimiter;
 }
 
+/** Bound both token and status polling with one shared per-user quota.
+ * Independent from initiation so normal UI polling cannot block new auth. */
+function createPollLimiter() {
+  if (!pollLimiter) {
+    const minutes = positiveInteger(process.env.MCP_OAUTH_POLL_WINDOW, 5);
+    pollLimiter = rateLimit({
+      windowMs: minutes * 60 * 1000,
+      limit: positiveInteger(process.env.MCP_OAUTH_POLL_MAX, 600),
+      standardHeaders: 'draft-7',
+      legacyHeaders: false,
+      keyGenerator: (request) =>
+        JSON.stringify([
+          request.user?.tenantId ?? getTenantId() ?? null,
+          String(request.user?.id ?? ''),
+        ]),
+      store: limiterCache('mcp_oauth_poll_user_limiter'),
+      handler: (request, response) => sendLimitError(request, response, minutes * 60),
+    });
+  }
+  return pollLimiter;
+}
+
 /** Called during route initialization, before the first incoming request. */
 function initializeMcpOAuthLimiters() {
   createInitiationLimiter();
   createCallbackLimiter();
+  createPollLimiter();
 }
 
 /** Throttle network/IdP work across all MCP servers for one authenticated user. */
@@ -78,7 +102,16 @@ function mcpOAuthCallbackLimiter(req, res, next) {
   return createCallbackLimiter()(req, res, next);
 }
 
+/** Limit polling before reading any OAuth flow state or tokens. */
+function mcpOAuthPollLimiter(req, res, next) {
+  if (!req.user?.id) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  return createPollLimiter()(req, res, next);
+}
+
 module.exports = {
+  mcpOAuthPollLimiter,
   initializeMcpOAuthLimiters,
   mcpOAuthInitiateLimiter,
   mcpOAuthCallbackLimiter,

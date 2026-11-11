@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/botmode-v1-full-rag-native-acceptance.yml'
+      - 'docker-compose.botmode.yml'
+      - 'scripts/botmode/bootstrap.sh'
       - 'scripts/botmode/ci-full-rag-native-acceptance.py'
       - 'scripts/botmode/ci-mock-embeddings.js'
   workflow_dispatch:
@@ -62,11 +64,14 @@ jobs:
         run: |
           set -euo pipefail
           sudo ./install.sh --full --no-pull --no-start --image "$BOTMODE_IMAGE" >/dev/null
+          # sudo -E on this runner did not preserve BOTMODE_HOST_PORT=3090.
+          # Persist the test-only port in the runner's private Compose dotenv.
+          echo 'BOTMODE_HOST_PORT=3090' | sudo tee -a .env >/dev/null
           echo "MEILI_MASTER_KEY=$(openssl rand -hex 24)" | sudo tee -a .env >/dev/null
-          # Diagnostic: both independent Full services must verify the SAME
-          # JWT. Without an explicit shared value API bootstraps one privately
-          # inside /app/data/.env.temp while rag_api reads .env.
-          echo "JWT_SECRET=$(openssl rand -hex 32)" | sudo tee -a .env >/dev/null
+          # Fresh Full bootstrap already generates durable shared JWTs.
+          # Do not append a second different JWT_SECRET over the installed one.
+          sudo awk -F= '/^JWT_SECRET=/{last=$2} END {if(length(last)<32) exit 1}' .env
+          echo 'CI_FULL_RAG_SHARED_JWT_BOOTSTRAP=PASS'
           # Lite RAG requires an embeddings backend. Only a CI-local network
           # provider is permitted; never send requests to paid OpenAI.
           printf '%s\n' \
@@ -84,9 +89,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          published_port="$(sudo -E docker compose -f docker-compose.botmode.yml config --format json | jq -er '.services.api.ports[] | select(.target == 3080) | .published')"
+          test "$published_port" = 3090 || { echo "CI_FULL_UNEXPECTED_API_PUBLISHED_PORT=$published_port"; exit 1; }
+          echo 'CI_FULL_API_HOST_PORT_3090=PASS'
           sudo -E docker compose -f docker-compose.botmode.yml up -d mongodb vectordb
+          # Compose top-level `name:` can determine the effective project name.
+          # Resolve the real network instead of assuming COMPOSE_PROJECT_NAME.
+          compose_network="$(sudo -E docker compose -f docker-compose.botmode.yml config --format json | jq -er '.networks.default.name')"
+          docker network inspect "$compose_network" >/dev/null
           docker run -d --name "ci-embeddings-${{ github.run_id }}" \
-            --network "${COMPOSE_PROJECT_NAME}_default" \
+            --network "$compose_network" \
             --network-alias ci-embeddings \
             --read-only --cap-drop ALL --security-opt no-new-privileges \
             --user 1000:1000 --memory 128m \
@@ -101,12 +113,67 @@ jobs:
             if curl -fsS http://127.0.0.1:3090/api/config >/dev/null 2>&1; then ready=1; break; fi
             sleep 3
           done
-          test "$ready" = 1
+          if [ "$ready" != 1 ]; then
+            echo 'CI_FULL_API_HOST_HTTP_TIMEOUT=FAIL'
+            exit 1
+          fi
           sudo -E docker compose -f docker-compose.botmode.yml exec -T vectordb sh -ec 'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT 1"' | grep -q 1
           echo 'CI_FULL_RAG_REAL_API_PG_UP=PASS'
+          # Full reuses the existing Lite durable AOF Redis store.
+          test "$(sudo -E docker compose -f docker-compose.botmode.yml exec -T redis redis-cli ping | tr -d '\\r')" = PONG
+          test "$(sudo -E docker compose -f docker-compose.botmode.yml exec -T redis redis-cli --raw CONFIG GET appendonly | tail -n 1 | tr -d '\\r')" = yes
+          sudo -E docker compose -f docker-compose.botmode.yml exec -T api node -e '
+            if (process.env.USE_REDIS !== "true" ||
+                process.env.USE_REDIS_STREAMS !== "true" ||
+                process.env.REDIS_URI !== "redis://redis:6379") process.exit(1);
+          '
+          echo 'CI_FULL_REDIS_DURABLE_CONFIG_AND_CONNECTIVITY=PASS'
 
       - name: Real embed, durable pgvector, native graph, owner isolation and delete
-        run: sudo -E python3 scripts/botmode/ci-full-rag-native-acceptance.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Preserve the CI-only guard explicitly: sudo -E is not supported
+          # on this runner and must never weaken ci-full-rag-native-acceptance.py.
+          test "${CI:-}" = true
+          test -n "${GITHUB_RUN_ID:-}"
+          [[ "$BOTMODE_IMAGE" == botmode-ci-full-rag:* ]]
+          sudo env CI=true GITHUB_RUN_ID="$GITHUB_RUN_ID" BOTMODE_IMAGE="$BOTMODE_IMAGE" \
+            python3 scripts/botmode/ci-full-rag-native-acceptance.py
+
+      - name: Classify Full boot failure before disposal (CI dummy secrets only)
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          echo 'CI_FULL_DIAGNOSTIC_BEGIN'
+          sudo -E docker compose -f docker-compose.botmode.yml ps -a --format json |
+            jq -cr 'if type == "array" then .[] else . end | {Service,State,Health,ExitCode}' 2>/dev/null || true
+          for svc in api rag_api mongodb vectordb meilisearch; do
+            cid="$(sudo -E docker compose -f docker-compose.botmode.yml ps -aq "$svc" | head -n 1)"
+            if [ -n "$cid" ]; then
+              docker inspect -f 'CI_CONTAINER={{.Name}} STATE={{.State.Status}} EXIT={{.State.ExitCode}} OOM={{.State.OOMKilled}} RESTARTING={{.State.Restarting}}' "$cid" || true
+            fi
+          done
+          echo 'CI_FULL_API_BIND_DIAGNOSTIC_BEGIN'
+          sudo -E docker compose -f docker-compose.botmode.yml port api 3080 || true
+          sudo -E docker compose -f docker-compose.botmode.yml config --format json |
+            jq -cr '.services.api.ports // [] | .[] | {published,target,host_ip}' || true
+          curl --noproxy '*' -sS --max-time 5 -o /dev/null -w 'CI_FULL_HOST_HTTP_STATUS=%{http_code}\\n' http://127.0.0.1:3090/api/config || true
+          sudo -E docker compose -f docker-compose.botmode.yml exec -T api node -e '
+            const http=require("http");
+            http.get("http://127.0.0.1:3080/api/config",r=>{
+              console.log("CI_FULL_INTERNAL_HTTP_STATUS="+r.statusCode); r.resume();
+            }).on("error",e=>console.log("CI_FULL_INTERNAL_HTTP_ERROR="+e.code));
+            setTimeout(()=>process.exit(0),6000);' || true
+          echo 'CI_FULL_API_BIND_DIAGNOSTIC_END'
+          # Only on this synthetic ephemeral CI runner: no personal data or live API keys.
+          # Restrict to bounded error-class logs; redact commonplace credential patterns.
+          sudo -E docker compose -f docker-compose.botmode.yml logs --no-color --tail 120 api rag_api mongodb 2>&1 |
+            grep -Ei 'error|fatal|fail|exception|connect|refus|timeout|start|config|auth|listen|mongodb|rag' |
+            tail -n 80 |
+            sed -E 's/(Bearer[[:space:]]+)[^[:space:]]+/\\1[REDACTED]/Ig; s/((api.?key|password|secret|token)[=:][[:space:]]*)[^[:space:],]+/\\1[REDACTED]/Ig' || true
+          echo 'CI_FULL_DIAGNOSTIC_END'
 
       - name: Cleanup strictly runner-local Compose stack
         if: always()

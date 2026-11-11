@@ -6,7 +6,7 @@ This policy covers **[Arkos77/LibreChat-BOTMODE-V1](https://github.com/Arkos77/L
 
 | Version | Status |
 | --- | --- |
-| v1.0.3 | Latest published BOT MODE release; security reports accepted |
+| v1.0.5 | Latest published BOT MODE release; security reports accepted |
 | Earlier BOT MODE releases | Historical; upgrade recommended where compatible |
 | Unmerged branches and DRAFT pull requests | Experimental; not production releases |
 

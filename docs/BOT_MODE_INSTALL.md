@@ -1,6 +1,9 @@
-# Installer BOT MODE V1.0.4 — guide officiel
+# Installer BOT MODE V1.0.5 — guide officiel
 
 **BOT MODE** ajoute à LibreChat un orchestrateur de missions et des spécialistes (Recherche, Analyse, Code, Documents, Rédaction), avec vérification Oracle indépendante et publication contrôlée par P6. La version publique à installer est **[v1.0.5](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.5)**.
+
+> **Préparation V1.0.6 :** ce guide conserve les commandes **v1.0.5 actuellement publiées** afin de ne pas présenter un digest v1.0.6 imaginaire. Après la publication officielle, la GitHub Release v1.0.6 fournira le SHA Git de son tag et le digest OCI Linux AMD64/ARM64 à copier. **Le tag source et l'image doivent être de la même version.** Avant cette publication, ne pas lancer `git clone --branch v1.0.6` ni installer une image candidate. Ni une fusion GitHub ni la réussite des tests unitaires ne sont une autorisation de déploiement. L'usage Lite reste local, avec MongoDB 4.4 non maintenu ; Full nécessite AVX (x86_64), au moins 4 Gio de RAM et la validation RAG/permissions.
+
 
 Ce guide concerne **une nouvelle installation**. Une installation existante nécessite un inventaire et une sauvegarde préalables : voir [Sauvegarde et retour arrière](BOT_MODE_ROLLBACK.md).
 
@@ -63,7 +66,9 @@ L'installateur :
 5. lance la stack Lite : **API LibreChat/BOT MODE, MongoDB 4.4 et Redis 7**, avec volumes de données persistants ;
 6. vérifie l'authentification de la base de données avant de déclarer l'installation achevée.
 
-Le mode Lite réduit les services locaux, notamment sur les CPU x86_64 sans AVX. Les services RAG et de recherche locaux lourds ne font pas partie du profil Lite par défaut.
+Le mode Lite réduit les services locaux, notamment sur les CPU x86_64 sans AVX. Les services RAG et de recherche locaux lourds ne font pas partie du profil Lite par défaut. **L'exécution de code et la recherche documentaire ne doivent pas être annoncées comme disponibles par défaut en Lite**, même si le nom du spécialiste ou certaines permissions apparaissent dans l'interface.
+
+**Risque résiduel de compatibilité :** le profil Lite embarque MongoDB 4.4.29, version hors support fournisseur depuis le 29 février 2024. Préserver une exposition strictement locale et contrôler les ports effectifs sur les anciens fichiers Compose ; une distribution téléchargeable n'est pas une certification d'hébergement public sur Internet.
 
 **Alternative pour un hôte compatible Full** (au moins 4 Gio de RAM, AVX sur x86_64) :
 
@@ -100,6 +105,8 @@ EXIGENCE DE SOURCE OFFICIELLE : si l'utilisateur exige expressément une source 
 ./start.sh
 ./doctor.sh --lite
 ```
+
+**Recherche Web de la candidate v1.0.6 (non encore publiée) :** la configuration prévue utilise **Keenable** pour la recherche et l'extraction de pages, avec `rerankerType: none`. Aucune clé Serper, Firecrawl, Tavily ni abonnement SearXNG local n'est nécessaire pour ce fonctionnement par défaut. Les requêtes et URL consultées sont transmises au prestataire Keenable ; ses points d'accès publics sont limités en fréquence et peuvent être indisponibles. Le modèle conversationnel reste distinct et doit être configuré ; l'outil `web_search` doit être autorisé dans l'agent RECHERCHE. La preuve HTTP anonyme Search+Fetch ne suffit pas, seule, à certifier une mission native complète. Cette nouveauté **ne s'applique pas à la release stable v1.0.5**. Voir la configuration officielle LibreChat : https://www.librechat.ai/docs/configuration/librechat_yaml/object_structure/web_search .
 
 **Modèles et coût :** le routage natif par défaut privilégie des modèles OpenRouter **explicitement gratuits** ; il ne déclenche pas de fallback payant sans autorisation. Une clé/fournisseur valide reste nécessaire, et la disponibilité ainsi que les quotas des modèles gratuits peuvent varier.
 

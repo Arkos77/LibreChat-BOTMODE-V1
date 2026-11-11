@@ -30,6 +30,12 @@ permissions:
 
 jobs:
   publish:
+    # In this BOT MODE fork, a merge to main must NOT publish unrelated
+    # LibreChat dev images or move their "latest" tag on GHCR/Docker Hub.
+    # Explicitly dispatched generic-image builds remain a separate opt-in.
+    if: >-
+      github.repository != 'Arkos77/LibreChat-BOTMODE-V1' ||
+      github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/docker-publish.yml
     with:
       images: >-

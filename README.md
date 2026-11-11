@@ -8,6 +8,9 @@
 
 > **À retenir :** installer le tag Git `v1.0.5` et l'image correspondant au **digest exact** ci-dessous. Les alias Docker `stable` et `latest` peuvent encore pointer vers une ancienne version.
 
+> **V1.0.6 — préparation de release (PR #180, non publiée à ce checkpoint).** Les commandes v1.0.5 ci-dessous restent le **repli officiel**. Pour une nouvelle installation v1.0.6 après publication, utilisez son **tag Git exact** et l'**image GHCR par digest** indiqués dans ses notes de release, jamais un mélange entre versions. La qualification HITL multi-reprise réelle, Web Search de mission et les alertes CodeQL restent soumises aux portes de la [feuille maître V1.0.6](docs/BOTMODE_V106_FEUILLE_DE_ROUTE_MAITRE_20261110.md). Ne lancez aucune mise à jour de machine existante sans sauvegarde et GO séparé.
+
+
 ## Pourquoi BOT MODE ?
 
 Au lieu d'attendre qu'un seul agent accomplisse toutes les étapes, BOT MODE structure les missions :
@@ -39,6 +42,8 @@ Votre demande dans LibreChat
 - **Intégration LibreChat :** conversations, projets, progression visible et résultats conservés.
 - **Profil Lite :** image prête à l'emploi, MongoDB et Redis légers, sans compilation locale lourde.
 
+**Limite de sécurité Lite :** pour rester compatible avec certains CPU anciens sans AVX, ce profil utilise MongoDB 4.4.29, branche arrivée en fin de support fournisseur. Ce profil vise un usage local protégé ; ne pas exposer MongoDB ni présenter cette dépendance comme recevant des mises à jour de sécurité. Le profil Full demande du matériel plus récent, au minimum 4 Gio de mémoire et AVX sur x86_64. Les capacités Code Interpreter et Documents/RAG ne sont pas incluses ni validées dans le Lite par défaut.
+
 **Parcours réel vérifié en V1.0.3 :** Recherche → Analyse → Synthèse, 3 étapes Oracle VERIFIED, une publication P6 et la persistance des résultats. D'autres capacités dépendent des outils et services configurés ; elles ne sont pas toutes validées sur toutes les plateformes.
 
 ## Installation par machine
@@ -66,7 +71,7 @@ docker info >/dev/null
 openssl version
 ```
 
-### Installer BOT MODE V1.0.4 en profil Lite
+### Installer BOT MODE V1.0.5 en profil Lite
 
 Sur une **installation neuve**, copiez les commandes suivantes :
 

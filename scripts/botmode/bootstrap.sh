@@ -62,9 +62,9 @@ need docker
 
 BOTMODE_COMMIT_SHA="$(git rev-parse --short=12 HEAD)"
 BOTMODE_DEFAULT_IMAGE="ghcr.io/arkos77/librechat-botmode-v1:sha-${BOTMODE_COMMIT_SHA}"
-if [ -z "$BOTMODE_IMAGE_VALUE" ]; then
-  BOTMODE_IMAGE_VALUE="$BOTMODE_DEFAULT_IMAGE"
-fi
+# Resolve the installed image only AFTER inspecting the existing Compose dotenv.
+# Priority: explicit --image > process BOTMODE_IMAGE > saved .env > source SHA.
+# A routine ./start.sh must not silently replace the installed OCI digest.
 
 docker compose version >/dev/null 2>&1 || {
   echo "Docker Compose v2 is required (docker compose)." >&2
@@ -131,6 +131,10 @@ fi
 
 CREATED_NEW_ENV=0
 if [ ! -f .env ]; then
+  if [ "$CHECK_ONLY" -eq 1 ]; then
+    echo 'BOTMODE_ENV_MISSING: --check-only will not create .env; initialize explicitly with ./install.sh --no-start.' >&2
+    exit 4
+  fi
   CREATED_NEW_ENV=1
   cp .env.example .env
   chmod 600 .env
@@ -139,8 +143,15 @@ else
   printf 'BOTMODE_ENV_EXISTING=YES\n'
 fi
 
-# Pin the exact image in the Compose dotenv file. Otherwise a later bare
-# "docker compose up" silently falls back to the mutable :edge image.
+if [ -z "$BOTMODE_IMAGE_VALUE" ]; then
+  BOTMODE_IMAGE_VALUE="$(sed -n 's/^BOTMODE_IMAGE=//p' .env | tail -n 1)"
+fi
+if [ -z "$BOTMODE_IMAGE_VALUE" ]; then
+  BOTMODE_IMAGE_VALUE="$BOTMODE_DEFAULT_IMAGE"
+fi
+
+# Save an immutable image reference in Compose dotenv, never silently fall
+# back to the mutable :edge tag. A routine restart reuses its saved digest.
 # Keep --check-only strictly read-only.
 if [ "$CHECK_ONLY" -eq 0 ]; then
   tmp_env=$(mktemp "$ROOT/.env.botmode.XXXXXX")

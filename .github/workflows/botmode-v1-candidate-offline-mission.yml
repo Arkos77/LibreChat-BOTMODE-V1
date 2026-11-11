@@ -4,6 +4,12 @@ on:
   pull_request:
     paths:
       - '.github/workflows/botmode-v1-candidate-offline-mission.yml'
+      - 'api/server/middleware/limiters/mcpOAuthLimiter.js'
+      - 'api/server/middleware/limiters/mcpOAuthLimiter.integration.spec.js'
+      - 'api/server/middleware/limiters/mcpOAuthLimiter.spec.js'
+      - 'packages/api/src/agents/orchestrator/**'
+      - 'api/server/services/nativeResearchWebSearch.js'
+      - 'librechat.yaml'
 
 permissions:
   contents: read
@@ -18,11 +24,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: 54b30a342bf8f3480d7385b30cfa669b73c92878
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Check pinned candidate
         run: |
-          test "$(git rev-parse HEAD)" = 54b30a342bf8f3480d7385b30cfa669b73c92878
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "BOTMODE_MISSION_SOURCE_EXACT_HEAD=$(git rev-parse HEAD)"
           echo 'BOTMODE_MISSION_SOURCE=PASS'
       - uses: actions/setup-node@v5
         with:
@@ -55,9 +62,34 @@ jobs:
             server/controllers/agents/__tests__/request.resumeMetadata.spec.js \
             server/controllers/agents/__tests__/resume.spec.js
           echo 'BOTMODE_PUBLICATION_RESUME_CONTRACT=PASS'
+      - name: Verify real OAuth throttling and authorization boundary
+        working-directory: api
+        run: |
+          npx jest --ci --runInBand --coverage=false --runTestsByPath \
+            server/middleware/limiters/mcpOAuthLimiter.integration.spec.js \
+            server/middleware/limiters/mcpOAuthLimiter.spec.js \
+            server/routes/mcpOAuthFlowAccess.spec.js
+          echo 'BOTMODE_MCP_OAUTH_THROTTLE_AND_FLOW_GUARDS=PASS'
+      - name: Verify keyless Web Search default and native source-receipt contract
+        run: |
+          node - <<'NODE'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const cfg = JSON.parse(fs.readFileSync('librechat.yaml', 'utf8'));
+          assert.equal(cfg.webSearch.searchProvider, 'keenable');
+          assert.equal(cfg.webSearch.scraperProvider, 'keenable');
+          assert.equal(cfg.webSearch.rerankerType, 'none');
+          assert.ok(cfg.endpoints.agents.capabilities.includes('web_search'));
+          assert.equal(cfg.webSearch.keenableSearchOptions.maxResults, 8);
+          assert.equal(cfg.webSearch.keenableScraperOptions.timeout, 15000);
+          console.log('BOTMODE_KEYLESS_WEB_SEARCH_DEFAULT=PASS');
+          NODE
+          cd api
+          npx jest --ci --runInBand --coverage=false --runTestsByPath server/services/nativeResearchWebSearch.spec.js
+          echo 'BOTMODE_WEB_SEARCH_SOURCE_RECEIPT_GUARDS=PASS'
       - name: Declare bounded evidence
         if: always()
         run: |
-          echo 'Tests pinned integrated candidate at exact commit 54b30a3.' >> "$GITHUB_STEP_SUMMARY"
+          echo "Exact candidate HEAD: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
           echo 'Deterministic tests only; this is NOT a single fully integrated first-user live mission.' >> "$GITHUB_STEP_SUMMARY"
           echo 'No API key, external inference, database migration or stable promotion.' >> "$GITHUB_STEP_SUMMARY"

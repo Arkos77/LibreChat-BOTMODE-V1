@@ -2126,7 +2126,7 @@ describe('MCP Routes', () => {
       const response = await request(unauthApp).get('/api/mcp/oauth/tokens/test-flow-id');
 
       expect(response.status).toBe(401);
-      expect(response.body).toEqual({ error: 'User not authenticated' });
+      expect(response.body).toEqual({ error: 'Authentication required' });
     });
 
     it('should return 403 when user tries to access flow they do not own', async () => {

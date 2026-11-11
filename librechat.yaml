@@ -187,11 +187,16 @@
     ]
   },
   "webSearch": {
-    "searchProvider": "serper",
-    "scraperProvider": "firecrawl",
-    "serperApiKey": "${SERPER_API_KEY}",
-    "firecrawlApiKey": "${FIRECRAWL_API_KEY}",
-    "tavilyApiKey": "${TAVILY_API_KEY}"
+    "searchProvider": "keenable",
+    "scraperProvider": "keenable",
+    "rerankerType": "none",
+    "keenableSearchOptions": {
+      "maxResults": 8,
+      "timeout": 15000
+    },
+    "keenableScraperOptions": {
+      "timeout": 15000
+    }
   },
   "speech": {
     "tts": {

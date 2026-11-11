@@ -1485,6 +1485,23 @@ describe('createAdminConfigHandlers', () => {
       expect(res.statusCode).toBe(403);
     });
 
+    it.each(['interface.toString', 'interface.valueOf', 'interface.hasOwnProperty'])(
+      'rejects inherited-key config field path %s before persistence',
+      async (fieldPath) => {
+        const { handlers, deps } = createHandlers();
+        const req = mockReq({
+          params: { principalType: 'role', principalId: 'admin' },
+          body: { entries: [{ fieldPath, value: true }] },
+        });
+        const res = mockRes();
+
+        await handlers.patchConfigField(req, res);
+
+        expect(res.statusCode).toBe(400);
+        expect(deps.patchConfigFields).not.toHaveBeenCalled();
+      },
+    );
+
     it('rejects entries with unsafe field paths (prototype pollution)', async () => {
       const { handlers } = createHandlers();
       const req = mockReq({

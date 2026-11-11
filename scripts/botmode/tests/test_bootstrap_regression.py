@@ -10,12 +10,15 @@ SCRIPT = Path(__file__).resolve().parents[1] / "bootstrap.sh"
 
 
 class BootstrapRegression(unittest.TestCase):
-    def run_bootstrap(self, *, root_mode=False, image=None, check_only=False):
+    def run_bootstrap(self, *, root_mode=False, image=None, check_only=False,
+                      existing_env=None, shell_image=None, restart=False):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "scripts" / "botmode").mkdir(parents=True)
             (root / "scripts" / "botmode" / "bootstrap.sh").write_bytes(SCRIPT.read_bytes())
             (root / ".env.example").write_text("BOTMODE_MONGO_PASSWORD=existing-mongo\nPOSTGRES_PASSWORD=existing-pg\n")
+            if existing_env is not None:
+                (root / ".env").write_text(existing_env)
             bin_dir = root / "bin"
             bin_dir.mkdir()
             (bin_dir / "git").write_text("#!/bin/sh\necho abcdef123456\n")
@@ -33,6 +36,8 @@ class BootstrapRegression(unittest.TestCase):
             env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ["PATH"],
                        BOTMODE_TEST_CHOWN=str(root / "chown.log"))
             env.pop("BOTMODE_IMAGE", None)
+            if shell_image is not None:
+                env["BOTMODE_IMAGE"] = shell_image
             args = ["bash", str(root / "scripts" / "botmode" / "bootstrap.sh"),
                     "--lite", "--no-start", "--no-pull"]
             if check_only:
@@ -40,6 +45,19 @@ class BootstrapRegression(unittest.TestCase):
             if image:
                 args += ["--image", image]
             done = subprocess.run(args, cwd=root, env=env, capture_output=True, text=True, timeout=30)
+            if restart and done.returncode == 0:
+                # Simulate a routine start on the SAME installation, without
+                # the original --image or shell override.
+                before = (root / ".env").read_bytes()
+                restart_env = dict(env)
+                restart_env.pop("BOTMODE_IMAGE", None)
+                restart_args = ["bash", str(root / "scripts" / "botmode" / "bootstrap.sh"),
+                                "--lite", "--no-start", "--no-pull"]
+                done = subprocess.run(restart_args, cwd=root, env=restart_env,
+                                      capture_output=True, text=True, timeout=30)
+                after = (root / ".env").read_bytes()
+                if done.returncode == 0:
+                    self.assertEqual(before, after, "restart must preserve the complete dotenv")
             dotenv = (root / ".env").read_text() if (root / ".env").exists() else ""
             chown = (root / "chown.log").read_text() if (root / "chown.log").exists() else ""
             return done, dotenv, chown
@@ -63,11 +81,59 @@ class BootstrapRegression(unittest.TestCase):
         self.assertIn("cannot read this private .env", done.stderr)
         self.assertFalse(chown)
 
-    def test_check_only_does_not_change_env(self):
+    def test_check_only_does_not_create_missing_env(self):
         done, dotenv, chown = self.run_bootstrap(root_mode=True, check_only=True)
-        self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertNotIn("BOTMODE_IMAGE=", dotenv)
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("BOTMODE_ENV_MISSING", done.stderr)
+        self.assertEqual(dotenv, "")
         self.assertFalse(chown)
+
+    def test_check_only_preserves_existing_env(self):
+        original = ("BOTMODE_MONGO_PASSWORD=existing-mongo\n"
+                    "POSTGRES_PASSWORD=existing-pg\n"
+                    "BOTMODE_IMAGE=ghcr.io/test/image@sha256:deadbeef\n")
+        done, dotenv, chown = self.run_bootstrap(root_mode=True, check_only=True,
+                                                 existing_env=original)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(dotenv, original)
+        self.assertFalse(chown)
+
+    def test_installed_digest_survives_routine_restart(self):
+        digest = "ghcr.io/arkos77/librechat-botmode-v1@sha256:" + "a" * 64
+        done, dotenv, _ = self.run_bootstrap(root_mode=True, image=digest, restart=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("BOTMODE_IMAGE=" + digest + "\n", dotenv)
+        self.assertEqual(dotenv.count("BOTMODE_IMAGE="), 1)
+
+    def test_existing_digest_is_reused_without_explicit_image(self):
+        digest = "ghcr.io/arkos77/librechat-botmode-v1@sha256:" + "b" * 64
+        original = ("BOTMODE_MONGO_PASSWORD=existing-mongo\n"
+                    "POSTGRES_PASSWORD=existing-pg\n"
+                    "BOTMODE_IMAGE=" + digest + "\n")
+        done, dotenv, _ = self.run_bootstrap(root_mode=True, existing_env=original)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(dotenv, original)
+
+    def test_explicit_image_overrides_previous_digest(self):
+        saved = "ghcr.io/test/saved@sha256:" + "c" * 64
+        selected = "ghcr.io/test/approved@sha256:" + "d" * 64
+        original = ("BOTMODE_MONGO_PASSWORD=existing-mongo\n"
+                    "POSTGRES_PASSWORD=existing-pg\n"
+                    "BOTMODE_IMAGE=" + saved + "\n")
+        done, dotenv, _ = self.run_bootstrap(root_mode=True, existing_env=original,
+                                             image=selected)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("BOTMODE_IMAGE=" + selected + "\n", dotenv)
+        self.assertNotIn(saved, dotenv)
+
+    def test_shell_override_overrides_existing_digest(self):
+        original = ("BOTMODE_MONGO_PASSWORD=existing-mongo\n"
+                    "POSTGRES_PASSWORD=existing-pg\n"
+                    "BOTMODE_IMAGE=ghcr.io/test/saved:old\n")
+        done, dotenv, _ = self.run_bootstrap(root_mode=True, existing_env=original,
+                                             shell_image="ghcr.io/test/new:approved")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("BOTMODE_IMAGE=ghcr.io/test/new:approved\n", dotenv)
 
 
 if __name__ == "__main__":

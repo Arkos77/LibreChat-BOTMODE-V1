@@ -15,20 +15,25 @@ const {
   initializeMcpOAuthLimiters,
   mcpOAuthInitiateLimiter,
   mcpOAuthCallbackLimiter,
+  mcpOAuthPollLimiter,
 } = require('./mcpOAuthLimiter');
 
 describe('MCP OAuth limiters with real express-rate-limit', () => {
   let app;
   const previousInitiateMax = process.env.MCP_OAUTH_INITIATE_MAX;
   const previousCallbackMax = process.env.MCP_OAUTH_CALLBACK_MAX;
+  const previousPollMax = process.env.MCP_OAUTH_POLL_MAX;
   const previousInitiateWindow = process.env.MCP_OAUTH_INITIATE_WINDOW;
   const previousCallbackWindow = process.env.MCP_OAUTH_CALLBACK_WINDOW;
+  const previousPollWindow = process.env.MCP_OAUTH_POLL_WINDOW;
 
   beforeAll(() => {
     process.env.MCP_OAUTH_INITIATE_MAX = '2';
     process.env.MCP_OAUTH_CALLBACK_MAX = '2';
+    process.env.MCP_OAUTH_POLL_MAX = '2';
     process.env.MCP_OAUTH_INITIATE_WINDOW = '5';
     process.env.MCP_OAUTH_CALLBACK_WINDOW = '5';
+    process.env.MCP_OAUTH_POLL_WINDOW = '5';
 
     initializeMcpOAuthLimiters();
     app = express();
@@ -46,14 +51,22 @@ describe('MCP OAuth limiters with real express-rate-limit', () => {
     app.get('/api/mcp/:serverName/oauth/callback', mcpOAuthCallbackLimiter, (_req, res) =>
       res.sendStatus(204),
     );
+    app.get('/api/mcp/oauth/status/:flowId', mcpOAuthPollLimiter, (_req, res) =>
+      res.sendStatus(204),
+    );
+    app.get('/api/mcp/oauth/tokens/:flowId', mcpOAuthPollLimiter, (_req, res) =>
+      res.sendStatus(204),
+    );
   });
 
   afterAll(() => {
     for (const [key, original] of [
       ['MCP_OAUTH_INITIATE_MAX', previousInitiateMax],
       ['MCP_OAUTH_CALLBACK_MAX', previousCallbackMax],
+      ['MCP_OAUTH_POLL_MAX', previousPollMax],
       ['MCP_OAUTH_INITIATE_WINDOW', previousInitiateWindow],
       ['MCP_OAUTH_CALLBACK_WINDOW', previousCallbackWindow],
+      ['MCP_OAUTH_POLL_WINDOW', previousPollWindow],
     ]) {
       if (original === undefined) {
         delete process.env[key];
@@ -80,6 +93,19 @@ describe('MCP OAuth limiters with real express-rate-limit', () => {
 
     // Rate limiting another principal must not consume user-a's budget.
     await request(app).get('/api/mcp/one/oauth/initiate').set('x-test-user', 'user-b').expect(204);
+  });
+
+  it('shares an authenticated quota between status and token polling', async () => {
+    await request(app).get('/api/mcp/oauth/status/flow-a').expect(401);
+    await request(app).get('/api/mcp/oauth/status/flow-a').set('x-test-user', 'poll-a').expect(204);
+    await request(app).get('/api/mcp/oauth/tokens/flow-a').set('x-test-user', 'poll-a').expect(204);
+    const blocked = await request(app)
+      .get('/api/mcp/oauth/status/flow-b')
+      .set('x-test-user', 'poll-a')
+      .expect(429);
+    expect(blocked.headers['retry-after']).toMatch(/^\d+$/);
+    expect(blocked.body).toEqual({ error: 'Too many MCP OAuth requests' });
+    await request(app).get('/api/mcp/oauth/tokens/flow-a').set('x-test-user', 'poll-b').expect(204);
   });
 
   it('limits public callbacks by client IP across server names before dispatch', async () => {

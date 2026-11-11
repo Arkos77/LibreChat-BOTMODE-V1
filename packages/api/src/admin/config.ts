@@ -113,7 +113,8 @@ export function isValidFieldPath(path: string): boolean {
     !path.endsWith('.') &&
     !path.includes('..') &&
     !path.includes('$') &&
-    !UNSAFE_SEGMENTS.test(path)
+    !UNSAFE_SEGMENTS.test(path) &&
+    path.split('.').every((segment) => !UNSAFE_OBJECT_KEY_SEGMENTS.has(segment))
   );
 }
 

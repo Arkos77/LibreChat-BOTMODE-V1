@@ -53,6 +53,7 @@ const {
   initializeMcpOAuthLimiters,
   mcpOAuthInitiateLimiter,
   mcpOAuthCallbackLimiter,
+  mcpOAuthPollLimiter,
 } = require('~/server/middleware/limiters/mcpOAuthLimiter');
 const { getUserPluginAuthValue } = require('~/server/services/PluginService');
 const { invalidateCachedTools } = require('~/server/services/Config');
@@ -630,7 +631,7 @@ router.get('/:serverName/oauth/callback', mcpOAuthCallbackLimiter, async (req, r
  * Get OAuth tokens for a completed flow
  * This is primarily for user-level OAuth flows
  */
-router.get('/oauth/tokens/:flowId', requireJwtAuth, async (req, res) => {
+router.get('/oauth/tokens/:flowId', requireJwtAuth, mcpOAuthPollLimiter, async (req, res) => {
   try {
     const { flowId } = req.params;
     const user = req.user;
@@ -690,7 +691,7 @@ router.post('/:serverName/oauth/bind', requireJwtAuth, setOAuthSession, async (r
  * Check OAuth flow status
  * This endpoint can be used to poll the status of an OAuth flow
  */
-router.get('/oauth/status/:flowId', requireJwtAuth, async (req, res) => {
+router.get('/oauth/status/:flowId', requireJwtAuth, mcpOAuthPollLimiter, async (req, res) => {
   try {
     const { flowId } = req.params;
     const user = req.user;

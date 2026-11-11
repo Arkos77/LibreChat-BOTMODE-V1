@@ -86,16 +86,6 @@ jobs:
         run: |
           set -euo pipefail
           cp .env.example .env
-          # CI-only disposable Redis: durable Mission Oracle result readback.
-          # Modify the ephemeral checkout, never the checked-out candidate.
-          sed -i '/      - SCHEDULES_SINGLE_PROCESS=true/a\      - USE_REDIS=true\n      - USE_REDIS_STREAMS=true\n      - REDIS_URI=redis://redis:6379\n      - STREAM_KEEP_COMPLETED_JOBS=true' docker-compose.botmode-lite.yml
-          # Append a true service under the existing services: map.
-          # Avoid a second 'services.depends_on' key, which Compose rejects.
-          cat >> docker-compose.botmode-lite.yml <<'YAML'
-            redis:
-              image: redis:7-alpine
-              command: ["redis-server", "--save", "", "--appendonly", "no"]
-          YAML
           # Fixture comes from the exact same Git checkout as the runtime image.
           # No network-fetched harness can silently test a different revision.
           cp scripts/botmode/ci-openai-subagent-fixture.py /tmp/botmode-ci-model-fixture.py
@@ -179,6 +169,12 @@ jobs:
           export POSTGRES_PASSWORD=ci-isolated-only
           export BOTMODE_IMAGE=${BOTMODE_PUBLISHED_IMAGE}
           export BOTMODE_HOST_PORT=3090
+          # Since v1.0.6 Redis AOF and its volume are shared by Lite + Full
+          # in docker-compose.botmode.yml. Do NOT inject another Redis service
+          # or modify Compose at runtime: exercise the exact candidate contract.
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml config --quiet
+          docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml config --format json |
+            python3 -c 'import json,sys; d=json.load(sys.stdin); a=d["services"]["api"]; r=d["services"]["redis"]; e=a["environment"]; assert e["USE_REDIS"]=="true" and e["USE_REDIS_STREAMS"]=="true" and e["REDIS_URI"]=="redis://redis:6379"; assert "botmode-redis-data" in d["volumes"]; assert "appendonly" in " ".join(r["command"]); print("CI_LITE_REDIS_SOURCE_CONFIG=PASS")'
           docker compose -f docker-compose.botmode.yml -f docker-compose.botmode-lite.yml up -d
           ready=0
           for i in $(seq 1 90); do
@@ -881,6 +877,14 @@ jobs:
                       except Exception:
                           admission_replies.append({'status':response.status})
               page.on('response',capture_reply)
+              # Production intentionally refuses a launch without a specific
+              # objective; the original CI forgot to type one.
+              assert launch.is_disabled(), 'CI_BROWSER_EMPTY_OBJECTIVE_SHOULD_BLOCK'
+              objective=panel.locator('textarea[id^="botmode-objective-"]').first
+              objective.fill('Recherche les sources officielles de la Déclaration universelle des droits de l’homme et rédige une synthèse en français avec les références vérifiées.')
+              from playwright.sync_api import expect
+              expect(launch).to_be_enabled(timeout=20000)
+              print('CI_BROWSER_OBJECTIVE_GATE=PASS',flush=True)
               launch.click()
               launched('auto')
               # Require an actual browser-originated backend admission, not
@@ -972,8 +976,16 @@ jobs:
               checkbox.wait_for(timeout=15000)
               manual_name=checkbox.locator('xpath=..').inner_text().strip()
               checkbox.check()
-              launch=page.locator('section').filter(has=selector).last.locator('button').first
-              assert launch.is_enabled(), 'CI_BROWSER_MANUAL_LAUNCH_DISABLED'
+              panel=page.locator('section').filter(has=selector).last
+              launch=panel.locator('button').first
+              # A newly created project has no objective, even if the previous
+              # automatic-mode project had one. Preserve the genuine UI guard.
+              assert launch.is_disabled(), 'CI_BROWSER_MANUAL_EMPTY_OBJECTIVE_SHOULD_BLOCK'
+              panel.locator('textarea[id^="botmode-objective-"]').first.fill(
+                  'Analyse les sources officielles disponibles, vérifie les faits avec le spécialiste choisi et rédige une réponse sourcée en français.'
+              )
+              expect(launch).to_be_enabled(timeout=20000)
+              print('CI_BROWSER_MANUAL_OBJECTIVE_GATE=PASS',flush=True)
               launch.click()
               launched('manual')
               print('CI_BROWSER_REAL_OCI_PROJECT_AGENT_MODES=PASS',flush=True)

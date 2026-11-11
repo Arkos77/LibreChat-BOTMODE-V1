@@ -1,6 +1,27 @@
 # BOT MODE V1 — décision de périmètre et critères de publication
 
-Date : 13 octobre 2026. Statut : **RELEASE NO-GO** jusqu'à levée explicite des réserves.
+## V1.0.6 — checkpoint de promotion officielle (11 novembre 2026)
+
+**La release officielle est distincte de la candidate GHCR.** Le propriétaire a donné les autorisations séparées suivantes : (1) acceptation **limitée** des risques CodeQL OAuth #331/#332 pour des installations Linux protégées — [#154](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/154) ; (2) construction/push de l'image candidate multiarchitecture ; (3) fusion PR #180, tag `v1.0.6` et GitHub Release. Aucun accord de migration ni de mise à jour du Mac ou du Chromebook n'a été donné.
+
+### Périmètre autorisé et limites
+
+- **Distribution : nouvelles installations Linux Docker Compose uniquement.** Lite en local ou réseau de confiance ; Full derrière HTTPS, authentification, contrôles de rôle/tenant et protections réseau. Aucun accès libre à Internet et aucun port Mongo/Redis exposé.
+- **Qualifié :** Worker/Recherche/Analyse/Oracle `VERIFIED`/P6 sur les jeux de preuve référencés, Lite/Full en CI, recherche Web sur sources contrôlées, tests HITL doubles avec `FakeChatModel`, sécurité des dépendances npm production à 0 avis, et validation Docker/Playwright sur runner.
+- **Non qualifié :** navigation Web publique non contrôlée, Keenable public, double HITL avec fournisseur LLM réel, migration/restauration sur machines existantes, compatibilité ChromeOS/Windows/Mac non démontrée, exposition Internet libre. Mongo 4.4 Lite reste hors support fournisseur.
+- **CodeQL :** deux HIGH rate-limiting OAuth #331/#332 conservées **ouvertes** mais atténuées par `requireJwtAuth` et `mcpOAuthPollLimiter` (tests 401/429/Retry-After), acceptées temporairement **dans le seul périmètre ci-dessus**. Deux MEDIUM `Log injection` repérées sur les nouvelles traces DEBUG ont entraîné une correction minimale retirant toute interpolation de valeurs utilisateur de ces deux messages ; recontrôler CodeQL sur le SHA final. Les centaines d'alertes historiques de `main` ne sont pas acceptées en bloc.
+- **Signalement privé :** Private Vulnerability Reporting activé et confirmé par le propriétaire.
+- **OCI :** candidate initiale `candidate-botmode-v1-d2e96e7ab137` vérifiée avec digest multiarch `sha256:928d181f777b5e966f247b0807a013462591801c8ef261fde8b0721e9e281be5`, pull anonyme et smoke Lite **PASS** — [Actions #42949119562](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42949119562). Toute correction source postérieure exige **une nouvelle image candidate exacte SHA** et les mêmes contrôles avant de publier la release.
+- **Évitement publication accidentelle :** `.github/workflows/dev-images.yml` empêche dans ce fork un push générique à la fusion ; `tag-images.yml` exclut `v1.0.6`. Ne pas créer de tag `:latest` ni publier de Docker Hub/Helm avec ce GO.
+- **Déploiement personnel :** expressément exclu de la décision de release.
+
+### Portes de sortie
+
+Publier `v1.0.6` **une seule fois** uniquement si la CI du dernier SHA est terminale sans FAIL, les deux MEDIUM de journalisation sont éliminées, et le manifeste GHCR de ce même SHA est vérifié AMD64/ARM64 avec digest, pull anonyme et smoke Lite. Conserver la traçabilité SHA/digest dans les notes de GitHub Release. Une release ne vaut pas feu vert pour mettre à jour les machines.
+
+**Cette section est un checkpoint pré-publication, pas une preuve qu'un tag/release a déjà été créé.** État définitif et preuves de publication : [PR #180](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/180), [issue #179](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/179), [GitHub Releases](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases).
+
+---
 
 ## Gates vérifiés sur la candidate
 

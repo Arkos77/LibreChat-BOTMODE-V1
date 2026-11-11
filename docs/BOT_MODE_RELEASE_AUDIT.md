@@ -1,6 +1,21 @@
 # BOT MODE V1 — final public release audit
 
-Audit baseline: 7 October 2026.
+## Audit courant de V1.0.6 — avant promotion officielle (11 novembre 2026)
+
+**Source de vérité :** [PR #180](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/180), [registre sécurité #154](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/154), [suivi publication #179](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/179). Ce texte est un **checkpoint avant tag**, et ne constitue pas un constat de publication.
+
+- **CI :** dernier SHA exact de PR #180 à qualifier après correctif de deux traces DEBUG OAuth. Le SHA précédent `d2e96e7ab13716e575456e9a70763dc4a0036830` a conclu à 29 SUCCESS / 2 SKIPPED / 0 FAIL sur 31 workflows ; un premier échec intermittent du job Frontend ciblé a réussi lors d'une reprise de ce seul job. Ne pas transposer ces PASS à un SHA modifié sans CI terminale.
+- **CodeQL :** deux HIGH `js/missing-rate-limiting` OAuth MCP #331/#332 atténuées et acceptées **temporairement** par le propriétaire pour Linux à accès protégé. Deux MEDIUM `Log injection` sur des traces de `packages/api/src/mcp/oauth/handler.ts` ont été découvertes pendant le contrôle pré-merge et corrigées par **deux logs constants sans paramètres utilisateur** ; attendre la nouvelle analyse CodeQL du commit final. Les alertes historiques sur `main` restent distinctes, documentées, non fermées en bloc.
+- **Dépendances :** `npm audit --omit=dev` sur la précédente candidate : aucune vulnérabilité de production signalée ; vérifier le HEAD final. Trois alertes de développement surveillées.
+- **Image déjà qualifiée :** candidate précédente `ghcr.io/arkos77/librechat-botmode-v1:candidate-botmode-v1-d2e96e7ab137`, OCI AMD64/ARM64 index `sha256:928d181f777b5e966f247b0807a013462591801c8ef261fde8b0721e9e281be5` — [run #42949119562](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42949119562), 8/8 jobs SUCCESS, pull anonyme et smoke navigateur/Lite PASS. **Après correction du source, reconstruire une candidate immuable correspondant au nouveau SHA avant la release.**
+- **Usage déclaré :** nouvelles installations Linux via Docker Compose ; Lite local/réseau de confiance ; Full HTTPS/authentification/ACL/réseau protégé. Ne pas exposer publiquement Mongo/Redis, ne pas promettre le HITL multiple avec LLM réel, navigateur Web public, migration, sauvegarde/restauration des machines installées ou systèmes non validés. MongoDB 4.4 Lite hors support.
+- **Publication générique bloquée :** `dev-images.yml` protégé sur push main, et `tag-images.yml` exclut le tag `v1.0.6`. Réserver la promotion à `ghcr.io/arkos77/librechat-botmode-v1`, sans `:latest` ni Docker Hub/Helm.
+- **Signalement privé :** GitHub Private Vulnerability Reporting activé (capture fournie par le propriétaire). Pas de secret API copié depuis les machines.
+- **GO humains :** risques limités, candidate GHCR, fusion/tag/GitHub Release accordés séparément ; **pas de GO déploiement** Chromebook/Mac, aucun changement de JARVIS/PangaraBOT, aucune publication d'un fournisseur LLM payant.
+
+**Arrêt impératif :** pas de tag ni GitHub Release avant preuves CI exact HEAD + digest GHCR aligné sur le même SHA, succès des deux architectures et contrôle du signalement CodeQL MEDIUM. Les notes Release devront citer SHA, digest, limites et preuve de pull anonyme.
+
+---
 
 ## Git and release state
 
