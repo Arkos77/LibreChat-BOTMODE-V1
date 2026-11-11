@@ -1,0 +1,39 @@
+/* MJK V13 : Carte de mise à jour dans Paramètres > About, sans modifier le composant React. */
+#botmode-update-check-v13 {
+  padding: 16px;
+  margin-top: 16px;
+  border: 1px solid rgba(247,66,165,.52);
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1px rgba(112,169,255,.08);
+  font-size: 13px;
+}
+html.dark #botmode-update-check-v13 { background: #18122f; color: #f5ebff; }
+html:not(.dark) #botmode-update-check-v13 { background: #fbf5ff; color: #392449; }
+.botmode-update-heading-v13 { font-weight: 700; font-size: 15px; margin: 0 0 7px; }
+.botmode-update-installed-v13 { margin: 0 0 8px; font-weight: 600; }
+.botmode-update-detail-v13 { margin: 0; opacity: .86; line-height: 1.5; }
+.botmode-update-actions-v13 { display: flex; flex-wrap: wrap; gap: 11px; align-items: center; margin-top: 14px; }
+.botmode-update-button-v13 {
+  border: 1px solid #fa7bc4;
+  border-radius: 9px;
+  background: linear-gradient(105deg, #cf207b, #f42b9d);
+  color: white;
+  font-weight: 700;
+  padding: 10px 15px;
+  cursor: pointer;
+  min-height: 42px;
+}
+.botmode-update-button-v13:hover { background: linear-gradient(105deg, #a51969, #dc158d); }
+.botmode-update-button-v13:disabled { opacity: .65; cursor: wait; }
+.botmode-update-button-v13:focus-visible, .botmode-update-link-v13:focus-visible {
+  outline: 2px solid #4bd8ff; outline-offset: 3px;
+}
+.botmode-update-link-v13 { color: #e55fad; text-decoration: underline; text-underline-offset: 3px; font-weight: 600; }
+html:not(.dark) .botmode-update-link-v13 { color: #89215b; }
+.botmode-update-result-v13 { margin: 13px 0 0; line-height: 1.45; }
+#botmode-update-check-v13 [hidden] { display: none !important; }
+@media(max-width:540px) {
+  #botmode-update-check-v13 { padding: 12px; }
+  .botmode-update-actions-v13 { flex-direction: column; align-items: stretch; }
+  .botmode-update-button-v13 { width: 100%; }
+}

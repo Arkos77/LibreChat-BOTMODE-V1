@@ -16,7 +16,7 @@
 
 <p align="center"><em>Capture de l'interface réelle, sans identifiants. Le thème MJK V11 est une personnalisation optionnelle de l'image stable V1.0.6, pas une nouvelle release.</em></p>
 
-**Personnalisation graphique :** [aperçu MJK V11](docs/branding/MJK_V11.md) et [correctif V12 des initiales rose MJK](docs/branding/MJK_V12.md). Le globe reprend la maquette validée ; en bas à gauche les initiales de l'utilisateur connecté sont conservées, avec un habillage rose et bleu.
+**Personnalisation graphique :** [aperçu MJK V11](docs/branding/MJK_V11.md) et [correctif V12 des initiales rose MJK](docs/branding/MJK_V12.md) et [contrôle des mises à jour depuis Paramètres (MJK V13)](docs/branding/MJK_V13_UPDATES.md). Le globe reprend la maquette validée ; en bas à gauche les initiales de l'utilisateur connecté sont conservées, avec un habillage rose et bleu.
 
 **Version stable publiée : [v1.0.6](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.6) — 11 novembre 2026.** Source Git `416bf00898a6b0fb2eaf271ee4671d30ea55ccf0`, image Docker multiarchitecture **Linux AMD64 et ARM64**. Le profil **Lite** vise notamment les machines CPU-only et les CPU x86_64 sans AVX.
 
