@@ -1,0 +1,1191 @@
+<!doctype html>
+<html lang="fr-FR">
+  <head>
+    <meta charset="utf-8" />
+    <base href="/" />
+    <meta name="theme-color" content="#171717" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta
+      name="description"
+      content="BOT MODE — Votre écosystème d’agents IA spécialisés"
+    />
+    <title>BOT MODE</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon-180x180.png" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, interactive-widget=resizes-content"
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+      }
+    </style>
+    <script>
+      const theme = localStorage.getItem('color-theme');
+      const loadingContainerStyle = document.createElement('style');
+      let backgroundColor;
+
+      if (theme === 'dark') {
+        backgroundColor = '#0d0d0d';
+      } else if (theme === 'light') {
+        backgroundColor = '#ffffff';
+      } else if (theme === 'system') {
+        const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        backgroundColor = prefersDarkScheme ? '#0d0d0d' : '#ffffff';
+      } else {
+        backgroundColor = '#ffffff';
+      }
+
+      loadingContainerStyle.innerHTML = `
+        #loading-container {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 100vh;
+          background-color: ${backgroundColor};
+        }
+      `;
+      document.head.appendChild(loadingContainerStyle);
+    </script>
+    <script>
+      (function () {
+        var KEY = 'lc-asset-recovery-at';
+        var RUM_QUEUE_KEY = 'lc-rum-queue';
+        var MAX_RUM_QUEUE = 20;
+        window.__lcRumRecoveryGuardInstalled = true;
+        window.__lcRumQueue = Array.isArray(window.__lcRumQueue) ? window.__lcRumQueue : [];
+        try {
+          var persistedQueue = JSON.parse(sessionStorage.getItem(RUM_QUEUE_KEY) || '[]');
+          if (Array.isArray(persistedQueue)) {
+            window.__lcRumQueue = persistedQueue.concat(window.__lcRumQueue).slice(-MAX_RUM_QUEUE);
+          }
+        } catch (e) {
+          /* Diagnostics should never affect application startup. */
+        }
+        window.__lcRumPush = function (type, attributes) {
+          try {
+            var safeAttributes = {};
+            Object.keys(attributes || {}).forEach(function (key) {
+              var value = attributes[key];
+              if (
+                typeof value !== 'string' &&
+                typeof value !== 'number' &&
+                typeof value !== 'boolean'
+              ) {
+                return;
+              }
+              safeAttributes[key] = value;
+            });
+            if (window.__lcRumQueue.length >= MAX_RUM_QUEUE) {
+              window.__lcRumQueue.shift();
+            }
+            window.__lcRumQueue.push({
+              type: type,
+              at: Math.round(performance.now()),
+              visibilityState: document.visibilityState,
+              attributes: safeAttributes,
+            });
+            sessionStorage.setItem(RUM_QUEUE_KEY, JSON.stringify(window.__lcRumQueue));
+          } catch (e) {
+            /* Diagnostics should never affect application startup. */
+          }
+        };
+        function shouldRecover() {
+          try {
+            var last = Number(sessionStorage.getItem(KEY)) || 0;
+            if (Date.now() - last < 60000) {
+              return false;
+            }
+            sessionStorage.setItem(KEY, String(Date.now()));
+            return true;
+          } catch (e) {
+            return false;
+          }
+        }
+        window.__lcRecoverStaleAssets = function () {
+          if (!shouldRecover()) {
+            return false;
+          }
+          window.__lcRumPush('stale-asset-recovery-start');
+          var reload = function () {
+            window.__lcRumPush('stale-asset-recovery-reload');
+            window.location.reload();
+          };
+          if (navigator.serviceWorker) {
+            var scopeBase = new URL('./', document.baseURI || window.location.href).href;
+            navigator.serviceWorker
+              .getRegistrations()
+              .then(function (registrations) {
+                return Promise.all(
+                  registrations
+                    .filter(function (registration) {
+                      return registration.scope.indexOf(scopeBase) === 0;
+                    })
+                    .map(function (registration) {
+                      return registration.unregister();
+                    }),
+                );
+              })
+              .then(reload, reload);
+          } else {
+            reload();
+          }
+          return true;
+        };
+        if (navigator.serviceWorker) {
+          navigator.serviceWorker.addEventListener('message', function (event) {
+            if (!event.data || event.data.type !== 'LC_SW_PING') {
+              return;
+            }
+            var source = event.source || navigator.serviceWorker.controller;
+            if (source) {
+              source.postMessage({ type: 'LC_SW_PONG' });
+            }
+          });
+        }
+        window.addEventListener(
+          'error',
+          function (event) {
+            var el = event.target;
+            if (!el || !el.tagName) {
+              return;
+            }
+            var failedScript = el.tagName === 'SCRIPT' && el.src;
+            var failedPreload =
+              el.tagName === 'LINK' && /preload/.test(el.rel || '') && /\.js$/.test(el.href || '');
+            if (failedScript || failedPreload) {
+              var isRumBootstrap = el.getAttribute('data-lc-rum-bootstrap') === 'true';
+              window.__lcRumPush('asset-load-error', {
+                tagName: el.tagName,
+                assetUrl: el.src || el.href,
+                optional: isRumBootstrap,
+              });
+              if (isRumBootstrap) {
+                return;
+              }
+              window.__lcRecoverStaleAssets();
+            }
+          },
+          true,
+        );
+        window.addEventListener('unhandledrejection', function (event) {
+          var message = event.reason && event.reason.message;
+          if (
+            typeof message === 'string' &&
+            (message.indexOf('dynamically imported module') !== -1 ||
+              message.indexOf('Importing a module script failed') !== -1)
+          ) {
+            window.__lcRumPush('dynamic-import-error');
+            window.__lcRecoverStaleAssets();
+          }
+        });
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index.BAww31n3.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime.B0Z9INg1.js">
+    <link rel="modulepreload" crossorigin href="./assets/polyfills.CEDm44Cr.js">
+    <link rel="modulepreload" crossorigin href="./assets/advanced-inputs.CBkcmbZa.js">
+    <link rel="modulepreload" crossorigin href="./assets/codemirror-core.r8uhyzQ3.js">
+    <link rel="modulepreload" crossorigin href="./assets/http-client.C5fr6Lnu.js">
+    <link rel="modulepreload" crossorigin href="./assets/mermaid.DV5-LhUM.js">
+    <link rel="modulepreload" crossorigin href="./assets/animations.lfMaMO0g.js">
+    <link rel="modulepreload" crossorigin href="./assets/query-devtools.Bfikqgsr.js">
+    <link rel="modulepreload" crossorigin href="./assets/validation.C8weP53B.js">
+    <link rel="modulepreload" crossorigin href="./assets/react-vtree.CWvYt4iZ.js">
+    <link rel="modulepreload" crossorigin href="./assets/vendor.CgDbRnex.js">
+    <link rel="modulepreload" crossorigin href="./assets/i18n.mgdc0_67.js">
+    <link rel="modulepreload" crossorigin href="./assets/react-interactions.CgBnQWwI.js">
+    <link rel="modulepreload" crossorigin href="./assets/routing.BCycYAPg.js">
+    <link rel="modulepreload" crossorigin href="./assets/radix-ui.HFYVG2ct.js">
+    <link rel="modulepreload" crossorigin href="./assets/tanstack-vendor.BrZoMnC5.js">
+    <link rel="modulepreload" crossorigin href="./assets/avatars.DwBzmTCp.js">
+    <link rel="modulepreload" crossorigin href="./assets/framer-motion.DfW2iC3v.js">
+    <link rel="modulepreload" crossorigin href="./assets/virtualization.DbVfq0r-.js">
+    <link rel="modulepreload" crossorigin href="./assets/headlessui.BRdFYcDV.js">
+    <link rel="modulepreload" crossorigin href="./assets/markdown-processing.BgxAAIkr.js">
+    <link rel="modulepreload" crossorigin href="./assets/utilities.HUTk6tC6.js">
+    <link rel="modulepreload" crossorigin href="./assets/date-utils.C_DbPEjY.js">
+    <link rel="modulepreload" crossorigin href="./assets/forms.4o_bPOTk.js">
+    <link rel="modulepreload" crossorigin href="./assets/math-katex.CnKNlmaN.js">
+    <link rel="modulepreload" crossorigin href="./assets/hooks.BMqMQn1j.js">
+    <link rel="modulepreload" crossorigin href="./assets/queries.mNpJbtJi.js">
+    <link rel="modulepreload" crossorigin href="./assets/security-ui.Cry8a9qF.js">
+    <link rel="modulepreload" crossorigin href="./assets/status.DkPWJgNf.js">
+    <link rel="modulepreload" crossorigin href="./assets/ProjectEditDialog.CCUJuClp.js">
+    <link rel="modulepreload" crossorigin href="./assets/forms.DIQYHCW4.js">
+    <link rel="modulepreload" crossorigin href="./assets/json.DbvqNWGf.js">
+    <link rel="modulepreload" crossorigin href="./assets/MyFilesModal.Dxz44N6L.js">
+    <link rel="modulepreload" crossorigin href="./assets/queries.C6HrzD6s.js">
+    <link rel="modulepreload" crossorigin href="./assets/mutations.SXi9T0gk.js">
+    <link rel="modulepreload" crossorigin href="./assets/eventSelection.D5pj0SgU.js">
+    <link rel="stylesheet" crossorigin href="./assets/math-katex.C5_YvI3e.css">
+    <link rel="stylesheet" crossorigin href="./assets/index.BJyW6o6D.css">
+  <link rel="manifest" href="./manifest.webmanifest" crossorigin="use-credentials"><script id="vite-plugin-pwa:register-sw" src="./registerSW.js"></script>
+<style id="botmode-mjk-brand-v2">
+/* Ne touche pas au contrôle fonctionnel : ne remplace que son pictogramme. */
+button#close-sidebar-button,button#open-sidebar-button,
+button[data-testid="open-sidebar-button"],button[data-testid="close-sidebar-button"],
+button[data-testid="header-open-sidebar-button"] {
+  position:relative!important;
+  width:40px!important;
+  height:40px!important;
+  min-width:40px!important;
+  padding:2px!important;
+  overflow:visible!important;
+}
+button#close-sidebar-button > svg,button#open-sidebar-button > svg,
+button[data-testid="open-sidebar-button"] > svg,
+button[data-testid="close-sidebar-button"] > svg,
+button[data-testid="header-open-sidebar-button"] > svg {
+  display:none!important;
+}
+button#close-sidebar-button::before,button#open-sidebar-button::before,
+button[data-testid="open-sidebar-button"]::before,button[data-testid="close-sidebar-button"]::before,
+button[data-testid="header-open-sidebar-button"]::before {
+  content:"";
+  display:block;
+  position:absolute;
+  inset:2px;
+  background-image:url("/assets/logo.svg?v=mjk-v2");
+  background-repeat:no-repeat;
+  background-position:center;
+  background-size:contain;
+  pointer-events:none;
+}
+button#close-sidebar-button:hover::before,button#open-sidebar-button:hover::before,
+button[data-testid="open-sidebar-button"]:hover::before,button[data-testid="close-sidebar-button"]:hover::before,
+button[data-testid="header-open-sidebar-button"]:hover::before {
+  filter:drop-shadow(0 0 5px rgba(255,68,171,.65));
+}
+/* AuthLayout: l'ancien conteneur est h-10 (40px) pour une image de 512px.
+   Dimensions carrées et object-fit:contain empêchent tout écrasement. */
+div.bg-cover:has(> img[src$="assets/logo.svg"]) {
+  height:clamp(112px,18vh,166px)!important;
+  min-height:112px!important;
+  width:min(100%,190px)!important;
+  margin:20px auto 8px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  background-size:contain!important;
+  overflow:visible!important;
+}
+div.bg-cover > img[src$="assets/logo.svg"] {
+  display:block!important;
+  width:100%!important;
+  max-width:164px!important;
+  height:100%!important;
+  max-height:164px!important;
+  aspect-ratio:1 / 1!important;
+  object-fit:contain!important;
+  object-position:center center!important;
+  flex:0 0 auto!important;
+}
+@media(max-width:480px) {
+  div.bg-cover:has(> img[src$="assets/logo.svg"]) {height:120px!important;min-height:120px!important;}
+  div.bg-cover > img[src$="assets/logo.svg"] {max-width:120px!important;max-height:120px!important;}
+}
+</style>
+<style id="botmode-visual-skin-v11">
+/* BOT MODE — MJK visual skin v3, local/private, reversible */
+:root{--bm-bg:#07091a;--bm-panel:#121026;--bm-pink:#f52d9c;--bm-blue:#33ccff;--bm-text:#fff7fe}
+html{color-scheme:dark}
+body{background:#07091a!important}
+#root{min-height:100vh;background:linear-gradient(125deg,#050817,#0d0a22 55%,#050918);color:#f5eefb}
+body :focus-visible{outline:2px solid #69ddff!important;outline-offset:2px!important}
+/* Login / register: dress existing React components, do not replace forms. */
+body:has(img[src$="assets/logo.svg"]) #root > div.relative.flex.min-h-screen{
+ background:
+  radial-gradient(ellipse 44% 55% at -2% 49%,rgba(233,34,144,.34),transparent 75%),
+  radial-gradient(ellipse 50% 56% at 102% 43%,rgba(13,153,244,.27),transparent 75%),
+  radial-gradient(ellipse 47% 35% at 48% -16%,rgba(247,32,157,.24),transparent 85%),
+  linear-gradient(125deg,#07091b 0%,#140b2b 53%,#070b21 100%)!important;
+ position:relative;overflow:hidden;isolation:isolate
+}
+body:has(img[src$="assets/logo.svg"]) #root > div.relative.flex.min-h-screen::before{
+ content:"";position:fixed;bottom:-27vh;left:-23vw;width:146vw;height:47vh;border-radius:50% 50% 0 0;
+ border-top:3px solid #ff68bd;box-shadow:0 -8px 32px rgba(249,44,165,.75),inset 0 35px 80px rgba(136,27,111,.25);
+ background:radial-gradient(ellipse at 50% 5%,rgba(204,36,140,.32),rgba(12,13,45,.68) 42%,#06091d 79%);
+ pointer-events:none;z-index:0
+}
+body:has(img[src$="assets/logo.svg"]) #root > div.relative.flex.min-h-screen::after{
+ content:"";position:fixed;left:-22vw;top:29vh;width:145vw;height:2px;
+ background:linear-gradient(90deg,transparent,rgba(246,43,165,.25),transparent 42%,rgba(49,208,255,.4),transparent);
+ transform:rotate(-11deg);filter:blur(11px);pointer-events:none;z-index:0
+}
+body:has(img[src$="assets/logo.svg"]) #root > div.relative.flex.min-h-screen > *{position:relative;z-index:1}
+body:has(img[src$="assets/logo.svg"]) .bg-cover:has(>img[src$="assets/logo.svg"]){
+ margin:12px auto 0!important;width:min(92vw,420px)!important;height:auto!important;min-height:0!important;
+ display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;
+ gap:0!important;overflow:visible!important
+}
+body:has(img[src$="assets/logo.svg"]) .bg-cover > img[src$="assets/logo.svg"]{
+ display:block!important;width:clamp(170px,23vh,228px)!important;height:clamp(170px,23vh,228px)!important;
+ max-height:none!important;max-width:none!important;object-fit:contain!important;aspect-ratio:1!important;
+ mix-blend-mode:screen;filter:drop-shadow(0 0 19px rgba(255,41,163,.35));
+ margin:0 auto!important;flex-shrink:0!important
+}
+body:has(img[src$="assets/logo.svg"]) .bg-cover:has(>img[src$="assets/logo.svg"])::after{
+ content:"BOT MODE";display:block;order:1;font-size:clamp(35px,5vh,51px);
+ font-weight:950;font-style:italic;line-height:1.06;letter-spacing:-2px;text-align:center;white-space:nowrap;
+ background:linear-gradient(98deg,#ffffff 0 44%,#ffa7db 48%,#f52d98 100%);
+ -webkit-background-clip:text;background-clip:text;color:transparent;
+ filter:drop-shadow(0 0 9px rgba(244,34,152,.25))
+}
+body:has(img[src$="assets/logo.svg"]) .bg-cover:has(>img[src$="assets/logo.svg"])::before{
+ content:"V1.0.6";order:2;border:1px solid #ff68c5;border-radius:100px;padding:3px 15px;
+ margin-top:9px;color:#ffd9f1;font-size:12px;font-weight:750;letter-spacing:1px;
+ background:rgba(233,29,136,.12);box-shadow:0 0 13px rgba(255,43,175,.48)
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow{
+ display:flex!important;flex-direction:column!important;justify-content:flex-start!important;
+ padding:5px 16px 60px!important;gap:12px!important
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow::before{
+ content:"Votre écosystème d'agents IA spécialisés";display:block;order:0;
+ color:#efdefa;font-weight:450;font-size:clamp(13px,1.8vw,18px);
+ text-shadow:0 2px 9px rgba(9,10,27,.7);letter-spacing:.15px;text-align:center
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow > div{
+ order:1;width:min(95vw,472px)!important;max-width:none!important;
+ border:1px solid rgba(255,69,177,.82);border-radius:20px!important;
+ background:linear-gradient(150deg,rgba(27,16,48,.94),rgba(11,13,34,.95))!important;
+ padding:22px 28px 24px!important;box-shadow:0 0 0 1px rgba(255,59,162,.15),0 0 29px rgba(247,35,156,.25),0 24px 70px rgba(0,0,0,.37);
+ backdrop-filter:blur(13px)
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow h1{
+ color:#f9f4ff!important;text-align:center!important;font-size:clamp(17px,2.3vh,22px)!important;
+ margin:0 0 20px!important;font-weight:650!important
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow input{
+ background:rgba(18,17,45,.9)!important;border:1px solid rgba(187,166,218,.54)!important;
+ color:#fff!important;border-radius:12px!important;
+ box-shadow:inset 0 0 9px rgba(7,7,20,.35)
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow input:focus{
+ border-color:#fb61be!important;box-shadow:0 0 0 2px rgba(246,55,156,.24)!important
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow label{color:#d6bedc!important}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow button[type="submit"]{
+ background:linear-gradient(95deg,#e91380,#ff299e)!important;border:1px solid rgba(255,139,202,.7)!important;
+ color:white!important;font-weight:750!important;border-radius:13px!important;
+ box-shadow:0 5px 24px rgba(255,30,143,.37)!important;min-height:47px
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow button[type="submit"]:hover{
+ filter:brightness(1.12)!important;box-shadow:0 5px 27px rgba(255,30,143,.57)!important
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow a{color:#ff91d5!important}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow a:hover{color:#fff!important;text-decoration:underline}
+/* Existing functional sidebar toggle from v2: swap only pictogram. */
+button#close-sidebar-button::before,button#open-sidebar-button::before,
+button[data-testid="open-sidebar-button"]::before,button[data-testid="close-sidebar-button"]::before,
+button[data-testid="header-open-sidebar-button"]::before{
+ background-image:url("/assets/logo.svg?v=mockup-v3")!important;
+ background-size:contain!important
+}
+@media(min-width:1000px) and (min-height:880px){
+ body:has(img[src$="assets/logo.svg"]) .bg-cover>img[src$="assets/logo.svg"]{
+ width:clamp(190px,26vh,264px)!important;height:clamp(190px,26vh,264px)!important
+ }
+}
+@media(max-height:730px){
+ body:has(img[src$="assets/logo.svg"]) .bg-cover>img[src$="assets/logo.svg"]{
+ width:155px!important;height:155px!important
+ }
+ body:has(img[src$="assets/logo.svg"]) .bg-cover:has(>img[src$="assets/logo.svg"])::after{font-size:34px}
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow{gap:7px!important;padding-bottom:22px!important}
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow>div{padding:15px 24px 18px!important}
+}
+@media(max-width:540px){
+ body:has(img[src$="assets/logo.svg"]) .bg-cover>img[src$="assets/logo.svg"]{
+ width:150px!important;height:150px!important
+ }
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow>div{padding:20px 17px!important}
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow::before{font-size:12px}
+}
+@media(prefers-reduced-motion:reduce){
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow button[type="submit"]{transition:none!important}
+}
+/* Review adjustments: remove raster square and recover form-label contrast. */
+body:has(img[src$="assets/logo.svg"]) .bg-cover > img[src$="assets/logo.svg"]{
+ -webkit-mask-image:radial-gradient(circle at 50% 47%,#000 52%,transparent 78%)!important;
+ mask-image:radial-gradient(circle at 50% 47%,#000 52%,transparent 78%)!important
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow label,
+body:has(img[src$="assets/logo.svg"]) main.flex-grow label span,
+body:has(img[src$="assets/logo.svg"]) main.flex-grow [class*="bg-surface-primary"]:not(input) {
+ background-color:#15112d!important;color:#e6d0e9!important
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow .text-text-primary{color:#fcf3ff!important}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow .text-text-secondary,
+body:has(img[src$="assets/logo.svg"]) main.flex-grow .text-text-tertiary{color:#c7b6d5!important}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow input::placeholder{color:#cbbcd9!important}
+/* Supprimé : ancienne règle blanche de V3 incompatible avec le mode clair. */
+
+
+
+
+/* CONSOLED INTERIOR SKIN V6 */
+/* BOT MODE — thème intérieur unifié V6.
+   Réutilise les variables natives de LibreChat plutôt que de masquer les composants. */
+html.dark {
+  color-scheme:dark;
+  --brand-purple: 238 73 176!important;
+  --accent-primary: 243 49 157!important;
+  --accent-primary-hover: 255 98 190!important;
+  --header-primary: 17 14 39!important;
+  --header-hover: 38 26 64!important;
+  --header-button-hover: 45 27 70!important;
+  --presentation: 19 18 44!important;
+  --surface-primary: 8 11 29!important;
+  --surface-primary-alt: 11 13 32!important;
+  --surface-primary-contrast: 14 15 37!important;
+  --surface-secondary: 17 17 42!important;
+  --surface-secondary-alt: 20 19 45!important;
+  --surface-tertiary: 30 25 56!important;
+  --surface-tertiary-alt: 32 27 61!important;
+  --surface-hover: 44 30 69!important;
+  --surface-hover-alt: 46 33 73!important;
+  --surface-composer-hover: 46 33 73!important;
+  --surface-active: 65 34 87!important;
+  --surface-active-alt: 50 31 73!important;
+  --surface-chat: 22 21 47!important;
+  --surface-dialog: 15 14 37!important;
+  --surface-overlay: 6 7 17!important;
+  --surface-submit: 232 34 133!important;
+  --surface-submit-hover: 247 60 161!important;
+  --border-light: 61 48 86!important;
+  --border-medium-alt: 75 58 100!important;
+  --border-medium: 88 68 113!important;
+  --border-heavy: 119 84 144!important;
+  --border-xheavy: 159 119 181!important;
+  --text-primary: 247 238 254!important;
+  --text-secondary: 214 202 230!important;
+  --text-secondary-alt: 183 168 206!important;
+  --text-tertiary: 180 163 199!important;
+  --link: 121 210 255!important;
+  --link-hover: 165 234 255!important;
+  --status-info: 103 214 255!important;
+}
+/* Fond central et barre latérale. Conserver toutes les tailles natives. */
+html.dark body:not(:has(img[src$="assets/logo.svg"])){
+ background: #080b1d !important;
+ font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+html.dark body:not(:has(img[src$="assets/logo.svg"])) #root{
+ background:radial-gradient(ellipse 62% 48% at 75% -12%,rgba(68,27,113,.24),transparent 75%),#080b1d!important;
+}
+html.dark body:not(:has(img[src$="assets/logo.svg"])) aside{
+ background:linear-gradient(180deg,#0c0b23,#090c21)!important;
+ border-color:rgba(162,88,204,.32)!important;
+}
+html.dark body:not(:has(img[src$="assets/logo.svg"])) aside [aria-current="page"],
+html.dark body:not(:has(img[src$="assets/logo.svg"])) aside [data-active="true"],
+html.dark body:not(:has(img[src$="assets/logo.svg"])) aside [role="tab"][data-state="active"]{
+ background:rgba(244,54,156,.17)!important;
+ color:#ffeaf7!important;
+ border-color:rgba(255,108,190,.38)!important;
+}
+/* Surface native du compositeur (classe bg-surface-chat) */
+html.dark body:not(:has(img[src$="assets/logo.svg"])) .bg-surface-chat{
+ border-color:rgba(153,96,190,.44)!important;
+ box-shadow:0 8px 34px rgba(3,4,16,.38),0 0 0 1px rgba(245,73,161,.065)!important;
+}
+html.dark body:not(:has(img[src$="assets/logo.svg"])) .bg-surface-chat:focus-within{
+ border-color:rgba(250,100,199,.86)!important;
+ box-shadow:0 0 0 2px rgba(239,67,164,.13),0 10px 36px rgba(0,0,0,.27)!important;
+}
+html.dark body:not(:has(img[src$="assets/logo.svg"])) textarea[data-testid="text-input"]{
+ color:#fff0fc!important;
+ font-size:clamp(14px,1.4vw,16px)!important;
+}
+html.dark body:not(:has(img[src$="assets/logo.svg"])) textarea[data-testid="text-input"]::placeholder{
+ color:#bdadce!important;
+}
+/* Panneau de mission : le composant DialogPanel conserve les valeurs et les interactions. */
+html.dark body:not(:has(img[src$="assets/logo.svg"])) [role="dialog"] [class*="max-w-[480px]"][class*="bg-surface-primary"]{
+ border-left:1px solid rgba(248,86,186,.49)!important;
+ box-shadow:-12px 0 42px rgba(0,0,0,.45)!important;
+}
+/* Carte Idées : style des conteneurs et actions, pas des boutons de suppression. */
+html.dark body:not(:has(img[src$="assets/logo.svg"])) main:has(>div>form textarea) > div > form,
+html.dark body:not(:has(img[src$="assets/logo.svg"])) main:has(>div>form textarea) article{
+ border-color:rgba(171,106,209,.4)!important;
+ background:linear-gradient(145deg,rgba(23,18,49,.9),rgba(12,14,36,.92))!important;
+}
+html.dark body:not(:has(img[src$="assets/logo.svg"])) main:has(>div>form textarea) :is(input,textarea,select){
+ background:#12152c!important;
+ border-color:rgba(154,118,190,.56)!important;
+ color:#fbf1ff!important;
+}
+html.dark body:not(:has(img[src$="assets/logo.svg"])) main:has(>div>form textarea) form button[type="submit"]{
+ border-color:#f97bc3!important;
+ background:linear-gradient(100deg,#df217e,#f6319e)!important;
+ color:white!important;
+}
+/* Modals généraux et permissions : réutilise bg-surface-dialog, tokens ci-dessus. */
+html.dark body:not(:has(img[src$="assets/logo.svg"])) [role="dialog"] .bg-surface-dialog,
+html.dark body:not(:has(img[src$="assets/logo.svg"])) [role="dialog"][data-state="open"]{
+ border:1px solid rgba(204,94,187,.39)!important;
+ box-shadow:0 22px 64px rgba(0,0,0,.5)!important;
+}
+html.dark body:not(:has(img[src$="assets/logo.svg"])) [role="dialog"] button[type="submit"]:not([class*="destructive"]){
+ background:linear-gradient(105deg,#d92281,#f32c9d)!important;
+ color:#fff!important;
+}
+/* Maintenir l'identification des opérations dangereuses et des informations système. */
+html.dark body:not(:has(img[src$="assets/logo.svg"])) [class*="text-text-destructive"]{
+ color:#ff879c!important;
+}
+html.dark body:not(:has(img[src$="assets/logo.svg"])) button:focus-visible,
+html.dark body:not(:has(img[src$="assets/logo.svg"])) :is(input,textarea,select):focus-visible{
+ outline:2px solid #67d9ff!important;
+ outline-offset:2px!important;
+}
+@media(max-width:767px){
+ html.dark body:not(:has(img[src$="assets/logo.svg"])) main:has(>div>form textarea) > div{
+  padding:12px!important;gap:14px!important;
+ }
+ html.dark body:not(:has(img[src$="assets/logo.svg"])) main:has(>div>form textarea) form > div.flex{
+  flex-direction:column!important;
+ }
+ html.dark body:not(:has(img[src$="assets/logo.svg"])) main:has(>div>form textarea) form button[type="submit"]{
+  width:100%!important;justify-content:center!important;
+ }
+ html.dark body:not(:has(img[src$="assets/logo.svg"])) [role="dialog"]{
+  max-width:100vw!important;
+ }
+}
+@media(prefers-reduced-motion:reduce){
+ html.dark body:not(:has(img[src$="assets/logo.svg"])) .bg-surface-chat{
+  transition:none!important;
+ }
+}
+
+
+/* MODE CLAIR COHERENT ET CORRECTIONS RESPONSIVE */
+/* BOT MODE — harmonisation responsive Clair/Sombre V7.
+   Corrige la bascule de thème sans remplacer le moteur natif de LibreChat.
+   Les réglages fonctionnels et données restent inchangés. */
+
+/* Palette claire BOT MODE, volontairement ivoire-lavande plutôt que blanc LibreChat. */
+html:not(.dark) {
+  --brand-purple: 174 49 138 !important;
+  --accent-primary: 165 27 107 !important;
+  --accent-primary-hover: 137 17 89 !important;
+  --header-primary: 249 244 255 !important;
+  --header-hover: 235 225 249 !important;
+  --header-button-hover: 234 221 247 !important;
+  --presentation: 249 245 255 !important;
+  --surface-primary: 249 246 254 !important;
+  --surface-primary-alt: 245 240 251 !important;
+  --surface-primary-contrast: 235 227 246 !important;
+  --surface-secondary: 241 235 249 !important;
+  --surface-secondary-alt: 237 230 247 !important;
+  --surface-tertiary: 229 217 243 !important;
+  --surface-tertiary-alt: 245 238 252 !important;
+  --surface-hover: 234 220 246 !important;
+  --surface-hover-alt: 224 208 239 !important;
+  --surface-composer-hover: 235 223 247 !important;
+  --surface-active: 223 196 236 !important;
+  --surface-active-alt: 225 207 240 !important;
+  --surface-chat: 251 247 254 !important;
+  --surface-dialog: 254 249 255 !important;
+  --surface-overlay: 18 12 37 !important;
+  --surface-submit: 173 23 111 !important;
+  --surface-submit-hover: 146 15 93 !important;
+  --border-light: 213 197 228 !important;
+  --border-medium-alt: 196 170 215 !important;
+  --border-medium: 186 156 207 !important;
+  --border-heavy: 154 118 181 !important;
+  --border-xheavy: 112 76 141 !important;
+  --text-primary: 43 28 60 !important;
+  --text-secondary: 77 58 93 !important;
+  --text-secondary-alt: 103 82 116 !important;
+  --text-tertiary: 103 86 119 !important;
+  --link: 118 32 147 !important;
+  --link-hover: 152 32 151 !important;
+  --status-info: 27 115 154 !important;
+  --status-success: 19 111 78 !important;
+  --status-warning: 152 84 0 !important;
+  --status-error: 189 42 71 !important;
+  color-scheme:light;
+}
+/* La page de connexion a son propre thème (formulaire néon sombre), conservé. */
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) {
+  background:#f9f5ff!important;
+  color:rgb(var(--text-primary))!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) #root {
+  background:radial-gradient(ellipse 60% 40% at 88% -13%,rgba(222,172,243,.40),transparent 75%),linear-gradient(120deg,#f9f6ff,#f2edfa 62%,#f9f8fe)!important;
+  color:#2b1c3c!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside {
+  background:linear-gradient(180deg,#f1eaf9,#f8f5fc)!important;
+  color:#2f1e45!important;
+  border-right:1px solid #d6c5e6!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside [aria-current="page"],
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside [data-active="true"] {
+  background:#eddbf4!important;
+  color:#8e1a71!important;
+  border-color:#d8a3d4!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) .bg-surface-chat{
+  border:1px solid #caa8da!important;
+  box-shadow:0 8px 28px rgba(60,31,86,.10),0 0 0 1px rgba(200,103,174,.12)!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) .bg-surface-chat:focus-within{
+  border-color:#a01e84!important;
+  box-shadow:0 0 0 2px rgba(216,80,157,.15),0 9px 28px rgba(80,38,110,.12)!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) textarea[data-testid="text-input"] {
+  color:#382244!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) textarea[data-testid="text-input"]::placeholder {
+  color:#6d587c!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) main:has(>div>form textarea) > div > form,
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) main:has(>div>form textarea) article {
+  border-color:#d4bbdf!important;
+  background:linear-gradient(143deg,rgba(255,250,255,.96),rgba(240,231,248,.88))!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) main:has(>div>form textarea) :is(input,textarea,select) {
+  border:1px solid #c7a8d9!important;
+  background:#fffaff!important;
+  color:#2e1e42!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) main:has(>div>form textarea) form button[type="submit"]{
+  background:linear-gradient(96deg,#ad1c73,#d83193)!important;
+  color:#fff!important;
+  border-color:#ca61ad!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) [role="dialog"] .bg-surface-dialog,
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) [role="dialog"][data-state="open"] {
+  border:1px solid #d5b9e2!important;
+  background:linear-gradient(155deg,#fffbff,#f9f3fe)!important;
+  box-shadow:0 18px 72px rgba(39,17,65,.23)!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) [role="dialog"] button[type="submit"]:not([class*="destructive"]) {
+  color:#fff!important;
+  background:linear-gradient(100deg,#a7186e,#d32b8c)!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) [role="dialog"] [role="tab"][data-state="active"] {
+  color:#82145d!important;
+  background:#f0d9f1!important;
+}
+/* Modal paramétrage : garder ses dimensions et focus natifs, habiller seulement le panel. */
+body:not(:has(img[src$="assets/logo.svg"])) [role="dialog"] .bg-surface-dialog {
+  border-radius:19px!important;
+}
+body:not(:has(img[src$="assets/logo.svg"])) [role="dialog"] :is(input,button,[role="combobox"]):focus-visible {
+  outline:2px solid rgb(var(--link))!important;
+  outline-offset:2px!important;
+}
+/* Les longues URL et descriptions de sources ne doivent pas déborder. */
+body:not(:has(img[src$="assets/logo.svg"])) [role="dialog"] :is(section,p,li) {
+  overflow-wrap:anywhere;
+}
+body:not(:has(img[src$="assets/logo.svg"])) [aria-label="Mission progress"] {
+  max-width:100%;
+  min-width:0;
+}
+/* Ne modifie jamais les couleurs d'erreur ou le rôle des boutons destructifs. */
+@media(max-width:767px) {
+ body:not(:has(img[src$="assets/logo.svg"])) [role="dialog"] .bg-surface-dialog {
+  max-width:calc(100vw - 16px)!important;
+  max-height:calc(100dvh - 16px)!important;
+ }
+ body:not(:has(img[src$="assets/logo.svg"])) [role="dialog"] :is(section,p) {
+  max-width:100%;
+ }
+}
+@media(prefers-reduced-motion:reduce) {
+ body:not(:has(img[src$="assets/logo.svg"])) .bg-surface-chat{
+  transition:none!important;
+ }
+}
+
+
+/* SIDEBAR ICONOGRAPHY + CONTRASTE V8 */
+/* BOT MODE / MJK — rectifications ciblées de la barre latérale (V8).
+   Compatibilité: barre extensible, menu de compte, clavier et responsive conservés. */
+body:not(:has(img[src$="assets/logo.svg"])) aside button[data-testid="close-sidebar-button"],
+body:not(:has(img[src$="assets/logo.svg"])) aside button[data-testid="open-sidebar-button"],
+body:not(:has(img[src$="assets/logo.svg"])) button[data-testid="header-open-sidebar-button"]{
+  position:relative!important;
+  isolation:isolate!important;
+  width:40px!important;
+  height:40px!important;
+  min-width:40px!important;
+  padding:3px!important;
+  border-radius:12px!important;
+  border:1px solid rgba(250,93,187,.88)!important;
+  background:linear-gradient(145deg,#171027,#070e23)!important;
+  box-shadow:0 0 0 1px rgba(69,199,255,.15),0 0 11px rgba(240,42,155,.29)!important;
+  overflow:hidden!important;
+  flex-shrink:0!important;
+}
+/* Le flamant MJK remplace le pictogramme mais non le bouton lui-même. */
+body:not(:has(img[src$="assets/logo.svg"])) aside button[data-testid="close-sidebar-button"]::before,
+body:not(:has(img[src$="assets/logo.svg"])) aside button[data-testid="open-sidebar-button"]::before,
+body:not(:has(img[src$="assets/logo.svg"])) button[data-testid="header-open-sidebar-button"]::before {
+  content:""!important;
+  position:absolute!important;
+  inset:1px!important;
+  border-radius:10px!important;
+  background-image:url("/assets/logo.svg?v=mjk-v8")!important;
+  background-repeat:no-repeat!important;
+  background-position:center!important;
+  background-size:108% 108%!important;
+  pointer-events:none!important;
+  filter:brightness(1.20) contrast(1.10)!important;
+  z-index:1!important;
+}
+/* Avatar utilisateur natif conservé : ses initiales sont visibles. */
+body:not(:has(img[src$="assets/logo.svg"])) aside button[data-testid="close-sidebar-button"]:hover,
+body:not(:has(img[src$="assets/logo.svg"])) aside button[data-testid="open-sidebar-button"]:hover{
+  border-color:#63dbff!important;
+  box-shadow:0 0 14px rgba(80,205,255,.4),0 0 18px rgba(247,53,158,.33)!important;
+}
+body:not(:has(img[src$="assets/logo.svg"])) aside button[data-testid="close-sidebar-button"]:focus-visible,
+body:not(:has(img[src$="assets/logo.svg"])) aside button[data-testid="open-sidebar-button"]:focus-visible{
+  outline:2px solid #57d9ff!important;
+  outline-offset:3px!important;
+}
+/* Contraste fort — correction de l'ancienne règle héritée blanc sur fond clair. */
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside,
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside nav,
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) #chat-history-nav{
+  color:#38264b!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside .text-text-primary,
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside .text-text-secondary,
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside [class*="text-text-secondary"],
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside [class*="text-text-tertiary"],
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside .text-text-tertiary{
+  color:#493459!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside :is(a,button,[role="tab"],[role="button"]):not([data-testid="nav-user"]):not([data-testid="close-sidebar-button"]):not([data-testid="open-sidebar-button"]){
+  color:#482f60!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside :is(a,button,[role="tab"],[role="button"]):not([data-testid="nav-user"]):not([data-testid="close-sidebar-button"]):not([data-testid="open-sidebar-button"]) svg{
+  color:#684478!important;
+  stroke:currentColor;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside :is(a,button,[role="tab"],[role="button"]):hover:not([data-testid="nav-user"]){
+  color:#8d176e!important;
+  background-color:rgba(194,105,190,.13)!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside [aria-current="page"],
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside [aria-current="page"] svg,
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside [aria-selected="true"],
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside [data-state="active"],
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside [data-active="true"]{
+  color:#98116c!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside :is(input,textarea,select){
+  color:#3f2b54!important;
+  background:#faf5ff!important;
+  border-color:#c8a9da!important;
+}
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside :is(input,textarea)::placeholder{
+  color:#6f567e!important;
+}
+/* Les onglets et icônes dans les panneaux intégrés conservent leur hiérarchie. */
+html:not(.dark) body:not(:has(img[src$="assets/logo.svg"])) aside [role="tab"][data-state="active"] svg{
+  color:#961d79!important;
+}
+html.dark body:not(:has(img[src$="assets/logo.svg"])) aside .text-text-primary,
+html.dark body:not(:has(img[src$="assets/logo.svg"])) aside .text-text-secondary{
+  color:#f0e5fa!important;
+}
+@media(max-width:767px){
+  body:not(:has(img[src$="assets/logo.svg"])) button[data-testid="header-open-sidebar-button"]{
+    width:40px!important;min-width:40px!important;
+  }
+}
+/* Ne modifie pas les icônes d'état, d'erreur ou de suppression hors du panneau. */
+
+/* V10 — couleurs MJK pour les initiales DiceBear uniquement.
+   Aucune retouche aux photos de profil téléchargées. */
+body:not(:has(img[src$="assets/logo.svg"])) aside button[data-testid="nav-user"] img[src^="data:image/svg+xml"] {
+  filter:hue-rotate(145deg) saturate(1.48) brightness(1.10)!important;
+  border-radius:9999px!important;
+  box-shadow:0 0 0 1.5px #fa3aa3,0 0 8px rgba(255,48,159,.50),0 0 11px rgba(50,200,255,.28)!important;
+}
+body:not(:has(img[src$="assets/logo.svg"])) aside button[data-testid="nav-user"] > div:first-child {
+  opacity:1!important;
+}
+body:not(:has(img[src$="assets/logo.svg"])) aside button[data-testid="nav-user"] {
+  background:transparent!important;
+  border:1px solid transparent!important;
+  box-shadow:none!important;
+  overflow:visible!important;
+}
+body:not(:has(img[src$="assets/logo.svg"])) aside button[data-testid="nav-user"]:hover {
+  background:rgba(241,68,158,.14)!important;
+}
+body:not(:has(img[src$="assets/logo.svg"])) aside button[data-testid="nav-user"]:focus-visible {
+  outline:2px solid #57d9ff!important;
+  outline-offset:3px!important;
+}
+
+</style>
+<style id="botmode-login-v4">
+/* BOT MODE — connexion v4 : typographie, champs cohérents, responsive.
+   Strictement local à l'habillage d'authentification ; le flux React est intact. */
+:root{
+  --bm-ink:#070917;
+  --bm-card:#12112c;
+  --bm-field:#13132d;
+  --bm-muted:#d9c8e6;
+  --bm-pink:#fb3ca9;
+  --bm-cyan:#54cfff;
+}
+body:has(img[src$="assets/logo.svg"]){
+  color:#fdf7ff;
+  background:#070918!important;
+  font-family:Inter,system-ui,-apple-system,Arial,sans-serif;
+}
+body:has(img[src$="assets/logo.svg"]) #root > div.relative.flex.min-h-screen{
+  min-height:100vh!important;
+  min-height:100dvh!important;
+  overflow-x:clip!important;
+  overflow-y:visible!important;
+  background:
+    radial-gradient(ellipse 50% 52% at -8% 52%,rgba(228,18,148,.32),transparent 80%),
+    radial-gradient(ellipse 50% 60% at 107% 44%,rgba(1,148,235,.27),transparent 82%),
+    radial-gradient(ellipse 25% 36% at 48% -15%,rgba(244,21,136,.13),transparent 90%),
+    linear-gradient(117deg,#070919 0%,#120c29 52%,#061024 100%)!important;
+}
+body:has(img[src$="assets/logo.svg"]) #root > div.relative.flex.min-h-screen::before{
+  bottom:-31vh!important;
+  height:49vh!important;
+  border-top:2px solid rgba(255,111,199,.9)!important;
+  box-shadow:0 -6px 38px rgba(244,21,163,.5),inset 0 40px 90px rgba(117,15,112,.28)!important;
+}
+body:has(img[src$="assets/logo.svg"]) .bg-cover:has(>img[src$="assets/logo.svg"]){
+  margin:8px auto 0!important;
+  gap:0!important;
+  width:min(92vw,450px)!important;
+  overflow:visible!important;
+}
+body:has(img[src$="assets/logo.svg"]) .bg-cover > img[src$="assets/logo.svg"]{
+  width:clamp(152px,24vh,232px)!important;
+  height:clamp(152px,24vh,232px)!important;
+  max-width:100%!important;
+  max-height:none!important;
+  aspect-ratio:1/1!important;
+  object-fit:contain!important;
+  mix-blend-mode:screen;
+}
+body:has(img[src$="assets/logo.svg"]) .bg-cover:has(>img[src$="assets/logo.svg"])::after{
+  content:"BOT MODE"!important;
+  font-family:"DejaVu Sans Condensed","Liberation Sans",sans-serif!important;
+  font-size:clamp(37px,5.1vw,62px)!important;
+  font-weight:900!important;
+  font-style:italic!important;
+  font-stretch:condensed!important;
+  letter-spacing:-.075em!important;
+  line-height:1.13!important;
+  padding:0 9px!important;
+  transform:skewX(-4deg);
+  white-space:nowrap;
+  background:linear-gradient(100deg,#fff 3%,#fff 41%,#fbc3e4 45%,#ff6bb9 63%,#f43694 94%)!important;
+  -webkit-background-clip:text!important;background-clip:text!important;
+  -webkit-text-fill-color:transparent!important;
+  text-shadow:none!important;
+  filter:drop-shadow(0 3px 15px rgba(247,34,153,.28))!important;
+}
+body:has(img[src$="assets/logo.svg"]) .bg-cover:has(>img[src$="assets/logo.svg"])::before{
+  font-family:Inter,system-ui,sans-serif!important;
+  font-size:12px!important;
+  font-weight:800!important;
+  letter-spacing:.08em!important;
+  margin-top:7px!important;
+  padding:4px 16px!important;
+  border:1px solid rgba(255,117,205,.93)!important;
+  box-shadow:0 0 18px rgba(255,41,167,.38),inset 0 0 10px rgba(240,26,140,.12)!important;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow{
+  gap:12px!important;
+  padding:9px 16px 54px!important;
+  justify-content:flex-start!important;
+  align-items:center!important;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow::before{
+  font-family:Inter,system-ui,sans-serif!important;
+  font-weight:500!important;
+  font-size:clamp(13px,1.45vw,18px)!important;
+  color:#f4e5f6!important;
+  letter-spacing:.01em!important;
+  margin-bottom:5px!important;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow > div{
+  box-sizing:border-box!important;
+  width:min(100%,480px)!important;
+  max-width:480px!important;
+  overflow:visible!important;
+  padding:24px 30px 28px!important;
+  border:1px solid transparent!important;
+  border-radius:22px!important;
+  background:
+    linear-gradient(160deg,rgba(26,16,48,.96),rgba(13,13,33,.97)) padding-box,
+    linear-gradient(125deg,#ff69c5,#e8289b 53%,#835bd1) border-box!important;
+  box-shadow:0 0 0 1px rgba(255,51,159,.08),0 0 31px rgba(242,33,156,.25),0 19px 65px rgba(0,0,0,.4)!important;
+  backdrop-filter:blur(16px)!important;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow h1{
+  color:#faf3ff!important;
+  font-family:Inter,system-ui,sans-serif!important;
+  font-size:clamp(19px,2vw,23px)!important;
+  font-weight:700!important;
+  letter-spacing:-.025em!important;
+  margin:0 0 15px!important;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow form{
+  width:100%;
+  margin-top:13px!important;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow form .relative{
+  background:transparent!important;
+  border-radius:12px;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow form input:not([type="checkbox"]){
+  box-sizing:border-box!important;
+  min-height:54px!important;
+  width:100%!important;
+  background:linear-gradient(100deg,#17142e,#12172f)!important;
+  background-color:#15132c!important;
+  color:#fff7fe!important;
+  border:1px solid rgba(175,155,209,.67)!important;
+  border-radius:13px!important;
+  padding:17px 14px 9px!important;
+  font:500 15px/1.35 Inter,system-ui,sans-serif!important;
+  caret-color:#ff68bb!important;
+  box-shadow:inset 0 1px 6px rgba(0,0,0,.18),0 1px 0 rgba(245,157,255,.03)!important;
+  transition:border-color .15s ease,box-shadow .15s ease!important;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow form input:not([type="checkbox"]):hover{
+  border-color:rgba(248,123,205,.85)!important;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow form input:not([type="checkbox"]):focus{
+  outline:none!important;
+  border-color:#ff70c2!important;
+  box-shadow:0 0 0 3px rgba(245,36,158,.18),0 0 12px rgba(255,47,165,.18)!important;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow form input:-webkit-autofill,
+body:has(img[src$="assets/logo.svg"]) main.flex-grow form input:-webkit-autofill:focus{
+  -webkit-text-fill-color:#fff7ff!important;
+  -webkit-box-shadow:0 0 0 100px #17142e inset!important;
+  caret-color:#fff!important;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow form label,
+body:has(img[src$="assets/logo.svg"]) main.flex-grow form label span{
+  background:#18132f!important;
+  background-color:#18132f!important;
+  color:#dccde7!important;
+  border-radius:5px!important;
+  padding-left:5px!important;
+  padding-right:5px!important;
+  letter-spacing:.005em!important;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow form label{
+  z-index:2!important;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow form input:focus+label{
+  color:#ff99d7!important;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow form input::placeholder{
+  color:#baadcb!important;opacity:1;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow form button:not([type="submit"]){
+  color:#d9c9e9!important;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow form button:not([type="submit"]):hover{
+  color:#fff!important;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow button[type="submit"]{
+  min-height:50px!important;
+  border-radius:13px!important;
+  background:linear-gradient(96deg,#e91481,#ff2d9f)!important;
+  color:white!important;
+  font:750 15px Inter,system-ui,sans-serif!important;
+  letter-spacing:.01em!important;
+  box-shadow:0 6px 22px rgba(255,22,146,.31)!important;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow button[type="submit"]:hover{
+  box-shadow:0 7px 26px rgba(255,28,149,.48)!important;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow button[type="submit"]:focus-visible{
+  outline:2px solid #75dcff!important;
+  outline-offset:3px!important;
+}
+body:has(img[src$="assets/logo.svg"]) main.flex-grow a{
+  color:#ffa2db!important;
+  text-underline-offset:3px;
+}
+/* Theme selector : prev. global position override made a white full-width stripe. */
+body:has(img[src$="assets/logo.svg"]) #root > div.relative.flex.min-h-screen > div.absolute.bottom-0.left-0{
+  position:fixed!important;
+  left:12px!important;bottom:12px!important;top:auto!important;right:auto!important;
+  width:auto!important;height:auto!important;
+  margin:0!important; padding:0!important;
+  z-index:80!important;
+  background:transparent!important;
+}
+body:has(img[src$="assets/logo.svg"]) #root > div.relative.flex.min-h-screen > div.absolute.bottom-0.left-0 > div{
+  width:auto!important;
+  max-width:max-content!important;
+  padding:0!important;
+  border-radius:12px!important;
+  background:rgba(16,13,36,.72)!important;
+  border:1px solid rgba(183,132,218,.38)!important;
+  box-shadow:0 2px 10px rgba(0,0,0,.12)!important;
+}
+body:has(img[src$="assets/logo.svg"]) #root > div.relative.flex.min-h-screen > div.absolute.bottom-0.left-0 button{
+  background:transparent!important;
+  color:#ecdcf6!important;
+}
+@media(max-width:600px){
+ body:has(img[src$="assets/logo.svg"]) .bg-cover:has(>img[src$="assets/logo.svg"]){margin-top:8px!important}
+ body:has(img[src$="assets/logo.svg"]) .bg-cover > img[src$="assets/logo.svg"]){
+   width:clamp(120px,19vh,160px)!important;height:clamp(120px,19vh,160px)!important;
+ }
+ body:has(img[src$="assets/logo.svg"]) .bg-cover:has(>img[src$="assets/logo.svg"])::after{
+   font-size:clamp(33px,9vw,43px)!important;letter-spacing:-.075em!important
+ }
+ body:has(img[src$="assets/logo.svg"]) .bg-cover:has(>img[src$="assets/logo.svg"])::before{
+   margin-top:5px!important; font-size:11px!important; padding:3px 13px!important
+ }
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow{
+   padding:9px 14px 80px!important;gap:10px!important
+ }
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow::before{
+   font-size:clamp(12px,3.2vw,15px)!important;
+   max-width:90vw!important;line-height:1.4!important;
+   margin:0 0 2px!important
+ }
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow > div{
+   width:min(100%,420px)!important; padding:20px 17px 21px!important;
+   border-radius:19px!important
+ }
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow h1{
+   font-size:19px!important;margin-bottom:13px!important
+ }
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow form{
+   margin-top:10px!important
+ }
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow form input:not([type="checkbox"]){
+   min-height:52px!important;font-size:16px!important
+ }
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow button[type="submit"]{
+   min-height:48px!important
+ }
+ body:has(img[src$="assets/logo.svg"]) #root > div.relative.flex.min-h-screen::before{
+   height:37vh!important;bottom:-24vh!important;
+ }
+}
+@media(max-width:360px){
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow{padding-inline:11px!important}
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow > div{padding:16px 13px!important}
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow::before{font-size:12px!important}
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow form label{font-size:13px!important}
+}
+@media(max-height:710px) and (min-width:601px){
+ body:has(img[src$="assets/logo.svg"]) .bg-cover > img[src$="assets/logo.svg"]{
+   width:clamp(132px,20vh,155px)!important;height:clamp(132px,20vh,155px)!important
+ }
+ body:has(img[src$="assets/logo.svg"]) .bg-cover:has(>img[src$="assets/logo.svg"])::after{
+   font-size:clamp(32px,5vh,40px)!important
+ }
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow{padding-bottom:38px!important}
+}
+@media(max-height:670px) and (max-width:600px){
+ body:has(img[src$="assets/logo.svg"]) .bg-cover > img[src$="assets/logo.svg"]{
+   width:115px!important;height:115px!important
+ }
+ body:has(img[src$="assets/logo.svg"]) .bg-cover:has(>img[src$="assets/logo.svg"])::after{
+   font-size:32px!important
+ }
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow{padding-top:6px!important}
+}
+@media(prefers-reduced-motion:reduce){
+ body:has(img[src$="assets/logo.svg"]) main.flex-grow form input{
+   transition:none!important
+ }
+}
+
+/* Empty floating-label state : no mismatched dark rectangles inside the fields. */
+body:has(img[src$="assets/logo.svg"]) main.flex-grow form .relative:has(input:placeholder-shown):not(:has(input:focus)) label,
+body:has(img[src$="assets/logo.svg"]) main.flex-grow form .relative:has(input:placeholder-shown):not(:has(input:focus)) label span {
+  background:transparent!important;
+  background-color:transparent!important;
+  color:#d4c5e3!important;
+}
+
+</style>
+<style id="botmode-polish-v11">
+/* V11 globe de la maquette : globe derrière la connexion uniquement. */
+body:has(img[src$="assets/logo.svg"]) #root > div.relative.flex.min-h-screen::before{
+  content:""!important;
+  position:fixed!important;
+  left:0!important;right:0!important;bottom:0!important;top:auto!important;
+  width:100vw!important;max-width:100vw!important;
+  height:clamp(118px,19.2vw,245px)!important;
+  border:0!important;border-radius:0!important;
+  box-shadow:none!important;
+  background-color:transparent!important;
+  background-image:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB3aWR0aD0iMTQ0MCIgaGVpZ2h0PSIyNjAiIHZpZXdCb3g9IjAgMCAxNDQwIDI2MCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsPSJIb3Jpem9uIHRlcnJlc3RyZSBuw6lvbiwgQWZyaXF1ZSBhdSBjZW50cmUsIHJvc2UgTUpLIGV0IGJsZXUiPgo8ZGVmcz4KIDxsaW5lYXJHcmFkaWVudCBpZD0icGxhbmV0IiB4MT0iMCIgeTE9IjAiIHgyPSIwIiB5Mj0iMSI+PHN0b3Agc3RvcC1jb2xvcj0iIzJhMTIzYyIgb2Zmc2V0PSIwIi8+PHN0b3Agc3RvcC1jb2xvcj0iIzEwMGIyNiIgb2Zmc2V0PSIuMjMiLz48c3RvcCBzdG9wLWNvbG9yPSIjMDYwYjFjIiBvZmZzZXQ9Ii43NiIvPjwvbGluZWFyR3JhZGllbnQ+CiA8bGluZWFyR3JhZGllbnQgaWQ9InJpbSIgeDE9IjAiIHkxPSIuNSIgeDI9IjEiIHkyPSIuNSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjMjUyNGFjIi8+PHN0b3Agb2Zmc2V0PSIuMjQiIHN0b3AtY29sb3I9IiNmODNmYWMiLz48c3RvcCBvZmZzZXQ9Ii41MCIgc3RvcC1jb2xvcj0iI2ZmYzlmNyIvPjxzdG9wIG9mZnNldD0iLjc1IiBzdG9wLWNvbG9yPSIjZmIyOTllIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMTk5Y2VlIi8+PC9saW5lYXJHcmFkaWVudD4KIDxyYWRpYWxHcmFkaWVudCBpZD0iYXRtIj48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiNmZDM4YjMiIHN0b3Atb3BhY2l0eT0iLjUyIi8+PHN0b3Agb2Zmc2V0PSIuNSIgc3RvcC1jb2xvcj0iI2EyMmJiYSIgc3RvcC1vcGFjaXR5PSIuMTMiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMwMDAiIHN0b3Atb3BhY2l0eT0iMCIvPjwvcmFkaWFsR3JhZGllbnQ+CiA8bGluZWFyR3JhZGllbnQgaWQ9ImNvYXN0IiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjZmY4YmRlIi8+PHN0b3Agb2Zmc2V0PSIuNDgiIHN0b3AtY29sb3I9IiNmZjMyOWUiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNmZjFiOTciLz48L2xpbmVhckdyYWRpZW50PgogPGZpbHRlciBpZD0iZ2xvdyIgeD0iLTM1JSIgeT0iLTYwJSIgd2lkdGg9IjE3MCUiIGhlaWdodD0iMjIwJSI+PGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iNyIgcmVzdWx0PSJnIi8+PGZlTWVyZ2U+PGZlTWVyZ2VOb2RlIGluPSJnIi8+PGZlTWVyZ2VOb2RlIGluPSJTb3VyY2VHcmFwaGljIi8+PC9mZU1lcmdlPjwvZmlsdGVyPgogPGZpbHRlciBpZD0ic21hbGxnbG93IiB4PSItNzAlIiB5PSItNzAlIiB3aWR0aD0iMjQwJSIgaGVpZ2h0PSIyNDAlIj48ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSIyLjQiIHJlc3VsdD0iZyIvPjxmZU1lcmdlPjxmZU1lcmdlTm9kZSBpbj0iZyIvPjxmZU1lcmdlTm9kZSBpbj0iU291cmNlR3JhcGhpYyIvPjwvZmVNZXJnZT48L2ZpbHRlcj4KIDxjbGlwUGF0aCBpZD0iZGlzayI+PHBhdGggZD0iTSAtMzIgMjUyIFEgNzIwIC03MiAxNDcyIDI1MiBWIDQwMCBIIC0zMiBaIi8+PC9jbGlwUGF0aD4KPC9kZWZzPgo8ZWxsaXBzZSBjeD0iNzIwIiBjeT0iMTgzIiByeD0iNzI1IiByeT0iMTI1IiBmaWxsPSJ1cmwoI2F0bSkiIG9wYWNpdHk9Ii44NSIvPgo8cGF0aCBkPSJNIC0zMiAyNTIgUSA3MjAgLTcyIDE0NzIgMjUyIFYgNDAwIEggLTMyIFoiIGZpbGw9InVybCgjcGxhbmV0KSIvPgo8ZyBjbGlwLXBhdGg9InVybCgjZGlzaykiIG9wYWNpdHk9Ii42MyI+CiA8ZyBmaWxsPSJub25lIiBzdHJva2U9IiNhYzJlODQiIHN0cm9rZS13aWR0aD0iMSI+CiAgPHBhdGggZD0iTS0yMCAyNTEgUTcyMCA0NSAxNDYwIDI1MSIgb3BhY2l0eT0iLjMzIi8+CiAgPHBhdGggZD0iTTMwIDMxMCBRNzIwIDcwIDE0MTAgMzEwIiBvcGFjaXR5PSIuMjQiLz4KICA8cGF0aCBkPSJNMjAwIDMxMCBRMzkwIDExMCA1NTUgMTAwIiBvcGFjaXR5PSIuMzMiLz4KICA8cGF0aCBkPSJNMTIwMCAzMTAgUTEwNTAgMTIwIDkwMCA5MCIgb3BhY2l0eT0iLjMzIi8+CiAgPHBhdGggZD0iTTQzMCAzMTAgUTYyMCAxMTUgNjgwIDkwIiBvcGFjaXR5PSIuMjMiLz4KICA8cGF0aCBkPSJNMTAyMCAzMTAgUTg0MCAxMTUgNzgwIDkwIiBvcGFjaXR5PSIuMjMiLz4KIDwvZz4KIDxwYXRoIGQ9Ik01MDAgMTQ3IEw1MjcgMTQzIEw1NTIgMTUwIEw1NzIgMTU5IEw1OTMgMTYzIEw2MDMgMTc5IEw2MDAgMTk1IEw2MTkgMjA5IEw2MTUgMjI1IEw1OTkgMjQwIEw1ODggMjYwIEw1NjYgMjcxIEw1NDEgMjY4IEw1MjYgMjUzIEw1MTAgMjQyIEw1MDAgMjIyIEw0ODAgMjE0IEw0NzcgMTk2IEw0ODUgMTgxIEw0OTMgMTY1WiIgZmlsbD0iI2MyMWI3OCIgb3BhY2l0eT0iLjE2IiBzdHJva2U9IiNmNTJhOTYiIHN0cm9rZS13aWR0aD0iMS41Ii8+CiA8cGF0aCBkPSJNNjM3IDExOSBDNjU3IDExMCA2ODkgMTA3IDcxMSAxMTIgTDczMCAxMjIgTDc1MyAxMTkgTDc3MiAxMzEgTDgwMSAxMzUgTDgxMCAxNDggTDgzMSAxNTMgTDg0NyAxNjkgTDgzMyAxODEgTDgxNCAxODEgTDgwMSAxOTQgTDc4OCAxOTAgTDc3NyAyMDcgTDc3MSAyMjkgTDc1NCAyNDkgTDczOCAyNjkgTDcyNSAyNTcgTDcwNyAyNDAgTDY5NCAyMTcgTDY3NCAyMDYgTDY2NyAxODYgTDY1MCAxNzYgTDY0MyAxNTQgTDYyOSAxMzkgWiIgZmlsbD0iI2EwMTg3MSIgZmlsbC1vcGFjaXR5PSIuMTkiIHN0cm9rZT0idXJsKCNjb2FzdCkiIHN0cm9rZS13aWR0aD0iMi43IiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBmaWx0ZXI9InVybCgjc21hbGxnbG93KSIvPgogPHBhdGggZD0iTTgzMyAyMDkgUTg0NCAyMjEgODQxIDI0NCBMODM0IDI1OSBMODI1IDI0MyBMODI4IDIxOCBaIiBmaWxsPSJub25lIiBzdHJva2U9IiNmZjRiYWQiIHN0cm9rZS13aWR0aD0iMi4yIiBmaWx0ZXI9InVybCgjc21hbGxnbG93KSIvPgogPHBhdGggZD0iTTY1MiAxNDYgTDY4MiAxMzUgTDcxNSAxNDUgTDczOCAxMzcgTDc2NiAxNDYgTDc5MyAxNTcgTTY3OSAxNzggTDcwNCAxNzEgTDc0MyAxODQgTDc3MSAxNzMgTTcwNyAyMjEgTDczOCAyMDcgTDc1NiAyMjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2VlM2E5ZSIgc3Ryb2tlLW9wYWNpdHk9Ii4yIi8+CiA8ZyBmaWxsPSIjZmY1MmJkIiBvcGFjaXR5PSIuNjUiPjxjaXJjbGUgY3g9IjY1NiIgY3k9IjE0OSIgcj0iMS41Ii8+PGNpcmNsZSBjeD0iNzI2IiBjeT0iMTQ1IiByPSIxLjciLz48Y2lyY2xlIGN4PSI3NzgiIGN5PSIxNjkiIHI9IjEuNiIvPjxjaXJjbGUgY3g9IjczMCIgY3k9IjIxMSIgcj0iMS43Ii8+PGNpcmNsZSBjeD0iNjk4IiBjeT0iMTgxIiByPSIxLjQiLz48Y2lyY2xlIGN4PSI3NjUiIGN5PSIyMzIiIHI9IjEuNCIvPjwvZz4KPC9nPgo8cGF0aCBkPSJNLTMwIDI1MiBRNzIwIC03MiAxNDcwIDI1MiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmEzMWE2IiBzdHJva2Utd2lkdGg9IjE1IiBvcGFjaXR5PSIuMjAiIGZpbHRlcj0idXJsKCNnbG93KSIvPgo8cGF0aCBkPSJNLTMwIDI1MiBRNzIwIC03MiAxNDcwIDI1MiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ1cmwoI3JpbSkiIHN0cm9rZS13aWR0aD0iMy42IiBmaWx0ZXI9InVybCgjc21hbGxnbG93KSIvPgo8cGF0aCBkPSJNLTEwIDI1NyBRNzIwIC01OCAxNDUwIDI1NyIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZiNGYxIiBzdHJva2Utd2lkdGg9Ii44IiBvcGFjaXR5PSIuNyIvPgo8L3N2Zz4=")!important;
+  background-repeat:no-repeat!important;
+  background-position:50% 100%!important;
+  background-size:100% 100%!important;
+  pointer-events:none!important;z-index:0!important;
+  opacity:.95!important;
+}
+body:has(img[src$="assets/logo.svg"]) #root > div.relative.flex.min-h-screen > * {
+  position:relative!important;z-index:1!important;
+}
+/* Initiales DiceBear réelles, même sur la barre réduite (sans dépendance aside). */
+body:not(:has(img[src$="assets/logo.svg"])) #root button[data-testid="nav-user"] img[src^="data:image/svg+xml"] {
+  filter:hue-rotate(145deg) saturate(2.1) brightness(1.12)!important;
+  border:2px solid #f440a6!important;
+  border-radius:50%!important;
+  box-shadow:0 0 0 1px #62d4ff,0 0 10px rgba(246,51,166,.72),0 0 17px rgba(75,198,250,.24)!important;
+}
+/* Conserver toute photo utilisateur sans filtre de couleur. */
+body:not(:has(img[src$="assets/logo.svg"])) #root button[data-testid="nav-user"] img:not([src^="data:image/svg+xml"]) {
+  filter:none!important;
+}
+/* Garde intactes les dimensions natives et l'interaction du compte. */
+body:not(:has(img[src$="assets/logo.svg"])) #root button[data-testid="nav-user"] > div:first-child {
+  opacity:1!important;
+}
+@media(max-width:600px){
+  body:has(img[src$="assets/logo.svg"]) #root > div.relative.flex.min-h-screen::before{
+    height:clamp(86px,24vw,138px)!important;
+    opacity:.78!important;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  body:has(img[src$="assets/logo.svg"]) #root > div.relative.flex.min-h-screen::before {
+    animation:none!important;
+  }
+}
+
+</style>
+</head>
+  <body>
+    <div id="root">
+      <div id="loading-container"></div>
+    </div>
+  </body>
+</html>

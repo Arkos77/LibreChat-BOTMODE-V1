@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1440" height="260" viewBox="0 0 1440 260" role="img" aria-label="Horizon terrestre néon, Afrique au centre, rose MJK et bleu">
+<defs>
+ <linearGradient id="planet" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#2a123c" offset="0"/><stop stop-color="#100b26" offset=".23"/><stop stop-color="#060b1c" offset=".76"/></linearGradient>
+ <linearGradient id="rim" x1="0" y1=".5" x2="1" y2=".5"><stop offset="0" stop-color="#2524ac"/><stop offset=".24" stop-color="#f83fac"/><stop offset=".50" stop-color="#ffc9f7"/><stop offset=".75" stop-color="#fb299e"/><stop offset="1" stop-color="#199cee"/></linearGradient>
+ <radialGradient id="atm"><stop offset="0" stop-color="#fd38b3" stop-opacity=".52"/><stop offset=".5" stop-color="#a22bba" stop-opacity=".13"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+ <linearGradient id="coast" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff8bde"/><stop offset=".48" stop-color="#ff329e"/><stop offset="1" stop-color="#ff1b97"/></linearGradient>
+ <filter id="glow" x="-35%" y="-60%" width="170%" height="220%"><feGaussianBlur stdDeviation="7" result="g"/><feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+ <filter id="smallglow" x="-70%" y="-70%" width="240%" height="240%"><feGaussianBlur stdDeviation="2.4" result="g"/><feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+ <clipPath id="disk"><path d="M -32 252 Q 720 -72 1472 252 V 400 H -32 Z"/></clipPath>
+</defs>
+<ellipse cx="720" cy="183" rx="725" ry="125" fill="url(#atm)" opacity=".85"/>
+<path d="M -32 252 Q 720 -72 1472 252 V 400 H -32 Z" fill="url(#planet)"/>
+<g clip-path="url(#disk)" opacity=".63">
+ <g fill="none" stroke="#ac2e84" stroke-width="1">
+  <path d="M-20 251 Q720 45 1460 251" opacity=".33"/>
+  <path d="M30 310 Q720 70 1410 310" opacity=".24"/>
+  <path d="M200 310 Q390 110 555 100" opacity=".33"/>
+  <path d="M1200 310 Q1050 120 900 90" opacity=".33"/>
+  <path d="M430 310 Q620 115 680 90" opacity=".23"/>
+  <path d="M1020 310 Q840 115 780 90" opacity=".23"/>
+ </g>
+ <path d="M500 147 L527 143 L552 150 L572 159 L593 163 L603 179 L600 195 L619 209 L615 225 L599 240 L588 260 L566 271 L541 268 L526 253 L510 242 L500 222 L480 214 L477 196 L485 181 L493 165Z" fill="#c21b78" opacity=".16" stroke="#f52a96" stroke-width="1.5"/>
+ <path d="M637 119 C657 110 689 107 711 112 L730 122 L753 119 L772 131 L801 135 L810 148 L831 153 L847 169 L833 181 L814 181 L801 194 L788 190 L777 207 L771 229 L754 249 L738 269 L725 257 L707 240 L694 217 L674 206 L667 186 L650 176 L643 154 L629 139 Z" fill="#a01871" fill-opacity=".19" stroke="url(#coast)" stroke-width="2.7" stroke-linejoin="round" filter="url(#smallglow)"/>
+ <path d="M833 209 Q844 221 841 244 L834 259 L825 243 L828 218 Z" fill="none" stroke="#ff4bad" stroke-width="2.2" filter="url(#smallglow)"/>
+ <path d="M652 146 L682 135 L715 145 L738 137 L766 146 L793 157 M679 178 L704 171 L743 184 L771 173 M707 221 L738 207 L756 220" fill="none" stroke="#ee3a9e" stroke-opacity=".2"/>
+ <g fill="#ff52bd" opacity=".65"><circle cx="656" cy="149" r="1.5"/><circle cx="726" cy="145" r="1.7"/><circle cx="778" cy="169" r="1.6"/><circle cx="730" cy="211" r="1.7"/><circle cx="698" cy="181" r="1.4"/><circle cx="765" cy="232" r="1.4"/></g>
+</g>
+<path d="M-30 252 Q720 -72 1470 252" fill="none" stroke="#fa31a6" stroke-width="15" opacity=".20" filter="url(#glow)"/>
+<path d="M-30 252 Q720 -72 1470 252" fill="none" stroke="url(#rim)" stroke-width="3.6" filter="url(#smallglow)"/>
+<path d="M-10 257 Q720 -58 1450 257" fill="none" stroke="#ffb4f1" stroke-width=".8" opacity=".7"/>
+</svg>
