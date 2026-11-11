@@ -1,5 +1,8 @@
 # BOT MODE V1 — final public release audit
 
+**ÉTAT POST-RELEASE — 11 novembre 2026 : v1.0.6 PUBLIÉE.** [Release officielle](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.6) ; code Git `416bf00898a6b0fb2eaf271ee4671d30ea55ccf0`, image OCI AMD64/ARM64 `sha256:e3640ac10833e4743796589b53d8a935d94867d73b0c25e82b4e7e1eba985cdb`, [8/8 contrôles de publication GHCR PASS](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42953398588). **Les paragraphes intitulés « prépublication », « NO-GO » ou « checkpoint » ci-dessous sont des archives décisionnelles historiques et ne représentent pas l'état actuel.** Périmètre : nouvelles installations Linux Docker Compose protégées ; pas de déploiement personnel ni d'hébergement Internet libre autorisé.
+
+
 ## Audit courant de V1.0.6 — avant promotion officielle (11 novembre 2026)
 
 **Source de vérité :** [PR #180](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/180), [registre sécurité #154](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/154), [suivi publication #179](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/179). Ce texte est un **checkpoint avant tag**, et ne constitue pas un constat de publication.
