@@ -724,7 +724,7 @@ export class MCPOAuthHandler {
     const flowId = this.generateFlowId(userId, serverName, tenantId);
     const state = this.generateState();
 
-    logger.debug(`[MCPOAuth] Generated flowId: ${flowId}, state: ${state}`);
+    logger.debug(`[MCPOAuth] Generated flowId: ${flowId}; OAuth state created`);
 
     try {
       this.assertNoUnpinnedClientSecret(config);
@@ -1124,7 +1124,7 @@ export class MCPOAuthHandler {
       };
 
       logger.debug(
-        `[MCPOAuth] Authorization URL generated for ${serverName}: ${authorizationUrl.toString()}`,
+        `[MCPOAuth] Authorization URL generated for ${serverName}: ${sanitizeUrlForLogging(authorizationUrl.toString())}`,
       );
 
       const result = {
