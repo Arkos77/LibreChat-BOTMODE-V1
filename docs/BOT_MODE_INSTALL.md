@@ -1,8 +1,8 @@
-# Installer BOT MODE V1.0.5 — guide officiel
+# Installer BOT MODE V1.0.6 — guide officiel
 
-**BOT MODE** ajoute à LibreChat un orchestrateur de missions et des spécialistes (Recherche, Analyse, Code, Documents, Rédaction), avec vérification Oracle indépendante et publication contrôlée par P6. La version publique à installer est **[v1.0.5](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.5)**.
+**BOT MODE** ajoute à LibreChat un orchestrateur de missions et des spécialistes (Recherche, Analyse, Code, Documents, Rédaction), avec vérification Oracle indépendante et publication contrôlée par P6. Version publique : **[v1.0.6](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.6)**.
 
-> **Préparation V1.0.6 :** ce guide conserve les commandes **v1.0.5 actuellement publiées** afin de ne pas présenter un digest v1.0.6 imaginaire. Après la publication officielle, la GitHub Release v1.0.6 fournira le SHA Git de son tag et le digest OCI Linux AMD64/ARM64 à copier. **Le tag source et l'image doivent être de la même version.** Avant cette publication, ne pas lancer `git clone --branch v1.0.6` ni installer une image candidate. Ni une fusion GitHub ni la réussite des tests unitaires ne sont une autorisation de déploiement. L'usage Lite reste local, avec MongoDB 4.4 non maintenu ; Full nécessite AVX (x86_64), au moins 4 Gio de RAM et la validation RAG/permissions.
+**Périmètre validé :** nouvelles installations Linux Docker Compose AMD64/ARM64, Lite local ou sur réseau de confiance, Full avec HTTPS/authentification et protections réseau. Crostini exécute Linux ; macOS natif et Windows/WSL2 ne sont que des chemins documentés, non qualifiés matériellement en V1.0.6. Ne mélangez jamais source Git et image de versions différentes. Les migrations/installations personnelles existantes sont **hors périmètre** et demandent sauvegarde, inventaire et autorisation distincte.
 
 
 Ce guide concerne **une nouvelle installation**. Une installation existante nécessite un inventaire et une sauvegarde préalables : voir [Sauvegarde et retour arrière](BOT_MODE_ROLLBACK.md).
@@ -33,19 +33,19 @@ Si `docker info` échoue, corriger l'accès au démon Docker **avant** de lancer
 
 | Élément | Référence |
 | --- | --- |
-| Tag Git | `v1.0.5` |
-| Commit complet | `0973da6cc8cfc5b35616e26132d0945fff147ebe` |
-| Image Docker AMD64/ARM64 | `ghcr.io/arkos77/librechat-botmode-v1@sha256:27708c107dc434a59a2e6a5fe4e3501ae5f6c13bfdb064464932c88a0c2a4c80` |
-| Release officielle | [v1.0.5](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.5) |
+| Tag Git | `v1.0.6` |
+| Commit complet | `416bf00898a6b0fb2eaf271ee4671d30ea55ccf0` |
+| Image Docker AMD64/ARM64 | `ghcr.io/arkos77/librechat-botmode-v1@sha256:e3640ac10833e4743796589b53d8a935d94867d73b0c25e82b4e7e1eba985cdb` |
+| Release officielle | [v1.0.6](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.6) |
 
 ```bash
-git clone --branch v1.0.5 --depth 1 \
+git clone --branch v1.0.6 --depth 1 \
   https://github.com/Arkos77/LibreChat-BOTMODE-V1.git
 
 cd LibreChat-BOTMODE-V1
 
 test "$(git rev-parse HEAD)" = \
-  0973da6cc8cfc5b35616e26132d0945fff147ebe
+  416bf00898a6b0fb2eaf271ee4671d30ea55ccf0
 ```
 
 La commande `test` ne produit rien si la révision est bonne et échoue si elle diffère. **Arrêtez l'installation en cas d'échec.**
@@ -54,7 +54,7 @@ La commande `test` ne produit rien si la révision est bonne et échoue si elle 
 
 ```bash
 BOTMODE_HOST_BIND_IP=127.0.0.1 ./install.sh --lite --image \
-  ghcr.io/arkos77/librechat-botmode-v1@sha256:27708c107dc434a59a2e6a5fe4e3501ae5f6c13bfdb064464932c88a0c2a4c80
+  ghcr.io/arkos77/librechat-botmode-v1@sha256:e3640ac10833e4743796589b53d8a935d94867d73b0c25e82b4e7e1eba985cdb
 ```
 
 L'installateur :
@@ -74,12 +74,12 @@ Le mode Lite réduit les services locaux, notamment sur les CPU x86_64 sans AVX.
 
 ```bash
 BOTMODE_HOST_BIND_IP=127.0.0.1 ./install.sh --full --image \
-  ghcr.io/arkos77/librechat-botmode-v1@sha256:27708c107dc434a59a2e6a5fe4e3501ae5f6c13bfdb064464932c88a0c2a4c80
+  ghcr.io/arkos77/librechat-botmode-v1@sha256:e3640ac10833e4743796589b53d8a935d94867d73b0c25e82b4e7e1eba985cdb
 ```
 
 Le profil Full active d'autres services ; ses intégrations externes ne sont pas toutes qualifiées sur du matériel réel. Pour un petit ordinateur, commencer par **Lite**.
 
-**Réseau et sécurité v1.0.5 :** Docker Compose limite par défaut l'API (3080) et le panneau d'administration Full (3000) à `127.0.0.1`. La commande explicite ci-dessus permet de conserver ce réglage dans `.env` pour les redémarrages. L'accès distant exige un proxy TLS, une authentification, `TRUST_PROXY` adapté au nombre de proxys et des journaux d'accès ne révélant pas les paramètres OAuth `code`/`state`.
+**Réseau et sécurité v1.0.6 :** Docker Compose limite par défaut l'API (3080) et le panneau d'administration Full (3000) à `127.0.0.1`. La commande explicite ci-dessus permet de conserver ce réglage dans `.env` pour les redémarrages. L'accès distant exige un proxy TLS, une authentification, `TRUST_PROXY` adapté au nombre de proxys et des journaux d'accès ne révélant pas les paramètres OAuth `code`/`state`.
 
 ## 4. Configurer le fournisseur et démarrer la mission
 
@@ -92,7 +92,7 @@ Le profil Full active d'autres services ; ses intégrations externes ne sont pas
 
 Lors de la création du spécialiste **RECHERCHE** depuis l'interface native LibreChat, conserver ses instructions existantes puis **ajouter ce paragraphe à la fin du champ Instructions**. Ne pas substituer un script d'écriture MongoDB à l'interface authentifiée et ne pas réinitialiser les agents existants. Pour un agent déjà créé, une modification explicite de son propriétaire est nécessaire ; une mise à jour de GitHub ne modifie pas automatiquement ses instructions.
 
-> Cette règle a été validée avec une recherche réelle sur TEST 3081. Elle figure dans la documentation et le seeding explicite de la **v1.0.5**, mais ne modifie **pas automatiquement** les agents déjà installés. Elle ne constitue pas à elle seule une vérification Oracle/P6 ni une garantie générale de qualité des sources.
+> Cette règle a été validée avec une recherche réelle sur TEST 3081. Elle figure dans la documentation et le seeding explicite de la **v1.0.6**, mais ne modifie **pas automatiquement** les agents déjà installés. Elle ne constitue pas à elle seule une vérification Oracle/P6 ni une garantie générale de qualité des sources.
 
 ```text
 EXIGENCE DE SOURCE OFFICIELLE : si l'utilisateur exige expressément une source officielle, commence par une recherche web_search ciblant le domaine officiel de l'organisme lorsqu'il est connu avec certitude (par exemple l'opérateur de recherche site: sur ce domaine), plutôt qu'une recherche générale. N'invente jamais de domaine, de résultat ni d'URL. Ne cite comme source officielle que des URL effectivement retournées par l'outil et appartenant au domaine officiel demandé. Si aucune source officielle pertinente n'a été observée, dis explicitement qu'aucune source officielle n'a été retrouvée ; ne présente jamais Wikipédia, une encyclopédie ou un agrégateur comme source officielle. Les sources secondaires sont possibles comme contexte, mais doivent être identifiées comme telles. N'ajoute pas d'appels de recherche inutiles.
@@ -106,7 +106,7 @@ EXIGENCE DE SOURCE OFFICIELLE : si l'utilisateur exige expressément une source 
 ./doctor.sh --lite
 ```
 
-**Recherche Web de la candidate v1.0.6 (non encore publiée) :** la configuration prévue utilise **Keenable** pour la recherche et l'extraction de pages, avec `rerankerType: none`. Aucune clé Serper, Firecrawl, Tavily ni abonnement SearXNG local n'est nécessaire pour ce fonctionnement par défaut. Les requêtes et URL consultées sont transmises au prestataire Keenable ; ses points d'accès publics sont limités en fréquence et peuvent être indisponibles. Le modèle conversationnel reste distinct et doit être configuré ; l'outil `web_search` doit être autorisé dans l'agent RECHERCHE. La preuve HTTP anonyme Search+Fetch ne suffit pas, seule, à certifier une mission native complète. Cette nouveauté **ne s'applique pas à la release stable v1.0.5**. Voir la configuration officielle LibreChat : https://www.librechat.ai/docs/configuration/librechat_yaml/object_structure/web_search .
+**Recherche Web proposée dans v1.0.6 :** la configuration prévue utilise **Keenable** pour la recherche et l'extraction de pages, avec `rerankerType: none`. Aucune clé Serper, Firecrawl, Tavily ni abonnement SearXNG local n'est nécessaire pour ce fonctionnement par défaut. Les requêtes et URL consultées sont transmises au prestataire Keenable ; ses points d'accès publics sont limités en fréquence et peuvent être indisponibles. Le modèle conversationnel reste distinct et doit être configuré ; l'outil `web_search` doit être autorisé dans l'agent RECHERCHE. La preuve HTTP anonyme Search+Fetch ne suffit pas, seule, à certifier une mission native complète. **Limite de validation :** les tests sur sources Web contrôlées ne démontrent pas un service Keenable public fiable ni une navigation réelle libre sur Internet. Voir la configuration officielle LibreChat : https://www.librechat.ai/docs/configuration/librechat_yaml/object_structure/web_search .
 
 **Modèles et coût :** le routage natif par défaut privilégie des modèles OpenRouter **explicitement gratuits** ; il ne déclenche pas de fallback payant sans autorisation. Une clé/fournisseur valide reste nécessaire, et la disponibilité ainsi que les quotas des modèles gratuits peuvent varier.
 
@@ -128,7 +128,7 @@ Autres modes :
 ./install.sh --lite       # Choisit automatiquement le tag sha-<commit> correspondant à Git
 ```
 
-Le **tag Docker `sha-0973da6cc8cf` existe** et correspond au digest de `v1.0.5`. Le paramètre explicite `--image ...@sha256:...` reste recommandé pour figer l'image exacte. Les alias `stable` et `latest` ne doivent pas servir de référence pour cette version.
+Le **tag Docker `sha-0973da6cc8cf` existe** et correspond au digest de `v1.0.6`. Le paramètre explicite `--image ...@sha256:...` reste recommandé pour figer l'image exacte. Les alias `stable` et `latest` ne doivent pas servir de référence pour cette version.
 
 `./update.sh` **refuse** un checkout Git épinglé à un tag (HEAD détaché). Pour mettre à jour une installation existante, ne forcez pas la commande : suivre une procédure de sauvegarde et de changement de version explicite.
 
@@ -147,17 +147,17 @@ Voir [le plan de retour arrière](BOT_MODE_ROLLBACK.md).
 
 ## 7. Vérifications et limites de qualification
 
-Preuves de publication **v1.0.5** et validations antérieures conservées sans retest :
+Preuves de publication **v1.0.6** et validations historiques distinctes :
 
-- [v1.0.5 : source épinglée, digests AMD64/ARM64, pull public, démarrage Lite et GitHub Release — 6/6 PASS](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42735318258).
+- [v1.0.6 : source exacte, manifeste AMD64/ARM64, pull anonyme et smoke Lite — 8/8 PASS](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42953398588). La [GitHub Release v1.0.6](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases/tag/v1.0.6) est publiée.
 - [Installation Lite fraîche et restauration MongoDB — validation historique v1.0.4, non rejouée](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42298001610).
 - [Audits Git/secrets, dépendances et Docker — validation historique v1.0.4](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42298001610).
-- Oracle/P6 et l'affichage ont été validés auparavant sur une mission réelle à trois spécialistes, sans rejouer ces tests déjà PASS pour v1.0.5. La PR #176 (reprise HITL et règle de sources officielles) a obtenu **36 PASS / 12 SKIP / 0 FAIL** ; le post-merge CodeQL et les smokes d'images ont réussi.
+- Oracle/P6 et l'affichage ont été validés auparavant sur une mission réelle à trois spécialistes, sans rejouer ces tests déjà PASS pour v1.0.6. La PR historique #176 (reprise HITL et règle de sources officielles) a obtenu **36 PASS / 12 SKIP / 0 FAIL** ; ces résultats historiques ne constituent pas une réception sur macOS ou Windows.
 
-**À ne pas confondre avec une certification de sécurité intégrale :** les alertes CodeQL #328, #330 (limitation OAuth) et #63 (callback GET) de la candidate restent ouvertes avec mesures compensatoires et acceptation encadrée dans [l'issue #154](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/154). Les risques des composants tiers et leurs licences peuvent différer de la licence MIT du dépôt. Voir [décisions de risques](BOTMODE_V1_NPM_RISK_DECISION_20261014.md), [procédure de publication](BOT_MODE_PUBLIC_RELEASE.md) et [mentions de tiers](../THIRD_PARTY_NOTICES.md).
+**Ce n'est pas une certification de sécurité intégrale :** les alertes CodeQL HIGH OAuth MCP #331 et #332 sont encore ouvertes et leur acceptation est temporaire, limitée aux nouvelles installations Linux protégées. Les alertes historiques sont suivies séparément dans [l'issue #154](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/154). Les risques des composants tiers et leurs licences peuvent différer de la licence MIT du dépôt. Voir [décisions de risques](BOTMODE_V1_NPM_RISK_DECISION_20261014.md), [procédure de publication](BOT_MODE_PUBLIC_RELEASE.md) et [mentions de tiers](../THIRD_PARTY_NOTICES.md).
 
 ## 8. Versions historiques
 
-Les anciennes versions et preuves V1.0.0 à V1.0.4 documentent l'historique du projet, **pas l'installation recommandée aujourd'hui**. Pour une installation nouvelle, utiliser exclusivement le couple source **v1.0.5** et image par digest donné en haut de cette page.
+Les anciennes versions et preuves V1.0.0 à V1.0.5 documentent l'historique du projet, **pas l'installation recommandée aujourd'hui**. Pour une installation nouvelle, utiliser exclusivement le couple source **v1.0.6** et image par digest donné en haut de cette page.
 
 Ce projet est un **fork communautaire de LibreChat**, et non la distribution officielle du projet LibreChat upstream.
