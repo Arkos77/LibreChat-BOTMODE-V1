@@ -1123,9 +1123,7 @@ export class MCPOAuthHandler {
         ...(tenantId && { tenantId }),
       };
 
-      logger.debug(
-        '[MCPOAuth] Authorization URL generated',
-      );
+      logger.debug('[MCPOAuth] Authorization URL generated');
 
       const result = {
         authorizationUrl: authorizationUrl.toString(),
