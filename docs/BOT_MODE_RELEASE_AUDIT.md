@@ -1,25 +1,25 @@
 # BOT MODE V1 — final public release audit
 
-Audit baseline: 7 October 2026. **Sections historiques à lire avec le checkpoint actuel ci-dessous.**
+Audit baseline: 7 October 2026. **Sections below the current checkpoint are historical archives, not the current release decision.**
 
-## Audit actuel de distribution V1.0.6 — 10 novembre 2026
+## Audit actuel de distribution V1.0.6 — 11 novembre 2026
 
-**Ce qui suit actualise le bilan pour la PR #180. Les sections d'octobre ci-dessous sont conservées comme ARCHIVES, pas comme verdict contemporain.**
+**PR #180, SHA applicatif vérifié avant actualisation documentaire : `3c5a90f9b83a5fc1ff7d3f5db72bbf1406bd15d1` ; 31 workflows PR : 29 SUCCESS, 2 SKIPPED, 0 FAIL.** Le présent commit documentaire doit reconfirmer son propre état CI. **Statut : DRAFT / RELEASE NO-GO** tant que décisions de risque, artefact OCI et autorisations du propriétaire restent manquants.
 
-- **Source CI entièrement validée** : `cec7497ca0978d99702bf8d121f192de66d941e3` ; 25 contrôles GitHub sur la PR, **23 SUCCESS / 2 SKIPPED / 0 FAIL**, dont scan npm production, CodeQL, Lite Current HEAD Release Preflight, Full RAG Native Acceptance, contrats Worker/Oracle, Backend et Playwright. Toute mise à jour documentaire après ce SHA doit reconfirmer les checks du nouveau commit avant publication.
-- **Secrets** : les garde-fous de détection sur source/archives CI ont réussi ; les sauvegardes locales `.env` ne sont pas publiées et aucun secret local n'a été ouvert lors du préflight. Un scan positif ne prouve pas une absence absolue de secrets dans tout historique : la vérification finale doit être réalisée sur la source effectivement taggée.
-- **Sécurité applicative** : la vue CodeQL `refs/pull/180/merge` compte **2 HIGH** (#331, #332) dans les endpoints polling OAuth MCP. Les routes appliquent JWT + limiteur partagé, et les tests d'intégration vérifient 401/429 et `Retry-After` ; **revue de disposition nécessaire**, pas de dismissal automatique. La vue `main` compte séparément 307 alertes OPEN (134 HIGH/173 MEDIUM) ; ne pas additionner ou confondre les deux refs.
-- **Audit dépendances production** : contrôle npm sur la source de la PR **SUCCESS** ; les 0 constat au seuil de l'audit ne remplacent pas le triage CodeQL, les images tierces ou les risques MongoDB 4.4 hors support.
-- **OCI et release** : pas de Git tag `v1.0.6`, image GHCR candidate publiée ni digest index multiarchitecture vérifié au présent checkpoint. **Aucun résultat ne doit être présenté comme validation d'un artefact non encore émis**. Le workflow de publication générique LibreChat a été protégé pour ce dépôt ; ne pas publier ces images accidentellement.
-- **Reproductibilité Lite/Full** : PASS sur runners jetables ; restauration multi-volumes et navigation utilisateur finale restent dans le périmètre exact des scénarios testés. Mac/Chromebook exécutent v1.0.5 et ont des sauvegardes Mongo du 10 novembre dont `gzip -t` est PASS, mais restauration locale non réalisée, trois listeners BOT MODE non limités à loopback.
-- **Licence** : MIT pour la majeure partie du dépôt ; Nodebox sous Sustainable Use License à contrôler en cas de redistribution commerciale, [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md). Aucun engagement de support macOS/Windows/ARM spécifiques sans essais réels.
-- **Frontière projet** : compétences historien, documentaliste, investigateur, China Sourcing, audiovisuel réservées à la [V2 privée, issue #181](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/181). Ne pas les développer en V1.
+- **Missions réellement exécutées** : fournisseur gratuit OpenRouter et Worker → Oracle `VERIFIED` → P6, test de refus `HUMAN_REVIEW` **PASS** ([#42911804825](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42911804825)). Worker → RECHERCHE acteur du graphe → Oracle vérifié et P6 unique **PASS** ([#42913006511](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42913006511)). Pas de thread subagent imbriqué démontré.
+- **Recherche native** : vrai fournisseur OpenRouter gratuit, appels réels recherche et extraction via **sources Web contrôlées**, trois étapes Recherche/Analyse/Synthèse, verdicts Oracle persistés, publication Mongo/P6 unique, nettoyage PASS ([#42926216758](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42926216758)). **Keenable public et navigation Playwright réelle non démontrés.**
+- **HITL** : deux approbations HTTP, Mongo checkpoints et exécution de l'outil exactement une fois **PASS avec `FakeChatModel`** ; double reprise avec fournisseur externe non qualifiée, historique R5 FAIL. **Ne pas promettre de multi-HITL réel validé.**
+- **Image et code** : `dev-images.yml` YAML dupliqué corrigé, garde du publisher générique maintenue ; harness recherche Docker corrigé pour le port bind `127.0.0.1:3090`. Les agents, Oracle et P6 ne sont pas modifiés par ces deux corrections. Lite/Full, Backend, Frontend, Playwright, RAG natif et préflight sécurité **PASS CI**.
+- **Sécurité npm** : Mongoose 8.24.7 en lockfile, audit production PASS avec 0 vulnérabilité signalée par npm. Les machines existantes exécutent encore la v1.0.5 avec Mongoose 8.24.1 ; leur mise à jour n'est pas faite.
+- **CodeQL** : 2 HIGH PR #331/#332 **OPEN**, malgré protections JWT / `mcpOAuthPollLimiter` et tests d'intégration 401/429/Retry-After. Revue et décision explicite de disposition nécessaires ; ne pas assimiler les 307 alertes historiques `main` à des régressions PR. Registre [#154](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/154).
+- **Dependabot** : 3 alertes développement OPEN : `minimatch` MEDIUM, `deepmerge` LOW, `elliptic` LOW. Réévaluations de risques planifiées pour le 16 novembre 2026.
+- **Secrets, confidentialité et licence** : scans source/CI PASS dans leur périmètre sans garantie absolue sur tout historique ; aucun secret local copié, aucune clé API publiée. MIT majoritaire, exceptions/licences tierces documentées dans [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
+- **Déploiement** : ne promettre que de **nouvelles installations Linux Docker Compose qualifiées**, Lite local/protégé et Full avec contrôle des accès/HTTPS/réseau ; pas de migration sans vraie restauration testée. Mongo 4.4 Lite hors support ; binds PROD actuels non tous limités à localhost ; aucun changement Mac, Chromebook, JARVIS ou PangaraBOT.
+- **Artefact final** : pas encore de **digest GHCR index AMD64/ARM64 v1.0.6** vérifié ni de GitHub Release/tag `v1.0.6`. Ne pas confondre image locale et image diffusée. Aucune publication générique LibreChat sur Docker Hub autorisée.
 
-**Gate** : **NO-GO publication** tant que la réception réelle et l'acceptation/correction de risques pertinents ne sont pas documentées et que le propriétaire n'a pas autorisé explicitement un build/push candidat puis la release. Toute promotion `latest`, `stable` ou ancien tag est interdite.
+**Décision : GO technique pour préparer une candidate à distribution sous restrictions ; NO-GO publication stable ou exposition Internet libre tant que le propriétaire n'a pas statué sur les risques et donné des GO distincts pour (1) build/push GHCR candidate, (2) merge/tag/Release, et (3) déploiements locaux.** La V2 privée/cloud reste séparée dans [issue #181](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/181).
 
 ---
-
-
 
 ## Git and release state
 
