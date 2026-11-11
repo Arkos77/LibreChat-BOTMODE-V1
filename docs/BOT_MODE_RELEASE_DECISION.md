@@ -1,37 +1,25 @@
 # BOT MODE V1 — décision de périmètre et critères de publication
 
-Date initiale : 13 octobre 2026 ; **checkpoint technique : 11 novembre 2026**. **RELEASE NO-GO** tant que les derniers risques et autorisations n'ont pas été traités.
+## V1.0.6 — checkpoint de promotion officielle (11 novembre 2026)
 
-## V1.0.6 — point de décision sur la PR #180
+**La release officielle est distincte de la candidate GHCR.** Le propriétaire a donné les autorisations séparées suivantes : (1) acceptation **limitée** des risques CodeQL OAuth #331/#332 pour des installations Linux protégées — [#154](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/154) ; (2) construction/push de l'image candidate multiarchitecture ; (3) fusion PR #180, tag `v1.0.6` et GitHub Release. Aucun accord de migration ni de mise à jour du Mac ou du Chromebook n'a été donné.
 
-**Candidate applicative qualifiée, publication non autorisée.** La [PR #180](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/180) reste DRAFT et non fusionnée. **Source vérifiée avant cette mise à jour documentaire :** `3c5a90f9b83a5fc1ff7d3f5db72bbf1406bd15d1`, avec **29 SUCCESS / 2 SKIPPED / 0 FAIL** sur **31 workflows** GitHub. Le nouveau SHA issu de ce complément documentaire doit avoir sa propre CI terminale avant tout GO de distribution. **La dernière release stable demeure v1.0.5.**
+### Périmètre autorisé et limites
 
-### Preuves strictes et limites
+- **Distribution : nouvelles installations Linux Docker Compose uniquement.** Lite en local ou réseau de confiance ; Full derrière HTTPS, authentification, contrôles de rôle/tenant et protections réseau. Aucun accès libre à Internet et aucun port Mongo/Redis exposé.
+- **Qualifié :** Worker/Recherche/Analyse/Oracle `VERIFIED`/P6 sur les jeux de preuve référencés, Lite/Full en CI, recherche Web sur sources contrôlées, tests HITL doubles avec `FakeChatModel`, sécurité des dépendances npm production à 0 avis, et validation Docker/Playwright sur runner.
+- **Non qualifié :** navigation Web publique non contrôlée, Keenable public, double HITL avec fournisseur LLM réel, migration/restauration sur machines existantes, compatibilité ChromeOS/Windows/Mac non démontrée, exposition Internet libre. Mongo 4.4 Lite reste hors support fournisseur.
+- **CodeQL :** deux HIGH rate-limiting OAuth #331/#332 conservées **ouvertes** mais atténuées par `requireJwtAuth` et `mcpOAuthPollLimiter` (tests 401/429/Retry-After), acceptées temporairement **dans le seul périmètre ci-dessus**. Deux MEDIUM `Log injection` repérées sur les nouvelles traces DEBUG ont entraîné une correction minimale retirant toute interpolation de valeurs utilisateur de ces deux messages ; recontrôler CodeQL sur le SHA final. Les centaines d'alertes historiques de `main` ne sont pas acceptées en bloc.
+- **Signalement privé :** Private Vulnerability Reporting activé et confirmé par le propriétaire.
+- **OCI :** candidate initiale `candidate-botmode-v1-d2e96e7ab137` vérifiée avec digest multiarch `sha256:928d181f777b5e966f247b0807a013462591801c8ef261fde8b0721e9e281be5`, pull anonyme et smoke Lite **PASS** — [Actions #42949119562](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42949119562). Toute correction source postérieure exige **une nouvelle image candidate exacte SHA** et les mêmes contrôles avant de publier la release.
+- **Évitement publication accidentelle :** `.github/workflows/dev-images.yml` empêche dans ce fork un push générique à la fusion ; `tag-images.yml` exclut `v1.0.6`. Ne pas créer de tag `:latest` ni publier de Docker Hub/Helm avec ce GO.
+- **Déploiement personnel :** expressément exclu de la décision de release.
 
-| Critère | Verdict | Preuve et frontière |
-| --- | --- | --- |
-| CI Backend, Frontend, Playwright, Lite, Full, audit npm prod | **PASS** | 29 SUCCESS sur source `3c5a90...` ; aucune preuve automatique d'artefact GHCR v1.0.6 |
-| Worker réel, fournisseur gratuit, Oracle `VERIFIED`, P6, refus `HUMAN_REVIEW` | **PASS** | [Actions #42911804825](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42911804825) ; réception sur source applicative `dc52100...` |
-| Worker → RECHERCHE acteur du graphe → Oracle/P6 | **PASS** | [Actions #42913006511](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42913006511) ; **pas de child thread imbriqué observé** |
-| `web_search` natif, recherche/extraction, Analyse/Synthèse, Oracle/P6 | **PASS, sources contrôlées** | [Actions #42926216758](https://github.com/Arkos77/LibreChat-BOTMODE-V1/actions/runs/42926216758) ; modèle gratuit externe réel et fixture Web isolée ; **pas de preuve de Keenable public ni de navigation Playwright réelle** |
-| HITL deux approbations HTTP, checkpoints Mongo, exécution unique | **PASS banc intégré** | `hitlCheckpoint.e2e.spec.js` avec `FakeChatModel` ; **double HITL fournisseur externe NON CONCLUANT, ancien R5 FAIL**. Ne pas annoncer un support réel démontré |
-| Sécurité dépendances de production | **PASS audit npm** | Mongoose corrigé en 8.24.7 ; 0 vulnérabilité relevée par `npm audit --omit=dev` sur la candidate |
-| Sécurité CodeQL PR | **2 HIGH ouverts, mitigation testée** | #331/#332 `js/missing-rate-limiting` sur OAuth MCP ; `requireJwtAuth` et `mcpOAuthPollLimiter` présents, tests 401/429/Retry-After ; disposition formelle encore requise |
-| Autres alertes | **Réserves** | `minimatch` MEDIUM, `deepmerge` LOW, `elliptic` LOW : dépendances développement ; dette historique CodeQL main distincte, voir [#154](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/154) |
-| Sécurité des installations v1.0.5 | **Déploiement non autorisé** | Mac/Chromebook utilisent encore Mongoose 8.24.1 ; interfaces non toutes limitées à loopback, Mongo 4.4 Lite hors support, restauration complète des sauvegardes non démontrée |
-| Image GHCR v1.0.6 multiarchitecture et pull anonyme | **NON CONCLUANT** | Build local et CI verts ne prouvent pas un digest publiquement accessible ; pas de promotion `:latest`, de tag ni de Release v1.0.6 |
-| Décision humaine | **NON ACQUISE** | GO distincts : risques résiduels ; construction/push image candidate ; merge/tag/Release stable ; mise à jour Mac/Chromebook |
+### Portes de sortie
 
-### Actions finales — sans refaire les PASS
+Publier `v1.0.6` **une seule fois** uniquement si la CI du dernier SHA est terminale sans FAIL, les deux MEDIUM de journalisation sont éliminées, et le manifeste GHCR de ce même SHA est vérifié AMD64/ARM64 avec digest, pull anonyme et smoke Lite. Conserver la traçabilité SHA/digest dans les notes de GitHub Release. Une release ne vaut pas feu vert pour mettre à jour les machines.
 
-1. **Acter le périmètre publié** : nouvelle installation Linux Docker Compose, Lite en réseau local/protégé, Full avec protections adaptées. Ne pas promettre Keenable public, Playwright réel, double HITL fournisseur ou restauration/migration locale non testés.
-2. **Faire statuer le propriétaire sur les risques résiduels** décrits dans [#154](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/154), sans dismissal automatique.
-3. Après **GO explicite pour candidate GHCR**, construire la même source AMD64/ARM64, vérifier manifest/digest, pull anonyme, lancement Lite et identité du code.
-4. Après **GO distinct de promotion**, fusionner si autorisé, taguer une fois `v1.0.6` et publier les notes/digests exacts. Déploiements personnels soumis à un autre accord.
-
-**Verdict : `L1=réserves d'exploitation documentées / L2=PASS dans les périmètres ci-dessus / L3=risques à accepter / RELEASE=NO-GO en attente des GO.`**
-
-**V2 privée :** propositions de compétences et cloud dans [issue #181](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/181), hors V1.
+**Cette section est un checkpoint pré-publication, pas une preuve qu'un tag/release a déjà été créé.** État définitif et preuves de publication : [PR #180](https://github.com/Arkos77/LibreChat-BOTMODE-V1/pull/180), [issue #179](https://github.com/Arkos77/LibreChat-BOTMODE-V1/issues/179), [GitHub Releases](https://github.com/Arkos77/LibreChat-BOTMODE-V1/releases).
 
 ---
 
